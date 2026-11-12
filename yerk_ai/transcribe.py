@@ -66,6 +66,7 @@ RESULT_CHARS = 40_000        # the most of the text one result carries, under Cl
 WORD = re.compile(r"[a-z0-9']+")
 FILLERS = frozenset("um umm uh uhh uhm hmm mm erm".split())    # whisper-1 writes them, Groq's model leaves them out
 Book = Callable[[str, float, str], None]     # (engine, usd, note): one spend row
+Voices = list[tuple[str, list[tuple[float, float]]]]    # (letter, its clip) for each voice of a splice
 
 
 class Failed(Exception):
@@ -225,14 +226,15 @@ def turns(data: dict[str, Any], offset: float) -> list[dict[str, Any]]:
         raise Failed(f"its answer did not read as turns ({type(e).__name__} {e}; its keys: {', '.join(sorted(map(str, data)))})") from None
 
 
-def reconcile(per: list[list[dict[str, Any]]], at: list[float]) -> tuple[list[dict[str, Any]], int]:
+def reconcile(per: list[list[dict[str, Any]]], at: list[float]) -> tuple[list[dict[str, Any]], int, list[list[dict[str, Any]]]]:
     """Each window's turns (seconds from the recording's start, the window's own letters; the windows start at `at`) as
-    one list in the recording's letters, and how many letters past window 1 got a new letter, matched by none. Window
-    1's letters are the recording's. A later window's letters are matched to the ones they share the most speaking time
-    with inside its overlap with the window before, both clipped to it, the pairs taken by that time, most first, one to
-    one; a letter left over gets the next letter unused. A turn inside an overlap is kept from the earlier window only."""
+    one list in the recording's letters, how many letters after the recording's first voices got a new letter, matched by
+    none, and each window's turns in the recording's letters. Window 1's letters are the recording's. A later window's
+    letters are matched to the ones they share the most speaking time with inside its overlap with the window before,
+    both clipped to it, the pairs taken by that time, most first, one to one; a letter left over gets the next letter
+    unused. A turn inside an overlap is kept from the earlier window only."""
     out, prev = list(per[0] if per else []), per[0] if per else []
-    used, new = {t["speaker"] for t in out}, 0
+    used, new, each = {t["speaker"] for t in out}, 0, per[:1]
     for i in range(1, len(per)):
         lo, hi = at[i], at[i - 1] + WINDOW
         shared = Counter[tuple[str, str]]()
@@ -244,13 +246,15 @@ def reconcile(per: list[list[dict[str, Any]]], at: list[float]) -> tuple[list[di
         for (mine, theirs), _ in sorted(shared.items(), key=lambda kv: (-kv[1], kv[0])):
             if mine not in to and theirs not in to.values():
                 to[mine] = theirs
+        late = bool(used)                          # no window before heard anyone: these are the recording's first voices
         for mine in sorted({t["speaker"] for t in per[i]} - set(to)):
             to[mine] = next((c for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if c not in used), f"S{len(used) + 1}")
             used.add(to[mine])
-            new += 1
+            new += late
         prev = [dict(t, speaker=to[t["speaker"]]) for t in per[i]]
+        each.append(prev)
         out += [dict(t, start=max(t["start"], hi)) for t in prev if t["end"] > hi]
-    return sorted(out, key=lambda t: (t["start"], t["end"])), new
+    return sorted(out, key=lambda t: (t["start"], t["end"])), new, each
 
 
 def speaker(s: dict[str, Any], heard: list[dict[str, Any]]) -> str | None:
@@ -284,6 +288,29 @@ def clip(said: list[dict[str, Any]], near: float) -> list[tuple[float, float]]:
         if not any(min(e, b) > max(s, a) for a, b in pieces):
             pieces.append((s, e))
     return sorted(pieces)
+
+
+def breaks(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: list[float]) -> list[tuple[Voices, Voices]]:
+    """Where a voice may have come back under a new letter, as (the voices before, the letters minted there): a window,
+    past the first one that heard any voice, with letters that matched nothing. The voices before are the ones the BACK
+    windows before it heard and any earlier one with FAR seconds of speech, clipped nearest its start from what the
+    windows before it heard; a minted letter is clipped from it on, nearest the end of the minute it shares with the
+    window before. A clip under LEAST seconds is left out, and a break left with none on a side is not bridged."""
+    def of(x: str, windows: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        return [t for w in windows for t in w if t["speaker"] == x]
+    talk, seen, out = Counter[str](), set[str](), []
+    for t in heard:
+        talk[t["speaker"]] += t["end"] - t["start"]
+    for i, mine in enumerate({t["speaker"] for t in w} for w in each):
+        if seen and (minted := sorted(mine - seen)):
+            recent = sorted({t["speaker"] for w in each[max(0, i - BACK):i] for t in w})
+            before = [(g, clip(of(g, each[:i]), at[i])) for g in recent + sorted(g for g in seen - set(recent) if talk[g] >= FAR)]
+            after = [(u, clip(of(u, each[i:]), at[i - 1] + WINDOW)) for u in minted]
+            before, after = ([(x, p) for x, p in side if sum(e - s for s, e in p) >= LEAST] for side in (before, after))
+            if before and after:
+                out.append((before, after))
+        seen |= mine
+    return out
 
 
 def hhmmss(t: float) -> str:
@@ -358,7 +385,7 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
         why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
                + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
     try:                                           # with no window lost, every answer is there to read
-        heard, new = ([], 0) if why else reconcile([turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
+        heard, new, _ = ([], 0, []) if why else reconcile([turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
     except Failed as e:
         heard, new, why = [], 0, str(e)
     said = Counter[str]()

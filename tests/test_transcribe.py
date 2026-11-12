@@ -321,20 +321,20 @@ def test_letters_are_reconciled_by_the_time_they_share_in_each_overlap():
     at = [0, 450]
     first = [turn(0, 300, "A"), turn(300, 470, "B"), turn(470, 540, "A")]
     swapped = [turn(450, 470, "A"), turn(470, 540, "B"), turn(540, 700, "A"), turn(700, 990, "B")]   # window 2 heard B first
-    out, new = transcribe.reconcile([first, swapped], at)
+    out, new, _ = transcribe.reconcile([first, swapped], at)
     assert new == 0 and out == first + [turn(540, 700, "B"), turn(700, 990, "A")]   # its A is the recording's B: comes out B
     same = [turn(450, 470, "B"), turn(470, 540, "A"), turn(540, 700, "B")]
-    assert transcribe.reconcile([first, same], at) == (first + [turn(540, 700, "B")], 0)    # no swap: stays as it is
+    assert transcribe.reconcile([first, same], at)[:2] == (first + [turn(540, 700, "B")], 0)    # no swap: stays as it is
 
 
 @pytest.mark.usefixtures("long_windows")
 def test_a_letter_with_no_time_in_the_overlap_gets_the_next_letter_and_is_counted():
     first = [turn(0, 400, "A"), turn(400, 540, "B")]
     second = [turn(450, 540, "A"), turn(540, 600, "B"), turn(600, 990, "A")]   # its B never spoke in the overlap
-    out, new = transcribe.reconcile([first, second], [0, 450])
+    out, new, _ = transcribe.reconcile([first, second], [0, 450])
     assert new == 1 and out == first + [turn(540, 600, "C"), turn(600, 990, "B")]
     third = [turn(900, 1000, "A"), turn(1000, 1100, "B")]                    # window 3 from 900: its A is window 2's A, so B
-    out, new = transcribe.reconcile([first, second, third], [0, 450, 900])
+    out, new, _ = transcribe.reconcile([first, second, third], [0, 450, 900])
     assert new == 2 and out[-2:] == [turn(990, 1000, "B"), turn(1000, 1100, "D")]   # A, B and C taken: D, the second counted
 
 
@@ -342,7 +342,7 @@ def test_a_letter_with_no_time_in_the_overlap_gets_the_next_letter_and_is_counte
 def test_a_turn_inside_an_overlap_is_kept_from_the_earlier_window_only():
     first = [turn(0, 500, "A"), turn(500, 540, "B")]
     second = [turn(450, 500, "B"), turn(500, 560, "A"), turn(560, 600, "B")]   # 500-540 heard twice, 540-560 once
-    out, new = transcribe.reconcile([first, second], [0, 450])
+    out, new, _ = transcribe.reconcile([first, second], [0, 450])
     assert new == 0 and out == [turn(0, 500, "A"), turn(500, 540, "B"), turn(540, 560, "B"), turn(560, 600, "A")]
     assert sum(t["end"] - t["start"] for t in out) == 600                  # every second once
 
@@ -365,6 +365,18 @@ def test_a_voices_clip_is_its_dense_speech_nearest_the_moment_about_10_s_in_at_m
     assert cuts([turn(25, 26, "A"), turn(26.1, 27, "A"), turn(0, 20, "A")], 30) == [(0, 8), (25.95, 27.15)]   # 26.1 never twice
     shorts = cuts([turn(2 * k, 2 * k + 0.8, "A") for k in range(12)] + [turn(30, 30.5, "A")], 0)
     assert len(shorts) == 8 and shorts[0] == (0, 0.95) and shorts[-1] == (13.85, 14.95)    # 8 pieces at most; under 0.7 s never
+
+
+def test_a_break_is_a_window_past_the_first_voices_with_a_letter_matched_by_none_and_its_voices_are_clipped_each_side():
+    at, a = [0, 60, 120, 180, 240, 300, 360], [turn(s, s + 5, "A") for s in (60, 105, 130, 200, 250, 300)]
+    each = [[], [a[0], turn(65, 100, "B"), turn(100, 105, "C"), a[1], a[2]], [a[2], a[3]], [a[3], a[4]], [a[4], a[5]],
+            [a[5], turn(370, 375, "D"), turn(380, 383, "D")],                   # D is new where B, silent since 100 s, may be back
+            [turn(370, 375, "D"), turn(380, 383, "D"), turn(470, 471, "E")]]    # E's one second, padded, is under 1.5 s
+    heard = [turn(65, 100, "B"), turn(100, 105, "C")]                           # B spoke 35 s, C 5 s
+    assert transcribe.breaks(heard, each, at) == [                              # window 2's first voices are no break
+        ([("A", [(250, 255), (300, 305)]), ("B", [(65, 73)])], [("D", [(370, 375), (380, 383)])])]   # A nearest 300, D nearest 360
+    first = [turn(130, 140, "A"), turn(140, 150, "B")]
+    assert transcribe.reconcile([[], first], [0, 60]) == (first, 0, [[], first])   # a first window that heard no one: none counted
 
 
 def two_chunks() -> dict[tuple[str, int], object]:
