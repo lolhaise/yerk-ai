@@ -14,6 +14,7 @@ from yerk_ai import engine, status
 from yerk_ai.accounts import Account
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
+from yerk_ai.engine import RoomProcess, RoomSpec
 
 
 @pytest.fixture
@@ -127,3 +128,18 @@ def test_the_ask_is_claude_codes_own_request_and_a_recorded_answer_reads_as_its_
     assert line == json.dumps({"type": "control_request", "request_id": rid, "request": {"subtype": "get_context_usage"}}) + "\n"
     assert room.context == 125775 == y.ledger.rows(1)[0]["context"]
     room.rp.close()
+
+
+def test_an_ask_never_takes_a_turns_events(tmp_path, monkeypatch):
+    """A background command's notice turn streams while nothing is asked (test_engine's): asked right then, the size
+    comes back and the notice's events still wait for the next turn, which reads them first as before."""
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    monkeypatch.setenv("FAKE_CLAUDE_CONTEXT", "5000")
+    with RoomProcess(RoomSpec(room="r1", model="m", cwd=tmp_path, tools=["Read"]), Account("one", tmp_path / "cfg"), tmp_path) as rp:
+        rp.start()
+        assert rp.ask("BACKGROUND render the plans", timeout=20).text == "echo: BACKGROUND render the plans"
+        assert rp.size() == 5000
+        waiting = [e for _, e in list(rp.events.queue)]
+        assert [e["type"] for e in waiting if e][-1] == "result" and "control_response" not in [e["type"] for e in waiting if e]
+        turn = rp.ask("is it done?", timeout=20)
+    assert (turn.outcome, turn.text, len(turn.accepted)) == ("ok", "echo: is it done?", 1)
