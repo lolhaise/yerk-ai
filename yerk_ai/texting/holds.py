@@ -239,8 +239,8 @@ class Holds:
         rid, aid = int(r["id"]), int(r["approval_id"] or 0)
         self.ledger.hold_approve(aid, "owner")
         got = self.ledger.release(self.to, RULE, key(r), None, self.hours * 3600)
-        if got is None or int(got["id"]) != aid:
-            return words.TEXTING_GONE.format(state=words.TEXTING_CHECK_HELD)
+        if got is None or int(got["id"]) != aid:      # the row is not the text its card showed: never sent on that card's word
+            return words.TEXTING_MOVED
         self.ledger.gate(room=self.to, gate="approval", decision="approved", tool=texts.TOOL, rule=RULE, detail=f"{r['person']}, texting row {rid}")
         state = "queued" if self.mode == "live" else "would-send"
         self.close(r, state)

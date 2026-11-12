@@ -460,9 +460,15 @@ class DiscordChannel:
                 self.retry.add(m.channel.id)
                 asyncio.ensure_future(self._retry(m.channel.id, room))
             return
-        if self.word is not None and m.channel.id == self.names[room.name] and await self.word(room.name, sender, str(m.content or ""), replied(m)):
-            self.ledger.inbound_set(str(m.id), state="filed", note="a word on a text card")   # in the day's log already; no turn
-            return
+        if self.word is not None and m.channel.id == self.names[room.name]:
+            try:                                  # a word that cannot be read is an ordinary message, never a lost one
+                mine = await self.word(room.name, sender, str(m.content or ""), replied(m))
+            except Exception:
+                log.exception("room %s: message %s was not read as a word on a text card", room.name, m.id)
+                mine = False
+            if mine:
+                self.ledger.inbound_set(str(m.id), state="filed", note="a word on a text card")   # in the day's log already; no turn
+                return
         if sender == "owner" and self.taste is not None and m.content and m.channel.id == self.names[room.name]:
             try:                                  # rated before the turn runs: the room's last reply is the one the owner saw
                 self.taste(room.name, m.content)

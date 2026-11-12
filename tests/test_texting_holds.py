@@ -15,7 +15,7 @@ from typing import Any
 import discord
 
 from fake_channel import ConsoleChannel
-from test_discord import ACK, OWNER, PERSON, ROOM_CH, Client, Msg, Room
+from test_discord import ACK, OTHER_CH, OWNER, PERSON, ROOM_CH, Client, Msg, Room
 from test_texting_link import A1, B1, stamp
 from yerk_ai import gates, texts, words
 from yerk_ai.channels.discord import DiscordChannel
@@ -182,6 +182,38 @@ def test_a_reply_send_releases_exactly_that_cards_text_once_and_approve_reads_as
     assert asyncio.run(h.word("other-room", "owner", "send", "100")) is False        # not the card room
 
 
+def test_send_never_releases_a_row_that_is_not_the_text_its_card_showed(tmp_path: Path) -> None:
+    """The hold is keyed by the exact texts the card showed: a row that changed under its card is not sent on that card's word."""
+    h, led, card = setup(tmp_path)
+    a = decided(led)
+    asyncio.run(h.tick())
+    led.texting_set(a, parts=json.dumps(["a text the card never showed"]))
+    assert asyncio.run(h.word("owner-room", "owner", "send", "100")) is True
+    assert row(led, a)["state"] == "held" and ("text", "queued") not in gates_rows(led)
+    assert card.posts[-1][2] == words.TEXTING_MOVED and not (led.approval(int(row(led, a)["approval_id"])) or {})["released"]
+
+
+def test_a_word_in_a_channel_the_card_room_only_watches_is_never_read_as_his_word(tmp_path: Path) -> None:
+    """Through the Discord adapter: the owner's reply `send` to a card, and a bare `send`, typed in a channel the card room
+    watches leave the card held and are not filed as a word; the same reply in the room's own channel sends it."""
+    h, led, _ = setup(tmp_path / "t", to="test-room")
+    a = decided(led)
+    client = Client()
+    d = DiscordChannel("token", OWNER, [], led, client=client, state=tmp_path, word=h.word)
+    d.add_room(ROOM_CH, Room(tmp_path), watch=OTHER_CH)
+    asyncio.run(h.tick())
+
+    def reply(ch: Any, mid: int) -> Msg:
+        m = Msg(ch, mid, "send")
+        m.type, m.reference = discord.MessageType.reply, NS(message_id=100, resolved=None)
+        return m
+    for m in (reply(client.chans[OTHER_CH], 7), Msg(client.chans[OTHER_CH], 8, "send")):
+        asyncio.run(d.on_message(m))
+    assert row(led, a)["state"] == "held" and all((led.inbound_get(i) or {}).get("state") != "filed" for i in ("7", "8"))
+    asyncio.run(d.on_message(reply(client.chans[ROOM_CH], 9)))
+    assert row(led, a)["state"] == "queued" and (led.inbound_get("9") or {})["state"] == "filed"
+
+
 def test_dry_cards_go_marked_and_send_only_says_it_would(tmp_path: Path) -> None:
     h, led, card = setup(tmp_path, mode="dry", to="dry-room")
     a = decided(led)
@@ -322,3 +354,9 @@ def test_a_word_in_the_card_room_is_consumed_and_every_other_room_and_message_st
     asyncio.run(d.on_message(reply(ours, 5, "send", 100)))
     assert [m.id for m in room.got] == ["4"] and row(led, a)["state"] == "queued"
     assert (led.inbound_get("5") or {})["state"] == "filed" and (5, "+", ACK) not in ours.reactions
+
+    async def broken(*a: Any) -> bool:
+        raise RuntimeError("the ledger could not be read")
+    d.word = broken                               # a word that cannot be read: the message is an ordinary one, never lost
+    asyncio.run(d.on_message(Msg(ours, 6, "send")))
+    assert [m.id for m in room.got] == ["4", "6"]

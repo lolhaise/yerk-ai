@@ -541,6 +541,7 @@ TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took 
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
                  "withdrawn": "answered by you {at}", "superseded": "replaced by your edit", "cancelled": "answered by you"}
 TEXTING_GONE = "nothing sent: that card is {state}"
+TEXTING_MOVED = "nothing sent: that card no longer shows the text its hold was made for"
 TEXTING_EDIT_EMPTY, TEXTING_OUT_OFF = "nothing changed: edit needs your text after it", "nothing sent: text-out is off in [gates]"
 TEXTING_NO_CARD_ROOM = "texting: {room} is not an owner room without people, so no card, line or notice goes there"
 TEXTING_CHECK_PACK = ("Four inputs follow, each between \"=== <input> {tag} ===\" and \"=== end <input> {tag} ===\": the thread, "
