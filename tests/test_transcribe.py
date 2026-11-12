@@ -404,6 +404,18 @@ def test_a_splice_is_one_wav_of_each_voices_pieces_with_silence_after_each_and_i
     assert transcribe.letters(spans + [("Z", 4.1, 4.4)], heard) == {"X": "A", "Y": "A", "Z": None}   # C is near Z but not on it
 
 
+def test_a_minted_letter_joins_the_one_group_two_used_splices_put_it_with_and_a_join_counts_at_a_later_break():
+    p, apart = [(0.0, 5.0)], [{"A", "B"}]                                     # a window heard A and B as two voices
+    found = [([("A", p), ("B", p)], [("C", p)]), ([("A", p), ("B", p), ("C", p)], [("D", p)]), ([("A", p), ("B", p)], [("E", p)]),
+             ([("A", p), ("B", p)], [("F", p)]), ([("A", p)], [("G", p)]), ([("A", p)], [("H", p)])]
+    tries = [[{"A": "s1", "B": "s2", "C": "s2"}, {"C": "s1", "A": "s2", "B": "s1"}],                  # C with B both times: joined
+             [{"A": "s1", "B": "s2", "C": "s3", "D": "s3"}, {"D": "s1", "A": "s2", "B": "s1", "C": "s3"}],   # with C, then B: one group
+             [{"A": "s1", "B": "s2", "E": "s1"}, {"E": "s1", "A": "s2", "B": "s1"}],                  # with A, then with B: no
+             [{"A": "s1", "B": "s1", "F": "s2"}, {"F": "s1", "A": "s1", "B": "s2"}],                  # A and B one letter: not used
+             [None, {"G": "s1", "A": "s1"}], [{"A": "s1", "H": None}, {"H": "s1", "A": "s1"}]]          # failed; H not heard once
+    assert transcribe.join(found, tries, apart) == {"C": "B", "D": "B"}
+
+
 def two_chunks() -> dict[tuple[str, int], object]:
     one = {"segments": [seg(0, 4, "Let us go over the plan."), seg(4, 6, "Thanks for watching!", 0.97, -1.2)]}
     two = {"segments": [seg(0, 3, "Then email the vendor"), seg(3, 5, "by Friday.")]}

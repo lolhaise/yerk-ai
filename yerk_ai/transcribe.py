@@ -35,7 +35,7 @@ import wave
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeGuard
 
 from . import words
 from .config import write_private
@@ -344,6 +344,27 @@ def letters(spans: list[tuple[str, float, float]], data: dict[str, Any]) -> dict
     (speaker() given only the turns that touch it, so never a nearest one)."""
     said = turns(data, 0.0)
     return {who: speaker({"start": a, "end": b}, [t for t in said if t["end"] > a and t["start"] < b]) for who, a, b in spans}
+
+
+def usable(got: dict[str, str | None] | None, apart: list[set[str]]) -> TypeGuard[dict[str, str | None]]:
+    """A splice's letters are used unless it failed (None) or gave one letter to two voices that a single window heard
+    as two (`apart`: the letters each window heard)."""
+    return got is not None and not any(x != y and a is not None and got[y] == a and any({x, y} <= w for w in apart)
+                                       for x, a in got.items() for y in got)
+
+
+def join(found: list[tuple[Voices, Voices]], tries: list[list[dict[str, str | None] | None]], apart: list[set[str]]) -> dict[str, str]:
+    """{letter: the earliest letter of the group it joins} for each minted letter that two used splices of its break
+    (`tries`, each break's splices' letters) each put with voices of exactly one group, the same group in both. The breaks
+    are taken in window order, so a join made at an earlier one counts at a later one."""
+    root: dict[str, str] = {}
+    for (before, after), got in zip(found, tries):
+        used = [g for g in got if usable(g, apart)]
+        for u, _ in after:
+            groups = [{root.get(x, x) for x, _ in before if g[u] is not None and g[x] == g[u]} for g in used]
+            if len(groups) == 2 and len(groups[0]) == 1 and groups[0] == groups[1]:
+                root[u] = groups[0].pop()
+    return root
 
 
 def hhmmss(t: float) -> str:
