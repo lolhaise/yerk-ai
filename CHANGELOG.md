@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-12
 
+### texting-1 (#?)
+
+- Nothing changes on an install until it adds a `[texting]` table to yerkd.toml: with no table, or `mode = "off"`, Yerk
+  opens no connection to the Mac, starts nothing and writes nothing for texting.
+- With `mode = "dry"` Yerk reads the 1:1 threads of the people in the reply list (`people`, a file under the private
+  folder only the owner can read) on the Mac's bridge, reached as the `text` tool reaches it, and writes each text down
+  once, across reconnects and restarts: a ledger row by its id and a private line in the day's log, which no person room
+  can read. Their texts close into one pending decision per burst (`burst_quiet`, `burst_cap`); a text older than
+  `catch_up_hours` is listed once as missed, in dry mode only in the `dry_report` room and never in `report`; a text
+  followed by the owner's own is his. Nothing is decided and nothing is sent: the connection refuses every method but the
+  three reads before anything reaches the Mac.
+- `yerk status` shows texting's mode, the bridge up or down since when and the last text in; `yerk doctor` names a
+  `[texting]` table that keeps texting off (a number, the reply list, the report rooms).
+- The machine room hears one line once the Mac's bridge has been away 5 minutes and one once it has been back 2.
+- budgets.toml: `[code] lines` 29,359 to 29,919 with its dated note.
+- **Upgrading**: nothing to change.
+
 ### fast-idle (#60)
 
 - In a room with fast mode on, the compaction that runs while the room is quiet (`idle_compact_after` minutes with the
