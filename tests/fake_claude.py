@@ -24,6 +24,9 @@ message and a success result echoing the text. Variations:
 - the line /compact: a compact_boundary as 2.1.304 streams it (post_tokens FAKE_CLAUDE_POST, else 20000), then a
   compaction result; each one appends a line to FAKE_CLAUDE_MARK.compacted. FAKE_CLAUDE_COMPACT_SLOW=S waits S seconds
   first; FAKE_CLAUDE_COMPACT_FAIL=1: Claude Code's failed-compaction status and an error result, no boundary
+- a control request (get_context_usage), its line appended to FAKE_CLAUDE_ASKS: FAKE_CLAUDE_CONTEXT=N answers
+  fixtures/context_usage.json (a 2.1.321 answer, its id and picture cut) with totalTokens N, "recorded" as recorded,
+  "silent" never, "exit" ends the process; unset, the error 2.1.321 holds for a process that cannot count
 - a line containing CONTEXT:N (the last one in it): its assistant message's usage says the session holds N tokens; SUBAGENT:M adds, after it,
   the test reads (it_back_as_plain text) with one more Line
 - a line containing AUTO_COMPACT: before its answer, Claude Code's own compaction inside the turn as 2.1.316 streams it:
@@ -142,6 +145,23 @@ def replay(msg):
 def result(text, error=False, model="fake-model"):
     out({"type": "result", "subtype": "success", "is_error": error, "result": text, "session_id": sid,
          "modelUsage": {} if error else {model: {}}, "fast_mode_state": fast["state"]})
+
+
+def control(line, msg):
+    if asks := os.environ.get("FAKE_CLAUDE_ASKS"):
+        with open(asks, "a") as f:
+            f.write(line)
+    how = os.environ.get("FAKE_CLAUDE_CONTEXT", "")
+    if how == "exit":
+        sys.exit(0)
+    answer = {"type": "control_response", "response": {"subtype": "error", "request_id": msg.get("request_id"), "error":
+              "get_context_usage is not supported in this context (onGetContextUsage callback not registered)"}}
+    if how.isdigit() or how == "recorded":
+        answer = json.loads((Path(__file__).parent / "fixtures" / "context_usage.json").read_text())
+        answer["response"]["request_id"] = msg.get("request_id")
+        answer["response"]["response"]["totalTokens"] = int(how) if how.isdigit() else answer["response"]["response"]["totalTokens"]
+    if how != "silent":
+        out(answer)
 
 
 def fast_command(text):
@@ -276,6 +296,9 @@ while True:
     if not line.strip():
         continue
     msg = json.loads(line)
+    if msg.get("type") == "control_request":
+        control(line, msg)
+        continue
     text = msg["message"]["content"]
     if os.environ.get("FAKE_CLAUDE_STDIN"):
         with open(os.environ["FAKE_CLAUDE_STDIN"], "a") as f:
