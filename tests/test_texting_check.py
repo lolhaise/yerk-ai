@@ -70,8 +70,14 @@ def test_the_code_holds_an_assistant_word_markdown_a_long_or_fourth_text_and_a_s
                           (["owe you 20 bucks"], words.TEXTING_HELD_BY.format(classes="money"))):
         assert check.precheck(parts, ()) == reason, parts
     assert check.precheck(["she has a girlfriend now"], ("dating",)) == ""          # a class the sheet opens is the model's to test
-    for fine in (["haha yes", "last week"], ["main road was slow"], ["daily", "airport"], ["x" * 400]):
-        assert check.precheck(fine, ()) == "", fine                                 # whole words only: "airport" is not "ai"
+    for fine in (["haha yes", "last week"], ["main road was slow"], ["daily", "airport"], ["x" * 400],
+                 ["the AI rollout went fine"], ["bot lane again"], ["that is sick", "crushed it"]):
+        assert check.precheck(fine, ()) == "", fine          # a topic or slang is the model's to weigh, never the code's hold
+    for parts, word in ((["as an AI I cannot"], "as an AI"), (["lol I’m a bot"], "I’m a bot"), (["i am an ai btw"], "I am an AI")):
+        assert check.precheck(parts, ()) == words.TEXTING_CHECK_SAYS.format(word=word), parts      # the writer naming itself
+    assert check.precheck(["ask Robo about it"], ()) == ""                           # an install's own name is its own to list
+    assert check.precheck(["ask ROBO about it"], (), check.never(["Robo"])) == words.TEXTING_CHECK_SAYS.format(word="Robo")
+    assert check.precheck(["a robotic voice"], (), check.never(["Robo", " "])) == ""
 
 
 def test_the_four_inputs_are_fenced_with_one_tag_and_a_claim_with_no_basis_is_marked_and_a_cite_never_shown():
@@ -158,6 +164,9 @@ def test_a_draft_that_says_assistant_is_held_with_no_model_call_and_a_dating_wor
     r = led.texting_last("alex") or {}
     assert (r["state"], r["decision"], r["reason"]) == ("decided", "held", words.TEXTING_CHECK_SAYS.format(word="assistant"))
     assert json.loads(r["verdict"])["release"] is False and calls(tmp_path) == []
+    asyncio.run(check.Check({"never_say": ["Robo"]}, w).check(decided(led, parts=("Robo wrote that one",))))      # [texting] never_say
+    r = led.texting_last("alex") or {}
+    assert r["reason"] == words.TEXTING_CHECK_SAYS.format(word="Robo") and calls(tmp_path) == []
     asyncio.run(c.check(decided(led, parts=("she has a girlfriend now",))))
     assert (led.texting_last("alex") or {})["reason"] == words.TEXTING_HELD_BY.format(classes="dating") and calls(tmp_path) == []
     (tmp_path / "private" / "texting" / "people" / "alex.toml").write_text('open = ["dating"]\n' + SHEET.split("\n", 1)[1])

@@ -43,11 +43,17 @@ CLASS = {c: [whole(w) for w in ws] for c, ws in words.TEXTING_KEYWORDS.items()}
 AMOUNT, BULLET = re.compile(words.TEXTING_AMOUNT, re.I), re.compile(r"(?m)^\s*- ")
 
 
-def precheck(parts: list[str], open_: tuple[str, ...]) -> str:
-    """The code's own holds, before any model call: (d) a word that names an assistant, (e) markdown or a shape past the cap,
-    (c) a word of an always-held class the sheet does not open (money: an amount too). The reason, or "" when none hits."""
+def never(names: Any) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """[texting] never_say: the names an assistant goes by on this install, held as the built-in words are."""
+    return tuple((w, whole(w)) for w in map(str, names or []) if w.strip())
+
+
+def precheck(parts: list[str], open_: tuple[str, ...], names: tuple[tuple[str, re.Pattern[str]], ...] = ()) -> str:
+    """The code's own holds, before any model call: (d) the writer naming itself or a name of `names`, (e) markdown or a shape
+    past the cap, (c) a word of an always-held class the sheet does not open (money: an amount too). The reason, or "" when
+    none hits."""
     text = "\n".join(parts)
-    if said := next((w for w, rx in AI if rx.search(text)), ""):
+    if said := next((w for w, rx in (*AI, *names) if rx.search(text)), ""):
         return words.TEXTING_CHECK_SAYS.format(word=said)
     if mark := next((m for m in words.TEXTING_MARKDOWN if m in text), "- " if BULLET.search(text) else ""):
         return words.TEXTING_CHECK_MARK.format(mark=mark)
@@ -132,6 +138,7 @@ class Check:
 
     def __init__(self, conf: dict[str, Any], writer: Writer):
         self.w, self.model, self.cap = writer, str(conf.get("check_model") or writer.model), float(conf.get("check_seconds", 120))
+        self.names = never(conf.get("never_say"))
         self.cwd = writer.state / "texting" / "check-cwd"            # empty, and nothing is ever written into it
         self.cwd.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.argv = [writer.argv[0], "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA), "--system-prompt-file",
@@ -147,7 +154,7 @@ class Check:
         who = await asyncio.to_thread(load, self.w.file)          # the sheet as it is on disk now, never a start's copy
         if key not in who.people:
             v = hold(words.TEXTING_UNLISTED)
-        elif why := precheck(json.loads(row["parts"] or "[]"), (s := who.sheets[key]).open):
+        elif why := precheck(json.loads(row["parts"] or "[]"), (s := who.sheets[key]).open, self.names):
             v = hold(why)
         else:
             rows = await self.w.last(key)

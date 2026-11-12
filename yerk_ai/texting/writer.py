@@ -81,7 +81,7 @@ def parse(out: str, guids: set[str], open_: tuple[str, ...] = ()) -> dict[str, A
     ans, rec = answer(out, held)
     if "reason" in rec:
         return rec
-    parts =[str(p).strip() for p in (ans or {}).get("parts") or [] if str(p).strip()][:3]
+    parts = [str(p).strip() for p in (ans or {}).get("parts") or [] if str(p).strip()][:3]
     if not isinstance(ans, dict) or (decision := ans.get("decision")) not in ("reply", "react", "none", "held") \
             or decision == "reply" and not parts or decision == "react" and ans.get("react") not in ("love", "like"):
         return {**held(words.TEXTING_NO_CLEAN), **rec}
@@ -184,7 +184,7 @@ class Writer:
             self.ledger.texting_set(rid, state="dropped", reason=words.TEXTING_UNLISTED)
             return
         rows = await self.last(key)
-        late ={g for g, r in got.items() if r.get("created") and r.get("received") and r["received"] - r["created"] > LATE}
+        late = {g for g, r in got.items() if r.get("created") and r.get("received") and r["received"] - r["created"] > LATE}
         theirs = [r for r in rows if r.get("guid") in got]
         mine = [w for r in rows if r.get("is_from_me") is True and (w := when_of(r))]
         at = datetime.fromtimestamp(now).astimezone()
