@@ -144,6 +144,14 @@ class Link:
         elif method == "error":
             log.warning("texting: the bridge's watch reported an error")
 
+    async def thread(self, key: str, limit: int) -> list[dict[str, Any]]:
+        """The newest `limit` rows of each of a person's chats (messages.history, a read), for the writer to merge; BridgeDown
+        while the link is away."""
+        if self.bridge is None or not self.connected:
+            raise BridgeDown("the bridge is away")
+        return [r for cid, p in list(self.chats.items()) if p.key == key
+                for r in (await self.bridge.request("messages.history", {"chat_id": cid, "limit": limit}) or {}).get("messages", [])]
+
     def take(self, msg: dict[str, Any]) -> str:
         """One row from the watch: a listed person's 1:1 chat only, by its chat id and, when the row names it, its handle."""
         cid = msg.get("chat_id")

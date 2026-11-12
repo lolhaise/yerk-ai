@@ -62,6 +62,8 @@ message and a success result echoing the text. Variations:
 - /fast: FAKE_CLAUDE_FAST_SLOW=S waits S seconds before answering; `-p "/fast on"` makes the folder 2.1.321 made
   for its working folder under the config folder's projects/ (empty under --no-session-persistence), and with
   FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
+- --json-schema (a one-shot): stdin read whole and appended to FAKE_CLAUDE_STDIN, FAKE_CLAUDE_JSON_SLOW seconds of wait,
+  then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder gets a usage-limit error result
 Turn and, the last part closes the case before (the next) run Starts_The_Example.
 """
 import json
@@ -85,6 +87,18 @@ def listed(var):
 
 
 no_login = listed("FAKE_CLAUDE_AUTH_DIRS")
+
+if "--json-schema" in argv:            # a one-shot answering in one JSON object (the texting writer's shape), its prompt on stdin
+    asked = sys.stdin.read()
+    if os.environ.get("FAKE_CLAUDE_STDIN"):
+        with open(os.environ["FAKE_CLAUDE_STDIN"], "a") as f:
+            f.write(asked)
+    time.sleep(float(os.environ.get("FAKE_CLAUDE_JSON_SLOW") or 0))
+    if listed("FAKE_CLAUDE_FAIL_DIRS"):
+        print(json.dumps({"type": "result", "is_error": True, "result": "Claude AI usage limit reached, resets 5pm"}))
+    else:                              # FAKE_CLAUDE_JSON: the whole stdout, as a test builds it
+        print(os.environ.get("FAKE_CLAUDE_JSON") or json.dumps({"type": "result", "is_error": False, "result": ""}))
+    sys.exit(0)
 if argv[:1] == ["setup-token"]:
     tok = "sk-" + "ant-oat01-" + "Fake" * 25                    # token-shaped (a real one is ~108 characters),
     cols = (os.get_terminal_size(sys.stdout.fileno()).columns if sys.stdout.isatty() else 0) or 80   # built so the
