@@ -174,6 +174,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `decide_seconds`: seconds one decision may take; past it the text is held with no clean answer (default 240). Every decision is dry, written down and never sent, until texting can send
 - `check_model`: the model of the check, which reads only the thread, the person's sheet, their texts and the draft before a reply or tapback may go (default: the writer's model)
 - `check_seconds`: seconds one check may take; past it the draft is held with no clean answer (default 120)
+- `never_say`: names an assistant goes by on this install: a draft that holds one, as whole words in any case, is held before any model reads it (default none)
 
 ### [needs]
 
