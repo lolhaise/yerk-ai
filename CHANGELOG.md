@@ -18,11 +18,13 @@ version changes.
 - The report room (`[texting] report`) has a `texting` tool: it reads a person's sheet, a day of their texts and
   decisions, or the newest reason; and it opens or closes a class, adds or drops a fact, or turns a person's standing
   release on or off, only when the owner's own message in that turn holds the words it passes. Each change is one line
-  of `sheets.log` beside the reply list. Every other room is told where the tool works and nothing more.
+  of `sheets.log` beside the reply list. The tool's entry, which every room is sent, says only that it is the owner's
+  texting settings and that `help` in that room says the rest; another owner room is told which room, and a person's
+  room gets one fixed line that names no room, the same with texting on or off. `said` is three words or more.
 - `yerk texting sheets --check` names a sheet that does not load, a sheet missing and a file no one on the list names,
   each with its file (and its line where the sheet gives one); it writes nothing.
-- budgets.toml: `[code] lines` 29,919 to 30,182, and `yerk_tools` 26,700 to 27,400 with the session total 130,223 to
-  130,923, each with its dated note.
+- budgets.toml: `[code] lines` 29,919 to 30,191, and `yerk_tools` 26,700 to 27,250 with the session total 130,223 to
+  130,773, each with its dated note.
 - **Upgrading**: nothing to change.
 
 ### texting-1 (#61)

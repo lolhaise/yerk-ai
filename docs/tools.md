@@ -276,9 +276,7 @@ it was just read from the Mac; with it false the Mac is asleep or away and the a
 ## texting
 
 ```text
-Texting as the owner, in the texting report room only. Read a person's sheet (`sheet`), a day of their texts and
-decisions (`log`, `value` YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or
-`close` a class, `knows` or `forget` a fact, `release` on or off, each with `said`, his own words in this turn.
+The owner's texting settings, in one owner room only. There, op `help` says what it reads and changes.
 ```
 
 - `op`: string, required
