@@ -356,6 +356,17 @@ def test_a_segment_takes_the_letter_covering_most_of_it_else_the_nearest_within_
         "[00:00:10 -> 00:00:20] B: (uncertain) Fine. | second pass: Find.")
 
 
+def test_a_voices_clip_is_its_dense_speech_nearest_the_moment_about_10_s_in_at_most_8_pieces_never_a_stretch_twice():
+    def cuts(said: list[dict[str, object]], near: float) -> list[tuple[float, float]]:
+        return [(round(s, 2), round(e, 2)) for s, e in transcribe.clip(said, near)]
+    said = [turn(0, 20, "A"), turn(30, 33, "A"), turn(40, 52, "A"), turn(40, 52, "A"), turn(60, 61, "A"), turn(80, 84, "A")]
+    assert cuts(said, 50) == [(30, 33), (40, 48)]                  # turns of 2.5 to 15 s nearest 50 first, 8 s at most: 11 s
+    assert cuts(said[:1] + said[4:5], 50) == [(0, 8), (59.85, 61.15)]     # then a long turn's first 8 s, then a short one padded
+    assert cuts([turn(25, 26, "A"), turn(26.1, 27, "A"), turn(0, 20, "A")], 30) == [(0, 8), (25.95, 27.15)]   # 26.1 never twice
+    shorts = cuts([turn(2 * k, 2 * k + 0.8, "A") for k in range(12)] + [turn(30, 30.5, "A")], 0)
+    assert len(shorts) == 8 and shorts[0] == (0, 0.95) and shorts[-1] == (13.85, 14.95)    # 8 pieces at most; under 0.7 s never
+
+
 def two_chunks() -> dict[tuple[str, int], object]:
     one = {"segments": [seg(0, 4, "Let us go over the plan."), seg(4, 6, "Thanks for watching!", 0.97, -1.2)]}
     two = {"segments": [seg(0, 3, "Then email the vendor"), seg(3, 5, "by Friday.")]}

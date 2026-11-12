@@ -56,6 +56,11 @@ WINDOW, STEP = 120, 60       # seconds, Muse timed 2026-11-12: 16 requests at on
                              # 180 s: 84 to 96 s), and Meta cuts one at about 120 s. Neighbours share 60 s: reconcile matches letters by it.
 MUSE_PARALLEL, MUSE_WAIT = 16, 100   # Muse requests at once, as timed; seconds a window waits for its answer, under Meta's 120 s
 NEAR = 3                     # seconds: a segment no turn touches takes the letter of the turn whose middle is this near its own
+# A voice's letters joined across a silence (bridge): the numbers the experiment of 2026-11-12 ran with, on a 28-minute call.
+CLIP, PIECES, PIECE = 10, 8, 8          # seconds of a voice's clip, at most this many pieces, a piece at most this long from a turn's start
+DENSE, SHORT, PAD = (2.5, 15), 0.7, 0.15    # turns of DENSE s first, then longer ones, then ones of SHORT s or more padded PAD s a side
+LEAST, BACK, FAR = 1.5, 3, 30           # a clip under LEAST s is left out; a break's voices: the BACK windows' before it, earlier ones of FAR s
+SPACE = (0.2, 0.5)                      # seconds of silence in a splice after each piece, and more after each voice
 GROQ_KEY, META_KEY = "secrets/groq.key", "secrets/meta.key"
 RESULT_CHARS = 40_000        # the most of the text one result carries, under Claude Code's cap on a tool's answer
 WORD = re.compile(r"[a-z0-9']+")
@@ -260,6 +265,25 @@ def speaker(s: dict[str, Any], heard: list[dict[str, Any]]) -> str | None:
     mid = (s["start"] + s["end"]) / 2
     near = min(((abs((t["start"] + t["end"]) / 2 - mid), str(t["speaker"])) for t in heard), default=None)
     return near[1] if near and near[0] <= NEAR else None
+
+
+def clip(said: list[dict[str, Any]], near: float) -> list[tuple[float, float]]:
+    """A voice's dense speech near `near` as (start, end) pieces in time order, about CLIP seconds in at most PIECES, the
+    same stretch never twice: its turns of DENSE seconds, nearest first, each from its start and at most PIECE long; then a
+    longer turn's first PIECE seconds; then turns of SHORT seconds or more, padded PAD each side. A piece cut from the middle
+    of a long turn holds its pauses, and a short one alone Muse often does not hear."""
+    def rank(t: dict[str, Any]) -> tuple[int, float]:
+        n = t["end"] - t["start"]
+        return 0 if DENSE[0] <= n <= DENSE[1] else 1 if n > DENSE[1] else 2, abs((t["start"] + t["end"]) / 2 - near)
+    pieces: list[tuple[float, float]] = []
+    for t in sorted((t for t in said if t["end"] - t["start"] >= SHORT), key=rank):
+        if sum(e - s for s, e in pieces) >= CLIP or len(pieces) >= PIECES:
+            break
+        s, e = ((t["start"], min(t["end"], t["start"] + PIECE)) if t["end"] - t["start"] >= DENSE[0] else
+                (max(0.0, t["start"] - PAD), t["end"] + PAD))
+        if not any(min(e, b) > max(s, a) for a, b in pieces):
+            pieces.append((s, e))
+    return sorted(pieces)
 
 
 def hhmmss(t: float) -> str:
