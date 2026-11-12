@@ -415,6 +415,29 @@ def test_a_refused_fast_on_after_a_take_is_said_once_and_the_replies_still_come(
     assert chan.notices == [f"{words.WORKING} {words.FAST_LOST.format(why=words.FAST_NO_CREDITS.format(account='one'))}"]
 
 
+def test_a_message_that_comes_in_while_the_taken_copy_still_closes_waits_for_it_and_is_answered_on_a_fast_process(take, y, tmp_path, monkeypatch):
+    """The take's close is the idle close's: while the copy ends the room has no process and the copy still holds its
+    session's lock, so a message in that gap waits for the close (never a turn crashed on a session still locked)."""
+    closing, release, close = threading.Event(), threading.Event(), RoomProcess.close
+
+    def held(self, *a, **k):
+        if not self.spec.fast:                    # the copy: a fast room's one process launched without fast mode
+            closing.set()
+            release.wait(10)
+        return close(self, *a, **k)
+    monkeypatch.setattr(RoomProcess, "close", held)
+    room, chan, copy, launches = take()
+    assert closing.wait(5) and room.rp is None
+    say(y, room, "3", "CONTEXT:21000 and now?")
+    threading.Event().wait(0.3)                   # its start waits on the close: nothing launched, nothing said
+    assert room.busy and len(launches) == 2 and len(chan.replies) == 2 and chan.notices == []
+    release.set()
+    wait_idle(room)
+    assert launches == [(False, True), (True, False), (False, True)] and room.rp.session_id == copy
+    assert chan.notices == [] and echoed(chan, 2).endswith("\n\nCONTEXT:21000 and now?")
+    assert y.ledger.inbound_get("3")["state"] == "answered"
+
+
 @pytest.mark.parametrize("how", ["hangs", "exits non-zero and prints nothing"])
 def test_a_check_that_gives_no_answer_keeps_nothing_says_so_and_leaves_nothing(y, tmp_path, monkeypatch, how):
     import yerk_ai.daemon as dm
