@@ -45,6 +45,7 @@ DIFFER = 0.3                 # a segment is uncertain when the passes disagree o
 GATE_USD = 1.0               # decision 32: a call estimated past this waits for the owner's yes
 PARALLEL = 8
 BUSY = (429, 500, 502, 503, 504)
+QUICK = 30                   # seconds: a busy answer inside this is a refusal worth another try (Groq answers a chunk in about 2 s)
 PASSES = {                   # engine: (url, model, list price a second, least seconds billed a request), read 2026-10-21
     "openai": ("https://api.openai.com/v1/audio/transcriptions", "whisper-1", 0.006 / 60, 0),       # its pricing page
     "groq": ("https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo", 0.04 / 3600, 10),   # its docs
@@ -128,20 +129,27 @@ def muse(secret: str, wav: Path, timeout: float = 600) -> dict[str, Any]:
 
 
 def send(url: str, model: str, secret: str, edge: str, body: bytes, timeout: float) -> dict[str, Any]:
-    """A multipart body to one provider, three tries on a busy answer, the key never in the error."""
+    """A multipart body to one provider, the key never in the error: three tries on a busy answer that came inside QUICK
+    seconds, one on a request that ran long (a timeout, or an error after QUICK seconds), since another try waits as long
+    again. The error names the code or the failure and its seconds, an answer's text only when it is not an HTML page."""
     last = ""
     for attempt in range(1, 4):
         req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {secret}", "User-Agent": "yerk-ai",
                                                               "Content-Type": f"multipart/form-data; boundary={edge}"})
+        began = time.monotonic()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return dict(json.loads(r.read()))
         except urllib.error.HTTPError as e:
-            last = f"HTTP {e.code} {e.read()[:160].decode(errors='replace')}"
-            if e.code not in BUSY:
-                break
+            text = e.read()[:160].decode(errors="replace").strip()
+            what, said, again = f"HTTP {e.code}", "" if "<" in text else text, e.code in BUSY
         except (urllib.error.URLError, OSError, ValueError) as e:
-            last = f"{type(e).__name__}: {e}"
+            cause = getattr(e, "reason", e)
+            what, said, again = type(e).__name__, str(cause), not isinstance(cause, TimeoutError)
+        took = time.monotonic() - began
+        last = f"{what} after {took:.0f} s" + (f": {said}" if said else "")
+        if not again or took > QUICK:
+            break
         if attempt < 3:
             time.sleep(5 * attempt)
     raise Failed(f"{model} did not answer: {' '.join(last.replace(secret, '<key>').split())}")

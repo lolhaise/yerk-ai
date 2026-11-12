@@ -409,6 +409,32 @@ def test_a_muse_request_has_the_live_shape_and_its_key_is_never_in_an_error(tmp_
     assert "HTTP 401" in str(e.value) and "<key>" in str(e.value) and "meta-abc" not in str(e.value)
 
 
+def test_a_request_that_ran_long_is_sent_once_a_quick_refusal_three_times_and_the_reason_has_no_html(tmp_path, monkeypatch):
+    wav = tmp_path / "w000.wav"
+    wav.write_bytes(b"RIFF....WAVE")
+    clock, plan, sent, naps = [0.0], {"code": 504, "after": 121.0}, [], []
+
+    def answer(req, timeout):
+        sent.append(req.full_url)
+        clock[0] += plan["after"]
+        if not plan["code"]:
+            raise TimeoutError("timed out")
+        raise urllib.error.HTTPError(req.full_url, int(plan["code"]), "busy", {}, io.BytesIO(b"<!DOCTYPE html> <html> <head> <title>Error</title>"))
+    monkeypatch.setattr(transcribe, "time", NS(monotonic=lambda: clock[0], sleep=naps.append))
+    monkeypatch.setattr(transcribe.urllib.request, "urlopen", answer)
+    with pytest.raises(transcribe.Failed) as e:                          # Meta's edge cut it at 121 s: sent once, no page
+        transcribe.muse("meta-abc-123456789", wav)
+    assert str(e.value) == "muse-voice-transcribe-1.0 did not answer: HTTP 504 after 121 s" and len(sent) == 1 and not naps
+    plan.update(code=0, after=600.0)
+    with pytest.raises(transcribe.Failed) as e:                          # a timeout: sent once
+        transcribe.post("openai", "sk-abc-123456789", wav)
+    assert str(e.value) == "whisper-1 did not answer: TimeoutError after 600 s: timed out" and len(sent) == 2 and not naps
+    plan.update(code=503, after=0.4)
+    with pytest.raises(transcribe.Failed) as e:                          # a quick refusal: three tries, 5 s and 10 s apart
+        transcribe.post("groq", "gsk-abc-123456789", wav)
+    assert str(e.value) == "whisper-large-v3-turbo did not answer: HTTP 503 after 0 s" and len(sent) == 5 and naps == [5, 10]
+
+
 def test_a_voice_note_arrives_with_the_line_that_it_is_heard_only_through_the_tool():
     files = [{"name": "voice-message.ogg", "type": "audio/ogg", "size": 1514226, "path": "/s/inbox/9/voice-message.ogg", "ok": True},
              {"name": "photo.png", "type": "image/png", "size": 10, "path": "/s/inbox/9/photo.png", "ok": True},
