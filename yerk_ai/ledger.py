@@ -144,8 +144,10 @@ WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging",
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
             "worker", "chars", "folder", "note")
 TEXTING = ("person", "handle", "inbound", "decision", "parts", "react", "reply_to", "statements", "verdict", "delay",
-           "fire_at", "state", "reason", "approval_id", "card", "handed", "claimed", "account", "seconds", "tokens", "mode")
+           "fire_at", "state", "reason", "approval_id", "card", "handed", "claimed", "account", "seconds", "tokens", "mode",
+           "shown")
 ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER"}   # in line for its account
+ADDED["texting"] = {"shown": "TEXT"}       # a held text's card as it was last shown (texting/holds.py)
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note", "created")
 OPEN = ("received", "running")
@@ -271,8 +273,8 @@ class Ledger:
         """The owner's word: the room's newest hold not yet approved (inside the window) is approved. `before`, when the word
         reached Yerk: a hold made after it is never approved by it, since nobody had read that hold when the word was written
         (a word folded into a running turn reaches the gate after the turn's next calls)."""
-        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? AND held <= ? ORDER BY id DESC "
-                         "LIMIT 1", (room, time.time() - window_s, time.time() if before is None else before))
+        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? AND held <= ? AND rule != 'text-thread' "
+                         "ORDER BY id DESC LIMIT 1", (room, time.time() - window_s, time.time() if before is None else before))
         if not r:
             return None
         self._update("approvals", "id", r[0]["id"], {"approved": time.time(), "approved_by": by})
@@ -288,6 +290,17 @@ class Ledger:
             return None
         self._update("approvals", "id", r[0]["id"], {"released": time.time()})
         return r[0]
+
+    def approval(self, hold_id: int) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM approvals WHERE id = ?", (hold_id,))
+
+    def hold_approve(self, hold_id: int, by: str) -> None:
+        """One hold approved by its id (a text hold, by the owner's word on its card), never the room's newest."""
+        self._update("approvals", "id", hold_id, {"approved": time.time(), "approved_by": by})
+
+    def holds_open(self, room: str, since: float) -> list[dict[str, Any]]:
+        """The room's holds made after `since` and not approved yet: what a word said there could still approve."""
+        return self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? ORDER BY id", (room, since))
 
     def many(self, rows: list[tuple[str, dict[str, Any]]]) -> None:
         """Timing rows for hook_calls and tool_times in one transaction: one disk sync per batch, never
@@ -569,6 +582,16 @@ class Ledger:
         return sorted([*self._select("SELECT *, COALESCE(created, received) AS t FROM inbound WHERE room = 'texting' AND channel = ? "
                                      "AND COALESCE(created, received) >= ? AND COALESCE(created, received) < ?", (f"imessage:{person}", start, end)),
                        *self._select("SELECT * FROM texting WHERE person = ? AND t >= ? AND t < ?", (person, start, end))], key=lambda r: r["t"])
+
+    def texting_get(self, row_id: int) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM texting WHERE id = ?", (row_id,))
+
+    def texting_card(self, message_id: str) -> dict[str, Any] | None:
+        """The newest decision a card shows (a newer burst takes over its card)."""
+        return self._first("SELECT * FROM texting WHERE card = ? ORDER BY id DESC LIMIT 1", (message_id,))
+
+    def texting_held(self) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM texting WHERE state = 'held' ORDER BY id", ())
 
     def texting_last(self, person: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM texting WHERE person = ? ORDER BY id DESC LIMIT 1", (person,))

@@ -193,6 +193,12 @@ def stamp(m: Any, edit: bool = False) -> float:
     return at.timestamp() if hasattr(at, "timestamp") else time.time()
 
 
+def replied(m: Any) -> str | None:
+    """The id of the message a Discord reply answers, or None for a message that is no reply."""
+    ref = getattr(m, "reference", None)
+    return str(ref.message_id) if ref is not None and getattr(ref, "message_id", None) and getattr(m, "type", None) == discord.MessageType.reply else None
+
+
 def is_card(text: str) -> bool:
     """A progress card, which says its sender is still at work: a line that starts as an OpenClaw tool row does (CARD_ROWS),
     or Yerk AI's own card in a room with people (card.py): a state mark and its holding line first, "-# step N" last."""
@@ -231,7 +237,7 @@ class DiscordChannel:
     def __init__(self, token: str, owner: int | None, test_senders: list[int], ledger: Ledger,
                  client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
                  capture: Callable[..., bool] | None = None, daemon: Any = None, taste: Callable[[str, str], Any] | None = None,
-                 assistants: frozenset[int] = frozenset()):
+                 assistants: frozenset[int] = frozenset(), word: Callable[[str, str, str, str | None], Awaitable[bool]] | None = None):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
         self.assistants = assistants              # other assistants' user ids: filed where a room watches, never answered
         self.settling: dict[str, asyncio.TimerHandle] = {}   # message id -> an assistant's message waiting to settle
@@ -241,6 +247,7 @@ class DiscordChannel:
         self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
         self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
         self.taste = taste                        # the owner's verdict on a room's last reply (daemon.Yerkd.taste_heard), or None
+        self.word = word                          # the owner's word on a text card, read before a turn (daemon.Yerkd.texting_word)
         self.rooms: dict[int, Room] = {}          # channel id -> room: its own, and the one it watches
         self.names: dict[str, int] = {}           # room name -> its own channel id, where everything goes
         self.cards: dict[str, Any] = {}           # room name -> its open card
@@ -452,6 +459,9 @@ class DiscordChannel:
             if m.channel.id not in self.retry:    # read again once it can (disk-full drill b), one retry per channel at a time
                 self.retry.add(m.channel.id)
                 asyncio.ensure_future(self._retry(m.channel.id, room))
+            return
+        if self.word is not None and m.channel.id == self.names[room.name] and await self.word(room.name, sender, str(m.content or ""), replied(m)):
+            self.ledger.inbound_set(str(m.id), state="filed", note="a word on a text card")   # in the day's log already; no turn
             return
         if sender == "owner" and self.taste is not None and m.content and m.channel.id == self.names[room.name]:
             try:                                  # rated before the turn runs: the room's last reply is the one the owner saw
@@ -1099,6 +1109,11 @@ class DiscordChannel:
                 self.ledger.outbound(room=room, channel=str(self.names[room]), kind="progress-edit",
                                      message_id=str(card.id), chars=len(text), body=text[:MAX])
                 return
+
+    async def edit_post(self, room: str, message_id: str, text: str) -> None:
+        """A post of its own in `room`'s channel edited by its id, after a restart too (a text card, texting/holds.py)."""
+        await (await self._channel(room)).get_partial_message(int(message_id)).edit(content=text[:MAX])
+        self.ledger.outbound(room=room, channel=str(self.names[room]), kind="card-edit", message_id=str(message_id), chars=len(text), body=text[:MAX])
 
     # worker cards (workers.py), on the event loop
     async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:

@@ -195,6 +195,23 @@ def test_the_approval_gate_holds_then_the_owners_word_releases_it_once_ledgered_
                     "tool_input": {"room": "family", "text": "hi"}})["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def test_a_bare_approve_never_approves_a_text_hold_and_the_rooms_other_hold_still_is(tmp_path):
+    """texting-5: a held text's hold is filed in the report room's name (rule text-thread) and only a word on its card releases
+    it; a bare `approve` there approves the room's newest other hold as before, and never a text, older or newer."""
+    y, room, ch = setup(tmp_path)
+    text = y.ledger.hold_add("example-room", "text-thread", "a text to Alex", 0, call="mcp__yerk__text {}")
+    room.busy, room.inflight = True, [Inbound("m3", "owner", "approve")]
+    call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
+    assert (y.ledger.approval(text) or {})["approved"] is None
+    push = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
+    assert call(y, push)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    y.ledger.hold_add("example-room", "text-thread", "a text to Beta", 0, call='mcp__yerk__text {"x": 1}')   # newer than the push
+    room.inflight = [Inbound("m4", "owner", "approve")]
+    call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
+    assert call(y, push) == {}                                            # the push, released once
+    assert [r["approved"] for r in y.ledger._select("SELECT * FROM approvals WHERE rule = 'text-thread'", ())] == [None, None]
+
+
 def test_an_approval_releases_exactly_the_held_call_once_and_a_word_without_the_rooms_binding_counts_for_nothing(
         tmp_path):
     y, room, ch = setup(tmp_path)
