@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -52,7 +52,7 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
               "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
-              "mcp__yerk__attachments", "mcp__yerk__zoom"]
+              "mcp__yerk__attachments", "mcp__yerk__zoom", "mcp__yerk__texting"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -822,6 +822,68 @@ class Yerkd:
 
     async def texting_post(self, room: str, line: str) -> None:
         log.info("texting: %s", await self.posted(room, line, "texting"))
+
+    async def tool_texting(self, room: str, op: str, person: str = "", value: str = "", said: str = "") -> dict[str, Any]:
+        """The `texting` tool, in the [texting] report room only (another owner room is told which room; a person's room one
+        fixed line that names no room and is the same with texting on or off): `help`; a person's sheet, day or newest decision,
+        read (texting_read); or one change to their sheet or standing release (people.change), only on the owner's own words
+        of this turn (`said`, owner_said)."""
+        conf = dict(self.conf.get("texting") or {})
+        if room not in self.rooms or not self.owner(room):         # a person's room: one line, the same whatever the mode
+            return {"ok": False, "line": words.TEXTING_ONLY}
+        if str(conf.get("mode") or "off") not in ("dry", "live"):
+            return {"ok": False, "line": words.TEXTING_OFF}
+        if room != (report := str(conf.get("report") or "")):
+            return {"ok": False, "line": words.TEXTING_WHERE.format(room=report)}
+        if op == "help":
+            return {"ok": True, "line": words.TEXTING_HELP}
+        file = tpeople.path(self.private, conf)
+        if op in ("sheet", "log", "why"):
+            return await asyncio.to_thread(self.texting_read, file, op, person, value)
+        if op not in tpeople.OPS:
+            return {"ok": False, "line": words.TEXTING_OPS}
+        if (m := self.owner_said(room, said)) is None:
+            return {"ok": False, "line": words.TEXTING_NOT_SAID}
+        ok, line = await asyncio.to_thread(tpeople.change, file, person, op, value, f"{room} m:{m.id} {datetime.now(self.memory.tz):%Y-%m-%d}")
+        log.info("texting: %s %s %s: %s", op, person, value[:40], "changed" if ok else "not changed")
+        return {"ok": ok, "line": line}
+
+    def owner_said(self, room: str, said: str) -> Inbound | None:
+        """The owner's own message in `room`'s running turn holding `said` (spacing and case aside), read where said_in_turn
+        reads the turn: what a change the owner ordered carries. A person's message, one of an earlier turn, or under three words
+        (a scrap any message holds would carry any change): None."""
+        want = " ".join(said.split()).casefold()
+        with self.rooms[room].lock:
+            return next((m for m in self.rooms[room].inflight
+                         if len(want.split()) >= 3 and m.sender == "owner" and want in " ".join(m.text.split()).casefold()), None)
+
+    def texting_read(self, file: Path, op: str, key: str, day: str) -> dict[str, Any]:
+        """`sheet`: a person's sheet and standing release; `log`: their texts and decisions on `day` (YYYY-MM-DD, default
+        today), a dry one marked; `why`: the newest decision and its reason. Nothing is written."""
+        try:
+            who = tpeople.load(file)
+            on = datetime.strptime(day, "%Y-%m-%d").date() if op == "log" and day else datetime.now(self.memory.tz).date()
+        except (OSError, ValueError) as e:
+            return {"ok": False, "line": str(getattr(e, "strerror", None) or e)}
+        if (p := who.people.get(key)) is None:
+            return {"ok": False, "line": words.TEXTING_NO_ONE.format(key=key, keys=", ".join(who.people))}
+        if op == "sheet":
+            s = who.sheets[key]
+            return {"ok": True, "person": key, "first": p.first, "release": p.release, "on_file": tpeople.sheet_file(file, p).is_file(),
+                    "open": list(s.open), "knows": [{"fact": f, "source": src} for f, src in s.knows], "night": s.night,
+                    "reacts": list(s.reacts), "unanswered_share": s.unanswered_share, "pacing": s.pacing, "card": s.card}
+        def at(t: float, form: str = "%H:%M") -> str:
+            return datetime.fromtimestamp(t, self.memory.tz).strftime(form)
+        def said(r: dict[str, Any]) -> str:
+            return (words.TEXTING_LOG if "person" in r else words.TEXTING_LOG_IN).format(
+                at=at(r["t"]), who="the owner" if r.get("sender") == "owner" else p.first, chars=r.get("chars"), state=r["state"],
+                dry=" (dry)" if r.get("mode") == "dry" else "", reason=r.get("reason") or r.get("decision") or "no reason yet")
+        if op == "why":
+            row = self.ledger.texting_last(key)
+            return {"ok": True, "line": f"{at(row['t'], '%Y-%m-%d')} {said(row)}" if row else words.TEXTING_NO_WHY.format(first=p.first)}
+        start = datetime.combine(on, datetime.min.time(), self.memory.tz)
+        return {"ok": True, "day": str(on), "lines": [said(r) for r in self.ledger.texting_day(key, start.timestamp(),
+                                                                                            (start + timedelta(days=1)).timestamp())]}
 
     async def tool_texts(self, room: str, limit: int = 0) -> dict[str, Any]:
         """The `texts` tool: the owner's recent texts, read from the Mac's Messages database (inbox.read), from an owner's

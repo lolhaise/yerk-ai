@@ -643,6 +643,18 @@ def cmd_eval(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_texting(a: argparse.Namespace) -> int:
+    """`yerk texting sheets --check`: the reply list and each person's sheet read (texting/people.check), nothing written;
+    each that does not load, is missing or is named by no one, one line with its file; exit 1 then."""
+    from .config import load_toml
+    from .texting import people
+    priv = private_dir(a.private)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    bad = people.check(people.path(priv, dict(conf.get("texting") or {})))
+    print("\n".join(bad) or "every sheet loads")
+    return 1 if bad else 0
+
+
 def cmd_abilities(a: argparse.Namespace) -> int:
     """Every ability in the manifest, one line each, state first: on, needs <provider>, runs on the
     free path, known but not built."""
@@ -882,6 +894,10 @@ def parser() -> argparse.ArgumentParser:
     ev.add_argument("--jobs", type=int, default=4, help="judge calls in flight at once")
     ev.add_argument("--cap", type=float, default=20.0, help="seconds a judge call may take (default 20)")
     ev.add_argument("--sample", type=int, default=0, help="a stratified N cases (by verdict) and N controls (by room), not all")
+    tx = sub.add_parser("texting", help="sheets --check: the reply list and each person's sheet read, nothing written; one line, "
+                        "with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then")
+    tx.add_argument("action", choices=["sheets"])
+    tx.add_argument("--check", action="store_true", required=True)
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ad = sub.add_parser("add", help="an add-on into this install (a folder, a git URL, or an ability whose entry names its repo): "
                         "fetched, checked against its own size, its package, server, tables and units in, its tests run")
@@ -946,7 +962,7 @@ def parser() -> argparse.ArgumentParser:
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     dp.add_argument("--timers", action="store_true", help="only install and turn on each timer in units/ not installed yet")
-    for x in (ac, st, mo, rb, bn, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl):
+    for x in (ac, st, mo, rb, bn, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl, tx):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -962,7 +978,7 @@ def main(argv: list[str] | None = None) -> int:
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,
                 "docs": cmd_docs,
-                "curate": cmd_curate, "needs": cmd_needs, "calls": cmd_calls}[a.cmd](a))
+                "curate": cmd_curate, "needs": cmd_needs, "calls": cmd_calls, "texting": cmd_texting}[a.cmd](a))
 
 
 if __name__ == "__main__":

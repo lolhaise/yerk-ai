@@ -217,6 +217,15 @@ taste: the taste judge replayed over the owner's complaints and the replies they
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
+### yerk texting ACTION
+
+sheets --check: the reply list and each person's sheet read, nothing written; one line, with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then
+
+- `ACTION`: one of sheets
+- `--check`
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
 ### yerk abilities
 
 every ability and its state on this install, one line each

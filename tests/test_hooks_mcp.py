@@ -52,12 +52,12 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_twenty_two_preloaded_tools_with_slim_schemas(tmp_path):
+def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
                           "voice_note", "seen", "render", "watch", "need", "text", "email", "delete",
-                          "github_state", "page", "texts", "attachments", "zoom"}
+                          "github_state", "page", "texts", "texting", "attachments", "zoom"}
     assert list(tools["zoom"].inputSchema["properties"]) == ["path", "x0", "y0", "x1", "y1"] and "`zoom`" in context.MECHANICS.read_text()
     assert list(tools["attachments"].inputSchema["properties"]) == ["message", "name"]
     assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "chat", "open", "where",
@@ -65,6 +65,8 @@ def test_twenty_two_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
     assert list(tools["email"].inputSchema["properties"]) == ["to", "subject", "text", "files"]
     assert list(tools["texts"].inputSchema["properties"]) == ["limit"]
+    assert list(tools["texting"].inputSchema["properties"]) == ["op", "person", "value", "said"]
+    assert not any(x in tools["texting"].description for x in ("sheet", "release", "class", "decision", "log", "knows", "report"))
     assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]
     assert list(tools["delete"].inputSchema["properties"]) == ["paths"]
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]

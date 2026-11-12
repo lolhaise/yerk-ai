@@ -486,6 +486,23 @@ TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
+# the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
+TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
+# the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
+TEXTING_OFF, TEXTING_WHERE = "texting is off", "texting works only in {room}"
+TEXTING_ONLY = "this tool works only in the owner's texting room"      # a person's room: no room named, on or off
+TEXTING_HELP = ("Texting as the owner. Read a person's sheet (op `sheet`), a day of their texts and decisions (`log`, `value` "
+                "YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or `close` a class, `knows` "
+                "or `forget` a fact, `release` on or off, each with `said`: the owner's own words in this turn, three or more. `person` "
+                "is their key on the reply list.")
+TEXTING_NOT_SAID = "not changed: no message of the owner's in this turn has those words; `said` is three or more of the owner's own, as they wrote them"
+TEXTING_NO_ONE = "no one on the reply list is {key}; on it: {keys}"
+TEXTING_NOT_CLASS, TEXTING_ON_OFF = "not changed: {value} is not a class; the classes: {classes}", "not changed: release is on or off"
+TEXTING_SAME, TEXTING_CHANGED = "not changed: {first}'s sheet already says {op} {value}", "changed: {first}, {op} {value}; in sheets.log"
+TEXTING_UNREAD = "not changed: {file} did not read back as asked, so it is as it was"
+TEXTING_OPS = "op is help, log, why or sheet, or open, close, knows, forget or release with the owner's words in `said`"
+TEXTING_NO_WHY = "nothing decided for {first} yet"
+TEXTING_LOG_IN, TEXTING_LOG = "{at} {who}: {chars} characters, {state}", "{at} {state}{dry}: {reason}"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
 # an email in the owner's name (emails.py): why one cannot go, said before the owner is asked where it can be, and how one went

@@ -2,8 +2,8 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-two tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, github_state, page, texts, attachments, zoom), local-only HTTP, preloaded in
+"""Yerk AI's own MCP server: twenty-three tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, email, delete, github_state, page, texts, texting, attachments, zoom), local-only HTTP, preloaded in
 page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, watch, text, email, github_state and attachments are here and not
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
@@ -80,6 +80,7 @@ class Daemon(Protocol):
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_texts(self, room: str, limit: int) -> dict[str, Any]: ...
+    async def tool_texting(self, room: str, op: str, person: str, value: str, said: str) -> dict[str, Any]: ...
     async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]: ...
     async def tool_zoom(self, room: str, path: str, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]: ...
 
@@ -333,6 +334,11 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         it was just read from the Mac; with it false the Mac is asleep or away and the answer is the last copy, whose age
         `as_of` gives, so say that time and do not pass a stale answer off as fresh."""
         return json.dumps(await daemon.tool_texts(caller_room(ctx), limit))
+
+    @mcp.tool()
+    async def texting(op: str, person: str = "", value: str = "", said: str = "", *, ctx: Context) -> str:
+        """The owner's texting settings, in one owner room only. There, op `help` says what it reads and changes."""
+        return json.dumps(await daemon.tool_texting(caller_room(ctx), op, person, value, said))
 
     @mcp.tool()
     async def delete(paths: list[str], *, ctx: Context) -> str:

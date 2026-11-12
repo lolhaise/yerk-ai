@@ -8,6 +8,25 @@ version changes.
 
 ## 2026-11-12
 
+### texting-2 (#62)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then each person on the reply list may have a sheet beside it (`people/<key>.toml`, or the `sheet` the list names):
+  the always-held classes open for them (health, medication, substances, faith, money, job, dating, location), facts
+  they know, at night hold or answer, tapbacks, the share left unanswered, reply times and the owner's voice card for
+  them. A missing sheet is no voice card and every class held; one that does not load keeps texting off.
+- The report room (`[texting] report`) has a `texting` tool: it reads a person's sheet, a day of their texts and
+  decisions, or the newest reason; and it opens or closes a class, adds or drops a fact, or turns a person's standing
+  release on or off, only when the owner's own message in that turn holds the words it passes. Each change is one line
+  of `sheets.log` beside the reply list. The tool's entry, which every room is sent, says only that it is the owner's
+  texting settings and that `help` in that room says the rest; another owner room is told which room, and a person's
+  room gets one fixed line that names no room, the same with texting on or off. `said` is three words or more.
+- `yerk texting sheets --check` names a sheet that does not load, a sheet missing and a file no one on the list names,
+  each with its file (and its line where the sheet gives one); it writes nothing.
+- budgets.toml: `[code] lines` 29,919 to 30,191, and `yerk_tools` 26,700 to 27,250 with the session total 130,223 to
+  130,773, each with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-1 (#61)
 
 - Nothing changes on an install until it adds a `[texting]` table to yerkd.toml: with no table, or `mode = "off"`, Yerk
