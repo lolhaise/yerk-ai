@@ -1519,7 +1519,8 @@ secs = 60
 # the rule for a death for memory, the survivor's line on the card, the relay and the ledger, and cut_off never true for
 # memory 38 (workers.py); the survivor's words 3 (words.py); a job's alert and relay 2 (jobs.py); a builder held, not
 # built again 3 (daemon.py); the pipeline's note 1 (pipeline.py). 29,286: status-broom's 29,239 plus 47.
-# 2026-11-12: fast-stays raised it by 11, the follow-up to fast-mode (#51) (a room with fast mode on ran at standard speed
-# from each taken copy until its next new process): in a room fast mode reaches, the taken copy closed between turns and
-# the next message's process launched with fast mode (room.py). 29,297: oom-wording's 29,286 plus 11.
-lines = 29297
+# 2026-11-12: fast-stays raised it by 13, the follow-up to fast-mode (#51) (a room with fast mode on ran at standard speed
+# from each taken copy until its next new process): in a room fast mode reaches, the taken copy closed between turns,
+# also when the take's row fails, and the next message's process launched with fast mode (room.py). 29,299:
+# oom-wording's 29,286 plus 13.
+lines = 29299

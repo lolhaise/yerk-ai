@@ -15,7 +15,7 @@ version changes.
   the compacted session on a process launched with it. The copy's compaction still never runs in fast mode. This
   replaces "Once a copy is taken, the room runs at standard speed until its next new process." in fast-mode (#51).
 - A room with fast mode off, or on a model other than Fable 5.2, goes on on the copy it took, as before.
-- budgets.toml: `[code] lines` 29,286 to 29,297 with its dated note.
+- budgets.toml: `[code] lines` 29,286 to 29,299 with its dated note.
 - **Upgrading**: nothing to change.
 
 ## 2026-11-11

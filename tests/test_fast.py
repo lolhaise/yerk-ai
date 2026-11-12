@@ -438,6 +438,27 @@ def test_a_message_that_comes_in_while_the_taken_copy_still_closes_waits_for_it_
     assert y.ledger.inbound_get("3")["state"] == "answered"
 
 
+def test_a_take_that_fails_after_its_row_still_closes_the_copy_and_the_next_message_is_answered_on_a_fast_process(take, y, tmp_path, monkeypatch):
+    """Whatever fails between the take and the copy's close (here the ledger, the row in) costs the message it crashed, as
+    on main, never the room: the copy ends all the same, so the next message finds its session's lock free."""
+    record = RoomProcess.record
+
+    def refused(self, turn, *a, **k):
+        row = record(self, turn, *a, **k)
+        if str(k.get("note") or "").startswith("copy taken"):
+            raise OSError(28, "No space left on device")
+        return row
+    monkeypatch.setattr(RoomProcess, "record", refused)
+    room, chan, copy, launches = take(waiting=True)
+    until(lambda: not any(t.name == f"room-{ROOM}" and t.is_alive() for t in threading.enumerate()))   # the crashed run is over
+    assert y.ledger.inbound_get("3")["state"] == "failed" and room.rp is None and len(chan.notices) == 1
+    say(y, room, "4", "CONTEXT:22000 and now?")
+    wait_idle(room)
+    assert launches == [(False, True), (True, False), (False, True)] and room.rp.session_id == copy
+    assert y.ledger.inbound_get("4")["state"] == "answered" and chan.replies[-1].endswith("\n\nCONTEXT:22000 and now?")
+    assert chan.replies[-1].startswith(f"echo: {TAIL_HEAD}") and len(chan.notices) == 1     # the tail kept for it, nothing more said
+
+
 @pytest.mark.parametrize("how", ["hangs", "exits non-zero and prints nothing"])
 def test_a_check_that_gives_no_answer_keeps_nothing_says_so_and_leaves_nothing(y, tmp_path, monkeypatch, how):
     import yerk_ai.daemon as dm

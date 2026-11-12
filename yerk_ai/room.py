@@ -395,10 +395,7 @@ class Room:
         and the next message resumes its session on a process launched with it (_start). The rest is _took's, unlocked."""
         rp.evidence = self.evidence
         rp.adopt()
-        end = self.ran is not None and fast_reaches(self.ran)
-        old, self.rp, self.ready = self.rp, None if end else rp, None
-        if end:
-            self.exited.clear()                   # _start waits for the close: the copy holds its session's lock
+        old, self.rp, self.ready = self.rp, rp, None
         before, self.context, self.grown, self.last_active = self.context, t.context or self.context, False, time.time()
         tail, turns = self._tail(), self.overtook
         self.tail, self.overtook = [], 0
@@ -408,6 +405,9 @@ class Room:
             write_private(path, json.dumps({"session_id": rp.session_id, "text": tail}))
         else:
             path.unlink(missing_ok=True)
+        if end := self.ran is not None and fast_reaches(self.ran):   # last, as the idle close: nothing that can fail
+            self.rp = None                        # stands between this and the close (_took), and _start waits for it:
+            self.exited.clear()                   # the copy holds its session's lock
         return rp, t, started, old, before, turns, len(tail), end
 
     def _took(self, rp: RoomProcess, t: Turn, started: float, old: RoomProcess | None, before: int, turns: int, tail: int, end: bool) -> None:
@@ -415,19 +415,21 @@ class Room:
         copy and the tail's size; the old process closed off the room's path, so a message waiting never waits on it."""
         took, waited = (t.ended or time.time()) - started, time.time() - (t.ended or time.time())
         t.outcome = "compacted"
-        rp.record(t, note=f"copy taken: compacted in {took:.0f} s, taken {waited:.0f} s later, {turns} turn(s) overtook it, "
-                          f"tail {tail} chars")     # the copy's row, its size after: the room's session from here
-        log.info("room %s: compacted on a copy in %.0f s, %d to %d tokens, session %s now the room's (was %s), taken %.0f s "
-                 "later; %d turn(s) overtook it, the tail %d chars", self.name, took, before, self.context, rp.session_id,
-                 old.session_id if old else "closed", waited, turns, tail)
-        if old and old is not rp:
-            threading.Thread(target=old.close, name=f"precompact-old-{self.name}", daemon=True).start()
-        if end:
-            try:
-                rp.close()
-            finally:
-                self.exited.set()
-            log.info("room %s: the copy runs without fast mode, so it is closed; the next message resumes it with fast mode", self.name)
+        try:
+            rp.record(t, note=f"copy taken: compacted in {took:.0f} s, taken {waited:.0f} s later, {turns} turn(s) overtook it, "
+                              f"tail {tail} chars")     # the copy's row, its size after: the room's session from here
+            log.info("room %s: compacted on a copy in %.0f s, %d to %d tokens, session %s now the room's (was %s), taken %.0f s "
+                     "later; %d turn(s) overtook it, the tail %d chars", self.name, took, before, self.context, rp.session_id,
+                     old.session_id if old else "closed", waited, turns, tail)
+            if old and old is not rp:
+                threading.Thread(target=old.close, name=f"precompact-old-{self.name}", daemon=True).start()
+        finally:                                  # a row or a thread that failed costs its turn, never the room: the copy
+            if end:                               # still ends and its session's lock is freed
+                try:
+                    rp.close()
+                finally:
+                    self.exited.set()
+                log.info("room %s: the copy runs without fast mode, so it is closed; the next message resumes it with fast mode", self.name)
 
     def _dropped(self, rp: RoomProcess, t: Turn | None, started: float, why: str) -> None:
         """A copy the room did not take: ended, its transcript copy removed, the line and (when its /compact ran, the daemon
