@@ -458,6 +458,67 @@ def test_each_bridge_request_answered_is_one_spend_row_and_a_bridge_that_fails_j
     assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == {} and sent == []
 
 
+def silent_minute(tmp_path, monkeypatch, bridges: dict[str, object], third: bool = False) -> tuple[dict[str, object], list[tuple[str, float, str]]]:
+    """A made-up 5-minute call in four windows: A talks throughout, B from 25 to 50 s, then says nothing through window
+    2 and is back at 200 s, where window 3 gives it a new letter, C; with `third`, a voice new at 190 s too, D. Muse
+    answers the splices by file name from `bridges`. Returns the result and the spend rows."""
+    z = [(70, 79, "C")] if third else []
+    answers = {("openai", 0): {"segments": [seg(5, 20, "Hello there."), seg(26, 48, "Hi, good to hear you.")]
+                                            + ([seg(190, 199, "Press one.")] if third else []) + [seg(200, 228, "I am back now.")]},
+               ("meta", 0): answer((5, 25, "A"), (25, 50, "B"), (60, 110, "A")), ("meta", 1): answer((0, 50, "A"), (70, 110, "A")),
+               ("meta", 2): answer((10, 50, "B"), *z, (80, 110, "A"), (115, 120, "B")),           # its A is B back, from 200 s
+               ("meta", 3): answer(*[(a - 60, b - 60, w) for a, b, w in z], (20, 50, "B"), (55, 60, "A"), (70, 110, "A"))}
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 300], answers, groq=None, meta="meta-test-key-123456")
+
+    def muse(secret, wav, timeout=600):
+        got = answers[("meta", int(wav.stem[1:]))] if wav.stem[0] == "w" else bridges[wav.stem]
+        if isinstance(got, Exception):
+            raise got
+        return got
+    monkeypatch.setattr(transcribe, "muse", muse)
+    monkeypatch.setattr(transcribe, "windows", lambda audio, into, at: [pcm(into / f"w{i:03d}.wav", 0, 0) for i in range(len(at))])
+    r = transcribe.run(audio, *keys, lambda e, usd, note: rows.append((e, usd, note)), meta_key=META(tmp_path))
+    return r, rows
+
+
+AGREE = {"b000": answer((0, 16.4, "s1"), (16.9, 33.8, "s2")),                       # A, B, C: C with B
+         "b001": answer((0, 8.2, "s2"), (8.7, 25.1, "s1"), (25.6, 33.8, "s2"))}     # C, A, B: C with B
+APART = ["[00:00:05 -> 00:00:20] A: Hello there.", "[00:00:26 -> 00:00:48] B: Hi, good to hear you.", "[00:03:20 -> 00:03:48] C: I am back now."]
+
+
+def test_a_voice_silent_through_a_shared_minute_keeps_its_letter_and_each_bridge_request_is_a_spend_row(tmp_path, monkeypatch):
+    r, rows = silent_minute(tmp_path, monkeypatch, AGREE)
+    assert Path(str(r["file"])).read_text().splitlines()[1:] == [
+        "speakers: A 2:35, B 0:55 (letters, not names: say who is who as a guess from what is said, unless the owner tells you)",
+        "[00:00:05 -> 00:00:20] A: Hello there.", "[00:00:26 -> 00:00:48] B: Hi, good to hear you.", "[00:03:20 -> 00:03:48] B: I am back now."]
+    assert r["speakers"] == {"A": 155, "B": 55} and r["speakers_joined"] == 1
+    assert sorted((round(u, 6), n) for e, u, n in rows if e.startswith("meta/")) == [                  # 34.3 s each at Muse's price
+        (0.001715, "bridge 1 of 2, 34 s"), (0.001715, "bridge 2 of 2, 34 s")] + [(0.006, f"window {i} of 4, 120 s") for i in (1, 2, 3, 4)]
+
+
+def test_a_voice_new_at_its_break_is_joined_to_nothing_and_counted(tmp_path, monkeypatch):
+    r, _ = silent_minute(tmp_path, monkeypatch, {"b000": answer((0, 16.4, "s1"), (16.9, 33.8, "s2"), (34.3, 42.5, "s3")),   # A, B, C, D
+                                                 "b001": answer((0, 8.2, "s2"), (8.7, 16.9, "s3"), (17.4, 33.8, "s1"), (34.3, 42.5, "s2"))},
+                         third=True)                                                   # C, D, A, B: C with B, D with no one, twice
+    assert r["speakers_how"] == ("speakers: A 2:35, B 0:55, D 0:09 (letters, not names: say who is who as a guess from what is said, unless the "
+                                 "owner tells you), 1 letters could not be matched across windows, so one voice may have two letters")
+    assert r["speakers_joined"] == 1
+
+
+def test_two_orders_that_disagree_join_nothing_and_the_letter_is_counted(tmp_path, monkeypatch):
+    r, _ = silent_minute(tmp_path, monkeypatch, AGREE | {"b001": answer((0, 8.2, "s3"), (8.7, 25.1, "s1"), (25.6, 33.8, "s2"))})   # C alone
+    assert r["speakers"] == {"A": 155, "B": 25, "C": 30} and r["speakers_joined"] == 0 and r["speakers_how"].endswith(
+        ", 1 letters could not be matched across windows, so one voice may have two letters")
+
+
+def test_a_failed_bridge_leaves_the_words_the_windows_letters_and_the_count_as_before_it(tmp_path, monkeypatch):
+    late = transcribe.Failed("muse-voice-transcribe-1.0 did not answer: TimeoutError after 100 s")
+    r, rows = silent_minute(tmp_path, monkeypatch, {"b000": late, "b001": late})
+    assert r["ok"] and r["text"].splitlines() == APART and r["speakers"] == {"A": 155, "B": 25, "C": 30} and r["speakers_joined"] == 0
+    assert r["speakers_how"].endswith(", 1 letters could not be matched across windows, so one voice may have two letters")
+    assert not [n for e, u, n in rows if n.startswith("bridge")]                        # a failed request is not billed
+
+
 def two_chunks() -> dict[tuple[str, int], object]:
     one = {"segments": [seg(0, 4, "Let us go over the plan."), seg(4, 6, "Thanks for watching!", 0.97, -1.2)]}
     two = {"segments": [seg(0, 3, "Then email the vendor"), seg(3, 5, "by Friday.")]}

@@ -417,7 +417,8 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
     """The tool's whole call, blocking (the daemon runs it off the loop): {"ok": False, "error"} on any stop, else the
     transcript's file, text and counts. Pass 2 runs when the Groq key is there; a chunk it failed on stays unchecked.
     The speakers run when the Meta key is there; a window that failed leaves every line unlabelled, so no window starts
-    after it, and the file says why."""
+    after it, and the file says why. A voice given a new letter after a silence is joined back to its earlier one where
+    Muse says so (bridge); a bridge that fails joins nothing."""
     secrets = {e: key(p) for e, p in (("openai", openai_key), ("groq", groq_key), ("meta", meta_key)) if p}
     if not secrets["openai"]:
         return {"ok": False, "error": words.NO_SPEECH_KEY}
@@ -455,10 +456,20 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
             with ThreadPoolExecutor(max_workers=PARALLEL) as ex, ThreadPoolExecutor(max_workers=MUSE_PARALLEL) as mx:
                 meta = mx.map(one, [("meta", i) for i in range(len(wins))])
                 got = dict(ex.map(one, [(e, i) for e in engines for i in range(len(parts))])) | dict(meta)
+            if bad := [f"chunk {i + 1}: {r}" for i in range(len(parts)) if isinstance(r := got[("openai", i)], Failed)]:
+                return {"ok": False, "error": "; ".join(bad)}
+            if lost := [i for i in range(len(wins)) if isinstance(got[("meta", i)], Failed)]:
+                unsent = sum(got[("meta", i)] is None for i in range(len(wins)))
+                why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
+                       + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
+            try:                                       # with no window lost, every answer is there to read
+                heard, new, each = ([], 0, []) if why else reconcile(
+                    [turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
+            except Failed as e:
+                heard, new, each, why = [], 0, [], str(e)
+            joins = bridge(heard, each, at, wins, Path(tmp), secrets["meta"], book) if each else {}    # while the windows' WAVs are here
     except (Failed, OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": str(e)}
-    if bad := [f"chunk {i + 1}: {r}" for i in range(len(parts)) if isinstance(r := got[("openai", i)], Failed)]:
-        return {"ok": False, "error": "; ".join(bad)}
     segs: list[dict[str, Any]] = []
     unchecked = []
     for i in range(len(parts)):
@@ -469,14 +480,7 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
         elif "groq" in engines:
             unchecked.append(str(i + 1))
         segs += first
-    if lost := [i for i in range(len(wins)) if isinstance(got[("meta", i)], Failed)]:
-        unsent = sum(got[("meta", i)] is None for i in range(len(wins)))
-        why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
-               + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
-    try:                                           # with no window lost, every answer is there to read
-        heard, new, _ = ([], 0, []) if why else reconcile([turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
-    except Failed as e:
-        heard, new, why = [], 0, str(e)
+    heard = [dict(t, speaker=joins.get(t["speaker"], t["speaker"])) for t in heard]    # each turn in its group's earliest letter
     said = Counter[str]()
     for t in heard:
         said[t["speaker"]] += t["end"] - t["start"]
@@ -485,7 +489,7 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
             s["speaker"] = who
     talk = (words.NO_SPEAKERS.format(why=why or words.NO_TURNS) if why or not said else words.ONE_VOICE if len(said) == 1 else
             words.SPEAKERS.format(who=", ".join(f"{k} {int(v) // 60}:{int(v) % 60:02d}" for k, v in sorted(said.items())))
-            + (words.UNMATCHED.format(n=new) if new else ""))
+            + (words.UNMATCHED.format(n=new - len(joins)) if new > len(joins) else ""))
     n, only, text = sum("other" in s for s in segs), sum("second_only" in s for s in segs), "\n".join(line(s) for s in segs)
     how = (words.UNCHECKED if "groq" not in engines else
            words.PART_CHECKED.format(chunks=", ".join(unchecked), n=n, of=len(segs) - only) if unchecked else
@@ -495,4 +499,5 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
     out = write_private(audio.with_name(f"{audio.stem}.transcript.txt"), f"{head}\n{top}{text}\n")
     shown = text if len(text) <= RESULT_CHARS else text[:text.rfind("\n", 0, RESULT_CHARS)] + "\n" + words.MORE_IN_FILE
     return {"ok": True, "file": str(out), "about": head, "uncertain": n, "segments": len(segs), "text": shown,
-            "speakers": {k: round(v) for k, v in sorted(said.items())}, "speakers_how": talk, "next": words.TRANSCRIBED_NEXT}
+            "speakers": {k: round(v) for k, v in sorted(said.items())}, "speakers_how": talk, "speakers_joined": len(joins),
+            "next": words.TRANSCRIBED_NEXT}
