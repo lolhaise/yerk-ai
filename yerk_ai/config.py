@@ -255,8 +255,10 @@ YERKD_WORDS = {
                                  "copy off and the tool answers only when the Mac is awake)"},
     "texting": {"mode": "off, dry or live (default off, as with no table: nothing connects); dry reads the reply list's 1:1 "
                         "threads on the Mac's bridge, reached as [imessage] reaches it, writes each text down and sends nothing",
-                "report": "the owner room that is told what texting must tell the owner, the missed texts; never while dry",
-                "dry_report": "dry only: a room that is told it in report's place (default none: nothing is posted while dry)",
+                "report": "the owner room (no people) that is told what texting must tell the owner, the missed texts and a card "
+                          "for each text that waits for the owner's word, which is read there; never while dry",
+                "dry_report": "dry only: an owner room (no people) that is told it in report's place, the cards marked DRY, "
+                              "where send only says it would (default none: nothing is posted while dry)",
                 "people": "the reply list, a file under the private folder only the owner can read (default texting/people.toml)",
                 "burst_quiet": "seconds of quiet that close a burst of one person's texts into one decision (default 20)",
                 "burst_cap": "seconds after a burst's first text that it is closed anyway (default 120)",
@@ -270,7 +272,9 @@ YERKD_WORDS = {
                                "draft before a reply or tapback may go (default: the writer's model)",
                 "check_seconds": "seconds one check may take; past it the draft is held with no clean answer (default 120)",
                 "never_say": "names an assistant goes by on this install: a draft that holds one, as whole words in any case, is "
-                             "held before any model reads it (default none)"},
+                             "held before any model reads it (default none)",
+                "hold_hours": "hours a held text's card waits for the owner's word; past it the card says expired, not sent, "
+                              "and nothing can send it (default 6)"},
     "needs": {"account": "the account `yerk needs build` runs on (default [curate] account, else the workers' pick)",
               "cap_minutes": "a builder's minutes before it is stopped (default 60)",
               "auto": "the pipeline: a filed need is built, checked, read cold, merged, deployed and live with no person, one at a "
