@@ -1,6 +1,6 @@
 """One long-lived, read-only connection to the bridge app on your Mac, through which texting reads your Messages threads (imsg's JSON-RPC, one request
-the parked iMessage channel (b0b367f, channels/imessage.py:141-243). Read-only unless told otherwise: every method but the
-three reads is refused here before a byte is written, so the link can never send, react or change anything on the Mac."""
+or notification a line). It is adapted from an earlier iMessage channel of this project, which is not in the repository. Read-only, with no switch to make it
+method but the three reads is refused here before a byte is written, so it can never send, react or change anything on the Mac."""
 from __future__ import annotations
 
 import asyncio
@@ -46,9 +46,9 @@ class Bridge:
     stub bridge)."""
 
     def __init__(self, argv: list[str] | None = None, unix: str | None = None,
-                 on_note: Callable[[str, dict[str, Any]], None] | None = None, read_only: bool = True,
+                 on_note: Callable[[str, dict[str, Any]], None] | None = None,
                  timeout: float = TIMEOUT):
-        self.argv, self.unix, self.on_note, self.read_only, self.timeout = argv, unix, on_note, read_only, timeout
+        self.argv, self.unix, self.on_note, self.timeout = argv, unix, on_note, timeout
         self.proc: asyncio.subprocess.Process | None = None
         self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
@@ -111,7 +111,7 @@ class Bridge:
         self.pending.clear()
 
     async def request(self, method: str, params: dict[str, Any] | None = None, timeout: float | None = None) -> Any:
-        if self.read_only and method not in READS:
+        if method not in READS:
             raise PermissionError(f"{method} is not a read; this connection only reads")
         if not self.up or self.writer is None:
             raise BridgeDown("not connected")
