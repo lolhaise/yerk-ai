@@ -173,6 +173,7 @@ def test_a_dry_decision_writes_its_row_and_one_line_of_the_dry_file_and_nothing_
     r = led.texting_last("alex") or {}
     assert (r["state"], r["decision"], r["mode"], r["account"], r["tokens"], r["seconds"]) == ("decided", "reply", "dry", "a0", 960, 1.5)
     assert json.loads(r["parts"]) == ["haha yes", "last week"] and json.loads(r["statements"])[0]["source"] == "thread:g-own"
+    assert (led.inbound_get("g-1") or {})["state"] == "decided"
     folder = tmp_path / "state" / "texting" / "dry"
     [f] = list(folder.iterdir())
     assert f.name == f"{datetime.now():%Y-%m-%d}.jsonl" and stat.S_IMODE(f.stat().st_mode) == 0o600
@@ -180,6 +181,21 @@ def test_a_dry_decision_writes_its_row_and_one_line_of_the_dry_file_and_nothing_
     [line] = [json.loads(x) for x in f.read_text().splitlines()]
     assert (line["id"], line["decision"], line["mode"], line["parts"]) == (r["id"], "reply", "dry", ["haha yes", "last week"])
     assert sorted(p.name for p in (tmp_path / "state" / "texting").iterdir()) == ["dry", "writer-cwd", "writer-mcp.json"]
+
+
+def test_a_fault_after_the_call_is_never_a_second_call(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(led, "texting_set", lambda *a, **k: 1 / 0)
+    r = deciding(led)
+
+    async def go() -> None:
+        t = asyncio.ensure_future(w.run())
+        await until(lambda: len(calls(tmp_path)) == 1)
+        await asyncio.sleep(4.5)                              # two more passes of the loop
+        t.cancel()
+    asyncio.run(go())
+    assert len(calls(tmp_path)) == 1 and int(r["id"]) in w.busy
 
 
 def test_the_loop_takes_each_deciding_row_once_including_those_a_stop_left(tmp_path, monkeypatch):

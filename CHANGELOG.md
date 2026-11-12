@@ -22,7 +22,7 @@ version changes.
   texting can send, and `yerk status` says so.
 - New `[texting]` keys: `model` (default the report room's), `effort` (default high), `parallel` (default 2),
   `decide_seconds` (default 240).
-- budgets.toml: `[code] lines` 30,191 to 30,458, with its dated note.
+- budgets.toml: `[code] lines` 30,191 to 30,462, with its dated note.
 - **Upgrading**: nothing to change.
 
 ### texting-2 (#62)

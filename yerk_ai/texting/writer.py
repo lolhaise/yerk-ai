@@ -155,8 +155,10 @@ class Writer:
                 await self._decide(row)
             except (BridgeDown, BridgeError, OSError) as e:      # the row stays deciding: the next pass takes it again
                 log.info("texting: %s not decided yet: %s", row["person"], e)
-            finally:
-                self.busy.discard(int(row["id"]))
+            except Exception:                                   # a fault: never taken again before a restart, so never a call a pass
+                log.exception("texting: %s could not be decided", row["person"])
+                return
+            self.busy.discard(int(row["id"]))
 
     async def _decide(self, row: dict[str, Any]) -> None:
         rid, key, now = int(row["id"]), str(row["person"]), self.clock()
@@ -197,6 +199,8 @@ class Writer:
                   "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
                   "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": "dry"}
         self.ledger.texting_set(rid, state="decided", **fields)
+        for g in gs:
+            self.ledger.inbound_set(g, state="decided")
         folder = self.state / "texting" / "dry"
         folder.mkdir(mode=0o700, exist_ok=True)
         fd = os.open(folder / f"{at:%Y-%m-%d}.jsonl", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
