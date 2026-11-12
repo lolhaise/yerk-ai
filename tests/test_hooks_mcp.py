@@ -66,6 +66,7 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["email"].inputSchema["properties"]) == ["to", "subject", "text", "files"]
     assert list(tools["texts"].inputSchema["properties"]) == ["limit"]
     assert list(tools["texting"].inputSchema["properties"]) == ["op", "person", "value", "said"]
+    assert not any(x in tools["texting"].description for x in ("sheet", "release", "class", "decision", "log", "knows", "report"))
     assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]
     assert list(tools["delete"].inputSchema["properties"]) == ["paths"]
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]

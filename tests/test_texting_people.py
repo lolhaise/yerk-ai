@@ -194,7 +194,8 @@ def test_an_edit_without_the_owners_own_words_of_this_turn_is_refused_and_change
     y, rooms, f, tool = daemon(tmp_path)
     before = files(f)
     for turn, said in (([], ORDER), ([Inbound("m1", "person", ORDER)], ORDER), ([Inbound("m2", "owner", "ok")], ORDER),
-                       ([Inbound("m3", "owner", ORDER)], ""), ([Inbound("m4", "owner", ORDER)], "Alex can always know")):
+                       ([Inbound("m3", "owner", ORDER)], ""), ([Inbound("m5", "owner", ORDER)], "Alex can"),      # a scrap of the owner's
+                       ([Inbound("m4", "owner", ORDER)], "Alex can always know")):
         rooms["owner-room"].inflight = turn                    # the running turn's messages, as said_in_turn reads them
         for op, value in (("release", "on"), ("open", "location"), ("knows", "the trip"), ("forget", "the new car")):
             got = tool("owner-room", op, value=value, said=said)
@@ -215,12 +216,25 @@ def test_an_edit_or_a_read_from_a_persons_room_is_refused_and_shows_nothing_of_t
         if room in rooms:
             rooms[room].inflight = [Inbound("m9", "owner", f"open location for Alex, {ORDER}")]
         for op, value in (("sheet", ""), ("log", ""), ("why", ""), ("open", "location"), ("close", "location"),
-                          ("knows", "the trip"), ("forget", "the new car"), ("release", "on"), ("nonsense", "")):
+                          ("knows", "the trip"), ("forget", "the new car"), ("release", "on"), ("help", ""), ("nonsense", "")):
             got = tool(room, op, value=value, said=ORDER)
-            assert got == {"ok": False, "line": words.TEXTING_ONLY.format(room="owner-room")}, (room, op)
+            want = words.TEXTING_IN.format(room="owner-room") if room == "example-room" else words.TEXTING_ONLY
+            assert got == {"ok": False, "line": want}, (room, op)                  # another owner room is told which room
             shown = repr(got)
             assert not any(x in shown for x in ("short, lowercase", "the new car", "location", "6 h", "missed", A1, "sheets.log"))
+            assert room == "example-room" or "owner-room" not in shown             # a person's room is never told its name
     assert files(f) == before and not (f.parent / "sheets.log").exists()
+
+
+def test_a_persons_room_gets_one_line_whatever_the_mode_and_help_answers_in_the_report_room_only(tmp_path):
+    (tmp_path / "off").mkdir()
+    y, rooms, f, tool = daemon(tmp_path / "off", table="")                         # no [texting] table: texting is off
+    assert tool("person-room", "sheet") == tool("no-such-room", "help") == {"ok": False, "line": words.TEXTING_ONLY}
+    assert tool("owner-room", "help") == tool("example-room", "help") == {"ok": False, "line": words.TEXTING_OFF}
+    y, rooms, f, tool = daemon(tmp_path)                                           # dry: a person's room hears the same line
+    assert tool("person-room", "sheet") == tool("person-room", "help") == {"ok": False, "line": words.TEXTING_ONLY}
+    assert tool("owner-room", "help") == {"ok": True, "line": words.TEXTING_HELP}
+    assert tool("owner-room", "nonsense") == {"ok": False, "line": words.TEXTING_OPS}
 
 
 def test_each_change_is_one_line_of_sheets_log_and_the_files_keep_their_mode(tmp_path):

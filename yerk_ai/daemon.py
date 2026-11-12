@@ -824,14 +824,19 @@ class Yerkd:
         log.info("texting: %s", await self.posted(room, line, "texting"))
 
     async def tool_texting(self, room: str, op: str, person: str = "", value: str = "", said: str = "") -> dict[str, Any]:
-        """The `texting` tool, in the [texting] report room only (any other room is told where it works, and nothing else):
-        a person's sheet, day or newest decision, read (texting_read); or one change to their sheet or standing release
-        (people.change), only on the owner's own words of this turn (`said`, owner_said)."""
+        """The `texting` tool, in the [texting] report room only (another owner room is told which room; a person's room one
+        fixed line that names no room and is the same with texting on or off): `help`; a person's sheet, day or newest decision,
+        read (texting_read); or one change to their sheet or standing release (people.change), only on the owner's own words
+        of this turn (`said`, owner_said)."""
         conf = dict(self.conf.get("texting") or {})
+        if room not in self.rooms or not self.owner(room):         # a person's room: one line, the same whatever the mode
+            return {"ok": False, "line": words.TEXTING_ONLY}
         if str(conf.get("mode") or "off") not in ("dry", "live"):
             return {"ok": False, "line": words.TEXTING_OFF}
-        if room != (report := str(conf.get("report") or "")) or not self.owner(room) or room not in self.rooms:
-            return {"ok": False, "line": words.TEXTING_ONLY.format(room=report)}
+        if room != (report := str(conf.get("report") or "")):
+            return {"ok": False, "line": words.TEXTING_IN.format(room=report)}
+        if op == "help":
+            return {"ok": True, "line": words.TEXTING_HELP}
         file = tpeople.path(self.private, conf)
         if op in ("sheet", "log", "why"):
             return await asyncio.to_thread(self.texting_read, file, op, person, value)
@@ -845,11 +850,12 @@ class Yerkd:
 
     def owner_said(self, room: str, said: str) -> Inbound | None:
         """The owner's own message in `room`'s running turn holding `said` (spacing and case aside), read where said_in_turn
-        reads the turn: what a change he ordered carries. A person's message, one of an earlier turn, or no words: None."""
+        reads the turn: what a change the owner ordered carries. A person's message, one of an earlier turn, or under three words
+        (a scrap any message holds would carry any change): None."""
         want = " ".join(said.split()).casefold()
         with self.rooms[room].lock:
             return next((m for m in self.rooms[room].inflight
-                         if want and m.sender == "owner" and want in " ".join(m.text.split()).casefold()), None)
+                         if len(want.split()) >= 3 and m.sender == "owner" and want in " ".join(m.text.split()).casefold()), None)
 
     def texting_read(self, file: Path, op: str, key: str, day: str) -> dict[str, Any]:
         """`sheet`: a person's sheet and standing release; `log`: their texts and decisions on `day` (YYYY-MM-DD, default
