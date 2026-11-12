@@ -23,7 +23,7 @@ version changes.
   and shown nothing (`yerk doctor` says so in red, and red too when live with `text-out` in `[gates] off`).
 - A bare `approve` never approves a text's hold; every other hold works as before.
 - New `[texting]` key: `hold_hours` (default 6). The ledger's `texting` table gains a `shown` column, added at the next start.
-- budgets.toml: `[code] lines` 30,680 to 31,037, with its dated note.
+- budgets.toml: `[code] lines` 30,680 to 31,044, with its dated note.
 - **Upgrading**: nothing to change.
 
 ### texting-4 (#64)
