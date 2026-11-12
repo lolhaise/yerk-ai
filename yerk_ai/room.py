@@ -66,8 +66,8 @@ from typing import Any, Callable, Protocol
 from . import memory, pictures, transcribe, watch, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
-from .config import flag, override, pinned, write_private
-from .engine import RoomProcess, RoomSpec, SessionTable, Turn, fast_reaches
+from .config import fast_on, flag, override, pinned, write_private
+from .engine import FAST_MODELS, RoomProcess, RoomSpec, SessionTable, Turn, fast_reaches
 from .evidence import DOCUMENT, QUOTED, Evidence, pasted, people, quotes, read_any, sheet_written, shipped
 from .ledger import COMPACTED_IN_TURN, Ledger
 from .lifted.classify import Failure, FailureTable
@@ -275,17 +275,37 @@ class Room:
         """`yerk room compact`, by the daemon (its reaper's minute): a room with no turn and nothing queued for `compact_after`
         seconds, whose session holds `compact_at` of its window or more, compacts in the background, so the next message finds
         it small instead of waiting minutes in its own turn for Claude Code's compaction. Once per growth: a try, kept or
-        failed, waits for a turn to grow the session again. Never when its next run starts a fresh session. True: started."""
+        failed, waits for a turn to grow the session again. Never when its next run starts a fresh session. True: started.
+        Fast mode bills usage credits, and nobody waits on this one: where it reaches the process the /compact would go to,
+        a copy launched without it compacts (_fork_off), the room free, and is taken and closed (_take), so the next message
+        resumes it fast; with no process alive to copy, the compaction waits for a turn."""
         now = time.time() if now is None else now
         fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
         with self.lock:
             if (self.busy or self.queue or self.closing or fresh or not self.grown or not self.window or not self.compact_at
                     or self.fork or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
                 return False
-            self.busy, self.grown, self.shortening = True, False, True
-        log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, (now - self.last_active) / 60, self.context, self.window)
+            self.grown, idle = False, (now - self.last_active) / 60
+            if fast := self._fast_next():
+                self._fork_off(f"idle {idle:.0f} min with fast mode on")
+                started = self.fork is not None
+            else:
+                self.busy = self.shortening = True
+        if fast:
+            if not started:
+                log.info("room %s: idle %.0f min at %d of its %d tokens with no process alive, and the next one runs with fast "
+                         "mode, so the compaction waits for a turn", self.name, idle, self.context, self.window)
+            return started
+        log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, idle, self.context, self.window)
         threading.Thread(target=self._idle_compact, name=f"compact-{self.name}", daemon=True).start()
         return True
+
+    def _fast_next(self) -> bool:
+        """Under the lock, whether the room's /compact would reach a process launched with fast mode: the live one's key,
+        else the next one's, by the room's own /fast on and model as status.fast_shown reads them (spec() mints a token)."""
+        if self.rp is not None and self.rp.alive():
+            return fast_reaches(self.rp.spec)
+        return fast_on(self.state, self.name) and str(override(self.state, self.name).get("model") or self.conf.get("model") or "") in FAST_MODELS
 
     def _ended(self) -> bool:
         """Under the lock, a turn ended with nothing queued: a session within `compact_within` of its window under Claude Code's
@@ -324,11 +344,12 @@ class Room:
         except Exception as e:
             log.warning("room %s: the %s compaction failed (%s); not tried again before the next turn", self.name, why, e)
 
-    def _fork_off(self) -> None:
+    def _fork_off(self, why: str = "a turn ended") -> None:
         """Under the lock, a turn ended in the copy's band (_ended): the room's session copied (--fork-session) and compacted
         off to the side, on the live process's own spec and account, so the copy's requests read the prompt cache the live
         session warmed and its one hook (SessionStart compact: the recall pack added again) answers as the room's. One copy
-        per growth: none while one compacts or waits to be taken; never without a live process to copy from."""
+        per growth: none while one compacts or waits to be taken; never without a live process to copy from. A fast room's
+        idle compaction comes here too (idle_compact), `why` saying so in the line."""
         if self.fork is not None or self.ready is not None or not (self.rp and self.rp.alive()):
             return
         live, self.tail, self.overtook, self.dropped, self.shrunk = self.rp, [], 0, "", False
@@ -336,7 +357,7 @@ class Room:
                                      failures=self.failures,                                                       # credits
                                      log=self.log_dir / f"{self.name}.jsonl" if self.log_dir else None,
                                      meters=self.meters.seen if self.meters else None)
-        log.info("room %s: a turn ended at %d of its %d tokens, %d under Claude Code's line, compacting a copy", self.name,
+        log.info("room %s: %s at %d of its %d tokens, %d under Claude Code's line, compacting a copy", self.name, why,
                  self.context, self.window, self.window - RESERVE - self.context)
         threading.Thread(target=self._precompact, args=(rp, self.runs), name=f"precompact-{self.name}", daemon=True).start()
 
