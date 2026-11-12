@@ -480,6 +480,12 @@ TEXT_NOT_RELEASED = "not sent: a text goes only as the call the owner was shown 
 TEXT_NOT_SENT, TEXT_NO_WHY = "not sent: {why}", "the Mac gave no reason"
 TEXT_AWAY = "the Mac's bridge did not answer (the Mac asleep or away, or the bridge not running)"
 TEXT_MAYBE = "it may have gone out, and the Mac never confirmed it: tell the owner to check Messages, and never send it again unasked"
+# texting (texting/): the machine room hears the bridge go and come back; the report room the texts too old to answer
+TEXTING_AWAY = "texting: the Mac's bridge is away\nno answer for 5 minutes; texts wait there and are read when it is back"
+TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
+TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
+TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
+TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
 # an email in the owner's name (emails.py): why one cannot go, said before the owner is asked where it can be, and how one went
@@ -797,7 +803,8 @@ ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one
 # the status card's parts in its order (status.card), as `yerk status --help` names them (cli.py): a part the card gains goes here
 STATUS_PARTS = ("the daemon and its rooms", "each account's 5-hour and weekly meters and the one the next turn tries",
                 "each room's running turn and what waits", "the channel a room watches", "the rooms put on an account",
-                "the version and commit", "the add-ons", "the running workers (from the ledger, checked against the unit list)",
+                "the version and commit", "the add-ons", "texting's mode, its bridge up or down since when and the last text in",
+                "the running workers (from the ledger, checked against the unit list)",
                 "the jobs due within the hour", "each unit's memory and CPU", "today's median first line and turn",
                 "the spend on an uncapped install", "the newest backup's age", "today's stalls")
 NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "

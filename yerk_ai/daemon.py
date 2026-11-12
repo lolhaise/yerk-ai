@@ -44,6 +44,7 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
+from .texting import intake as tintake, link as tlink, people as tpeople
 from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
@@ -801,6 +802,26 @@ class Yerkd:
         """[imessage] as the `text` tool reaches the Mac's bridge: yerkd.toml's own way, else the Mac and its bridge's socket
         an owner room's add-on names in its mac.json (texts.reach), as `texts` and the page reach that Mac."""
         return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
+
+    def texting(self) -> list[Any]:
+        """[texting] mode dry or live: the read-only link to the Mac's bridge and the intake (texting/), to run as tasks. No
+        table, mode off, a reply list that does not load or no way to the bridge: none, so nothing connects or is written."""
+        conf = dict(self.conf.get("texting") or {})
+        if str(conf.get("mode") or "off") not in ("dry", "live"):
+            return []
+        try:
+            who = tpeople.load(tpeople.path(self.private, conf))
+            took = tintake.Intake(conf, who, self.ledger, self.daily.capture, self.texting_post)
+        except (OSError, ValueError, TypeError) as e:          # `yerk doctor` names it
+            log.error("texting is off: %s", e)
+            return []
+        if not (argv := texts.transport(self.imessage())):
+            log.error("texting is off: no way to the Mac's bridge ([imessage] host and socket, or a mac.json)")
+            return []
+        return [tlink.Link(who, self.state, took.take, self.to_machine, argv=argv, mode=str(conf["mode"])).start(), took.run()]
+
+    async def texting_post(self, room: str, line: str) -> None:
+        log.info("texting: %s", await self.posted(room, line, "texting"))
 
     async def tool_texts(self, room: str, limit: int = 0) -> dict[str, Any]:
         """The `texts` tool: the owner's recent texts, read from the Mac's Messages database (inbox.read), from an owner's
@@ -1911,7 +1932,8 @@ class Yerkd:
         poll = float(dict(self.conf.get("imessage") or {}).get("poll_seconds", inbox.POLL))
         checks = [self.refresh_inbox(poll)] if poll > 0 else []      # [imessage] poll_seconds = 0: the texts copy is off
         tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                                                   self.beat.tick(self.listening), self.pipeline.watch(), *checks, dc.start())]
+                                                   self.beat.tick(self.listening), self.pipeline.watch(), *checks,
+                                                   *self.texting(), dc.start())]
         await self.until_stopped(tasks, dc.close)
 
 

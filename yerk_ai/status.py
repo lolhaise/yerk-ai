@@ -124,6 +124,11 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     out["stalls"] = ledger.stalls(midnight(now))
     out["speed"] = latency.medians(ledger, midnight(now), now)    # today's median first line and turn
     out["backup"] = backup.newest(private, state)
+    if (mode := str(dict(conf.get("texting") or {}).get("mode") or "off")) != "off":    # texting/link.py writes it as it runs
+        try:
+            out["texting"] = json.loads((state / "texting" / "status.json").read_text())
+        except (OSError, ValueError):
+            out["texting"] = {"mode": mode}
     if config.uncapped(config.budgets(conf)):           # the money gates lifted: the receipt, today and the week to it
         out["spend"] = spend(ledger, midnight(now), now, midnight(now, 6))
     return out
@@ -339,6 +344,10 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
     if s.get("addons") is not None:                     # `yerk status` names the installed add-ons (addons.py)
         out.append(row(W.PLAIN, W.ADDONS.format(names=", ".join(s["addons"]) or W.NO_ADDONS)))
+    if (t := s.get("texting")) is not None:
+        out.append(row(W.PLAIN if t.get("up") else W.NOT_DONE, W.TEXTING_STATUS.format(
+            mode=t.get("mode"), state=W.TEXTING_STATES[bool(t.get("up"))], since=W.short_clock(t["since"]) if t.get("since") else "?",
+            last=W.TEXTING_IN.format(at=W.short_clock(t["last_in"])) if t.get("last_in") else W.TEXTING_NONE_IN)))
     out += [row(W.NOT_DONE if gone else W.PLAIN, text) for gone, text in said(s["workers"], now)]
     if not s["workers"]:
         out.append(row(W.PLAIN, W.NONE_RUNNING))

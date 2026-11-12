@@ -253,6 +253,14 @@ YERKD_WORDS = {
                  "poll_seconds": "seconds between the light checks that copy the owner's newest texts to the box whenever the "
                                  "Mac answers, so the `texts` tool can read them while the Mac sleeps (default 120; 0 turns the "
                                  "copy off and the tool answers only when the Mac is awake)"},
+    "texting": {"mode": "off, dry or live (default off, as with no table: nothing connects); dry reads the reply list's 1:1 "
+                        "threads on the Mac's bridge, reached as [imessage] reaches it, writes each text down and sends nothing",
+                "report": "the owner room that is told what texting must tell the owner, the missed texts; never while dry",
+                "dry_report": "dry only: a room that is told it in report's place (default none: nothing is posted while dry)",
+                "people": "the reply list, a file under the private folder only the owner can read (default texting/people.toml)",
+                "burst_quiet": "seconds of quiet that close a burst of one person's texts into one decision (default 20)",
+                "burst_cap": "seconds after a burst's first text that it is closed anyway (default 120)",
+                "catch_up_hours": "a text older than this when its burst closes is missed: listed once, not answered (default 6)"},
     "needs": {"account": "the account `yerk needs build` runs on (default [curate] account, else the workers' pick)",
               "cap_minutes": "a builder's minutes before it is stopped (default 60)",
               "auto": "the pipeline: a filed need is built, checked, read cold, merged, deployed and live with no person, one at a "

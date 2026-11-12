@@ -110,12 +110,16 @@ CREATE TABLE IF NOT EXISTS spend (
 CREATE TABLE IF NOT EXISTS calls (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, whom TEXT, call TEXT, reads TEXT, no_reads INTEGER,
   fixed REAL, source TEXT, correction TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS texting (
+  id INTEGER PRIMARY KEY, t REAL, person TEXT, handle TEXT, inbound TEXT, decision TEXT, parts TEXT, react TEXT,
+  reply_to TEXT, statements TEXT, verdict TEXT, delay REAL, fire_at REAL, state TEXT, reason TEXT,
+  approval_id INTEGER, card TEXT, handed REAL, claimed TEXT, account TEXT, seconds REAL, tokens INTEGER, mode TEXT);
 CREATE TABLE IF NOT EXISTS message_links (
   tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
   PRIMARY KEY (tbl, row_key, col, message_id))"""
 # the comma-joined id columns and the key column of their table: every write of one also writes its rows
 LINKED = {("turns", "inbound"): "id", ("inbound", "reply_ids"): "message_id", ("outbound", "inbound"): "id",
-          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id"}
+          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id", ("texting", "inbound"): "id"}
 INDEXES = """CREATE INDEX IF NOT EXISTS inbound_room_received ON inbound (room, received);
 CREATE INDEX IF NOT EXISTS inbound_channel_created ON inbound (channel, created, received);
 CREATE INDEX IF NOT EXISTS inbound_state ON inbound (state);
@@ -139,6 +143,8 @@ WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging",
            "relay_chars", "job", "queued", "waiting")
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
             "worker", "chars", "folder", "note")
+TEXTING = ("person", "handle", "inbound", "decision", "parts", "react", "reply_to", "statements", "verdict", "delay",
+           "fire_at", "state", "reason", "approval_id", "card", "handed", "claimed", "account", "seconds", "tokens", "mode")
 ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER"}   # in line for its account
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note", "created")
@@ -545,6 +551,18 @@ class Ledger:
     def job_run_set(self, run_id: int, **fields: Any) -> None:
         known(fields, JOB_RUNS, "job_runs")
         self._update("job_runs", "id", run_id, fields)
+
+    def texting_add(self, **row: Any) -> int:
+        """One texting decision (texting/intake.py); `inbound`: the comma-joined guids of the texts it answers."""
+        known(row, TEXTING, "texting")
+        return self._insert("texting", {"t": time.time(), **row})
+
+    def texting_set(self, row_id: int, **fields: Any) -> None:
+        known(fields, TEXTING, "texting")
+        self._update("texting", "id", row_id, fields)
+
+    def texting_rows(self, person: str, state: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM texting WHERE person = ? AND state = ? ORDER BY id", (person, state))
 
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE id = ?", (run_id,))

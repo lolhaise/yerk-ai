@@ -685,7 +685,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: fast-idle, the follow-up to fast-stays (#58), raised it by 21 (a fast room's idle compaction ran its /compact in the room's fast session, billed to usage credits): idle_compact sends it the copy's way, or waits with no process alive to copy, and _fast_next reads which process it would reach (room.py). 29,359: compact-size's 29,338 plus 21.
 
-- `lines = 29359`
+2026-11-12: texting-1 raised it by 560, the read-only link and intake of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 29919`
 
 ## Uncapped
 

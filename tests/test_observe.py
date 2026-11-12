@@ -325,11 +325,12 @@ def test_the_status_help_names_every_part_the_card_prints(tmp_path):
               "workers": [{"id": "abc123", "room": "example-room", "account": "one", "started": NOW - 180, "cap": 900, "waiting": False,
                            "queued": None, "gone": False}], "jobs": [{"name": "backup", "next": NOW + 600}],
               "units": [{"name": "yerkd", "rss_mb": 120.0, "cpu_pct": 1.5}], "speed": {"first": 2.0, "turn": 30.0},
-              "spend": {"n": 2, "usd": 0.375, "week": 1.875}, "backup": {"at": NOW - 3600, "bytes": 1000}, "addons": ["hello"]})
+              "spend": {"n": 2, "usd": 0.375, "week": 1.875}, "backup": {"at": NOW - 3600, "bytes": 1000}, "addons": ["hello"],
+              "texting": {"mode": "dry", "up": True, "since": NOW - 600, "last_in": NOW - 60}})
     tags, pre, mid = {W.tag(a["name"]) for a in s["accounts"]}, (lambda t: t.split("{", 1)[0]), (lambda t: t.split("}", 1)[1].split("{", 1)[0])
     made = [lambda x: x.startswith(pre(W.RUNNING_ROOMS)), lambda x: x.partition(":")[0] in tags or x.startswith(pre(W.FIRST_TRY)),
             lambda x: mid(W.TURN_FOR) in x, lambda x: mid(W.WATCHES) in x, lambda x: mid(W.PINNED) in x or x.startswith(pre(W.ROOMS_ON)),
-            lambda x: x.startswith(pre(W.VERSION_AT)), lambda x: x.startswith(pre(W.ADDONS)),
+            lambda x: x.startswith(pre(W.VERSION_AT)), lambda x: x.startswith(pre(W.ADDONS)), lambda x: x.startswith(pre(W.TEXTING_STATUS)),
             lambda x: x.startswith(pre(W.WORKER)) or x == W.NONE_RUNNING, lambda x: x.startswith(pre(W.JOB_DUE)) or x in (W.NO_JOB_DUE, W.NO_TIMERS),
             lambda x: x.endswith(W.UNIT_USE.rsplit("}", 1)[1]), lambda x: mid(W.SPEED) in x, lambda x: x.startswith(pre(W.SPEND)),
             lambda x: x.startswith(pre(W.BACKUP_AT)), lambda x: x.startswith(pre(W.STALLS))]
