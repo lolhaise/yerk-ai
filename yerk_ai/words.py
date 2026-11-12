@@ -762,7 +762,7 @@ SECOND_ONLY, SECOND_ONLY_HEAD = "(second pass only) {text}", ", and {n} more hea
 # the line under a transcript's head: who talks how long, by Muse's letters reconciled across its windows and bridged across a
 # silence (transcribe.reconcile, transcribe.bridge)
 SPEAKERS = "speakers: {who} (letters, not names: say who is who as a guess from what is said, unless the owner tells you)"
-UNMATCHED, ONE_VOICE = ", {n} letters could not be matched across windows, so one voice may have two letters", "one voice"
+UNMATCHED, ONE_VOICE = ", {n} letter{s} could not be matched across windows, so one voice may have two letters", "one voice"
 NO_SPEAKERS, NO_META_KEY, NO_TURNS = "speakers: none (Muse: {why})", "no Meta key at secrets/meta.key", "no speech turns in its answer"
 MUSE_FAILED = "window {windows} of {of} failed: {error}"
 MUSE_UNSENT = ", so {n} more were not sent"

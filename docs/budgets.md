@@ -699,9 +699,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: transcribe-words-speakers raised it by 39, the second pass's lines where the first heard only music, Muse in 2-minute windows and no resend of a request that ran long (a 28-minute recording that came back as music marks after six and a half minutes, 2026-11-12), not folded to fit.
 
-2026-11-12: transcribe-voice-joins raised it by 147, a voice's letters joined across a silence: each break's voices spliced and sent to Muse in two orders, a third when one is not used, the joins by groups in window order (the letters that drift on a long call, 2026-11-12), not folded to fit.
+2026-11-12: transcribe-voice-joins raised it by 162, a voice's letters joined across a silence: each break's voices spliced and sent to Muse in two orders, a third when one is not used, the joins by groups in window order (the letters that drift on a long call, 2026-11-12), not folded to fit.
 
-- `lines = 31230`
+- `lines = 31245`
 
 ## Uncapped
 

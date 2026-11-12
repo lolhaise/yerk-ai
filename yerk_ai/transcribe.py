@@ -12,7 +12,7 @@ talks when (the box tool's third engine): WAV windows of WINDOW seconds every ST
 that Meta answers before it cuts a request at about 2 min; a window's letters (A, B) hold for that request only, so they
 are matched across windows by the speaking time they share in each overlap (reconcile); a voice silent through an
 overlap gets a new letter after it, so a short splice of each voice's speech from both sides of that break goes to Muse
-in two orders, and a letter both put with one earlier voice takes its letter again (bridge). Each pass-1 segment takes
+in two orders, a third when those disagree, and a letter two put with one earlier voice takes its letter again (bridge). Each pass-1 segment takes
 the letter covering most of it, so the words and their times stay whisper-1's. One voice writes no letters. The keys
 are files in the private folder, the first line of each, read per call and never logged or returned:
 OpenAI's is the install's one ([memory] embeddings_key, default secrets/openai.key), Groq's is secrets/groq.key, Meta's
@@ -65,6 +65,8 @@ CLIP, PIECES, PIECE = 10, 8, 8          # seconds of a voice's clip, at most thi
 DENSE, SHORT, PAD = (2.5, 15), 0.7, 0.15    # turns of DENSE s first, then longer ones, then ones of SHORT s or more padded PAD s a side
 LEAST, BACK, FAR = 1.5, 3, 30           # a clip under LEAST s is left out; a break's voices: the BACK windows' before it, earlier ones of FAR s
 SPACE = (0.2, 0.5)                      # seconds of silence in a splice after each piece, and more after each voice
+APART = 5                               # a window heard two letters as two voices when each spoke this long in it: now and then Muse
+                                        # gives one voice a second letter for 2 or 3 s (2.1 and 2.6 s that day), and that is no second voice
 GROQ_KEY, META_KEY = "secrets/groq.key", "secrets/meta.key"
 RESULT_CHARS = 40_000        # the most of the text one result carries, under Claude Code's cap on a tool's answer
 WORD = re.compile(r"[a-z0-9']+")
@@ -221,11 +223,12 @@ def check(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> None:
 
 def turns(data: dict[str, Any], offset: float) -> list[dict[str, Any]]:
     """A Muse answer's turns as {start, end, speaker} in seconds from the recording's start (its startMs and endMs, the
-    window's offset added), one with no letter or no words left out; an answer with no list of turns fails, naming what
+    window's offset added), one with no letter, no words or no length left out; an answer with no list of turns fails, naming what
     it has, so a change in its shape is said, never read as silence."""
     try:
         return [{"start": float(t["startMs"]) / 1000 + offset, "end": float(t["endMs"]) / 1000 + offset, "speaker": str(t["speaker"]).strip()}
-                for t in data["turns"] if str(t.get("speaker") or "").strip() and str(t.get("transcript") or "").strip()]
+                for t in data["turns"] if str(t.get("speaker") or "").strip() and str(t.get("transcript") or "").strip()
+                and float(t["endMs"]) > float(t["startMs"])]
     except (KeyError, TypeError, ValueError, AttributeError) as e:
         raise Failed(f"its answer did not read as turns ({type(e).__name__} {e}; its keys: {', '.join(sorted(map(str, data)))})") from None
 
@@ -349,33 +352,44 @@ def letters(spans: list[tuple[str, float, float]], data: dict[str, Any]) -> dict
 
 def usable(got: dict[str, str | None] | None, apart: list[set[str]]) -> TypeGuard[dict[str, str | None]]:
     """A splice's letters are used unless it failed (None) or gave one letter to two voices that a single window heard
-    as two (`apart`: the letters each window heard)."""
+    as two (`apart`: the letters that spoke APART seconds in each window)."""
     return got is not None and not any(x != y and a is not None and got[y] == a and any({x, y} <= w for w in apart)
                                        for x, a in got.items() for y in got)
 
 
-def join(found: list[tuple[Voices, Voices]], tries: list[list[dict[str, str | None] | None]], apart: list[set[str]]) -> dict[str, str]:
+def join(found: list[tuple[Voices, Voices]], tries: list[list[dict[str, str | None] | None]],
+         apart: list[set[str]]) -> tuple[dict[str, str], list[str]]:
     """{letter: the earliest letter of the group it joins} for each minted letter that two used splices of its break
-    (`tries`, each break's splices' letters) each put with voices of exactly one group, the same group in both. The breaks
-    are taken in window order, so a join made at an earlier one counts at a later one."""
-    root: dict[str, str] = {}
+    (`tries`, each break's splices' letters) each put with voices of exactly one group, the same group in both, unless a
+    window heard it apart from a letter of that group; and the letters left unsure. One that two heard with no earlier
+    voice is a new voice, in neither. The breaks are taken in window order, so a join made at an earlier one counts at a
+    later one."""
+    root, unsure = dict[str, str](), list[str]()
     for (before, after), got in zip(found, tries):
         used = [g for g in got if usable(g, apart)]
         for u, _ in after:
-            groups = [{root.get(x, x) for x, _ in before if g[u] is not None and g[x] == g[u]} for g in used]
-            if len(groups) == 2 and len(groups[0]) == 1 and groups[0] == groups[1]:
-                root[u] = groups[0].pop()
-    return root
+            votes = Counter(frozenset(root.get(x, x) for x, _ in before if g[x] == g[u]) for g in used if g[u] is not None)
+            with_, n = votes.most_common(1)[0] if votes else (frozenset[str](), 0)
+            if n >= 2 and len(with_) <= 1:
+                if not with_:                      # two heard it, with no earlier voice: a new one
+                    continue
+                r = next(iter(with_))
+                if not any(u in w and x in w for w in apart for x in (r, *(k for k, v in root.items() if v == r))):
+                    root[u] = r
+                    continue
+            unsure.append(u)
+    return root, unsure
 
 
 def bridge(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: list[float], wavs: list[Path], into: Path, secret: str,
-           book: Book) -> dict[str, str]:
+           book: Book) -> tuple[dict[str, str], list[str]]:
     """A voice's letters joined across a silence: each break's voices (breaks) spliced in two orders, the voices before
-    then the minted letters and the reverse, all sent to Muse at once; where one of a break's two failed or is not used, a
-    third order is sent once, that one with the voices before reversed (with one voice before, the same order again).
-    Returns join's {letter: its group's earliest letter}. Each request answered is one spend row at Muse's price for its
+    then the minted letters and the reverse, all sent to Muse at once; where those two leave a letter unsure and one of
+    them is used, a third order is sent once, with the voices before reversed (with one voice before, the same order again).
+    Returns join's joins and the letters left unsure. Each request answered is one spend row at Muse's price for its
     seconds; a splice that cannot be cut, or a request that fails or runs long, joins nothing and is never an error."""
-    found, apart, sent = breaks(heard, each, at), [{t["speaker"] for t in w} for w in each], list[Path]()
+    found, sent = breaks(heard, each, at), list[Path]()
+    apart = [{x for x in {t["speaker"] for t in w} if sum(t["end"] - t["start"] for t in w if t["speaker"] == x) >= APART} for w in each]
 
     def send(orders: list[Voices]) -> list[dict[str, str | None] | None]:
         paths = [into / f"b{len(sent) + k:03d}.wav" for k in range(len(orders))]
@@ -396,7 +410,8 @@ def bridge(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: li
             return list(pool.map(one, range(len(orders))))
     got = send([o for before, after in found for o in (before + after, after + before)])
     tries = [got[2 * n:2 * n + 2] for n in range(len(found))]
-    redo = [n for n, two in enumerate(tries) if sum(usable(g, apart) for g in two) == 1]
+    unsure = set(join(found, tries, apart)[1])       # Muse's answers vary: the two can disagree on a voice a third one settles
+    redo = [n for n, (_, after) in enumerate(found) if unsure & {u for u, _ in after} and any(usable(g, apart) for g in tries[n])]
     third = [found[n][0][::-1] + found[n][1] if not usable(tries[n][0], apart) else found[n][1] + found[n][0][::-1] for n in redo]
     for n, g in zip(redo, send(third)):
         tries[n].append(g)
@@ -464,11 +479,11 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
                 why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
                        + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
             try:                                       # with no window lost, every answer is there to read
-                heard, new, each = ([], 0, []) if why else reconcile(
+                heard, _, each = ([], 0, []) if why else reconcile(
                     [turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
             except Failed as e:
-                heard, new, each, why = [], 0, [], str(e)
-            joins = bridge(heard, each, at, wins, Path(tmp), secrets["meta"], book) if each else {}    # while the windows' WAVs are here
+                heard, each, why = [], [], str(e)
+            joins, unsure = bridge(heard, each, at, wins, Path(tmp), secrets["meta"], book) if each else ({}, [])    # while the WAVs are here
     except (Failed, OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": str(e)}
     segs: list[dict[str, Any]] = []
@@ -490,7 +505,7 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
             s["speaker"] = who
     talk = (words.NO_SPEAKERS.format(why=why or words.NO_TURNS) if why or not said else words.ONE_VOICE if len(said) == 1 else
             words.SPEAKERS.format(who=", ".join(f"{k} {int(v) // 60}:{int(v) % 60:02d}" for k, v in sorted(said.items())))
-            + (words.UNMATCHED.format(n=new - len(joins)) if new > len(joins) else ""))
+            + (words.UNMATCHED.format(n=len(unsure), s="s" * (len(unsure) != 1)) if unsure else ""))
     n, only, text = sum("other" in s for s in segs), sum("second_only" in s for s in segs), "\n".join(line(s) for s in segs)
     how = (words.UNCHECKED if "groq" not in engines else
            words.PART_CHECKED.format(chunks=", ".join(unchecked), n=n, of=len(segs) - only) if unchecked else
