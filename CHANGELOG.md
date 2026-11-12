@@ -21,7 +21,7 @@ version changes.
   of `sheets.log` beside the reply list. Every other room is told where the tool works and nothing more.
 - `yerk texting sheets --check` names a sheet that does not load, a sheet missing and a file no one on the list names,
   each with its file (and its line where the sheet gives one); it writes nothing.
-- budgets.toml: `[code] lines` 29,919 to 30,178, and `yerk_tools` 26,700 to 27,400 with the session total 130,223 to
+- budgets.toml: `[code] lines` 29,919 to 30,182, and `yerk_tools` 26,700 to 27,400 with the session total 130,223 to
   130,923, each with its dated note.
 - **Upgrading**: nothing to change.
 

@@ -689,9 +689,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: texting-1 raised it by 560, the read-only link and intake of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-2026-11-12: texting-2 raised it by 259, the person sheets and the owner's tool of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+2026-11-12: texting-2 raised it by 263, the person sheets and the owner's tool of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 30178`
+- `lines = 30182`
 
 ## Uncapped
 

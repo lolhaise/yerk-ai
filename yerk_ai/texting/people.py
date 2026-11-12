@@ -169,7 +169,8 @@ def check(file: Path) -> list[str]:
 def release_text(text: str, key: str, on: bool) -> str:
     """The list's words with `key`'s standing release set, every other line as it was."""
     lines, v = text.splitlines(keepends=True), "true" if on else "false"
-    head = next(i for i, x in enumerate(lines) if x.strip() == f"[people.{key}]")
+    if (head := next((i for i, x in enumerate(lines) if x.strip() == f"[people.{key}]"), None)) is None:
+        return text                               # not written as a table of its own: as it was, which the read-back refuses
     end = next((i for i in range(head + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
     if (at := next((i for i in range(head + 1, end) if re.match(r"\s*release\s*=", lines[i])), None)) is None:
         return "".join([*lines[:head + 1], f"release = {v}\n", *lines[head + 1:]])
@@ -185,30 +186,32 @@ def change(file: Path, key: str, op: str, value: str, source: str) -> tuple[bool
         if (p := who.people.get(key)) is None:
             return False, words.TEXTING_NO_ONE.format(key=key, keys=", ".join(who.people))
         to, s, v = file if op == "release" else sheet_file(file, p), who.sheets[key], " ".join(value.split())
-        before = to.read_bytes() if to.is_file() else b""
+        before, want = to.read_bytes() if to.is_file() else b"", s
         if op == "release":
             if v not in ("on", "off"):
                 return False, words.TEXTING_ON_OFF
             new, same = release_text(before.decode(), key, v == "on"), (v == "on") == p.release
-        elif op in ("open", "close"):
-            if v not in words.TEXTING_CLASSES:
-                return False, words.TEXTING_NOT_CLASS.format(value=v, classes=", ".join(words.TEXTING_CLASSES))
-            opened = tuple(c for c in s.open if c != v) + ((v,) if op == "open" else ())
-            new, same = sheet_text(replace(s, open=opened)), set(opened) == set(s.open)
-        elif op == "knows":
-            new, same = sheet_text(replace(s, knows=(*s.knows, (v, source)))), not v or v.casefold() in (f.casefold() for f, _ in s.knows)
         else:
-            kept = tuple(k for k in s.knows if k[0].casefold() != v.casefold())
-            new, same = sheet_text(replace(s, knows=kept)), kept == s.knows
+            if op in ("open", "close") and v not in words.TEXTING_CLASSES:
+                return False, words.TEXTING_NOT_CLASS.format(value=v, classes=", ".join(words.TEXTING_CLASSES))
+            if op in ("open", "close"):
+                want = replace(s, open=tuple(c for c in s.open if c != v) + ((v,) if op == "open" else ()))
+            elif op == "knows" and v and v.casefold() not in (f.casefold() for f, _ in s.knows):
+                want = replace(s, knows=(*s.knows, (v, source)))
+            elif op == "forget":
+                want = replace(s, knows=tuple(k for k in s.knows if k[0].casefold() != v.casefold()))
+            new, same = sheet_text(want), set(want.open) == set(s.open) and want.knows == s.knows
         if same:
             return False, words.TEXTING_SAME.format(first=p.first, op=op, value=v)
         to.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         write_private(to, new, stat.S_IMODE(to.stat().st_mode) if before else 0o600)
-        try:
-            load(file)                            # read back: what does not load is put back, no change at all
+        try:                                      # read back: what does not load, or not as asked, is put back
+            back = load(file)
+            if (back.people[key].release != (v == "on")) if op == "release" else (back.sheets[key] != want):
+                raise ValueError(to.name)
         except ValueError:
             write_private(to, before, stat.S_IMODE(to.stat().st_mode)) if before else to.unlink()
-            raise
+            return False, words.TEXTING_UNREAD.format(file=to.name)
         row = {"at": datetime.now().astimezone().isoformat(timespec="seconds"), "person": key, "op": op, "value": v, "source": source,
                "file": str(to.relative_to(file.parent)), "before": hashlib.sha256(before).hexdigest() if before else "",
                "after": hashlib.sha256(to.read_bytes()).hexdigest()}

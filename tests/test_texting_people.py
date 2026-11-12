@@ -256,6 +256,10 @@ def test_each_change_is_one_line_of_sheets_log_and_the_files_keep_their_mode(tmp
     assert who.sheets["alex"].open == () and who.sheets["alex"].knows == (("the trip moved", rows[2]["source"]),)
     assert who.sheets["alex"].card == "short, lowercase, no full stops" and who.sheets["beta"].open == ("money",)
     assert who.people["alex"].release and who.people["beta"].release
+    f.write_text(f.read_text().replace("[people.beta]", "[ people.beta ]"))      # a header written another way
+    kept = {k: v[0] for k, v in files(f).items()}
+    assert tool("owner-room", "release", "beta", "off", **said) == {"ok": False, "line": words.TEXTING_UNREAD.format(file="people.toml")}
+    assert {k: v[0] for k, v in files(f).items()} == kept and len(kept["sheets.log"].splitlines()) == 6
 
 
 def test_the_read_ops_only_read_and_with_texting_off_answer_texting_is_off(tmp_path, monkeypatch):
