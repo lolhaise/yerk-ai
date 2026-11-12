@@ -13,9 +13,9 @@ version changes.
 - A recording whose first pass heard only music now comes back with the second pass's words. Where whisper-1 wrote no
   words (a `♪` through minutes of a call) and Groq heard some, Groq's lines stand in with their own times, each marked
   `(second pass only)`, and the file's first line counts them: `checked by a second pass: 0 of 4 segments uncertain, and
-  2 more heard by the second pass only, where the first heard no words`. Where neither pass heard a word, the line stays
-  as it was.
-- Speakers come back on recordings past five minutes again. Muse gets 2-minute windows starting every minute, 8 at once,
+  2 more heard by the second pass only, where the first heard no words`. A chunk the first pass heard no word in at all is the second pass's, whether it wrote
+  marks or nothing. Where neither pass heard a word, the line stays as it was.
+- Speakers come back on recordings past five minutes again. Muse gets 2-minute windows starting every minute, 16 at once,
   each given up after 100 seconds: Meta cuts a request at about 2 minutes, and on 2026-11-12 a 2-minute window took
   about a minute, where a 9-minute one had failed on every recording since 2026-11-10. Each second but the first and last
   minute goes to Muse twice, so an hour is about US$0.75 with all three engines (it was US$0.61), and the US$1 gate now
@@ -24,7 +24,7 @@ version changes.
   seconds) is never sent again, on all three engines, while a quick busy answer still gets three tries; after one Muse
   window fails no further window starts, so the words come back once the running ones end, in about 100 seconds when
   Muse answers nothing. The speakers line names the code and the seconds (`HTTP 504 after 121 s`), never an error page.
-- budgets.toml: `[code] lines` 31,044 to 31,082, with its dated note.
+- budgets.toml: `[code] lines` 31,044 to 31,083, with its dated note.
 - **Upgrading**: nothing to change.
 
 ### texting-5 (#65)

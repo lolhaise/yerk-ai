@@ -218,6 +218,18 @@ def test_a_chunk_pass_1_wrote_as_music_comes_back_with_pass_2s_lines_marked_and_
         "[00:00:00 -> 00:00:30] ♪", "[00:00:30 -> 00:01:00] ♪♪", "[00:01:00 -> 00:01:30] ♪"]
 
 
+def test_a_chunk_pass_1_heard_no_word_in_is_pass_2s_whether_it_wrote_a_mark_or_no_segment_at_all(tmp_path, monkeypatch):
+    speech = {"segments": [seg(2, 9, "Thanks for calling, how can I help?"), seg(31, 40, "I would like to ask about a charge.")]}
+    answers = {("openai", 0): {"segments": []}, ("groq", 0): speech}
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 90], answers)
+    for first in ({"segments": []}, {"segments": [seg(0, 5, "♪")]}):          # nothing at all; one mark, before most of the speech
+        answers[("openai", 0)] = first
+        r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
+        assert r["text"].splitlines() == ["[00:00:02 -> 00:00:09] (second pass only) Thanks for calling, how can I help?",
+                                          "[00:00:31 -> 00:00:40] (second pass only) I would like to ask about a charge."], first
+        assert r["about"].endswith("0 of 0 segments uncertain, and 2 more heard by the second pass only, where the first heard no words")
+
+
 def test_a_run_of_music_marks_inside_speech_takes_pass_2s_lines_for_that_stretch_only(tmp_path, monkeypatch):
     one = {"segments": [seg(0, 5, "Hello, this is Alex."), seg(5, 10, "I have a question."), seg(10, 40, "♪"), seg(40, 70, "♪♪"),
                         seg(70, 75, "Thanks for holding."), seg(75, 80, "How can I help?")]}
@@ -411,6 +423,7 @@ def test_a_muse_window_that_times_out_is_sent_once_and_no_window_starts_after_on
         sent.append(req.data.split(b'filename="')[1][:8].decode())
         raise TimeoutError("timed out")
     monkeypatch.setattr(transcribe, "muse", muse)
+    monkeypatch.setattr(transcribe, "MUSE_PARALLEL", 4)                    # fewer at once than the 14 windows, so some never start
     monkeypatch.setattr(transcribe, "time", NS(monotonic=time.monotonic, sleep=lambda s: None))
     monkeypatch.setattr(transcribe.urllib.request, "urlopen", silent)
     r = transcribe.run(audio, *keys, lambda e, usd, note: rows.append((e, usd, note)), meta_key=META(tmp_path))

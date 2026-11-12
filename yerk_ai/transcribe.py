@@ -52,9 +52,9 @@ PASSES = {                   # engine: (url, model, list price a second, least s
     "groq": ("https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo", 0.04 / 3600, 10),   # its docs
 }
 MUSE = ("https://api.meta.ai/v1/asr/transcribe", "muse-voice-transcribe-1.0", 0.18 / 3600, 0)   # PASSES' shape: Meta's page
-WINDOW, STEP = 120, 60       # seconds, Muse timed 2026-11-12: 8 requests at once took 56 to 62 s on 120 s windows, 84 to 96 s on 180 s,
-                             # and Meta cuts one at about 120 s. Neighbours share 60 s, the speech reconcile matches their letters by
-MUSE_PARALLEL, MUSE_WAIT = 8, 100    # Muse requests at once, as timed; seconds a window waits for its answer, under Meta's 120 s
+WINDOW, STEP = 120, 60       # seconds, Muse timed 2026-11-12: 16 requests at once took 41 to 62 s on 120 s windows (8 at once on
+                             # 180 s: 84 to 96 s), and Meta cuts one at about 120 s. Neighbours share 60 s: reconcile matches letters by it.
+MUSE_PARALLEL, MUSE_WAIT = 16, 100   # Muse requests at once, as timed; seconds a window waits for its answer, under Meta's 120 s
 NEAR = 3                     # seconds: a segment no turn touches takes the letter of the turn whose middle is this near its own
 GROQ_KEY, META_KEY = "secrets/groq.key", "secrets/meta.key"
 RESULT_CHARS = 40_000        # the most of the text one result carries, under Claude Code's cap on a tool's answer
@@ -172,13 +172,14 @@ def tokens(text: str) -> list[tuple[str, str]]:
 def fill(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """One chunk's lines where pass 1 wrote no words (whisper-1 can write ♪ through minutes of a call): a pass-2 segment
     with words that shares more time with such pass-1 segments than with ones that have words takes their place, marked
-    `second_only`, and a wordless pass-1 segment it overlaps goes. Returns the chunk's lines in time order and the rest of
-    pass 2, for check to read against the pass-1 segments left."""
+    `second_only`, and a wordless pass-1 segment it overlaps goes; when pass 1 has no word in the whole chunk (marks, or no
+    segment at all), every pass-2 segment with words does. Returns the chunk's lines in time order and the rest of pass 2,
+    for check to read against the pass-1 segments left."""
     said = [bool(tokens(f["text"])) for f in first]
 
     def lean(s: dict[str, Any]) -> float:          # its seconds over wordless pass-1 segments less its seconds over the others
         return sum((-1 if w else 1) * max(0.0, min(s["end"], f["end"]) - max(s["start"], f["start"])) for f, w in zip(first, said))
-    took = [bool(tokens(s["text"])) and lean(s) > 0 for s in second]
+    took = [bool(tokens(s["text"])) and (lean(s) > 0 or not any(said)) for s in second]
     only = [dict(s, second_only=True) for s, t in zip(second, took) if t]
     left = [f for f, w in zip(first, said) if w or not any(min(f["end"], s["end"]) > max(f["start"], s["start"]) for s in only)]
     return sorted(left + only, key=lambda s: s["start"]), [s for s, t in zip(second, took) if not t]
