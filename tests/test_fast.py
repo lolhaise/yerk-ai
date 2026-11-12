@@ -3,9 +3,11 @@ Code only when the room asked for it AND runs on Fable 5.2 by its full id. Such 
 line, read to the end of its result and never recorded; every other process launches exactly as before."""
 import asyncio
 import json
+import threading
 from pathlib import Path
 
 import pytest
+from test_idle_compact import band, echoed, say, until, wait_idle
 
 from yerk_ai import words
 from yerk_ai.accounts import Account
@@ -13,6 +15,7 @@ from yerk_ai.config import override, table
 from yerk_ai.engine import RoomProcess, RoomSpec
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
+from yerk_ai.room import TAIL_HEAD
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 SETTINGS = {"permissions": {"allow": ["Read(/x/**)"]}, "hooks": {}}
@@ -315,6 +318,101 @@ def test_the_compaction_copy_never_runs_in_fast_mode(tmp_path, monkeypatch):
     assert [fork for fork, _ in launches] == [False, True]         # the room's process, then the copy
     assert "fastMode" in launches[0][1] and "fastMode" not in launches[1][1]
     assert lines(tmp_path) == ["/fast on", "CONTEXT:195000 hello", "/compact"]   # no /fast on ahead of the copy's /compact
+
+
+@pytest.fixture
+def take(y, tmp_path, monkeypatch):
+    """A room that takes a compacted copy (test_idle_compact's band, its gate here), on `setting`: "on" (/fast on, Fable
+    5.2), "off" (Fable 5.2 alone) or "opus" (Opus 5.5, the setting planted). A turn ends in the band and one more runs on
+    the live session while the copy's /compact is held (the copy's tail); the copy is taken with no turn running, or
+    (`waiting`) as a running turn ends with a message waiting. Each launch is recorded as (a copy, its key)."""
+    monkeypatch.setenv("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.jsonl"))
+    launches, opened, rooms, start, read = [], threading.Event(), [], RoomProcess.start, RoomProcess.read_turn
+
+    def held(self, *a, **k):
+        t = read(self, *a, **k)
+        if self.fork_of:                          # the copy, before the room takes it
+            opened.wait(20)
+        return t
+    monkeypatch.setattr(RoomProcess, "start", lambda self, *a, **k: launches.append((bool(k.get("fork")), "fastMode" in self.launch_settings()))
+                        or start(self, *a, **k))
+    monkeypatch.setattr(RoomProcess, "read_turn", held)
+    band(y)
+
+    def taken(setting="on", waiting=False):
+        if setting == "opus":
+            (tmp_path / "rooms" / ROOM).mkdir(parents=True, exist_ok=True)
+            (tmp_path / "rooms" / ROOM / "override.json").write_text(json.dumps({"model": "claude-opus-5-5", "fast": True}))
+        else:
+            on_fable(y)
+        assert setting != "on" or fast(y, "on")["ok"]
+        rooms.append(room := y.add_room(ROOM, chan := Chan()))
+        say(y, room, "1", "CONTEXT:195000 hello")
+        wait_idle(room)
+        say(y, room, "2", f"CONTEXT:196000 {'SLOW ' * waiting}still here")
+        if waiting:
+            until(lambda: room.reading)
+            assert say(y, room, "3", "CONTEXT:21000 queued behind it", alone=True) == "queued"
+        else:
+            wait_idle(room)
+        opened.set()
+        until(lambda: any("copy taken" in str(r["note"]) for r in y.ledger.rows(5)))
+        wait_idle(room)
+        return room, chan, next(r["session_id"] for r in y.ledger.rows(9) if "copy taken" in str(r["note"])), launches
+    yield taken
+    for r in rooms:
+        r.shutdown()
+
+
+def test_a_fast_room_is_fast_again_from_the_first_reply_after_it_takes_a_compacted_copy(take, y, tmp_path):
+    """The copy, launched without fast mode, ends as the room takes it; the next message resumes its session on a new
+    process launched with the key and /fast on first; the tail rides once and the reply is the prompt's own, one row."""
+    room, chan, copy, launches = take()
+    say(y, room, "3", "CONTEXT:21000 and now?")
+    wait_idle(room)
+    assert launches == [(False, True), (True, False), (False, True)] and room.rp.session_id == copy   # the room's, the copy, a new one
+    assert lines(tmp_path)[-2:] == ["/fast on", echoed(chan, 2)] and lines(tmp_path).count("/fast on") == 2
+    assert echoed(chan, 2).startswith(TAIL_HEAD) and echoed(chan, 2).endswith("\n\nCONTEXT:21000 and now?") and chan.notices == []
+    assert [r["outcome"] for r in y.ledger.rows(9) if r["session_id"] == copy] == ["ok", "compacted"]
+    assert not (tmp_path / "rooms" / ROOM / "copy-tail").exists()
+
+
+def test_a_fast_room_taking_its_copy_as_a_turn_ends_answers_the_message_waiting_on_a_fast_process(take, y, tmp_path):
+    room, chan, copy, launches = take(waiting=True)
+    assert launches == [(False, True), (True, False), (False, True)] and room.rp.session_id == copy
+    assert chan.replies[1] == "echo: CONTEXT:196000 SLOW still here" and lines(tmp_path)[-2:] == ["/fast on", echoed(chan, 2)]
+    assert echoed(chan, 2).startswith(TAIL_HEAD) and echoed(chan, 2).endswith("\n\nCONTEXT:21000 queued behind it")
+    assert [r["outcome"] for r in y.ledger.rows(9) if r["session_id"] == copy] == ["ok", "compacted"]
+
+
+@pytest.mark.parametrize("setting", ["off", "opus"])
+def test_a_room_fast_mode_does_not_reach_goes_on_on_the_copy_it_took_as_on_main(take, y, tmp_path, setting):
+    room, chan, copy, launches = take(setting)
+    taken = room.rp
+    say(y, room, "3", "CONTEXT:21000 and now?")
+    wait_idle(room)
+    assert room.rp is taken and taken.session_id == copy and launches == [(False, False), (True, False)]
+    assert "/fast on" not in lines(tmp_path) and chan.notices == [] and echoed(chan, 2).startswith(TAIL_HEAD)
+
+
+def test_status_names_a_fast_room_as_fast_after_it_takes_a_copy_and_after_the_next_reply(take, y, tmp_path):
+    from yerk_ai import status
+    room, chan, copy, launches = take()
+    on = "\n".join([words.FAST_NOW.format(setting="on"), words.FAST_SAID.format(state="on")])   # /fast alone
+    assert status.fast_shown(tmp_path, ROOM, room) and fast(y)["line"] == on
+    say(y, room, "3", "CONTEXT:21000 and now?")
+    wait_idle(room)
+    assert status.fast_shown(tmp_path, ROOM, room) and fast(y)["line"] == on
+
+
+def test_a_refused_fast_on_after_a_take_is_said_once_and_the_replies_still_come(take, y, tmp_path, monkeypatch):
+    room, chan, copy, launches = take()
+    monkeypatch.setenv("FAKE_CLAUDE_NO_CREDITS_DIRS", str(tmp_path / "cfg1"))   # the account's usage credits went off
+    for mid in ("3", "4"):
+        say(y, room, mid, f"CONTEXT:2{mid}000 turn {mid}")
+        wait_idle(room)
+    assert [echoed(chan, i)[-6:] for i in (2, 3)] == ["turn 3", "turn 4"]
+    assert chan.notices == [f"{words.WORKING} {words.FAST_LOST.format(why=words.FAST_NO_CREDITS.format(account='one'))}"]
 
 
 @pytest.mark.parametrize("how", ["hangs", "exits non-zero and prints nothing"])
