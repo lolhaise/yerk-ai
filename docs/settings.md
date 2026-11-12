@@ -168,6 +168,10 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `burst_quiet`: seconds of quiet that close a burst of one person's texts into one decision (default 20)
 - `burst_cap`: seconds after a burst's first text that it is closed anyway (default 120)
 - `catch_up_hours`: a text older than this when its burst closes is missed: listed once, not answered (default 6)
+- `model`: the model that decides what to answer as the owner (default: the report room's model)
+- `effort`: its thinking effort (default high)
+- `parallel`: decisions that run at once, one person each (default 2)
+- `decide_seconds`: seconds one decision may take; past it the text is held with no clean answer (default 240). Every decision is dry, written down and never sent, until texting can send
 
 ### [needs]
 
