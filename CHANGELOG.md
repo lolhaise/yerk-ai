@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### texting-1 (#?)
+### texting-1 (#61)
 
 - Nothing changes on an install until it adds a `[texting]` table to yerkd.toml: with no table, or `mode = "off"`, Yerk
   opens no connection to the Mac, starts nothing and writes nothing for texting.
