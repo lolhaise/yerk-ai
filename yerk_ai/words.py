@@ -490,7 +490,7 @@ TEXTING_DRY_LIVE = "texting decides dry: nothing sends yet"      # live before t
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
-TEXTING_OFF, TEXTING_IN = "texting is off", "texting works only in {room}"
+TEXTING_OFF, TEXTING_WHERE = "texting is off", "texting works only in {room}"
 TEXTING_ONLY = "this tool works only in the owner's texting room"      # a person's room: no room named, on or off
 TEXTING_HELP = ("Texting as the owner. Read a person's sheet (op `sheet`), a day of their texts and decisions (`log`, `value` "
                 "YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or `close` a class, `knows` "

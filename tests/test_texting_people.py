@@ -218,7 +218,7 @@ def test_an_edit_or_a_read_from_a_persons_room_is_refused_and_shows_nothing_of_t
         for op, value in (("sheet", ""), ("log", ""), ("why", ""), ("open", "location"), ("close", "location"),
                           ("knows", "the trip"), ("forget", "the new car"), ("release", "on"), ("help", ""), ("nonsense", "")):
             got = tool(room, op, value=value, said=ORDER)
-            want = words.TEXTING_IN.format(room="owner-room") if room == "example-room" else words.TEXTING_ONLY
+            want = words.TEXTING_WHERE.format(room="owner-room") if room == "example-room" else words.TEXTING_ONLY
             assert got == {"ok": False, "line": want}, (room, op)                  # another owner room is told which room
             shown = repr(got)
             assert not any(x in shown for x in ("short, lowercase", "the new car", "location", "6 h", "missed", A1, "sheets.log"))

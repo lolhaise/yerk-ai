@@ -851,7 +851,7 @@ class Yerkd:
         if str(conf.get("mode") or "off") not in ("dry", "live"):
             return {"ok": False, "line": words.TEXTING_OFF}
         if room != (report := str(conf.get("report") or "")):
-            return {"ok": False, "line": words.TEXTING_IN.format(room=report)}
+            return {"ok": False, "line": words.TEXTING_WHERE.format(room=report)}
         if op == "help":
             return {"ok": True, "line": words.TEXTING_HELP}
         file = tpeople.path(self.private, conf)

@@ -432,3 +432,15 @@ def test_job_lines_and_the_waiting_card_are_plain_and_state_first():
     assert card.splitlines()[:2] == [f"{words.WORKING} worker waiting for an account",
                                      f"{words.WAITING} 2nd in line for account one"]
     assert status
+
+
+def test_no_line_of_words_is_named_twice():
+    """A name assigned twice in words.py keeps only its second line, and whatever read the first then says the wrong
+    thing or fails where it formats it (texting-2: the status card's "in {at}" was shadowed by a refusal line and
+    `yerk status` raised a KeyError on a text's time)."""
+    seen: dict[str, int] = {}
+    for node in ast.parse(Path(words.__file__).read_text()).body:
+        for target in node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []:
+            for n in (x for x in ast.walk(target) if isinstance(x, ast.Name)):
+                assert n.id not in seen, f"words.{n.id} is assigned at line {seen[n.id]} and again at line {n.lineno}"
+                seen[n.id] = n.lineno
