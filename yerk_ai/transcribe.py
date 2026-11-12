@@ -367,6 +367,34 @@ def join(found: list[tuple[Voices, Voices]], tries: list[list[dict[str, str | No
     return root
 
 
+def bridge(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: list[float], wavs: list[Path], into: Path, secret: str) -> dict[str, str]:
+    """A voice's letters joined across a silence: each break's voices (breaks) spliced in two orders, the voices before
+    then the minted letters and the reverse, all sent to Muse at once; where one of a break's two failed or is not used, a
+    third order is sent once, that one with the voices before reversed (with one voice before, the same order again).
+    Returns join's {letter: its group's earliest letter}."""
+    found, apart, sent = breaks(heard, each, at), [{t["speaker"] for t in w} for w in each], list[Path]()
+
+    def send(orders: list[Voices]) -> list[dict[str, str | None] | None]:
+        paths = [into / f"b{len(sent) + k:03d}.wav" for k in range(len(orders))]
+        cut = [splice(o, wavs, at, p) for o, p in zip(orders, paths)]
+        sent.extend(paths)
+
+        def one(k: int) -> dict[str, str | None] | None:
+            try:
+                return letters(cut[k][0], muse(secret, paths[k]))
+            except Failed:
+                return None
+        with ThreadPoolExecutor(max_workers=MUSE_PARALLEL) as pool:
+            return list(pool.map(one, range(len(orders))))
+    got = send([o for before, after in found for o in (before + after, after + before)])
+    tries = [got[2 * n:2 * n + 2] for n in range(len(found))]
+    redo = [n for n, two in enumerate(tries) if sum(usable(g, apart) for g in two) == 1]
+    third = [found[n][0][::-1] + found[n][1] if not usable(tries[n][0], apart) else found[n][1] + found[n][0][::-1] for n in redo]
+    for n, g in zip(redo, send(third)):
+        tries[n].append(g)
+    return join(found, tries, apart)
+
+
 def hhmmss(t: float) -> str:
     s = max(0, int(t))
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"

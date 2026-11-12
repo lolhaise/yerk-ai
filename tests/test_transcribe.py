@@ -416,6 +416,31 @@ def test_a_minted_letter_joins_the_one_group_two_used_splices_put_it_with_and_a_
     assert transcribe.join(found, tries, apart) == {"C": "B", "D": "B"}
 
 
+def bridged(tmp_path, monkeypatch, answers: dict[str, object]) -> list[str]:
+    """Three made-up windows (A and B heard apart in the first, C new in the third) and a stub Muse answering each splice
+    by its file's name from `answers`; returns the names it was sent. Each voice is one 5 s piece: in a splice its span is
+    0 to 5.2 s, 5.7 to 10.9 s, then 11.4 to 16.6 s."""
+    sent: list[str] = []
+
+    def muse(secret, wav, timeout=600):
+        sent.append(wav.name)
+        if isinstance(got := answers[wav.stem], Exception):
+            raise got
+        return got
+    monkeypatch.setattr(transcribe, "muse", muse)
+    return sent
+
+
+def test_a_splice_that_gives_two_voices_a_window_heard_apart_one_letter_is_not_used_and_a_third_order_decides(tmp_path, monkeypatch):
+    each, at = [[turn(10, 15, "A"), turn(20, 25, "B")], [], [turn(190, 195, "C")]], [0, 60, 120]
+    wavs = [pcm(tmp_path / f"w{i:03d}.wav", 1, 0) for i in range(3)]
+    sent = bridged(tmp_path, monkeypatch, {
+        "b000": answer((0, 10.9, "s1"), (11.4, 16.6, "s2")),                       # A, B, C: A and B one letter, not used
+        "b001": answer((0, 5.2, "s1"), (5.7, 10.9, "s1"), (11.4, 16.6, "s2")),      # C, A, B: C with A
+        "b002": answer((0, 5.2, "s1"), (5.7, 10.9, "s2"), (11.4, 16.6, "s2"))})     # the third, B, A, C: C with A again
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456") == {"C": "A"} and sent[2:] == ["b002.wav"]
+
+
 def two_chunks() -> dict[tuple[str, int], object]:
     one = {"segments": [seg(0, 4, "Let us go over the plan."), seg(4, 6, "Thanks for watching!", 0.97, -1.2)]}
     two = {"segments": [seg(0, 3, "Then email the vendor"), seg(3, 5, "by Friday.")]}
