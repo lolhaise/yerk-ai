@@ -10,12 +10,15 @@ readings, so a room says it as unsure instead of repeating a made-up word as fac
 pass 2 heard some, pass 2's lines stand in, marked (fill). With a Meta key, Meta's Muse in DIARIZATION mode says who
 talks when (the box tool's third engine): WAV windows of WINDOW seconds every STEP, MUSE_PARALLEL at once, short enough
 that Meta answers before it cuts a request at about 2 min; a window's letters (A, B) hold for that request only, so they
-are matched across windows by the speaking time they share in each overlap (reconcile), and each pass-1 segment takes
+are matched across windows by the speaking time they share in each overlap (reconcile); a voice silent through an
+overlap gets a new letter after it, so a short splice of each voice's speech from both sides of that break goes to Muse
+in two orders, and a letter both put with one earlier voice takes its letter again (bridge). Each pass-1 segment takes
 the letter covering most of it, so the words and their times stay whisper-1's. One voice writes no letters. The keys
 are files in the private folder, the first line of each, read per call and never logged or returned:
 OpenAI's is the install's one ([memory] embeddings_key, default secrets/openai.key), Groq's is secrets/groq.key, Meta's
 secrets/meta.key. Every paid call is one spend row at the provider's list price (decision 32), and a recording whose
-estimate passes GATE_USD waits for the owner's yes.
+estimate passes GATE_USD waits for the owner's yes. The estimate is the chunks' and the windows': a bridge is a fraction
+of a cent and cannot be known before the windows are in.
 """
 from __future__ import annotations
 
@@ -332,9 +335,7 @@ def splice(voices: Voices, wavs: list[Path], at: list[float], into: Path) -> tup
         spans.append((who, begin, len(pcm) / size(1)))
         pcm += bytes(size(SPACE[1]))
     with wave.open(str(into), "wb") as out:
-        out.setnchannels(1)
-        out.setsampwidth(2)
-        out.setframerate(16000)
+        out.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
         out.writeframes(bytes(pcm))
     return spans, len(pcm) / size(1)
 

@@ -8,6 +8,22 @@ version changes.
 
 ## 2026-11-12
 
+### transcribe-voice-joins (#?)
+
+- On a long recording a person keeps one letter through a silence. Where a voice said nothing through the minute two
+  windows share and came back under a new letter, a short splice of each voice's speech from both sides of that break
+  goes to Muse once more, in two orders, and a new letter both put with one earlier voice takes that voice's letter
+  again. A splice that gives one letter to two voices a window heard apart is not used, and a third order is tried once.
+- A letter that still could not be matched is counted on the speakers line as before. The first voices of a recording
+  whose first window heard no one are no longer counted among them. The tool's result says how many letters were
+  joined (`speakers_joined`).
+- A few more seconds and a fraction of a cent a recording: the bridges are one more round of Muse requests after the
+  windows (two when a third order is sent), each a spend row (`bridge 1 of 6, 41 s`), and are not in the US$1 gate's
+  estimate, since they cannot be known before the windows are in. A bridge that fails or runs long joins nothing and
+  never costs the words or the windows' letters.
+- budgets.toml: `[code] lines` 31,083 to 31,230, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### transcribe-words-speakers (#66)
 
 - A recording whose first pass heard only music now comes back with the second pass's words. Where whisper-1 wrote no
