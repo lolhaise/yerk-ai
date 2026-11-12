@@ -683,7 +683,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: compact-size raised it by 39 (after a compaction the room's size, its row and the card's were the messages Claude Code kept, not the whole prompt the next call sends): RoomProcess.size and its answers kept off the turn's events 35 (engine.py); the ask after a /compact and after a copy's 4 (room.py). 29,338: fast-stays' 29,299 plus 39.
 
-- `lines = 29338`
+2026-11-12: fast-idle, the follow-up to fast-stays (#58), raised it by 21 (a fast room's idle compaction ran its /compact in the room's fast session, billed to usage credits): idle_compact sends it the copy's way, or waits with no process alive to copy, and _fast_next reads which process it would reach (room.py). 29,359: compact-size's 29,338 plus 21.
+
+- `lines = 29359`
 
 ## Uncapped
 

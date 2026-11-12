@@ -8,6 +8,19 @@ version changes.
 
 ## 2026-11-12
 
+### fast-idle (#?)
+
+- In a room with fast mode on, the compaction that runs while the room is quiet (`idle_compact_after` minutes with the
+  session at `idle_compact_at` of its window) never runs in fast mode: a copy launched without it compacts off to the
+  side and is taken, as a turn's copy is, and the next reply is fast as before. A message sent meanwhile is answered at
+  once on the room's fast session and is carried to the copy. With no process alive to copy (after a restart, or once
+  the room's process closed) it waits for the room's next turn rather than start a fast process for itself.
+- Left in fast mode, since someone is waiting behind them or asked for them: the compaction as a turn ends near Claude
+  Code's line, the one before a message that overflowed runs again, and `yerk room compact`.
+- A room with fast mode off, or on a model other than Fable 5.2, compacts while quiet as before.
+- budgets.toml: `[code] lines` 29,338 to 29,359 with its dated note.
+- **Upgrading**: nothing to change.
+
 ### compact-size (#59)
 
 - Right after a compaction, `/status` in a room shows the session's real size, not the few thousand tokens the
