@@ -695,7 +695,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: texting-4 raised it by 218, the check of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 30680`
+2026-11-12: transcribe-words-speakers raised it by 38, the second pass's lines where the first heard only music, Muse in 2-minute windows and no resend of a request that ran long (a 28-minute recording that came back as music marks after six and a half minutes, 2026-11-12), not folded to fit.
+
+- `lines = 30718`
 
 ## Uncapped
 

@@ -46,8 +46,7 @@ DROP = (0.9, -1.0)           # no_speech_prob over the first and avg_logprob und
 DIFFER = 0.3                 # a segment is uncertain when the passes disagree on more than this share of its words
 GATE_USD = 1.0               # decision 32: a call estimated past this waits for the owner's yes
 PARALLEL = 8
-BUSY = (429, 500, 502, 503, 504)
-QUICK = 30                   # seconds: a busy answer inside this is a refusal worth another try (Groq answers a chunk in about 2 s)
+BUSY, QUICK = (429, 500, 502, 503, 504), 30    # QUICK seconds: a busy answer inside it is a refusal worth another try (Groq answers a chunk in about 2 s)
 PASSES = {                   # engine: (url, model, list price a second, least seconds billed a request), read 2026-10-21
     "openai": ("https://api.openai.com/v1/audio/transcriptions", "whisper-1", 0.006 / 60, 0),       # its pricing page
     "groq": ("https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo", 0.04 / 3600, 10),   # its docs
@@ -133,9 +132,8 @@ def muse(secret: str, wav: Path, timeout: float = MUSE_WAIT) -> dict[str, Any]:
 
 
 def send(url: str, model: str, secret: str, edge: str, body: bytes, timeout: float) -> dict[str, Any]:
-    """A multipart body to one provider, the key never in the error: three tries on a busy answer that came inside QUICK
-    seconds, one on a request that ran long (a timeout, or an error after QUICK seconds), since another try waits as long
-    again. The error names the code or the failure and its seconds, an answer's text only when it is not an HTML page."""
+    """A multipart body to one provider, the key never in the error: three tries on a busy answer inside QUICK seconds, one
+    on a request that ran long (a timeout, or an error after QUICK), and the error says its code and seconds, never HTML."""
     last = ""
     for attempt in range(1, 4):
         req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {secret}", "User-Agent": "yerk-ai",
