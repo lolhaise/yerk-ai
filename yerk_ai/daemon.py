@@ -1845,7 +1845,7 @@ class Yerkd:
         while True:
             await asyncio.sleep(every)
             for room in self.rooms.values():
-                await asyncio.to_thread(room.idle_compact)     # first: a room it starts is busy, so the reap leaves it open
+                await asyncio.to_thread(room.idle_compact)     # first: a room it holds is busy, so the reap leaves it open (a fast room's copy holds nothing)
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event
