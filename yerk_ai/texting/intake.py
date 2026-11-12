@@ -38,6 +38,7 @@ class Intake:
         self.hours = float(conf.get("catch_up_hours", 6))
         self.to = str(conf.get("dry_report") or "") if self.mode == "dry" else str(conf.get("report") or "")
         self.bursts: dict[str, Burst] = {}
+        self.withdraw: Callable[[Person, float | None], None] | None = None   # the holds' (holds.Holds.withdraw), once made
 
     def take(self, p: Person, msg: dict[str, Any]) -> str:
         """One row: what it was taken as (the link saves its cursor after this returns)."""
@@ -76,12 +77,14 @@ class Intake:
             b.texts = [x for x in b.texts if not before(x[1])]
             if not b.texts:
                 del self.bursts[p.key]
-        for r in self.ledger.texting_rows(p.key, "deciding"):
+        for r in (r for state in ("deciding", "decided", "release-ready") for r in self.ledger.texting_rows(p.key, state)):
             gs = str(r["inbound"]).split(",")
             if all(before((self.ledger.inbound_get(g) or {}).get("created")) for g in gs):
                 self.ledger.texting_set(int(r["id"]), state="cancelled", reason="owner answered")
                 for g in gs:
                     self.ledger.inbound_set(g, state="answered", note="the owner answered himself")
+        if self.withdraw is not None:             # a card of theirs: withdrawn, and the card says the owner answered
+            self.withdraw(p, at)
 
     def recover(self) -> None:
         """At a start: their texts a stop left in an open burst (received, never closed) gather again."""

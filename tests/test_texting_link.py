@@ -230,8 +230,8 @@ def test_texting_is_off_by_default_and_with_mode_off(tmp_path, monkeypatch):
             assert y.ledger.db.execute("SELECT COUNT(*) FROM inbound WHERE room = 'texting'").fetchone()[0] == 0
             # no room is held here, so the tool gives its one fixed line (an owner's room hears "texting is off": test_texting_people)
             assert asyncio.run(y.tool_texting("example-room", "sheet", "alex", "", "")) == {"ok": False, "line": words.TEXTING_ONLY}
-        else:                       # dry: the link and the intake, to run as tasks, and the writer and the check once a report room is named
-            assert len(got) == 2 + 2 * (n == 3) and (state / "texting" / "check-cwd").exists() == (n == 3)
+        else:                       # dry: the link and the intake, to run as tasks, and the writer, the check and the holds once a report room is named
+            assert len(got) == 2 + 3 * (n == 3) and (state / "texting" / "check-cwd").exists() == (n == 3)
             assert (state / "texting" / "writer-mcp.json").exists() == (n == 3) and y.ledger.db.execute(
                 "SELECT COUNT(*) FROM texting").fetchone()[0] == 0
             for c in got:

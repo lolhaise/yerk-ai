@@ -24,7 +24,25 @@ version changes.
   seconds) is never sent again, on all three engines, while a quick busy answer still gets three tries; after one Muse
   window fails no further window starts, so the words come back once the running ones end, in about 100 seconds when
   Muse answers nothing. The speakers line names the code and the seconds (`HTTP 504 after 121 s`), never an error page.
-- budgets.toml: `[code] lines` 30,680 to 30,718, with its dated note.
+- budgets.toml: `[code] lines` 31,044 to 31,082, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-5 (#65)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then a text that may not go on its own (one the writer or the check held, or one that passed for a person whose
+  standing release is off, the default) is one card in the owner's texting room (`report`): who, their texts, the exact
+  draft, why it waits, and the words. His reply `send` to the card sends exactly that text (queued for the sender),
+  `edit <text>` makes a new card from his words with the code's pre-check shown, and `skip` drops it. A bare `send` or
+  `skip` counts only while that card is the one hold open in the room. When he texts the person himself the card is
+  edited to say he answered and nothing new is posted; their next text is decided afresh. A newer text of theirs edits
+  the open card in place, and a card older than `hold_hours` says expired and cannot be sent.
+- In dry mode the cards go to the `dry_report` room, marked DRY, and `send` only says it would; with no `dry_report`
+  nothing is shown. `report` and `dry_report` must be owner rooms without people: any other is refused at the start
+  and shown nothing (`yerk doctor` says so in red, and red too when live with `text-out` in `[gates] off`).
+- A bare `approve` never approves a text's hold; every other hold works as before.
+- New `[texting]` key: `hold_hours` (default 6). The ledger's `texting` table gains a `shown` column, added at the next start.
+- budgets.toml: `[code] lines` 30,680 to 31,044, with its dated note.
 - **Upgrading**: nothing to change.
 
 ### texting-4 (#64)

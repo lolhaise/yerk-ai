@@ -6,13 +6,15 @@ never its JSON. Nothing here runs a command or posts anywhere."""
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from test_gates import Rec
-from yerk_ai import gates, words
+from yerk_ai import gates, texts, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.engine import SessionTable
+from yerk_ai.texting import holds
 
 
 class RecFiles(Rec):
@@ -102,3 +104,12 @@ def test_a_held_send_in_a_room_with_people_shows_its_words_and_the_owners_room_s
     assert gates.plain("Bash", {"command": "gh  issue comment 1 --body 'x'"}) == gates.call_key("Bash", {"command": "gh issue comment 1 --body 'x'"})
     assert gates.plain("mcp__mail__send", {"to": "the example list", "file": "/srv/x/notes.pdf", "body": ""}) == \
         "to: the example list\nfile: notes.pdf"
+
+
+def test_a_text_card_shows_each_text_exactly_and_its_hold_keys_exactly_those_texts() -> None:
+    """texting-5: a held text's card shows each text of the draft as it is, one a line, and its hold is keyed by exactly those
+    texts and that handle, so the owner's word on the card releases the texts it showed and no other."""
+    row = {"decision": "reply", "handle": "+15550000101", "parts": json.dumps(["see you ``` there", "  two spaces"])}
+    assert holds.card("Alex", "09:17", [], row, "why", False).split("\n")[2:4] == ["see you ``` there", "  two spaces"]
+    assert holds.key(row) == gates.call_key(texts.TOOL, {"to": "+15550000101", "parts": ["see you ``` there", "  two spaces"]})
+    assert holds.key({**row, "parts": json.dumps(["see you ``` there", " two spaces"])}) != holds.key(row)

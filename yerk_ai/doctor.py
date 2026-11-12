@@ -263,15 +263,19 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend([] if mode == 0o600 else [f"{RED} secret {p.name}: " + (f"mode {mode:o}, not 600; `chmod 600 {p}`" if mode else
                                                                                    "missing; write it 0600 or fix its name in yerkd.toml or accounts.toml")])
         if (tx := dict(conf.get("texting") or {})) and (tmode := str(tx.get("mode") or "off")) != "off":   # texting/: on, so it must hold
-            found.extend(f"{RED} [texting] {k}: not a number above 0; texting stays off" for k in ("burst_quiet", "burst_cap", "catch_up_hours")
+            found.extend(f"{RED} [texting] {k}: not a number above 0; texting stays off" for k in ("burst_quiet", "burst_cap", "catch_up_hours", "hold_hours")
                          if k in tx and (isinstance(tx[k], bool) or not isinstance(tx[k], (int, float)) or tx[k] <= 0))
             found.extend([f"{RED} [texting] mode: {tmode} is not off, dry or live"] if tmode not in ("dry", "live") else [])
             try:
                 tpeople.load(tpeople.path(private, tx))
             except (OSError, ValueError) as e:
                 found.append(f"{RED} [texting] people: {e}; texting stays off")
-            found.extend(f"{RED} [texting] {k}: {tx.get(k) or 'none'} is not an owner room in rooms.toml" for k in ("report", "dry_report")
-                         if (k == "report" or tx.get(k)) and str(rs.get(str(tx.get(k) or ""), {"privacy": "none"}).get("privacy", "owner")) != "owner")
+            found.extend(f"{RED} [texting] {k}: {tx.get(k) or 'none'} is not an owner room in rooms.toml"
+                         for k in ("report", "dry_report") if (k == "report" or tx.get(k)) and (
+                             str(rs.get(str(tx.get(k) or ""), {"privacy": "none"}).get("privacy", "owner")) != "owner"
+                             or rs.get(str(tx.get(k) or ""), {}).get("people")))
+            found.extend([f"{RED} [texting] live with text-out in [gates] off: no text goes, standing release included"]
+                         if tmode == "live" and "text-out" in (dict(conf.get("gates") or {}).get("off") or []) else [])
 
     def classes() -> None:
         for name in m.scope.files():

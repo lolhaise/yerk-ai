@@ -44,7 +44,7 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
-from .texting import check as tcheck, intake as tintake, link as tlink, people as tpeople, writer as twriter
+from .texting import check as tcheck, holds as tholds, intake as tintake, link as tlink, people as tpeople, writer as twriter
 from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
@@ -187,6 +187,8 @@ class Yerkd:
         self.beat = beat.Beat(self.ledger, beat.folder(state, self.memory.root), pids=self.room_pids)
         self.started, self.commit = time.time(), deploy.head(REPO)   # what runs, for yerk deploy's proof
         self.link: Any = None                                         # the channel adapter: is it connected
+        self.holds: tholds.Holds | None = None                         # texting's cards and the owner's word on them
+        self.texting_to = ""                                           # the one room texting may show anything in (texting_room)
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -810,6 +812,7 @@ class Yerkd:
         conf = dict(self.conf.get("texting") or {})
         if str(conf.get("mode") or "off") not in ("dry", "live"):
             return []
+        self.texting_to = self.texting_room(conf)
         try:
             who = tpeople.load(tpeople.path(self.private, conf))
             took = tintake.Intake(conf, who, self.ledger, self.daily.capture, self.texting_post)
@@ -827,7 +830,38 @@ class Yerkd:
                                lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
                                named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
                                room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
-        return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run()]
+        self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
+                                  self.texting_show, out="text-out" in self.gates.external, window_s=self.gates.window_s, word=self.gates.word)
+        took.withdraw = self.holds.withdraw
+        return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run(), self.holds.run()]
+
+    def texting_room(self, conf: dict[str, Any]) -> str:
+        """The one room texting may show anything in (J25): live, `report`; dry, `dry_report`, none when it is empty. Only an
+        owner room with no people: another is refused here, once at the start, and is shown no card, line or notice."""
+        name = str(conf.get("report" if conf.get("mode") == "live" else "dry_report") or "")
+        if name and (not self.owner(name) or self.room_confs[name].get("people")):
+            log.error(words.TEXTING_NO_CARD_ROOM.format(room=name))
+            return ""
+        return name
+
+    async def texting_show(self, room: str, text: str, mid: str = "") -> str:
+        """A card (no `mid`), an edit of one, or a word's answer, in texting_room's room and nowhere else: its message id,
+        or "" when it did not go."""
+        if not room or room != self.texting_to or room not in self.channels:
+            return ""
+        try:
+            if mid:
+                await self.channels[room].edit_post(room, mid, text)
+                return mid
+            return str((await self.channels[room].send_text(room, text) or [""])[0])
+        except Exception as e:                                # a card not shown is never sendable; the next pass tries again
+            log.warning("texting: %s in %s did not go: %s", "an edit" if mid else "a card", room, e)
+            return ""
+
+    async def texting_word(self, room: str, sender: str, text: str, ref: str | None) -> bool:
+        """Asked by the channel before a message in a room's own channel starts a turn: True, it was the owner's word on a
+        text card and is answered there."""
+        return self.holds is not None and await self.holds.word(room, sender, text, ref)
 
     def texting_recall(self, room: str, text: str) -> str:
         """What `room` is handed for `text`, for the writer's pack: its recall part as its hook renders it and its recall
@@ -838,7 +872,8 @@ class Yerkd:
         return "\n".join([hooks.render_recall(names, topics, cap, past, absent), *(f"{h['cite']} {h['text']}" for h in hits)])
 
     async def texting_post(self, room: str, line: str) -> None:
-        log.info("texting: %s", await self.posted(room, line, "texting"))
+        if room and room == self.texting_to:                   # texting_room's room alone (J25)
+            log.info("texting: %s", await self.posted(room, line, "texting"))
 
     async def tool_texting(self, room: str, op: str, person: str = "", value: str = "", said: str = "") -> dict[str, Any]:
         """The `texting` tool, in the [texting] report room only (another owner room is told which room; a person's room one
@@ -1985,7 +2020,7 @@ class Yerkd:
                         else f"a {type(d['owner']).__name__}, not a Discord user id")
         dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
                             guard=guard, state=self.state, capture=self.daily.capture,
-                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard,   # the slash commands
+                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard, word=self.texting_word,
                             assistants=assistants(self.conf, frozenset({owner, *(i for n, c in self.room_confs.items() for i in people(n, c))})))
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
