@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-12
 
+### texting-3 (#?)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then, in dry mode, each burst of a listed person's texts gets one decision: reply (one to three texts), react, none
+  or held, with its reasons and a source for every statement about the owner (a thread line of his, a memory cite or
+  the person's sheet). It is made by one `claude -p` on the report room's model and account order that reads the owner's
+  memory as the report room does, through that room's recall and read_memory alone, with no other tool. A statement
+  with no source, a class the person's sheet keeps shut, no clean answer, a call past `decide_seconds` or no account
+  free is held. A burst older than `catch_up_hours` when its turn comes is missed, never decided.
+- Each decision is written to the ledger's `texting` row and one line of `<state>/texting/dry/YYYY-MM-DD.jsonl`, and
+  nothing is sent or shown: no text, no room, no day log line. With `mode = "live"` decisions are still dry until
+  texting can send, and `yerk status` says so.
+- New `[texting]` keys: `model` (default the report room's), `effort` (default high), `parallel` (default 2),
+  `decide_seconds` (default 240).
+- budgets.toml: `[code] lines` 30,191 to 30,458, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-2 (#62)
 
 - Nothing changes on an install until it has a `[texting]` table in yerkd.toml.

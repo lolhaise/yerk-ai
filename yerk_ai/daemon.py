@@ -822,9 +822,10 @@ class Yerkd:
         link = tlink.Link(who, self.state, took.take, self.to_machine, argv=argv, mode=str(conf["mode"]))
         if (report := str(conf.get("report") or "")) not in self.room_confs:
             return [link.start(), took.run()]
+        named = [a for n in self.room_confs[report].get("accounts") or [] for a in self.accounts if a.name == n]    # its order
         wrote = twriter.Writer(conf, tpeople.path(self.private, conf), self.state, self.ledger, report, link.thread,
                                lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
-                               self.accounts, self.cooldowns, self.failures,
+                               named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
                                room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
         return [link.start(), took.run(), wrote.run()]
 
