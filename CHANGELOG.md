@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### fast-stays (#?)
+### fast-stays (#58)
 
 - A room with fast mode on is fast again from the first reply after a compaction, with nothing typed and nothing said:
   the copy the room takes was launched without fast mode, so it is closed as it is taken, and the next message resumes
