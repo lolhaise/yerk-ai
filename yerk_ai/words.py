@@ -485,7 +485,7 @@ TEXTING_AWAY = "texting: the Mac's bridge is away\nno answer for 5 minutes; text
 TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
-TEXTING_LAST_IN, TEXTING_NONE_IN = "in {at}", "none in yet"     # its own name: TEXTING_IN below is the tool's line
+TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
 TEXTING_DRY_LIVE = "texting decides dry: nothing sends yet"      # live before the sender exists (texting/writer.py)
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")

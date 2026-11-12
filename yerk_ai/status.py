@@ -347,7 +347,7 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     if (t := s.get("texting")) is not None:
         out.append(row(W.PLAIN if t.get("up") else W.NOT_DONE, W.TEXTING_STATUS.format(
             mode=t.get("mode"), state=W.TEXTING_STATES[bool(t.get("up"))], since=W.short_clock(t["since"]) if t.get("since") else "?",
-            last=W.TEXTING_LAST_IN.format(at=W.short_clock(t["last_in"])) if t.get("last_in") else W.TEXTING_NONE_IN)))
+            last=W.TEXTING_IN.format(at=W.short_clock(t["last_in"])) if t.get("last_in") else W.TEXTING_NONE_IN)))
         if t.get("mode") == "live":                          # nothing sends until the sender is built
             out.append(row(W.PLAIN, W.TEXTING_DRY_LIVE))
     out += [row(W.NOT_DONE if gone else W.PLAIN, text) for gone, text in said(s["workers"], now)]

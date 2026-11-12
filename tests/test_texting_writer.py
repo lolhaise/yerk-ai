@@ -217,5 +217,5 @@ def test_the_status_line_says_a_live_install_still_decides_dry_and_names_the_las
                        units=set, timers=Timers({}))
     s["texting"] = {"mode": mode, "up": True, "since": s["at"] - 60, "last_in": s["at"] - 30}
     lines = [x for x in status.card(s) if "texting" in x]
-    assert words.TEXTING_LAST_IN.format(at=words.short_clock(s["at"] - 30)) in lines[0]
+    assert words.TEXTING_IN.format(at=words.short_clock(s["at"] - 30)) in lines[0]
     assert (words.TEXTING_DRY_LIVE in "".join(lines[1:])) == (mode == "live") and len(lines) == 1 + (mode == "live")
