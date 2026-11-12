@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### texting-2 (#?)
+### texting-2 (#62)
 
 - Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
 - Then each person on the reply list may have a sheet beside it (`people/<key>.toml`, or the `sheet` the list names):
