@@ -12,7 +12,7 @@ version changes.
 
 - A room with fast mode on is fast again from the first reply after a compaction, with nothing typed and nothing said:
   the copy the room takes was launched without fast mode, so it is closed as it is taken, and the next message resumes
-  the compacted session on a process launched with it. The compaction itself still never runs in fast mode. This
+  the compacted session on a process launched with it. The copy's compaction still never runs in fast mode. This
   replaces "Once a copy is taken, the room runs at standard speed until its next new process." in fast-mode (#51).
 - A room with fast mode off, or on a model other than Fable 5.2, goes on on the copy it took, as before.
 - budgets.toml: `[code] lines` 29,286 to 29,297 with its dated note.
