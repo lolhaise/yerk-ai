@@ -6,12 +6,13 @@ tools/transcribe-2pass: ffmpeg cuts the audio into CHUNK-second mono mp3s, under
 sends them to OpenAI's whisper-1 in parallel (verbose_json) and drops a segment only when it is near silence twice over
 (DROP: whisper's "thanks for watching" over a quiet stretch); with a Groq key, pass 2 sends the same chunks to Groq's
 whisper-large-v3-turbo, and a segment whose words the two passes disagree on past DIFFER is marked uncertain with both
-readings, so a room says it as unsure instead of repeating a made-up word as fact. With a Meta key, Meta's Muse in
-DIARIZATION mode says who talks when (the box tool's third engine): WAV windows of WINDOW seconds every STEP, each
-sharing its last 90 s with the next, since one request takes 10 min at most and its letters (A, B) hold for that
-request only; they are matched across windows by the speaking time they share in each overlap (reconcile), and each
-pass-1 segment takes the letter covering most of it, so the words and their times stay whisper-1's. One voice writes no
-letters. The keys are files in the private folder, the first line of each, read per call and never logged or returned:
+readings, so a room says it as unsure instead of repeating a made-up word as fact; where pass 1 wrote no words and
+pass 2 heard some, pass 2's lines stand in, marked (fill). With a Meta key, Meta's Muse in DIARIZATION mode says who
+talks when (the box tool's third engine): WAV windows of WINDOW seconds every STEP, MUSE_PARALLEL at once, short enough
+that Meta answers before it cuts a request at about 2 min; a window's letters (A, B) hold for that request only, so they
+are matched across windows by the speaking time they share in each overlap (reconcile), and each pass-1 segment takes
+the letter covering most of it, so the words and their times stay whisper-1's. One voice writes no letters. The keys
+are files in the private folder, the first line of each, read per call and never logged or returned:
 OpenAI's is the install's one ([memory] embeddings_key, default secrets/openai.key), Groq's is secrets/groq.key, Meta's
 secrets/meta.key. Every paid call is one spend row at the provider's list price (decision 32), and a recording whose
 estimate passes GATE_USD waits for the owner's yes.
@@ -51,7 +52,9 @@ PASSES = {                   # engine: (url, model, list price a second, least s
     "groq": ("https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo", 0.04 / 3600, 10),   # its docs
 }
 MUSE = ("https://api.meta.ai/v1/asr/transcribe", "muse-voice-transcribe-1.0", 0.18 / 3600, 0)   # PASSES' shape: Meta's page
-WINDOW, STEP = 540, 450      # seconds: Muse takes 10 min a request at most, and each window shares its last 90 s with the next
+WINDOW, STEP = 120, 60       # seconds, Muse timed 2026-11-12: 8 requests at once took 56 to 62 s on 120 s windows, 84 to 96 s on 180 s,
+                             # and Meta cuts one at about 120 s. Neighbours share 60 s, the speech reconcile matches their letters by
+MUSE_PARALLEL, MUSE_WAIT = 8, 100    # Muse requests at once, as timed; seconds a window waits for its answer, under Meta's 120 s
 NEAR = 3                     # seconds: a segment no turn touches takes the letter of the turn whose middle is this near its own
 GROQ_KEY, META_KEY = "secrets/groq.key", "secrets/meta.key"
 RESULT_CHARS = 40_000        # the most of the text one result carries, under Claude Code's cap on a tool's answer
@@ -118,7 +121,7 @@ def post(engine: str, secret: str, chunk: Path, timeout: float = 600) -> dict[st
     return send(url, model, secret, edge, body, timeout)
 
 
-def muse(secret: str, wav: Path, timeout: float = 600) -> dict[str, Any]:
+def muse(secret: str, wav: Path, timeout: float = MUSE_WAIT) -> dict[str, Any]:
     """One window to Meta's Muse in DIARIZATION mode, in the one shape its live API takes (the box tool's _muse_post): a
     `request` part of JSON, an `audio` part of WAV."""
     edge, ask = uuid.uuid4().hex, json.dumps({"model": MUSE[1], "mode": "DIARIZATION", "audioEncoding": "WAV"})
@@ -303,8 +306,9 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
                 model, what, of, s = (MUSE[1], "window", len(wins), wsecs[i]) if e == "meta" else (PASSES[e][1], "chunk", len(parts), secs[i])
                 book(f"{e}/{model}", usd[e][i], f"{what} {i + 1} of {of}, {s:.0f} s")
                 return job, data
-            with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
-                got = dict(ex.map(one, [(e, i) for e in engines for i in range(len(parts))] + [("meta", i) for i in range(len(wins))]))
+            with ThreadPoolExecutor(max_workers=PARALLEL) as ex, ThreadPoolExecutor(max_workers=MUSE_PARALLEL) as mx:
+                meta = mx.map(one, [("meta", i) for i in range(len(wins))])
+                got = dict(ex.map(one, [(e, i) for e in engines for i in range(len(parts))])) | dict(meta)
     except (Failed, OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": str(e)}
     if bad := [f"chunk {i + 1}: {r}" for i in range(len(parts)) if isinstance(r := got[("openai", i)], Failed)]:

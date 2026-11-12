@@ -263,10 +263,20 @@ def answer(*turns: tuple[float, float, str]) -> dict[str, object]:
                       for n, (a, b, who) in enumerate(turns)]}
 
 
-def test_muse_windows_are_540_s_every_450_s_and_a_recording_under_540_s_is_one():
-    assert transcribe.starts(300) == [0] and transcribe.starts(540) == [0] and transcribe.starts(541) == [0, 450]
-    assert transcribe.starts(4200) == [i * 450 for i in range(10)]   # 70 min: 10 windows, the last from 67:30 to the end
-    assert all(transcribe.starts(s)[-1] + transcribe.WINDOW >= s for s in (541, 1000, 1890, 1891, 4200))
+def test_muse_windows_are_120_s_every_60_s_each_sharing_a_minute_with_the_next():
+    assert transcribe.starts(100) == [0] and transcribe.starts(120) == [0] and transcribe.starts(121) == [0, 60]
+    for seconds, n, last in ((1692, 28, 72), (3350, 55, 110)):          # a 28-minute call and a 56-minute one
+        at = transcribe.starts(seconds)
+        assert at[0] == 0 and [min(transcribe.WINDOW, seconds - a) for a in at] == [120] * (n - 1) + [last]   # 2 min at most, to the end
+        assert [a + transcribe.WINDOW - b for a, b in zip(at, at[1:])] == [60] * (n - 1)                       # a minute shared with the next
+
+
+@pytest.fixture
+def long_windows(monkeypatch):
+    """Muse windows of 540 s every 450 s, the shape the letter and label tests below were written in: reconcile and the
+    labels read WINDOW and STEP, never a length of their own."""
+    monkeypatch.setattr(transcribe, "WINDOW", 540)
+    monkeypatch.setattr(transcribe, "STEP", 450)
 
 
 @FFMPEG
@@ -294,6 +304,7 @@ def test_a_muse_answer_maps_to_turns_in_seconds_from_the_recordings_start():
         transcribe.turns({"sessionId": "session-0001", "audioDurationMs": 10080}, 0)
 
 
+@pytest.mark.usefixtures("long_windows")
 def test_letters_are_reconciled_by_the_time_they_share_in_each_overlap():
     at = [0, 450]
     first = [turn(0, 300, "A"), turn(300, 470, "B"), turn(470, 540, "A")]
@@ -304,6 +315,7 @@ def test_letters_are_reconciled_by_the_time_they_share_in_each_overlap():
     assert transcribe.reconcile([first, same], at) == (first + [turn(540, 700, "B")], 0)    # no swap: stays as it is
 
 
+@pytest.mark.usefixtures("long_windows")
 def test_a_letter_with_no_time_in_the_overlap_gets_the_next_letter_and_is_counted():
     first = [turn(0, 400, "A"), turn(400, 540, "B")]
     second = [turn(450, 540, "A"), turn(540, 600, "B"), turn(600, 990, "A")]   # its B never spoke in the overlap
@@ -314,6 +326,7 @@ def test_a_letter_with_no_time_in_the_overlap_gets_the_next_letter_and_is_counte
     assert new == 2 and out[-2:] == [turn(990, 1000, "B"), turn(1000, 1100, "D")]   # A, B and C taken: D, the second counted
 
 
+@pytest.mark.usefixtures("long_windows")
 def test_a_turn_inside_an_overlap_is_kept_from_the_earlier_window_only():
     first = [turn(0, 500, "A"), turn(500, 540, "B")]
     second = [turn(450, 500, "B"), turn(500, 560, "A"), turn(560, 600, "B")]   # 500-540 heard twice, 540-560 once
@@ -338,6 +351,7 @@ def two_chunks() -> dict[tuple[str, int], object]:
             ("groq", 1): {"segments": [seg(0, 5, "Ten email a vendor by Friday.")]}}
 
 
+@pytest.mark.usefixtures("long_windows")
 def test_two_voices_label_each_line_with_letters_matched_across_windows_and_a_spend_row_per_window(tmp_path, monkeypatch):
     answers = two_chunks() | {("meta", 0): answer((0, 4, "A"), (500, 530, "B"), (531, 539, "A")),        # 0 to 540 s
                               ("meta", 1): answer((50, 80, "A"), (81, 89, "B"), (390, 393, "A"), (393, 395, "B"))}   # from 450 s
@@ -357,6 +371,7 @@ def test_two_voices_label_each_line_with_letters_matched_across_windows_and_a_sp
     assert len(rows) == 6 and "meta-test" not in str(r) and "meta-test" not in "\n".join(saved)
 
 
+@pytest.mark.usefixtures("long_windows")
 def test_one_voice_writes_no_letters_and_the_file_is_as_it_was_before_speakers(tmp_path, monkeypatch):
     answers = two_chunks() | {("meta", 0): answer((0, 4, "A"), (500, 539, "A")), ("meta", 1): answer((50, 89, "A"), (390, 395, "A"))}
     audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840, 8000 * 5], answers, meta="meta-test-key-123456")
@@ -369,6 +384,7 @@ def test_one_voice_writes_no_letters_and_the_file_is_as_it_was_before_speakers(t
     assert r["speakers_how"] == words.ONE_VOICE and r["speakers"] == {"A": 48} and len(rows) == 6    # window 2's 500-539 s once
 
 
+@pytest.mark.usefixtures("long_windows")
 def test_a_failed_muse_call_or_a_missing_key_still_returns_the_words_and_says_why_there_are_no_letters(tmp_path, monkeypatch):
     answers = two_chunks() | {("meta", 0): answer((0, 4, "A"), (500, 539, "B")),
                               ("meta", 1): transcribe.Failed("muse-voice-transcribe-1.0 did not answer: HTTP 402 billing_not_configured")}
@@ -389,8 +405,8 @@ def test_a_failed_muse_call_or_a_missing_key_still_returns_the_words_and_says_wh
 def test_the_gate_counts_the_muse_share(tmp_path, monkeypatch):
     answers = {(e, i): {"segments": []} for e in ("openai", "groq") for i in range(10)}
     audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840] * 10, answers, meta="meta-test-key-123456")
-    r = transcribe.run(audio, *keys, lambda *a: rows.append(a), meta_key=META(tmp_path))   # 140 min: 19 windows, 10,020 s to Muse
-    assert r == {"ok": False, "error": words.OVER_GATE.format(minutes=140, usd=0.84 + 0.093333 + 0.501)} and not calls and not rows
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a), meta_key=META(tmp_path))   # 140 min: 139 windows, 16,680 s to Muse
+    assert r == {"ok": False, "error": words.OVER_GATE.format(minutes=140, usd=0.84 + 0.093333 + 0.834)} and not calls and not rows
     assert transcribe.run(audio, *keys, lambda *a: rows.append(a))["ok"] and len(rows) == 20        # without Muse, US$0.93
 
 
@@ -415,7 +431,7 @@ def test_a_request_that_ran_long_is_sent_once_a_quick_refusal_three_times_and_th
     clock, plan, sent, naps = [0.0], {"code": 504, "after": 121.0}, [], []
 
     def answer(req, timeout):
-        sent.append(req.full_url)
+        sent.append(timeout)
         clock[0] += plan["after"]
         if not plan["code"]:
             raise TimeoutError("timed out")
@@ -424,15 +440,15 @@ def test_a_request_that_ran_long_is_sent_once_a_quick_refusal_three_times_and_th
     monkeypatch.setattr(transcribe.urllib.request, "urlopen", answer)
     with pytest.raises(transcribe.Failed) as e:                          # Meta's edge cut it at 121 s: sent once, no page
         transcribe.muse("meta-abc-123456789", wav)
-    assert str(e.value) == "muse-voice-transcribe-1.0 did not answer: HTTP 504 after 121 s" and len(sent) == 1 and not naps
+    assert str(e.value) == "muse-voice-transcribe-1.0 did not answer: HTTP 504 after 121 s" and sent == [100] and not naps   # its own wait under the edge
     plan.update(code=0, after=600.0)
     with pytest.raises(transcribe.Failed) as e:                          # a timeout: sent once
         transcribe.post("openai", "sk-abc-123456789", wav)
-    assert str(e.value) == "whisper-1 did not answer: TimeoutError after 600 s: timed out" and len(sent) == 2 and not naps
+    assert str(e.value) == "whisper-1 did not answer: TimeoutError after 600 s: timed out" and sent == [100, 600] and not naps
     plan.update(code=503, after=0.4)
     with pytest.raises(transcribe.Failed) as e:                          # a quick refusal: three tries, 5 s and 10 s apart
         transcribe.post("groq", "gsk-abc-123456789", wav)
-    assert str(e.value) == "whisper-large-v3-turbo did not answer: HTTP 503 after 0 s" and len(sent) == 5 and naps == [5, 10]
+    assert str(e.value) == "whisper-large-v3-turbo did not answer: HTTP 503 after 0 s" and sent == [100] + [600] * 4 and naps == [5, 10]
 
 
 def test_a_voice_note_arrives_with_the_line_that_it_is_heard_only_through_the_tool():
