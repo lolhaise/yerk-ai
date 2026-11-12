@@ -462,11 +462,11 @@ class DiscordChannel:
             return
         if self.word is not None and m.channel.id == self.names[room.name]:
             try:                                  # a word that cannot be read is an ordinary message, never a lost one
-                mine = await self.word(room.name, sender, str(m.content or ""), replied(m))
+                his = await self.word(room.name, sender, str(m.content or ""), replied(m))
             except Exception:
                 log.exception("room %s: message %s was not read as a word on a text card", room.name, m.id)
-                mine = False
-            if mine:
+                his = False
+            if his:
                 self.ledger.inbound_set(str(m.id), state="filed", note="a word on a text card")   # in the day's log already; no turn
                 return
         if sender == "owner" and self.taste is not None and m.content and m.channel.id == self.names[room.name]:
