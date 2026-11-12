@@ -438,7 +438,24 @@ def test_a_splice_that_gives_two_voices_a_window_heard_apart_one_letter_is_not_u
         "b000": answer((0, 10.9, "s1"), (11.4, 16.6, "s2")),                       # A, B, C: A and B one letter, not used
         "b001": answer((0, 5.2, "s1"), (5.7, 10.9, "s1"), (11.4, 16.6, "s2")),      # C, A, B: C with A
         "b002": answer((0, 5.2, "s1"), (5.7, 10.9, "s2"), (11.4, 16.6, "s2"))})     # the third, B, A, C: C with A again
-    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456") == {"C": "A"} and sent[2:] == ["b002.wav"]
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: None) == {"C": "A"} and sent[2:] == ["b002.wav"]
+
+
+def test_each_bridge_request_answered_is_one_spend_row_and_a_bridge_that_fails_joins_nothing(tmp_path, monkeypatch):
+    each, at = [[turn(10, 15, "A"), turn(20, 25, "B")], [], [turn(190, 195, "C")]], [0, 60, 120]
+    wavs, rows = [pcm(tmp_path / f"w{i:03d}.wav", 1, 0) for i in range(3)], []
+    late = transcribe.Failed("muse-voice-transcribe-1.0 did not answer: TimeoutError after 100 s")
+    with_a = answer((0, 5.2, "s1"), (5.7, 10.9, "s2"), (11.4, 16.6, "s1"))     # A, B, C, then the third C, B, A: C with A both times
+    bridged(tmp_path, monkeypatch, {"b000": with_a, "b001": late, "b002": with_a})
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == {"C": "A"}
+    assert [(e, round(u, 6), n) for e, u, n in rows] == [("meta/muse-voice-transcribe-1.0", 0.000855, "bridge 1 of 2, 17 s"),
+                                                          ("meta/muse-voice-transcribe-1.0", 0.000855, "bridge 3 of 3, 17 s")]   # 17.1 s each
+    rows.clear()
+    sent = bridged(tmp_path, monkeypatch, {"b000": late, "b001": late})
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == {} and rows == []
+    (tmp_path / "w000.wav").write_bytes(b"RIFF")                                 # a window that cannot be read: nothing is sent
+    sent.clear()
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == {} and sent == []
 
 
 def two_chunks() -> dict[tuple[str, int], object]:

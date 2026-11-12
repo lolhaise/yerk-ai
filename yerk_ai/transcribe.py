@@ -367,21 +367,28 @@ def join(found: list[tuple[Voices, Voices]], tries: list[list[dict[str, str | No
     return root
 
 
-def bridge(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: list[float], wavs: list[Path], into: Path, secret: str) -> dict[str, str]:
+def bridge(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: list[float], wavs: list[Path], into: Path, secret: str,
+           book: Book) -> dict[str, str]:
     """A voice's letters joined across a silence: each break's voices (breaks) spliced in two orders, the voices before
     then the minted letters and the reverse, all sent to Muse at once; where one of a break's two failed or is not used, a
     third order is sent once, that one with the voices before reversed (with one voice before, the same order again).
-    Returns join's {letter: its group's earliest letter}."""
+    Returns join's {letter: its group's earliest letter}. Each request answered is one spend row at Muse's price for its
+    seconds; a splice that cannot be cut, or a request that fails or runs long, joins nothing and is never an error."""
     found, apart, sent = breaks(heard, each, at), [{t["speaker"] for t in w} for w in each], list[Path]()
 
     def send(orders: list[Voices]) -> list[dict[str, str | None] | None]:
         paths = [into / f"b{len(sent) + k:03d}.wav" for k in range(len(orders))]
-        cut = [splice(o, wavs, at, p) for o, p in zip(orders, paths)]
+        try:
+            cut = [splice(o, wavs, at, p) for o, p in zip(orders, paths)]
+        except (OSError, EOFError, wave.Error):
+            return [None] * len(orders)
         sent.extend(paths)
 
         def one(k: int) -> dict[str, str | None] | None:
             try:
-                return letters(cut[k][0], muse(secret, paths[k]))
+                data = muse(secret, paths[k])
+                book(f"meta/{MUSE[1]}", max(cut[k][1], MUSE[3]) * MUSE[2], f"bridge {len(sent) - len(paths) + k + 1} of {len(sent)}, {cut[k][1]:.0f} s")
+                return letters(cut[k][0], data)
             except Failed:
                 return None
         with ThreadPoolExecutor(max_workers=MUSE_PARALLEL) as pool:
