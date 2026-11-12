@@ -6,12 +6,13 @@ tools/transcribe-2pass: ffmpeg cuts the audio into CHUNK-second mono mp3s, under
 sends them to OpenAI's whisper-1 in parallel (verbose_json) and drops a segment only when it is near silence twice over
 (DROP: whisper's "thanks for watching" over a quiet stretch); with a Groq key, pass 2 sends the same chunks to Groq's
 whisper-large-v3-turbo, and a segment whose words the two passes disagree on past DIFFER is marked uncertain with both
-readings, so a room says it as unsure instead of repeating a made-up word as fact. With a Meta key, Meta's Muse in
-DIARIZATION mode says who talks when (the box tool's third engine): WAV windows of WINDOW seconds every STEP, each
-sharing its last 90 s with the next, since one request takes 10 min at most and its letters (A, B) hold for that
-request only; they are matched across windows by the speaking time they share in each overlap (reconcile), and each
-pass-1 segment takes the letter covering most of it, so the words and their times stay whisper-1's. One voice writes no
-letters. The keys are files in the private folder, the first line of each, read per call and never logged or returned:
+readings, so a room says it as unsure instead of repeating a made-up word as fact; where pass 1 wrote no words and
+pass 2 heard some, pass 2's lines stand in, marked (fill). With a Meta key, Meta's Muse in DIARIZATION mode says who
+talks when (the box tool's third engine): WAV windows of WINDOW seconds every STEP, MUSE_PARALLEL at once, short enough
+that Meta answers before it cuts a request at about 2 min; a window's letters (A, B) hold for that request only, so they
+are matched across windows by the speaking time they share in each overlap (reconcile), and each pass-1 segment takes
+the letter covering most of it, so the words and their times stay whisper-1's. One voice writes no letters. The keys
+are files in the private folder, the first line of each, read per call and never logged or returned:
 OpenAI's is the install's one ([memory] embeddings_key, default secrets/openai.key), Groq's is secrets/groq.key, Meta's
 secrets/meta.key. Every paid call is one spend row at the provider's list price (decision 32), and a recording whose
 estimate passes GATE_USD waits for the owner's yes.
@@ -25,6 +26,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -44,13 +46,15 @@ DROP = (0.9, -1.0)           # no_speech_prob over the first and avg_logprob und
 DIFFER = 0.3                 # a segment is uncertain when the passes disagree on more than this share of its words
 GATE_USD = 1.0               # decision 32: a call estimated past this waits for the owner's yes
 PARALLEL = 8
-BUSY = (429, 500, 502, 503, 504)
+BUSY, QUICK = (429, 500, 502, 503, 504), 30    # QUICK seconds: a busy answer inside it is a refusal worth another try (Groq answers a chunk in about 2 s)
 PASSES = {                   # engine: (url, model, list price a second, least seconds billed a request), read 2026-10-21
     "openai": ("https://api.openai.com/v1/audio/transcriptions", "whisper-1", 0.006 / 60, 0),       # its pricing page
     "groq": ("https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo", 0.04 / 3600, 10),   # its docs
 }
 MUSE = ("https://api.meta.ai/v1/asr/transcribe", "muse-voice-transcribe-1.0", 0.18 / 3600, 0)   # PASSES' shape: Meta's page
-WINDOW, STEP = 540, 450      # seconds: Muse takes 10 min a request at most, and each window shares its last 90 s with the next
+WINDOW, STEP = 120, 60       # seconds, Muse timed 2026-11-12: 16 requests at once took 41 to 62 s on 120 s windows (8 at once on
+                             # 180 s: 84 to 96 s), and Meta cuts one at about 120 s. Neighbours share 60 s: reconcile matches letters by it.
+MUSE_PARALLEL, MUSE_WAIT = 16, 100   # Muse requests at once, as timed; seconds a window waits for its answer, under Meta's 120 s
 NEAR = 3                     # seconds: a segment no turn touches takes the letter of the turn whose middle is this near its own
 GROQ_KEY, META_KEY = "secrets/groq.key", "secrets/meta.key"
 RESULT_CHARS = 40_000        # the most of the text one result carries, under Claude Code's cap on a tool's answer
@@ -117,7 +121,7 @@ def post(engine: str, secret: str, chunk: Path, timeout: float = 600) -> dict[st
     return send(url, model, secret, edge, body, timeout)
 
 
-def muse(secret: str, wav: Path, timeout: float = 600) -> dict[str, Any]:
+def muse(secret: str, wav: Path, timeout: float = MUSE_WAIT) -> dict[str, Any]:
     """One window to Meta's Muse in DIARIZATION mode, in the one shape its live API takes (the box tool's _muse_post): a
     `request` part of JSON, an `audio` part of WAV."""
     edge, ask = uuid.uuid4().hex, json.dumps({"model": MUSE[1], "mode": "DIARIZATION", "audioEncoding": "WAV"})
@@ -128,20 +132,26 @@ def muse(secret: str, wav: Path, timeout: float = 600) -> dict[str, Any]:
 
 
 def send(url: str, model: str, secret: str, edge: str, body: bytes, timeout: float) -> dict[str, Any]:
-    """A multipart body to one provider, three tries on a busy answer, the key never in the error."""
+    """A multipart body to one provider, the key never in the error: three tries on a busy answer inside QUICK seconds, one
+    on a request that ran long (a timeout, or an error after QUICK), and the error says its code and seconds, never HTML."""
     last = ""
     for attempt in range(1, 4):
         req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {secret}", "User-Agent": "yerk-ai",
                                                               "Content-Type": f"multipart/form-data; boundary={edge}"})
+        began = time.monotonic()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return dict(json.loads(r.read()))
         except urllib.error.HTTPError as e:
-            last = f"HTTP {e.code} {e.read()[:160].decode(errors='replace')}"
-            if e.code not in BUSY:
-                break
+            text = e.read()[:160].decode(errors="replace").strip()
+            what, said, again = f"HTTP {e.code}", "" if "<" in text else text, e.code in BUSY
         except (urllib.error.URLError, OSError, ValueError) as e:
-            last = f"{type(e).__name__}: {e}"
+            cause = getattr(e, "reason", e)
+            what, said, again = type(e).__name__, str(cause), not isinstance(cause, TimeoutError)
+        took = time.monotonic() - began
+        last = f"{what} after {took:.0f} s" + (f": {said}" if said else "")
+        if not again or took > QUICK:
+            break
         if attempt < 3:
             time.sleep(5 * attempt)
     raise Failed(f"{model} did not answer: {' '.join(last.replace(secret, '<key>').split())}")
@@ -157,6 +167,22 @@ def kept(data: dict[str, Any], offset: float) -> list[dict[str, Any]]:
 def tokens(text: str) -> list[tuple[str, str]]:
     """(as written, as compared) per word: compared in lower case, by its letters, digits and apostrophes, a filler never."""
     return [(raw, n) for raw in text.split() if (n := "".join(WORD.findall(raw.lower().replace("’", "'")))) and n not in FILLERS]
+
+
+def fill(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """One chunk's lines where pass 1 wrote no words (whisper-1 can write ♪ through minutes of a call): a pass-2 segment
+    with words that shares more time with such pass-1 segments than with ones that have words takes their place, marked
+    `second_only`, and a wordless pass-1 segment it overlaps goes; when pass 1 has no word in the whole chunk (marks, or no
+    segment at all), every pass-2 segment with words does. Returns the chunk's lines in time order and the rest of pass 2,
+    for check to read against the pass-1 segments left."""
+    said = [bool(tokens(f["text"])) for f in first]
+
+    def lean(s: dict[str, Any]) -> float:          # its seconds over wordless pass-1 segments less its seconds over the others
+        return sum((-1 if w else 1) * max(0.0, min(s["end"], f["end"]) - max(s["start"], f["start"])) for f, w in zip(first, said))
+    took = [bool(tokens(s["text"])) and (lean(s) > 0 or not any(said)) for s in second]
+    only = [dict(s, second_only=True) for s, t in zip(second, took) if t]
+    left = [f for f, w in zip(first, said) if w or not any(min(f["end"], s["end"]) > max(f["start"], s["start"]) for s in only)]
+    return sorted(left + only, key=lambda s: s["start"]), [s for s, t in zip(second, took) if not t]
 
 
 def check(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> None:
@@ -242,14 +268,16 @@ def hhmmss(t: float) -> str:
 
 
 def line(s: dict[str, Any]) -> str:
-    said = words.UNCERTAIN.format(first=s["text"], second=s["other"]) if "other" in s else s["text"]
+    said = (words.UNCERTAIN.format(first=s["text"], second=s["other"]) if "other" in s else
+            words.SECOND_ONLY.format(text=s["text"]) if "second_only" in s else s["text"])
     return f"[{hhmmss(s['start'])} -> {hhmmss(s['end'])}] {s['speaker'] + ': ' if s.get('speaker') else ''}{said}"
 
 
 def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bool = False, meta_key: Path | None = None) -> dict[str, Any]:
     """The tool's whole call, blocking (the daemon runs it off the loop): {"ok": False, "error"} on any stop, else the
     transcript's file, text and counts. Pass 2 runs when the Groq key is there; a chunk it failed on stays unchecked.
-    The speakers run when the Meta key is there; a window that failed leaves every line unlabelled, and the file says why."""
+    The speakers run when the Meta key is there; a window that failed leaves every line unlabelled, so no window starts
+    after it, and the file says why."""
     secrets = {e: key(p) for e, p in (("openai", openai_key), ("groq", groq_key), ("meta", meta_key)) if p}
     if not secrets["openai"]:
         return {"ok": False, "error": words.NO_SPEECH_KEY}
@@ -269,18 +297,24 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
                 wins = windows(audio, Path(tmp), at) if at else []
             except (Failed, OSError, subprocess.SubprocessError) as e:
                 why = str(e)
+            stop = threading.Event()                   # a Muse window failed: the letters are lost, so no window starts after it
 
-            def one(job: tuple[str, int]) -> tuple[tuple[str, int], dict[str, Any] | Failed]:
+            def one(job: tuple[str, int]) -> tuple[tuple[str, int], dict[str, Any] | Failed | None]:
                 e, i = job
+                if e == "meta" and stop.is_set():
+                    return job, None
                 try:
                     data = muse(secrets[e], wins[i]) if e == "meta" else post(e, secrets[e], parts[i])
                 except Failed as err:
+                    if e == "meta":
+                        stop.set()
                     return job, err
                 model, what, of, s = (MUSE[1], "window", len(wins), wsecs[i]) if e == "meta" else (PASSES[e][1], "chunk", len(parts), secs[i])
                 book(f"{e}/{model}", usd[e][i], f"{what} {i + 1} of {of}, {s:.0f} s")
                 return job, data
-            with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
-                got = dict(ex.map(one, [(e, i) for e in engines for i in range(len(parts))] + [("meta", i) for i in range(len(wins))]))
+            with ThreadPoolExecutor(max_workers=PARALLEL) as ex, ThreadPoolExecutor(max_workers=MUSE_PARALLEL) as mx:
+                meta = mx.map(one, [("meta", i) for i in range(len(wins))])
+                got = dict(ex.map(one, [(e, i) for e in engines for i in range(len(parts))])) | dict(meta)
     except (Failed, OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": str(e)}
     if bad := [f"chunk {i + 1}: {r}" for i in range(len(parts)) if isinstance(r := got[("openai", i)], Failed)]:
@@ -290,12 +324,15 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
     for i in range(len(parts)):
         first = kept(r, i * CHUNK) if isinstance(r := got[("openai", i)], dict) else []
         if isinstance(second := got.get(("groq", i)), dict):
-            check(first, kept(second, i * CHUNK))
+            first, rest = fill(first, kept(second, i * CHUNK))
+            check([s for s in first if "second_only" not in s], rest)
         elif "groq" in engines:
             unchecked.append(str(i + 1))
         segs += first
     if lost := [i for i in range(len(wins)) if isinstance(got[("meta", i)], Failed)]:
-        why = words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
+        unsent = sum(got[("meta", i)] is None for i in range(len(wins)))
+        why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
+               + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
     try:                                           # with no window lost, every answer is there to read
         heard, new = ([], 0) if why else reconcile([turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
     except Failed as e:
@@ -309,10 +346,10 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
     talk = (words.NO_SPEAKERS.format(why=why or words.NO_TURNS) if why or not said else words.ONE_VOICE if len(said) == 1 else
             words.SPEAKERS.format(who=", ".join(f"{k} {int(v) // 60}:{int(v) % 60:02d}" for k, v in sorted(said.items())))
             + (words.UNMATCHED.format(n=new) if new else ""))
-    n, text = sum("other" in s for s in segs), "\n".join(line(s) for s in segs)
+    n, only, text = sum("other" in s for s in segs), sum("second_only" in s for s in segs), "\n".join(line(s) for s in segs)
     how = (words.UNCHECKED if "groq" not in engines else
-           words.PART_CHECKED.format(chunks=", ".join(unchecked), n=n, of=len(segs)) if unchecked else
-           words.CHECKED.format(n=n, of=len(segs)))
+           words.PART_CHECKED.format(chunks=", ".join(unchecked), n=n, of=len(segs) - only) if unchecked else
+           words.CHECKED.format(n=n, of=len(segs) - only)) + (words.SECOND_ONLY_HEAD.format(n=only) if only else "")
     head = words.TRANSCRIPT_HEAD.format(name=audio.name, minutes=round(sum(secs) / 60, 1), how=how)
     top = "" if talk == words.ONE_VOICE else f"{talk}\n"           # one voice: the file as it was before speakers
     out = write_private(audio.with_name(f"{audio.stem}.transcript.txt"), f"{head}\n{top}{text}\n")
