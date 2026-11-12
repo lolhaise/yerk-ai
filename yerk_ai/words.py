@@ -537,7 +537,7 @@ TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK = "draft:", "draft: a {react} tapback"
 TEXTING_CARD_WHY, TEXTING_CARD_WORDS = "why: {why}", "reply: send · edit <text> · skip"
 TEXTING_CARD_OFF = "checked; release is off for {first}"
 TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; the code finds {found}", "nothing"
-TEXTING_HOLD_WHAT = "a text to {first}"
+TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took over its card"
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
                  "withdrawn": "answered by you {at}", "superseded": "replaced by your edit", "cancelled": "answered by you"}
 TEXTING_GONE = "nothing sent: that card is {state}"

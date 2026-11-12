@@ -202,7 +202,7 @@ def test_a_bare_approve_never_approves_a_text_hold_and_the_rooms_other_hold_stil
     text = y.ledger.hold_add("example-room", "text-thread", "a text to Alex", 0, call="mcp__yerk__text {}")
     room.busy, room.inflight = True, [Inbound("m3", "owner", "approve")]
     call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
-    assert (y.ledger.approval(text) or {})["approved"] is None
+    assert y.ledger._select("SELECT approved FROM approvals WHERE id = ?", (text,)) == [{"approved": None}]
     push = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
     assert call(y, push)["hookSpecificOutput"]["permissionDecision"] == "deny"
     y.ledger.hold_add("example-room", "text-thread", "a text to Beta", 0, call='mcp__yerk__text {"x": 1}')   # newer than the push

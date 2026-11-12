@@ -165,7 +165,7 @@ class Holds:
         inbound = ",".join(dict.fromkeys([*(gs_of(old) if old else []), *gs_of(r)]))
         text = card(p.first, self.at(inbound.split(",")), quotes, r, why, self.mode == "dry")
         if old is not None:
-            self.ledger.texting_set(int(old["id"]), state="superseded", reason=words.TEXTING_SHOWS["superseded"])
+            self.ledger.texting_set(int(old["id"]), state="superseded", reason=words.TEXTING_NEWER)
         gate_id = self.ledger.gate(room=self.to, gate="approval", decision="hold", tool=texts.TOOL, rule=RULE, detail=f"{p.key}, texting row {rid}")
         aid = self.ledger.hold_add(self.to, RULE, words.TEXTING_HOLD_WHAT.format(first=p.first), gate_id, call=key(r))
         self.ledger.texting_set(rid, state="held", approval_id=aid, inbound=inbound)      # before any wait: a word finds it held

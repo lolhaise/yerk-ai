@@ -695,7 +695,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: texting-4 raised it by 218, the check of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 30680`
+2026-11-12: texting-5 raised it by 357, the holds, the cards and the owner's word of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 31037`
 
 ## Uncapped
 
