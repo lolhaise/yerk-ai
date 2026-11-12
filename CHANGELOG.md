@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### texting-3 (#?)
+### texting-3 (#63)
 
 - Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
 - Then, in dry mode, each burst of a listed person's texts gets one decision: reply (one to three texts), react, none
