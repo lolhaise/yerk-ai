@@ -218,7 +218,8 @@ def test_texting_is_off_by_default_and_with_mode_off(tmp_path, monkeypatch):
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "texting").mkdir()
     listed(private / "texting")
-    for n, table in enumerate(("", '[texting]\nmode = "off"\n', '[texting]\nmode = "dry"\n')):
+    for n, table in enumerate(("", '[texting]\nmode = "off"\n', '[texting]\nmode = "dry"\n',
+                               '[texting]\nmode = "dry"\nreport = "example-room"\n')):
         (private / "yerkd.toml").write_text(table + '\n[imessage]\ncommand = ["true"]\n')
         (state := tmp_path / f"state{n}").mkdir()
         y = Yerkd(private, state)
@@ -229,8 +230,10 @@ def test_texting_is_off_by_default_and_with_mode_off(tmp_path, monkeypatch):
             assert y.ledger.db.execute("SELECT COUNT(*) FROM inbound WHERE room = 'texting'").fetchone()[0] == 0
             # no room is held here, so the tool gives its one fixed line (an owner's room hears "texting is off": test_texting_people)
             assert asyncio.run(y.tool_texting("example-room", "sheet", "alex", "", "")) == {"ok": False, "line": words.TEXTING_ONLY}
-        else:
-            assert len(got) == 2                                    # dry: the link and the intake, to run as tasks
+        else:                       # dry: the link and the intake, to run as tasks, and the writer once a report room is named
+            assert len(got) == 2 + (n == 3)
+            assert (state / "texting" / "writer-mcp.json").exists() == (n == 3) and y.ledger.db.execute(
+                "SELECT COUNT(*) FROM texting").fetchone()[0] == 0
             for c in got:
                 c.close()
     assert opened == []

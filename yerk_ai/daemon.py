@@ -44,7 +44,7 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
-from .texting import intake as tintake, link as tlink, people as tpeople
+from .texting import intake as tintake, link as tlink, people as tpeople, writer as twriter
 from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
@@ -804,8 +804,9 @@ class Yerkd:
         return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
 
     def texting(self) -> list[Any]:
-        """[texting] mode dry or live: the read-only link to the Mac's bridge and the intake (texting/), to run as tasks. No
-        table, mode off, a reply list that does not load or no way to the bridge: none, so nothing connects or is written."""
+        """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer
+        (texting/), to run as tasks. No table, mode off, a reply list that does not load or no way to the bridge: none, so
+        nothing connects or is written."""
         conf = dict(self.conf.get("texting") or {})
         if str(conf.get("mode") or "off") not in ("dry", "live"):
             return []
@@ -818,7 +819,23 @@ class Yerkd:
         if not (argv := texts.transport(self.imessage())):
             log.error("texting is off: no way to the Mac's bridge ([imessage] host and socket, or a mac.json)")
             return []
-        return [tlink.Link(who, self.state, took.take, self.to_machine, argv=argv, mode=str(conf["mode"])).start(), took.run()]
+        link = tlink.Link(who, self.state, took.take, self.to_machine, argv=argv, mode=str(conf["mode"]))
+        if (report := str(conf.get("report") or "")) not in self.room_confs:
+            return [link.start(), took.run()]
+        named = [a for n in self.room_confs[report].get("accounts") or [] for a in self.accounts if a.name == n]    # its order
+        wrote = twriter.Writer(conf, tpeople.path(self.private, conf), self.state, self.ledger, report, link.thread,
+                               lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
+                               named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
+                               room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
+        return [link.start(), took.run(), wrote.run()]
+
+    def texting_recall(self, room: str, text: str) -> str:
+        """What `room` is handed for `text`, for the writer's pack: its recall part as its hook renders it and its recall
+        tool's search. Off the loop."""
+        names, topics, past, absent = self.recall_for(room, text)
+        cap = context.NONE if context.uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["recall"])
+        hits = self.search(room, text, docs=False).get("hits") or []
+        return "\n".join([hooks.render_recall(names, topics, cap, past, absent), *(f"{h['cite']} {h['text']}" for h in hits)])
 
     async def texting_post(self, room: str, line: str) -> None:
         log.info("texting: %s", await self.posted(room, line, "texting"))

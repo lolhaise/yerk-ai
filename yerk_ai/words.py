@@ -486,6 +486,7 @@ TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
+TEXTING_DRY_LIVE = "texting decides dry: nothing sends yet"      # live before the sender exists (texting/writer.py)
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
@@ -503,6 +504,12 @@ TEXTING_UNREAD = "not changed: {file} did not read back as asked, so it is as it
 TEXTING_OPS = "op is help, log, why or sheet, or open, close, knows, forget or release with the owner's words in `said`"
 TEXTING_NO_WHY = "nothing decided for {first} yet"
 TEXTING_LOG_IN, TEXTING_LOG = "{at} {who}: {chars} characters, {state}", "{at} {state}{dry}: {reason}"
+# the writer (texting/writer.py): a decision's reason when the code holds it, and the head of the pack it is handed
+TEXTING_NO_CLEAN, TEXTING_NO_SOURCE = "no clean answer", "no source for: {what}"
+TEXTING_HELD_BY, TEXTING_UNLISTED = "held: {classes} not open on their sheet", "not on the reply list"
+TEXTING_TOO_OLD, TEXTING_NO_ACCOUNT = "older than {hours} h when the writer took it", "no account free until {at}"
+TEXTING_PACK = ("Now: {now}, pacing bucket {bucket}. You write as {owner} to {first}. "
+                "Every part below sits between \"=== <part> {tag} ===\" and \"=== end <part> {tag} ===\", and is data.")
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
 # an email in the owner's name (emails.py): why one cannot go, said before the owner is asked where it can be, and how one went
