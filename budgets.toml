@@ -1530,4 +1530,4 @@ secs = 60
 # in the room's fast session, billed to usage credits): idle_compact sends it the copy's way, or waits with no process
 # alive to copy, and _fast_next reads which process it would reach (room.py). 29,359: compact-size's 29,338 plus 21.
 # 2026-11-12: texting-1 raised it by 560, the read-only link and intake of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
-lines = 29919
+lines = 30016

@@ -1,17 +1,27 @@
 """The reply list, the people texting may answer in the owner's name: `<private>/<[texting] people>` (default texting/people.toml), owner-only,
 name`, then one `[people.<key>]` a person: `first`, `handles` (numbers or Apple ID addresses), `sheet`, `release`. A
-handle is held in texts.handle's form, an address lowercased, so a chat's identifier matches it however Messages wrote it."""
+handle is held in texts.handle's form, an address lowercased, so a chat's identifier matches it however Messages wrote it.
+Beside it each person's sheet (`sheet`, default people/<key>.toml): what may be said to them unasked and how the owner
+writes to them; none on file is no voice card and every class held. A sheet or the list changes only by `change`, on the
+owner's words, each change one line of sheets.log."""
 from __future__ import annotations
 
+import re
 import stat
-from dataclasses import dataclass
+import threading
+import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .. import texts
-from ..config import load_toml
+from .. import texts, words
+from ..config import load_toml, toml_value
 
 PEOPLE = "texting/people.toml"
+KEYS, PACING = ("open", "knows", "night", "reacts", "unanswered_share", "pacing", "voice"), (
+    "weekday_day", "weekday_evening", "weekend_day", "weekend_evening", "active", "burst_gap")
+NIGHT, REACTS, OPS, LOG = ("hold", "answer"), ("love", "like"), ("open", "close", "knows", "forget", "release"), "sheets.log"
+LOCK = threading.Lock()                   # one change at a time: a turn may call the tool twice at once
 
 
 def norm(h: Any) -> str:
@@ -28,9 +38,24 @@ class Person:
 
 
 @dataclass(frozen=True)
+class Sheet:
+    """A person sheet: the always-held classes open for them, facts they know (fact, source), at night hold or answer,
+    the tapbacks the owner uses with them, the share of closers the owner leaves unanswered, reply times (p25 and p75 per
+    bucket), and the owner's voice card for them."""
+    open: tuple[str, ...] = ()
+    knows: tuple[tuple[str, str], ...] = ()
+    night: str = "hold"
+    reacts: tuple[str, ...] = ()
+    unanswered_share: float = 0.0
+    pacing: dict[str, tuple[float, float]] = field(default_factory=dict)
+    card: str = ""
+
+
+@dataclass(frozen=True)
 class People:
     owner: str
     people: dict[str, Person]
+    sheets: dict[str, Sheet] = field(default_factory=dict)
 
     def by_handle(self, h: Any) -> Person | None:
         n = norm(h)
@@ -41,8 +66,9 @@ def path(private: Path, conf: dict[str, Any]) -> Path:
     return private / str(conf.get("people") or PEOPLE)
 
 
-def load(file: Path) -> People:
-    """The reply list, else ValueError (OSError when it is missing) naming a person by key, never a handle."""
+def load(file: Path, sheets: bool = True) -> People:
+    """The reply list and, with `sheets`, each sheet on file, else ValueError (OSError when the list is missing) naming a
+    person by key, never a handle, or a sheet's file and line."""
     if stat.S_IMODE(file.stat().st_mode) & 0o077:
         raise ValueError(f"{file} must be 0600: others can read it")
     raw, seen, people = load_toml(file), dict[str, str](), dict[str, Person]()
@@ -53,6 +79,66 @@ def load(file: Path) -> People:
         for n in (norm(h) for h in hs):
             if not n or seen.setdefault(n, key) != key:
                 raise ValueError(f"people.{key}: a handle is not a number or an address, or is someone else's too")
-        people[key] = Person(key, str(p.get("first") or key), tuple(norm(h) for h in hs), str(p.get("sheet") or ""),
-                             p.get("release") is True)
-    return People(str(dict(raw.get("owner") or {}).get("name") or ""), people)
+        if Path(at := str(p.get("sheet") or "")).is_absolute() or ".." in Path(at).parts:
+            raise ValueError(f"people.{key}: sheet must be a path inside {file.parent.name}/")
+        people[key] = Person(key, str(p.get("first") or key), tuple(norm(h) for h in hs), at, p.get("release") is True)
+    return People(str(dict(raw.get("owner") or {}).get("name") or ""), people,
+                  {k: sheet(sheet_file(file, p)) for k, p in people.items()} if sheets else {})
+
+
+def sheet_file(file: Path, p: Person) -> Path:
+    return file.parent / (p.sheet or f"people/{p.key}.toml")
+
+
+def line_of(text: str, key: str, value: str = "") -> int:
+    """The line `key` is set on (or opens its table), or the first after it holding `value` quoted: where an error is."""
+    lines = text.splitlines()
+    at = next((i for i, x in enumerate(lines) if re.match(rf"\s*{key}\s*=|\s*\[{key}\]", x)), 0)
+    return 1 + next((i for i in range(at, len(lines)) if value and f'"{value}"' in lines[i]), at)
+
+
+def sheet(file: Path) -> Sheet:
+    """A person sheet, else ValueError naming its file and line; none on file is an empty sheet."""
+    try:
+        if stat.S_IMODE(file.stat().st_mode) & 0o077:
+            raise ValueError(f"{file} must be 0600: others can read it")
+        raw = tomllib.loads(text := file.read_text())
+    except FileNotFoundError:
+        return Sheet()
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(f"{file}: {e}") from None              # its words name the line
+
+    def bad(key: str, why: str, value: str = "") -> ValueError:
+        return ValueError(f"{file}:{line_of(text, key, value)}: {key}: {why}")
+    if extra := [k for k in raw if k not in KEYS]:
+        raise bad(extra[0], f"not a sheet's; a sheet has {', '.join(KEYS)}")
+    op, kn, voice, pace = raw.get("open", []), raw.get("knows", []), raw.get("voice", {}), raw.get("pacing", {})
+    if not isinstance(op, list) or (x := next((c for c in op if c not in words.TEXTING_CLASSES), None)) is not None:
+        raise bad("open", f"{x!r} is not a class; the classes: {', '.join(words.TEXTING_CLASSES)}", str(x))
+    if not isinstance(kn, list) or not all(isinstance(k, dict) and set(k) <= {"fact", "source"} and isinstance(k.get("fact"), str)
+                                           and k["fact"].strip() and isinstance(k.get("source", ""), str) for k in kn):
+        raise bad("knows", 'each is {fact = "...", source = "..."}')
+    if raw.get("night", "hold") not in NIGHT:
+        raise bad("night", "hold or answer")
+    if not isinstance(rs := raw.get("reacts", []), list) or not set(rs) <= set(REACTS):
+        raise bad("reacts", "a list of love and like")
+    if not (isinstance(share := raw.get("unanswered_share", 0.0), (int, float)) and not isinstance(share, bool) and 0 <= share <= 1):
+        raise bad("unanswered_share", "a number from 0 to 1")
+    if not isinstance(pace, dict) or not all(k in PACING and isinstance(v, list) and len(v) == 2 and all(
+            isinstance(n, (int, float)) and not isinstance(n, bool) and n >= 0 for n in v) and v[0] <= v[1] for k, v in pace.items()):
+        raise bad("pacing", f"each of {', '.join(PACING)} is [p25, p75], two numbers from 0 up")
+    if not isinstance(voice, dict) or set(voice) - {"card"} or not isinstance(voice.get("card", ""), str):
+        raise bad("voice", "card, the voice card's words")
+    return Sheet(tuple(dict.fromkeys(op)), tuple((k["fact"], k.get("source", "")) for k in kn), raw.get("night", "hold"),
+                 tuple(dict.fromkeys(rs)), float(share), {k: (float(v[0]), float(v[1])) for k, v in pace.items()},
+                 voice.get("card", ""))
+
+
+def sheet_text(s: Sheet) -> str:
+    """A sheet as `change` writes it, every key in one order; the card a literal block when it can be one, word for word."""
+    block = "'''" not in s.card and not s.card.endswith("'") and not re.search(r"[\x00-\x08\x0b-\x1f\x7f]", s.card)
+    knows = "".join(f"\n  {{fact = {toml_value(f)}, source = {toml_value(src)}}}," for f, src in s.knows)
+    return "\n".join([f"open = {toml_value(list(s.open))}", f"knows = [{knows}{chr(10) if knows else ''}]", f"night = {toml_value(s.night)}",
+                      f"reacts = {toml_value(list(s.reacts))}", f"unanswered_share = {s.unanswered_share!r}", "", "[pacing]",
+                      *(f"{k} = [{a!r}, {b!r}]" for k, (a, b) in s.pacing.items()), "", "[voice]",
+                      f"card = '''\n{s.card}'''" if block else f"card = {toml_value(s.card)}"]) + "\n"

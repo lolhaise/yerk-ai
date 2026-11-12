@@ -1,12 +1,15 @@
-"""Texting's reply list: owner-only, handles in one form, a handle on one person only."""
+"""Checks texting's reply list, the people a room may answer by text for you: yours only, handles in one form, a handle on one
+person only. Each person's sheet beside it (run 2), read by code and checked, and changed only through the report room's `texting`
+of this turn, each change one line of sheets.log. Every person and number here is made up."""
 from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
-from yerk_ai import doctor
+from yerk_ai import doctor, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.texting import people
 
@@ -74,3 +77,58 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     assert [x for x in said(on) if "0600" in x]
     os.chmod(priv / "texting" / "people.toml", 0o600)
     assert said(on) == [] and said('[texting]\nmode = "dry"\n') == ["[texting] report: none is not an owner room in rooms.toml"]
+
+
+A1, B1 = "+15550000101", "+15550000102"
+REPLY = f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\n# kept as written\n\n' \
+        f'[people.beta]\nfirst = "Beta"\nhandles = ["{B1}"]\nrelease = false\n'
+SHEET = 'open = ["location"]\nknows = [{fact = "the new car", source = "owner-room m:1 2026-11-12"}]\nnight = "answer"\n' \
+        'reacts = ["love"]\nunanswered_share = 0.25\n\n[pacing]\nactive = [0.5, 2]\nburst_gap = [10, 35]\n\n' \
+        "[voice]\ncard = '''\nshort, lowercase, no full stops'''\n"
+
+
+def folder(tmp_path: Path, sheet: str | None = SHEET) -> Path:
+    """A texting folder: the list (0600) and, unless `sheet` is None, Alex's sheet; Beta has none."""
+    (where := tmp_path / "texting" / "people").mkdir(parents=True)
+    (f := where.parent / "people.toml").write_text(REPLY)
+    os.chmod(f, 0o600)
+    if sheet is not None:
+        (s := where / "alex.toml").write_text(sheet)
+        os.chmod(s, 0o600)
+    return f
+
+
+def test_a_sheet_loads_and_a_person_with_none_has_no_card_and_every_class_held(tmp_path):
+    who = people.load(folder(tmp_path))
+    alex = who.sheets["alex"]
+    assert alex.open == ("location",) and alex.knows == (("the new car", "owner-room m:1 2026-11-12"),)
+    assert (alex.night, alex.reacts, alex.unanswered_share) == ("answer", ("love",), 0.25)
+    assert alex.pacing == {"active": (0.5, 2.0), "burst_gap": (10.0, 35.0)} and alex.card == "short, lowercase, no full stops"
+    assert who.sheets["beta"] == people.Sheet() and who.sheets["beta"].open == () and who.sheets["beta"].card == ""
+    for s in (alex, people.Sheet(card="it's\n'''"), people.Sheet(knows=(('a "quoted" fact', ""),))):    # written back, the same
+        (f := tmp_path / "round.toml").write_text(people.sheet_text(s))
+        os.chmod(f, 0o600)
+        assert people.sheet(f) == s
+
+
+def test_the_classes_are_one_list_and_a_sheet_opening_another_fails_the_load_with_its_file_and_line(tmp_path):
+    assert words.TEXTING_CLASSES == ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
+    bad = SHEET.replace('open = ["location"]', 'open = [\n  "location",\n  "gossip",\n]')
+    with pytest.raises(ValueError, match=r"alex\.toml:3: open: 'gossip' is not a class; the classes: health, "):
+        people.load(folder(tmp_path, bad))
+    for i, (old, new, line, key) in enumerate((('night = "answer"', 'night = "late"', 3, "night"),
+                                               ('reacts = ["love"]', 'reacts = ["wow"]', 4, "reacts"),
+                                               ("unanswered_share = 0.25", "unanswered_share = 2", 5, "unanswered_share"),
+                                               ("burst_gap = [10, 35]", "burst_gap = [35, 10]", 7, "pacing"),
+                                               ('night = "answer"', "nite = 1", 3, "nite"),
+                                               ("[voice]", "[voice]\ntone = 1", 11, "voice"))):
+        with pytest.raises(ValueError, match=rf"alex\.toml:{line}: {key}: "):
+            people.load(folder(tmp_path / str(i), SHEET.replace(old, new)))
+    with pytest.raises(ValueError, match=r"alex\.toml: .*\(at line 2"):
+        people.load(folder(tmp_path / "syntax", "reacts = []\nnight = \n"))
+    os.chmod(folder(tmp_path / "open").parent / "people" / "alex.toml", 0o644)
+    with pytest.raises(ValueError, match=r"alex\.toml must be 0600"):
+        people.load(tmp_path / "open" / "texting" / "people.toml")
+    (f := folder(tmp_path / "out", None)).write_text(REPLY.replace('first = "Beta"', 'first = "Beta"\nsheet = "../b.toml"'))
+    with pytest.raises(ValueError, match=r"people\.beta: sheet must be a path inside texting/"):
+        people.load(f)

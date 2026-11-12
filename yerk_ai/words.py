@@ -486,6 +486,17 @@ TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
+# the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
+TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
+# the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
+TEXTING_OFF, TEXTING_ONLY = "texting is off", "texting works only in {room}"
+TEXTING_NOT_SAID = "not changed: no message of the owner's in this turn has those words; `said` is his own words, as he wrote them"
+TEXTING_NO_ONE = "no one on the reply list is {key}; on it: {keys}"
+TEXTING_NOT_CLASS, TEXTING_ON_OFF = "not changed: {value} is not a class; the classes: {classes}", "not changed: release is on or off"
+TEXTING_SAME, TEXTING_CHANGED = "not changed: {first}'s sheet already says {op} {value}", "changed: {first}, {op} {value}; in sheets.log"
+TEXTING_OPS = "op is log, why or sheet, or open, close, knows, forget or release with the owner's words in `said`"
+TEXTING_NO_WHY, TEXTING_WHY = "nothing decided for {first} yet", "{at}: {state}{dry}, {reason}"
+TEXTING_LOG_IN, TEXTING_LOG = "{at} in from {who}, {chars} characters, {state}", "{at} {state}{dry}, {reason}"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
 # an email in the owner's name (emails.py): why one cannot go, said before the owner is asked where it can be, and how one went
