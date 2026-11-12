@@ -6,6 +6,20 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-12
+
+### compact-size (#?)
+
+- Right after a compaction, `/status` in a room shows the session's real size, not the few thousand tokens the
+  compaction left of the conversation: the 📚 line, the compaction's ledger row and the number a daemon start reads
+  back are what Claude Code counts for the session's next call (the summary, the system prompt with the room's context,
+  the tools), asked of it with no model call. A copy compacted off to the side and taken gives the room its own count
+  the same way. Before, the line read about 12k all night after a late compaction while the next call carried about
+  328k, until the room's next reply.
+- budgets.toml: `[code] lines` 29,286 to 29,325 with its dated note.
+- **Upgrading**: nothing to change. It needs a Claude Code that answers `get_context_usage` (2.1.321 does); an older
+  one shows the old number.
+
 ## 2026-11-11
 
 ### oom-wording (#57)
