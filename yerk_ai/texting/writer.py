@@ -55,23 +55,32 @@ def sourced(source: str, guids: set[str]) -> bool:
                            or kind == "memory" and what.rpartition(":")[2].isdigit() and bool(what.rpartition(":")[0]))
 
 
-def parse(out: str, guids: set[str], open_: tuple[str, ...] = ()) -> dict[str, Any]:
-    """A call's stdout as a decision, read as taste_judge reads its judge; `error` when the call failed (its reason, for the
-    account hop). The model's own decision never stands over a statement with no source or a class the sheet keeps shut."""
+def answer(out: str, hold: Callable[[str], dict[str, Any]]) -> tuple[Any, dict[str, Any]]:
+    """A one-shot's stdout read as taste_judge reads its judge: its structured answer and its seconds and tokens, or None and
+    `hold` with no clean answer (`error` when the call failed: its reason, for the account hop)."""
     try:
         d = json.loads(out)
         assert isinstance(d, dict)
     except (ValueError, AssertionError):
-        return held(words.TEXTING_NO_CLEAN)
+        return None, hold(words.TEXTING_NO_CLEAN)
     rec = {"seconds": round(float(d.get("duration_ms") or 0) / 1000, 2), "tokens": sum(int((d.get("usage") or {}).get(k) or 0) for k in USAGE)}
     if d.get("is_error"):
-        return {**held(words.TEXTING_NO_CLEAN), **rec, "error": str(d.get("result") or "no answer")[:300]}
+        return None, {**hold(words.TEXTING_NO_CLEAN), **rec, "error": str(d.get("result") or "no answer")[:300]}
     ans = d.get("structured_output")
     if not isinstance(ans, dict):
         try:
             ans = json.loads(d.get("result") or "")
         except ValueError:
             ans = None
+    return ans, rec
+
+
+def parse(out: str, guids: set[str], open_: tuple[str, ...] = ()) -> dict[str, Any]:
+    """A call's stdout as a decision (`answer`). The model's own decision never stands over a statement with no source or a
+    class the sheet keeps shut."""
+    ans, rec = answer(out, held)
+    if "reason" in rec:
+        return rec
     parts = [str(p).strip() for p in (ans or {}).get("parts") or [] if str(p).strip()][:3]
     if not isinstance(ans, dict) or (decision := ans.get("decision")) not in ("reply", "react", "none", "held") \
             or decision == "reply" and not parts or decision == "react" and ans.get("react") not in ("love", "like"):
@@ -134,25 +143,26 @@ class Writer:
         self.busy: set[int] = set()
         self.slots = asyncio.Semaphore(self.parallel)
 
-    async def run(self) -> None:
-        """Every 2 s, each `deciding` row not already taken, at most `parallel` at once; a stop leaves rows `deciding`, and the
-        next start takes them under the same catch-up rule."""
+    async def run(self, state: str = "deciding", step: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+                  want: Callable[[dict[str, Any]], bool] = lambda r: True) -> None:
+        """Every 2 s, each `deciding` row (or the check's: a `state` row it `want`s) not already taken, at most `parallel`
+        at once; a stop leaves rows where they are, and the next start takes them under the same rules."""
         while True:
             try:
                 who = await asyncio.to_thread(load, self.file, False)
                 for key in who.people:
-                    for r in self.ledger.texting_rows(key, "deciding"):
-                        if (rid := int(r["id"])) not in self.busy:
+                    for r in self.ledger.texting_rows(key, state):
+                        if want(r) and (rid := int(r["id"])) not in self.busy:
                             self.busy.add(rid)
-                            asyncio.ensure_future(self.decide(r))
+                            asyncio.ensure_future(self.decide(r, step))
             except (OSError, ValueError) as e:
                 log.warning("texting: the reply list did not load: %s", e)
             await asyncio.sleep(2.0)
 
-    async def decide(self, row: dict[str, Any]) -> None:
+    async def decide(self, row: dict[str, Any], step: Callable[[dict[str, Any]], Awaitable[None]] | None = None) -> None:
         async with self.slots:
             try:
-                await self._decide(row)
+                await (step or self._decide)(row)
             except (BridgeDown, BridgeError, OSError) as e:      # the row stays deciding: the next pass takes it again
                 log.info("texting: %s not decided yet: %s", row["person"], e)
             except Exception:                                   # a fault: never taken again before a restart, so never a call a pass
@@ -173,7 +183,7 @@ class Writer:
         if (p := who.people.get(key)) is None:
             self.ledger.texting_set(rid, state="dropped", reason=words.TEXTING_UNLISTED)
             return
-        rows = sorted(await self.thread(key, THREAD), key=lambda r: w.timestamp() if (w := when_of(r)) else 0.0)[-THREAD:]
+        rows = await self.last(key)
         late = {g for g, r in got.items() if r.get("created") and r.get("received") and r["received"] - r["created"] > LATE}
         theirs = [r for r in rows if r.get("guid") in got]
         mine = [w for r in rows if r.get("is_from_me") is True and (w := when_of(r))]
@@ -201,32 +211,42 @@ class Writer:
         self.ledger.texting_set(rid, state="decided", **fields)
         for g in gs:
             self.ledger.inbound_set(g, state="decided")
-        folder = self.state / "texting" / "dry"
-        folder.mkdir(mode=0o700, exist_ok=True)
-        fd = os.open(folder / f"{at:%Y-%m-%d}.jsonl", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        with os.fdopen(fd, "a") as f:
-            f.write(json.dumps({"t": now, "id": rid, "person": key, "inbound": gs, **fields,
-                                "parts": d["parts"], "statements": d["statements"]}) + "\n")
+        dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"]})
         log.info("texting: %s decided %s (dry, %.0f s)", key, d["decision"], d["seconds"])
 
+    async def last(self, key: str) -> list[dict[str, Any]]:
+        """The person's last THREAD rows, every chat merged by time: the thread a pack and a check are handed."""
+        return sorted(await self.thread(key, THREAD), key=lambda r: w.timestamp() if (w := when_of(r)) else 0.0)[-THREAD:]
+
     def call(self, pack: str, guids: set[str], open_: tuple[str, ...]) -> dict[str, Any]:
-        """One call on the first free account for the model; a quota or rate-limit failure rests that account and hops, at
-        most twice; past `decide_seconds`, no clean answer."""
+        return self.hop(self.argv, pack, self.cwd, self.cap, self.model, lambda out: parse(out, guids, open_), held)
+
+    def hop(self, argv: list[str], stdin: str, cwd: Path, cap: float, model: str, read: Callable[[str], dict[str, Any]],
+            hold: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
+        """One call (the writer's or the check's) on the first free account for `model`; a quota or rate-limit failure rests
+        that account and hops, at most twice; past `cap` seconds, no clean answer; no account free, a hold that says until when."""
         for _ in range(3):
-            a = pick(self.accounts, self.cooldowns, model=self.model)
-            if self.cooldowns.until(a.name, model=self.model) is not None:
+            a = pick(self.accounts, self.cooldowns, model=model)
+            if self.cooldowns.until(a.name, model=model) is not None:
                 break
             try:
-                out = subprocess.run(self.argv, input=pack, capture_output=True, text=True, timeout=self.cap, cwd=self.cwd,
-                                     env=account_env(a)).stdout
+                out = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=cap, cwd=cwd, env=account_env(a)).stdout
             except subprocess.TimeoutExpired:
-                return {**held(words.TEXTING_NO_CLEAN), "account": a.name, "seconds": self.cap}
-            d = parse(out, guids, open_)
+                return {**hold(words.TEXTING_NO_CLEAN), "account": a.name, "seconds": cap}
+            d = read(out)
             if (err := d.pop("error", None)) is not None and (f := self.failures.classify(text=err)).action == "hop_account":
                 kind = f.kind or "auth"
                 self.cooldowns.fail(a.name, kind, lambda n: self.failures.cooldown_seconds(kind, n),
-                                    model=self.model if kind == "rate_limit" else "")
+                                    model=model if kind == "rate_limit" else "")
                 continue
             return {**d, "account": a.name}
-        free = min([u for a in self.accounts if (u := self.cooldowns.until(a.name, model=self.model)) is not None] or [self.clock()])
-        return held(words.TEXTING_NO_ACCOUNT.format(at=f"{datetime.fromtimestamp(free):%H:%M}"))
+        free = min([u for a in self.accounts if (u := self.cooldowns.until(a.name, model=model)) is not None] or [self.clock()])
+        return hold(words.TEXTING_NO_ACCOUNT.format(at=f"{datetime.fromtimestamp(free):%H:%M}"))
+
+
+def dry(state: Path, at: datetime, entry: dict[str, Any]) -> None:
+    """One line of <state>/texting/dry/YYYY-MM-DD.jsonl (0600, in a 0700 folder): a decision or a check's verdict."""
+    folder = state / "texting" / "dry"
+    folder.mkdir(mode=0o700, exist_ok=True)
+    with os.fdopen(os.open(folder / f"{at:%Y-%m-%d}.jsonl", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
+        f.write(json.dumps(entry) + "\n")

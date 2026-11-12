@@ -64,7 +64,7 @@ message and a success result echoing the text. Variations:
   FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
 - --json-schema (a one-shot): stdin read whole and appended to FAKE_CLAUDE_STDIN, FAKE_CLAUDE_JSON_SLOW seconds of wait,
   then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder gets a usage-limit error result
-Turn and, the last part closes the case before (the next) run Starts_The_Example.
+Records argv, the config folder, the working folder and the environment's names (never values) to FAKE_CLAUDE_RECORD.
 """
 import json
 import os
@@ -79,7 +79,7 @@ rec = os.environ.get("FAKE_CLAUDE_RECORD")
 cfg = os.environ.get("CLAUDE_CONFIG_DIR", "")
 if rec:
     with open(rec, "a") as f:
-        f.write(json.dumps({"argv": argv, "config_dir": cfg, "env_keys": sorted(os.environ)}) + "\n")
+        f.write(json.dumps({"argv": argv, "config_dir": cfg, "cwd": os.getcwd(), "env_keys": sorted(os.environ)}) + "\n")
 
 
 def listed(var):

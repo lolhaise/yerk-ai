@@ -44,7 +44,7 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
-from .texting import intake as tintake, link as tlink, people as tpeople, writer as twriter
+from .texting import check as tcheck, intake as tintake, link as tlink, people as tpeople, writer as twriter
 from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
@@ -805,7 +805,7 @@ class Yerkd:
 
     def texting(self) -> list[Any]:
         """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer
-        (texting/), to run as tasks. No table, mode off, a reply list that does not load or no way to the bridge: none, so
+        and the check (texting/), to run as tasks. No table, mode off, a reply list that does not load or no way to the bridge: none, so
         nothing connects or is written."""
         conf = dict(self.conf.get("texting") or {})
         if str(conf.get("mode") or "off") not in ("dry", "live"):
@@ -827,7 +827,7 @@ class Yerkd:
                                lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
                                named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
                                room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
-        return [link.start(), took.run(), wrote.run()]
+        return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run()]
 
     def texting_recall(self, room: str, text: str) -> str:
         """What `room` is handed for `text`, for the writer's pack: its recall part as its hook renders it and its recall
