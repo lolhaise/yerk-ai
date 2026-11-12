@@ -745,6 +745,7 @@ NEED_LIVE_ROOM = DONE + " need {n} is built and live: {ability}\nthis room has i
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
+SECOND_ONLY, SECOND_ONLY_HEAD = "(second pass only) {text}", ", and {n} more heard by the second pass only, where the first heard no words"
 # the line under a transcript's head: who talks how long, by Muse's letters reconciled across its windows (transcribe.reconcile)
 SPEAKERS = "speakers: {who} (letters, not names: say who is who as a guess from what is said, unless the owner tells you)"
 UNMATCHED, ONE_VOICE = ", {n} letters could not be matched across windows", "one voice"

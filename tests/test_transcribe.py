@@ -191,6 +191,51 @@ def test_a_failed_second_pass_leaves_its_chunk_unchecked_and_a_failed_first_pass
     assert r == {"ok": False, "error": "chunk 2: whisper-1 did not answer: HTTP 500"}
 
 
+def test_a_chunk_pass_1_wrote_as_music_comes_back_with_pass_2s_lines_marked_and_counted(tmp_path, monkeypatch):
+    music = {"segments": [seg(0, 30, "♪"), seg(30, 60, "♪♪"), seg(60, 90, "♪")]}       # whisper-1 over speech it did not hear
+    speech = {"segments": [seg(2, 9, "Thanks for calling, how can I help?"), seg(31, 40, "I would like to ask about a charge."),
+                           seg(64, 70, "Sure, one moment please.")]}
+    answers = {("openai", 0): music, ("groq", 0): speech}
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 90], answers)
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
+    assert Path(r["file"]).read_text().splitlines() == [
+        "voice-message.ogg, 1.5 min, checked by a second pass: 0 of 0 segments uncertain, and 3 more heard by the second pass only, "
+        "where the first heard no words",
+        "speakers: none (Muse: no Meta key at secrets/meta.key)",
+        "[00:00:02 -> 00:00:09] (second pass only) Thanks for calling, how can I help?",
+        "[00:00:31 -> 00:00:40] (second pass only) I would like to ask about a charge.",
+        "[00:01:04 -> 00:01:10] (second pass only) Sure, one moment please."]
+    assert "♪" not in r["text"] and r["segments"] == 3 and r["uncertain"] == 0
+    answers[("groq", 0)] = {"segments": [seg(0, 90, "♪♪")]}                # neither pass heard a word: the file as before
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
+    assert Path(r["file"]).read_text().splitlines() == [
+        "voice-message.ogg, 1.5 min, checked by a second pass: 0 of 3 segments uncertain", "speakers: none (Muse: no Meta key at secrets/meta.key)",
+        "[00:00:00 -> 00:00:30] ♪", "[00:00:30 -> 00:01:00] ♪♪", "[00:01:00 -> 00:01:30] ♪"]
+    answers[("groq", 0)] = speech
+    keys[1].unlink()                                                         # no Groq key: one pass, as before
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
+    assert r["about"] == f"voice-message.ogg, 1.5 min, {words.UNCHECKED}" and r["text"].splitlines() == [
+        "[00:00:00 -> 00:00:30] ♪", "[00:00:30 -> 00:01:00] ♪♪", "[00:01:00 -> 00:01:30] ♪"]
+
+
+def test_a_run_of_music_marks_inside_speech_takes_pass_2s_lines_for_that_stretch_only(tmp_path, monkeypatch):
+    one = {"segments": [seg(0, 5, "Hello, this is Alex."), seg(5, 10, "I have a question."), seg(10, 40, "♪"), seg(40, 70, "♪♪"),
+                        seg(70, 75, "Thanks for holding."), seg(75, 80, "How can I help?")]}
+    two = {"segments": [seg(0, 5, "Hello, this is Alex."), seg(5, 10, "I have a question."), seg(12, 20, "Please stay on the line."),
+                        seg(45, 60, "Your call is important to us."), seg(70, 75, "Thanks for holding."), seg(75, 80, "How can I help?")]}
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 80], {("openai", 0): one, ("groq", 0): two})
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
+    assert r["about"].endswith("checked by a second pass: 0 of 4 segments uncertain, and 2 more heard by the second pass only, "
+                               "where the first heard no words")
+    assert r["text"].splitlines() == [                                       # pass 1's agreeing lines unmarked, nothing twice
+        "[00:00:00 -> 00:00:05] Hello, this is Alex.",
+        "[00:00:05 -> 00:00:10] I have a question.",
+        "[00:00:12 -> 00:00:20] (second pass only) Please stay on the line.",
+        "[00:00:45 -> 00:01:00] (second pass only) Your call is important to us.",
+        "[00:01:10 -> 00:01:15] Thanks for holding.",
+        "[00:01:15 -> 00:01:20] How can I help?"]
+
+
 def test_a_key_is_its_files_first_line_and_never_in_an_error(tmp_path, monkeypatch):
     (tmp_path / "k").write_text("  sk-abc-123456789  \nnotes\n")
     assert transcribe.key(tmp_path / "k") == "sk-abc-123456789" and transcribe.key(tmp_path / "gone") == ""

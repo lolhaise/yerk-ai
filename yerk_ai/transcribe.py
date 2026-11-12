@@ -159,6 +159,21 @@ def tokens(text: str) -> list[tuple[str, str]]:
     return [(raw, n) for raw in text.split() if (n := "".join(WORD.findall(raw.lower().replace("’", "'")))) and n not in FILLERS]
 
 
+def fill(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """One chunk's lines where pass 1 wrote no words (whisper-1 can write ♪ through minutes of a call): a pass-2 segment
+    with words that shares more time with such pass-1 segments than with ones that have words takes their place, marked
+    `second_only`, and a wordless pass-1 segment it overlaps goes. Returns the chunk's lines in time order and the rest of
+    pass 2, for check to read against the pass-1 segments left."""
+    said = [bool(tokens(f["text"])) for f in first]
+
+    def lean(s: dict[str, Any]) -> float:          # its seconds over wordless pass-1 segments less its seconds over the others
+        return sum((-1 if w else 1) * max(0.0, min(s["end"], f["end"]) - max(s["start"], f["start"])) for f, w in zip(first, said))
+    took = [bool(tokens(s["text"])) and lean(s) > 0 for s in second]
+    only = [dict(s, second_only=True) for s, t in zip(second, took) if t]
+    left = [f for f, w in zip(first, said) if w or not any(min(f["end"], s["end"]) > max(f["start"], s["start"]) for s in only)]
+    return sorted(left + only, key=lambda s: s["start"]), [s for s, t in zip(second, took) if not t]
+
+
 def check(first: list[dict[str, Any]], second: list[dict[str, Any]]) -> None:
     """Marks each pass-1 segment of one chunk whose words pass 2 reads differently past DIFFER, with `other`, pass 2's
     reading of the same stretch. The two are aligned word by word across the whole chunk, so a segment boundary the two
@@ -242,7 +257,8 @@ def hhmmss(t: float) -> str:
 
 
 def line(s: dict[str, Any]) -> str:
-    said = words.UNCERTAIN.format(first=s["text"], second=s["other"]) if "other" in s else s["text"]
+    said = (words.UNCERTAIN.format(first=s["text"], second=s["other"]) if "other" in s else
+            words.SECOND_ONLY.format(text=s["text"]) if "second_only" in s else s["text"])
     return f"[{hhmmss(s['start'])} -> {hhmmss(s['end'])}] {s['speaker'] + ': ' if s.get('speaker') else ''}{said}"
 
 
@@ -290,7 +306,8 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
     for i in range(len(parts)):
         first = kept(r, i * CHUNK) if isinstance(r := got[("openai", i)], dict) else []
         if isinstance(second := got.get(("groq", i)), dict):
-            check(first, kept(second, i * CHUNK))
+            first, rest = fill(first, kept(second, i * CHUNK))
+            check([s for s in first if "second_only" not in s], rest)
         elif "groq" in engines:
             unchecked.append(str(i + 1))
         segs += first
@@ -309,10 +326,10 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
     talk = (words.NO_SPEAKERS.format(why=why or words.NO_TURNS) if why or not said else words.ONE_VOICE if len(said) == 1 else
             words.SPEAKERS.format(who=", ".join(f"{k} {int(v) // 60}:{int(v) % 60:02d}" for k, v in sorted(said.items())))
             + (words.UNMATCHED.format(n=new) if new else ""))
-    n, text = sum("other" in s for s in segs), "\n".join(line(s) for s in segs)
+    n, only, text = sum("other" in s for s in segs), sum("second_only" in s for s in segs), "\n".join(line(s) for s in segs)
     how = (words.UNCHECKED if "groq" not in engines else
-           words.PART_CHECKED.format(chunks=", ".join(unchecked), n=n, of=len(segs)) if unchecked else
-           words.CHECKED.format(n=n, of=len(segs)))
+           words.PART_CHECKED.format(chunks=", ".join(unchecked), n=n, of=len(segs) - only) if unchecked else
+           words.CHECKED.format(n=n, of=len(segs) - only)) + (words.SECOND_ONLY_HEAD.format(n=only) if only else "")
     head = words.TRANSCRIPT_HEAD.format(name=audio.name, minutes=round(sum(secs) / 60, 1), how=how)
     top = "" if talk == words.ONE_VOICE else f"{talk}\n"           # one voice: the file as it was before speakers
     out = write_private(audio.with_name(f"{audio.stem}.transcript.txt"), f"{head}\n{top}{text}\n")
