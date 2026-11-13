@@ -1544,4 +1544,5 @@ secs = 60
 # 2026-11-12: room-recall-pool raised it by 11, a room that may not read everything drawing its search's candidates from the chunks it may read, at most 2,000 rows past the pool, and 400 meaning rows (a sealed room told nothing was on file about people in its own files, 2026-11-12), cut from 15 before the raise.
 # 2026-11-13: texting-7a raised it by 401, the replay of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 # 2026-11-13: texting-7a-fix raised it by 16, a replayed call no model answered counted as failed and the replay's model flag (the owner's ask, 2026-11-12), not folded to fit.
-lines = 31673
+# 2026-11-13: texting-7a-asof raised it by 4, the replay's memory files held to their last change (the owner's ask, 2026-11-12), not folded to fit.
+lines = 31677
