@@ -116,3 +116,10 @@ def test_a_room_asks_the_meaning_search_for_its_most_rows_and_keeps_only_its_own
     assert "example lake" in texts(memory.recall(s, "a relative near the shore", 6, reader=PLAIN))      # no keyword of its line
     assert "example lake" not in texts(memory.recall(s, "a relative near the shore", 6, reader=OWNS))   # the owner's 80 are its notes
     assert asked == [memory.MEANING_MOST, memory.POOL]
+
+
+def test_deep_recall_in_the_room_brings_its_own_lines_on_the_name(tmp_path):
+    s = tree(tmp_path)
+    for rd in (SEALED, PLAIN):
+        got = "\n".join(x["text"] for x in memory.lines_on(s, "Alex", rd))
+        assert "example lake" in got and "example picnic" in got and "owner's note" not in got and "kayak" not in got
