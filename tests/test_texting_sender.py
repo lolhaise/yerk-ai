@@ -340,3 +340,32 @@ def test_a_from_me_row_in_the_window_claims_the_oldest_text_job_as_auto_and_answ
     rows(s).add("m-2", handed + 400, "running late", mine=True)
     assert took.take(alex, rows(s).rows[-1]) == "owner" and led.inbound_get("m-2")["sender"] == "owner"
     assert led.texting_get(pending)["state"] == "cancelled" and withdrawn == [pytest.approx(handed + 400, abs=1e-3)]
+
+
+def test_part_two_waits_for_part_one_to_be_seen_goes_a_burst_gap_later_and_never_after_an_unseen_part_one(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, _ = intake_for(s, led)
+    alex = load(s.file).people["alex"]
+    rid = due(s, led, clock, "t-1", texts=("on my way", "ten min"))
+    handed = armed(s, led, rid)["handed"]
+    for _ in range(3):
+        clock.t += 20
+        armed(s, led, rid)
+    assert calls(tmp_path) == [f"yerk-{rid}-1"]
+    rows(s).add("m-1", handed + 30, "on my way", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "auto"
+    r = led.texting_get(rid)
+    assert r["state"] == "queued" and r["handed"] is None and 10 <= r["fire_at"] - clock.t <= 35
+    clock.t = r["fire_at"]
+    armed(s, led, rid)
+    assert calls(tmp_path) == [f"yerk-{rid}-1", f"yerk-{rid}-2"]          # its recheck passed over part 1's own row
+    part2 = json.loads((tmp_path / "outbox" / f"yerk-{rid}-2.json").read_text())
+    assert part2["burst"] is True and part2["text"] == "ten min" and part2["queued"] == WED - 29
+    rows(s).add("m-2", clock.t + 8, "ten min", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "auto" and led.texting_get(rid)["state"] == "sent"
+    late = due(s, led, clock, "t-2", texts=("on my way", "ten min"))
+    armed(s, led, late)
+    for _ in range(6):
+        clock.t += 60
+        armed(s, led, late)
+    assert led.texting_get(late)["state"] == "unseen" and calls(tmp_path)[2:] == [f"yerk-{late}-1"]
