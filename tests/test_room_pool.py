@@ -80,3 +80,24 @@ def test_past_the_bound_the_read_stops_inside_its_deadline_as_a_search_that_foun
     monkeypatch.setattr(memory, "allowed_text", lambda *a, **k: time.sleep(0.002) or real(*a, **k))
     t = time.monotonic()
     assert memory.ranked(s, "kayak", 8, 0.3, PLAIN, wide=False)["status"] == "timeout" and time.monotonic() - t < 1.5
+
+
+MAIN = {"Alex": [f"other/notes.md:{n}" for n in (1, 5, 9, 13, 17, 21)],       # the owner's hits on origin/main (c705590f)
+        "Alex example picnic lake kayak": ["memory/facts/beta.md:5", "memory/daily/2026-01-20.md:4", "memory/daily/2026-01-20.md:1",
+                                           "mine/notes.md:1", "other/notes.md:1", "other/notes.md:5"]}
+
+
+def test_an_owner_rooms_search_is_the_read_it_was_with_the_same_hits_in_the_same_order(tmp_path, monkeypatch):
+    """The owner reads everything: no filter, no row past the pool, the hits main gives; and a room's read with a filter that keeps
+    every row gives the owner's candidates in the owner's order."""
+    s = tree(tmp_path)
+    conn = memindex.connect(s.index_db, readonly=True)
+    for q in ("Alex", "example lake picnic", "owner's note 7"):
+        assert memindex.search(conn, q, memory.POOL, memory.POOL * 2) == memindex.search(
+            conn, q, memory.POOL, memory.POOL * 2, keep=lambda p, t: True, most=memory.READ_ON)
+    conn.close()
+    asked, real = [], memindex.search
+    monkeypatch.setattr(memindex, "search", lambda *a, **k: asked.append(k.get("keep")) or real(*a, **k))
+    for q, main in MAIN.items():              # as origin/main ranks them, for an owner room and for no room alike
+        assert [h["cite"] for h in memory.recall(s, q, 6, reader=OWNS)["hits"]] == [h["cite"] for h in memory.recall(s, q, 6)["hits"]] == main
+    assert asked == [None] * 4                 # no filter, so the read origin/main makes: LIMIT the pool, no row past it
