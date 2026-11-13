@@ -266,6 +266,9 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend(f"{RED} [texting] {k}: not a number above 0; texting stays off" for k in ("burst_quiet", "burst_cap", "catch_up_hours", "hold_hours")
                          if k in tx and (isinstance(tx[k], bool) or not isinstance(tx[k], (int, float)) or tx[k] <= 0))
             found.extend([f"{RED} [texting] mode: {tmode} is not off, dry or live"] if tmode not in ("dry", "live") else [])
+            accts = load_accounts(private / "accounts.toml")                 # the check runs on an account's token alone (J28)
+            found.extend([f"{RED} [texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint {accts[0].name}` makes one"]
+                         if accts and not any(token_info(a, now)["token"] != "none" for a in accts) else [])
             try:
                 tpeople.load(tpeople.path(private, tx))
             except (OSError, ValueError) as e:

@@ -45,9 +45,10 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, accounts: int = 1, **
     for f, text in ((priv / "people.toml", LIST), (priv / "people" / "alex.toml", SHEET), (priv / "baseline.md", "few words")):
         f.write_text(text)
         os.chmod(f, 0o600)
-    accts = [Account(f"a{i}", tmp_path / f"cfg{i}") for i in range(accounts)]
+    accts = [Account(f"a{i}", tmp_path / f"cfg{i}", token_file=tmp_path / f"a{i}.token") for i in range(accounts)]
     for a in accts:
         a.config_dir.mkdir()
+        (tmp_path / f"{a.name}.token").write_text(f"token-{a.name}")      # the check's call runs on it alone (J28)
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl"))
     monkeypatch.setenv("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt"))
     led = Ledger(tmp_path / "ledger.sqlite")
@@ -145,6 +146,60 @@ def test_a_quota_failure_rests_the_account_and_hops_once_then_holds_no_account_f
     d = w.call("a pack", set(), ())
     assert d["decision"] == "held" and d["reason"].startswith("no account free until ")
     assert [c["config_dir"] for c in calls(tmp_path)] == [one, two, one, two]
+
+
+def rest(w: writer.Writer, model: str, *names: str) -> None:
+    for n in names or ("a0", "a1"):
+        w.cooldowns.fail(n, "rate_limit", lambda k: 3600.0, model=model)
+
+
+def test_with_every_account_out_of_the_model_the_fallback_answers_and_says_so_and_the_model_back_answers_bare(tmp_path, monkeypatch):
+    """J33: the first real run held every text the moment the accounts were out of the report room's model."""
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch, accounts=2, fallback="model-y")
+    rest(w, "model-x")
+    asyncio.run(w.decide(deciding(led)))
+    r = led.texting_last("alex") or {}
+    [dry] = (tmp_path / "state" / "texting" / "dry").glob("*.jsonl")
+    assert (r["decision"], r["account"], json.loads(dry.read_text())["account"]) == ("none", "a0 (model-y)", "a0 (model-y)")
+    plain = [x for x in w.argv if x not in ("--model", "model-x")]               # an argv naming no model: the second is added
+    assert w.hop(plain, "a pack", w.cwd, 30.0, "", lambda out: writer.parse(out, set()), writer.held)["account"] == "a0 (model-y)"
+    w.cooldowns.clear("a1")                                                      # one account's meter back: the first model, once
+    assert w.call("a pack", set(), ())["account"] == "a1"
+    assert [c["argv"][c["argv"].index("--model") + 1] for c in calls(tmp_path)] == ["model-y", "model-y", "model-x"]
+    assert [c["argv"].count("--model") for c in calls(tmp_path)] == [1, 1, 1] and calls(tmp_path)[1]["argv"][-1] == "model-y"
+
+
+def test_with_no_fallback_or_one_refused_too_the_hold_is_todays_and_a_timeout_or_a_bad_answer_never_falls_back(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch, accounts=2)
+    rest(w, "model-x")
+    today = w.call("a pack", set(), ())
+    assert today["reason"].startswith("no account free until ") and not calls(tmp_path)
+    w.fallback = "model-y"
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", f"{tmp_path / 'cfg0'},{tmp_path / 'cfg1'}")       # the second refused everywhere too
+    assert w.call("a pack", set(), ()) == today and [c["config_dir"] for c in calls(tmp_path)] == [str(tmp_path / "cfg0"), str(tmp_path / "cfg1")]
+    monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")
+    w.cooldowns.clear("a0")
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", "not json")
+    w.cap = 1.0
+    assert (w.call("a pack", set(), ())["reason"], len(calls(tmp_path))) == (words.TEXTING_NO_CLEAN, 3)
+    monkeypatch.setenv("FAKE_CLAUDE_JSON_SLOW", "5")
+    assert (w.call("a pack", set(), ())["reason"], len(calls(tmp_path))) == (words.TEXTING_NO_CLEAN, 4)
+    assert [c["argv"][c["argv"].index("--model") + 1] for c in calls(tmp_path)[2:]] == ["model-x", "model-x"]
+
+
+def test_every_account_is_tried_once_for_the_model_before_the_fallback_or_the_hold(tmp_path, monkeypatch):
+    """J33 says every account: with five and the first three out of the model, the fourth answers on it, never the second model."""
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, _ = setup(tmp_path, monkeypatch, accounts=5, fallback="model-y")
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", ",".join(str(tmp_path / f"cfg{i}") for i in range(3)))
+    assert w.call("a pack", set(), ())["account"] == "a3"
+    assert [c["argv"][c["argv"].index("--model") + 1] for c in calls(tmp_path)] == ["model-x"] * 4
+    w.fallback = ""                                                          # and with no second model: the fifth, never a hold
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", ",".join(str(tmp_path / f"cfg{i}") for i in range(4)))
+    w.cooldowns.clear("a0")
+    assert w.call("a pack", set(), ())["account"] == "a4"
 
 
 def test_a_deciding_row_older_than_catch_up_is_missed_and_never_decided(tmp_path, monkeypatch):

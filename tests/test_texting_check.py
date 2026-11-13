@@ -182,11 +182,47 @@ def test_a_check_past_its_cap_is_held_and_a_quota_failure_hops_to_the_next_accou
     r = led.texting_last("alex") or {}
     assert (r["state"], r["decision"], r["reason"], json.loads(r["verdict"])["seconds"]) == ("decided", "held", words.TEXTING_NO_CLEAN, 1.0)
     monkeypatch.delenv("FAKE_CLAUDE_JSON_SLOW")
-    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg0"))
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_TOKENS", "token-a0")                   # its folder is the check's own, so its token
     asyncio.run(check.Check({}, w).check(decided(led)))
     r = led.texting_last("alex") or {}
     assert (r["state"], json.loads(r["verdict"])["account"]) == ("release-ready", "a1")
     assert w.cooldowns.until("a0", model="model-x") is not None and w.cooldowns.until("a1", model="model-x") is None
+
+
+def test_the_check_runs_from_a_config_folder_of_its_own_on_the_accounts_token_and_the_writer_from_the_accounts(tmp_path, monkeypatch):
+    """J28: the canary saw one thing cross the wall, the account's address, read from its config folder."""
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict(statements=[]))
+    w, led = writer_setup(tmp_path, monkeypatch)
+    asyncio.run(check.Check({}, w).check(decided(led)))
+    w.call("a pack", set(), ())
+    [ch, wr] = calls(tmp_path)
+    own = tmp_path / "state" / "texting" / "check-config"
+    assert ch["config_dir"] == str(own) and wr["config_dir"] == str(tmp_path / "cfg0")
+    assert {"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_DISABLE_AUTO_MEMORY"} <= set(ch["env_keys"])
+    assert not any(own.iterdir()) and stat.S_IMODE(own.stat().st_mode) == 0o700
+    assert (led.texting_last("alex") or {})["state"] == "release-ready"
+
+
+def test_the_check_passes_over_an_account_with_no_token_and_with_none_anywhere_holds_the_draft_with_no_call(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict(statements=[]))
+    w, led = writer_setup(tmp_path, monkeypatch, accounts=2)
+    (tmp_path / "a0.token").unlink()                       # an empty folder and no token: it could not log in
+    asyncio.run(check.Check({}, w).check(decided(led)))
+    assert json.loads((led.texting_last("alex") or {})["verdict"])["account"] == "a1"
+    (tmp_path / "a1.token").unlink()
+    asyncio.run(check.Check({}, w).check(decided(led)))
+    r = led.texting_last("alex") or {}
+    assert (r["decision"], r["reason"]) == ("held", words.TEXTING_NO_TOKEN) and len(calls(tmp_path)) == 1
+
+
+def test_with_every_account_out_of_the_checks_model_the_fallback_answers_and_the_verdict_says_so(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict(statements=[]))
+    w, led = writer_setup(tmp_path, monkeypatch, fallback="model-y")
+    w.cooldowns.fail("a0", "rate_limit", lambda n: 3600.0, model="model-c")
+    asyncio.run(check.Check({"check_model": "model-c"}, w).check(decided(led)))
+    r, [rec] = led.texting_last("alex") or {}, calls(tmp_path)
+    assert (r["state"], json.loads(r["verdict"])["account"]) == ("release-ready", "a0 (model-y)")
+    assert rec["argv"][rec["argv"].index("--model") + 1] == "model-y" and rec["config_dir"].endswith("check-config")
 
 
 def test_the_loop_checks_each_decided_reply_or_tapback_once_and_never_a_none_or_a_held(tmp_path, monkeypatch):

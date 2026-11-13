@@ -271,6 +271,8 @@ YERKD_WORDS = {
                 "check_model": "the model of the check, which reads only the thread, the person's sheet, their texts and the "
                                "draft before a reply or tapback may go (default: the writer's model)",
                 "check_seconds": "seconds one check may take; past it the draft is held with no clean answer (default 120)",
+                "fallback": "a second model the writer and the check run on when every account refuses theirs, the row then "
+                            "naming it beside the account (default none: the text is held)",
                 "never_say": "names an assistant goes by on this install: a draft that holds one, as whole words in any case, is "
                              "held before any model reads it (default none)",
                 "hold_hours": "hours a held text's card waits for the owner's word; past it the card says expired, not sent, "
