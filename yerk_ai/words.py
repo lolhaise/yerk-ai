@@ -486,7 +486,7 @@ TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
-TEXTING_OUT, TEXTING_NONE_OUT = "texting out {at}, {held} held, {unseen} unseen", "texting: none out, {held} held, {unseen} unseen"
+TEXTING_OUT, TEXTING_NONE_OUT = "texting out {at}, {held} held, {unseen} unseen", "texting none out, {held} held, {unseen} unseen"
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
@@ -891,7 +891,7 @@ ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one
 # the status card's parts in its order (status.card), as `yerk status --help` names them (cli.py): a part the card gains goes here
 STATUS_PARTS = ("the daemon and its rooms", "each account's 5-hour and weekly meters and the one the next turn tries",
                 "each room's running turn and what waits", "the channel a room watches", "the rooms put on an account",
-                "the version and commit", "the add-ons", "texting's mode, its bridge up or down since when and the last text in",
+                "the version and commit", "the add-ons", "texting's mode, its bridge up or down since when, the last text in and out, how many held and unseen",
                 "the running workers (from the ledger, checked against the unit list)",
                 "the jobs due within the hour", "each unit's memory and CPU", "today's median first line and turn",
                 "the spend on an uncapped install", "the newest backup's age", "today's stalls")
