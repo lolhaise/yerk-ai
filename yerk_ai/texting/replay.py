@@ -191,10 +191,11 @@ def rows(c: Cut) -> list[dict[str, Any]]:
 
 async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, todo: list[tuple[Cut, str]],
                  search: Callable[[str], list[dict[str, Any]]], root: Path, imports: Path, accounts: list[Account],
-                 failures: FailureTable, model: str = "", claude: str = "") -> list[dict[str, Any]]:
+                 failures: FailureTable, add: Callable[[dict[str, Any]], None], model: str = "", claude: str = "") -> int:
     """Each cut (with the handle its thread was found by) one `deciding` row of a scratch ledger in `scratch`, decided by
     the live writer with no tool and, a reply or a tapback, checked by the live check; at most `parallel` cuts at once,
-    cooldowns in memory only. The rows as they end."""
+    cooldowns in memory only. Each cut's line goes to `add` as it ends; a cut that raises is written with its `error` (the
+    exception's name and first line, never a text) and the run goes on. How many cuts raised."""
     led, cache = Ledger(scratch / "ledger.sqlite"), {}  # type: ignore[var-annotated]
 
     async def thread(key: str, limit: int) -> list[dict[str, Any]]:
@@ -209,21 +210,25 @@ async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, t
                       claude, lambda: CUT.get().at.timestamp(), tools=[])
     chk, slots = check.Check(conf, w), asyncio.Semaphore(w.parallel)
 
-    async def one(c: Cut, handle: str) -> dict[str, Any]:
+    async def one(c: Cut, handle: str) -> bool:
         CUT.set(c)
+        rid, error = 0, ""
         async with slots:
-            for x in c.burst:                       # each text arrived at its own minute: never late, never too old
-                led.inbound_add(f"{c.key}:{x.n}", "texting", f"imessage:{c.key}", c.key, len(x.text), created=x.at.timestamp())
-                led.inbound_set(f"{c.key}:{x.n}", received=x.at.timestamp())
-            rid = led.texting_add(person=c.key, handle=handle, inbound=",".join(f"{c.key}:{x.n}" for x in c.burst),
-                                  state="deciding", mode="dry")
-            await w._decide(led.texting_get(rid) or {})
-            r = led.texting_get(rid) or {}
-            if r.get("decision") in ("reply", "react"):
-                await chk.check(r)
-                r = led.texting_get(rid) or {}
-        return r
-    return list(await asyncio.gather(*(one(c, h) for c, h in todo)))
+            try:
+                for x in c.burst:                   # each text arrived at its own minute: never late, never too old
+                    led.inbound_add(f"{c.key}:{x.n}", "texting", f"imessage:{c.key}", c.key, len(x.text), created=x.at.timestamp())
+                    led.inbound_set(f"{c.key}:{x.n}", received=x.at.timestamp())
+                rid = led.texting_add(person=c.key, handle=handle, inbound=",".join(f"{c.key}:{x.n}" for x in c.burst),
+                                      state="deciding", mode="dry")
+                await w._decide(led.texting_get(rid) or {})
+                if (r := led.texting_get(rid) or {}).get("decision") in ("reply", "react"):
+                    await chk.check(r)
+            except Exception as e:
+                error = f"{type(e).__name__}: {(str(e).splitlines() or [''])[0]}"
+        line = entry(c, (led.texting_get(rid) or {}) if rid else {})
+        add({**line, "score": "", "error": error} if error else line)
+        return bool(error)
+    return sum(await asyncio.gather(*(one(c, h) for c, h in todo)))
 
 
 def entry(c: Cut, r: dict[str, Any]) -> dict[str, Any]:
@@ -238,24 +243,23 @@ def entry(c: Cut, r: dict[str, Any]) -> dict[str, Any]:
             "tokens": r.get("tokens") or 0, "account": r.get("account") or ""}
 
 
-def write(folder: Path, stamp: str, head: dict[str, Any], lines: list[dict[str, Any]]) -> Path:
-    """<state>/texting/replay/<stamp>.jsonl (0600): line 1 the run, then one line a cut."""
-    f = folder / f"{stamp}.jsonl"
-    with os.fdopen(os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as out:
-        out.write("".join(json.dumps(x) + "\n" for x in [head, *lines]))
-    return f
-
-
 def go(state: Path, stamp: str, head: dict[str, Any], conf: dict[str, Any], file: Path, report: str, todo: list[tuple[Cut, str]],
        search: Callable[[str], list[dict[str, Any]]], root: Path, imports: Path, accounts: list[Account], failures: FailureTable,
        model: str = "", claude: str = "") -> Path:
-    """One run under <state>/texting/replay/ (0700): its scratch folder <stamp>/ for the ledger and the working folders, then
-    <stamp>.jsonl; the scratch folder goes after a clean run and stays where it is when the run fails."""
+    """One run under <state>/texting/replay/ (0700): <stamp>.jsonl (0600, refused if it is there) made at the start with
+    line 1, the run, and one line added as each cut ends; its scratch folder <stamp>/ for the ledger and the working
+    folders goes when no cut raised and stays where it is when one did, or when the run dies."""
     base = state / "texting" / "replay"
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(base, 0o700)
-    (scratch := base / stamp).mkdir(mode=0o700)
-    got = asyncio.run(decide(conf, file, scratch, report, todo, search, root, imports, accounts, failures, model, claude))
-    f = write(base, stamp, head, [entry(c, r) for (c, _), r in zip(todo, got)])
-    shutil.rmtree(scratch)
+    f = base / f"{stamp}.jsonl"
+    with os.fdopen(os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as out:
+        def add(line: dict[str, Any]) -> None:
+            out.write(json.dumps(line) + "\n")
+            out.flush()
+        add(head)
+        (scratch := base / stamp).mkdir(mode=0o700)
+        failed = asyncio.run(decide(conf, file, scratch, report, todo, search, root, imports, accounts, failures, add, model, claude))
+    if not failed:
+        shutil.rmtree(scratch)
     return f

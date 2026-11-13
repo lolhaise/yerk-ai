@@ -158,16 +158,21 @@ def test_a_replay_writes_only_under_its_own_folder_and_leaves_the_install_as_it_
     assert [json.loads(x)["score"] for x in f.read_text().splitlines()[1:]] == ["open", "agree", "less"]
 
 
-def test_a_failed_run_leaves_its_scratch_folder_where_it_was(tmp_path, monkeypatch):
+def test_a_cut_that_raises_is_written_with_its_error_the_run_goes_on_and_its_scratch_folder_stays(tmp_path, monkeypatch):
     priv, state = install(tmp_path)
-    monkeypatch.setattr(replay.check.Check, "check", lambda self, row: (_ for _ in ()).throw(OSError("boom")))
-    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yes"]))
-    try:
-        run(tmp_path, monkeypatch, priv, state, thread_cuts(priv)[2:], [])
-    except OSError:
-        pass
+    live = writer.Writer._decide
+
+    async def decide(self, row):
+        if row["inbound"] == "alex:8":
+            raise RuntimeError("boom\nsecond line")
+        await live(self, row)
+    monkeypatch.setattr(writer.Writer, "_decide", decide)
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    f = run(tmp_path, monkeypatch, priv, state, thread_cuts(priv), [])
+    head, *got = [json.loads(x) for x in f.read_text().splitlines()]
+    assert head == {"since": "2026-10-01"} and sorted(x["id"] for x in got) == ["alex:5", "alex:8", "alex:9"]
+    assert {x["id"]: x.get("error") for x in got} == {"alex:9": None, "alex:8": "RuntimeError: boom", "alex:5": None}
     assert (state / "texting" / "replay" / "t1" / "ledger.sqlite").exists()
-    assert json.loads((state / "texting" / "replay" / "t1" / "texting" / "writer-mcp.json").read_text()) == {"mcpServers": {}}
     shutil.rmtree(state / "texting" / "replay" / "t1")
 
 
