@@ -123,7 +123,7 @@ def test_the_reaper_compacts_a_room_idle_near_its_window_once_and_the_next_messa
     say(y, room, "1", "CONTEXT:200000 hello")
     wait_idle(room)
     reap(y)                                                  # just answered: not idle long enough
-    assert compactions(tmp_path) == 0
+    assert compactions(tmp_path) == 0 and room.fork is None  # and no copy on its way either: a copy waits at the gate uncounted
     reap(y, room, IDLE)
     started(tmp_path)                                        # the copy's /compact, held at the gate
     assert room.fork is not None and not room.busy and not room.shortening
@@ -300,6 +300,51 @@ def test_with_no_process_alive_the_room_is_held_for_its_start_only_and_then_comp
     wait_idle(room)
     assert echoed(chan, 2).startswith(TAIL_HEAD) and "CONTEXT:21000 meanwhile" in echoed(chan, 2) and room.rp.session_id == bound(tmp_path)
     assert (False, "/compact") not in written and written.count((True, "/compact")) == 1
+    room.rp.close()
+
+
+def test_with_no_process_alive_and_nothing_waiting_the_room_is_free_after_the_start_and_answers_the_next_message_at_once(y, tmp_path, gate):
+    """The start holds the room for itself alone: with no message in it, the room must come back free, or the next message
+    would sit queued behind a hold nothing ends."""
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True)                        # no process alive, as after a daemon restart
+    reap(y, room, IDLE)
+    started(tmp_path)                                        # the start is over and the copy's /compact is at the gate
+    assert room.fork is not None and not room.busy and not room.shortening
+    say(y, room, "2", "CONTEXT:21000 meanwhile")
+    until(lambda: len(chan.replies) == 2)
+    assert chan.replies[1] == "echo: CONTEXT:21000 meanwhile" and room.fork is not None    # answered while the copy is still held
+    gate.set()
+    until(lambda: y.ledger.rows(1)[0]["outcome"] == "compacted")
+    wait_idle(room)
+    room.rp.close()
+
+
+def test_a_start_that_fails_frees_the_room_is_said_once_and_is_not_tried_again_before_the_next_turn(y, tmp_path, monkeypatch, caplog):
+    """A process that died without being closed keeps its session's lock, so the start of a new one can fail: the room
+    must come back free, never stay held, and the reaper must not try again every minute."""
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True)
+    tries, start = [], room._start
+
+    def failing(*a, **k):
+        tries.append(1)
+        raise RuntimeError("the session is busy")
+    monkeypatch.setattr(room, "_start", failing)
+    with caplog.at_level(logging.WARNING, logger="yerk.room"):
+        for _ in range(3):
+            reap(y, room, IDLE)
+            wait_idle(room, timeout=5)
+    assert len(tries) == 1 and room.fork is None and compactions(tmp_path) == 0
+    assert sum("could not start the room's process" in m for m in caplog.messages) == 1
+    monkeypatch.setattr(room, "_start", start)
+    say(y, room, "2", "and now?")
+    wait_idle(room)
+    assert chan.replies[-1] == "echo: and now?"
     room.rp.close()
 
 
