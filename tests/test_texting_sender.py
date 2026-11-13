@@ -9,15 +9,18 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from test_texting_link import A1, B1
+from test_texting_holds import Card
 from yerk_ai.ledger import Ledger
-from yerk_ai.texting import hands, sender
+from yerk_ai.texting import hands, holds, sender
+from yerk_ai.texting.bridge import BridgeDown
+from yerk_ai.texting.intake import digest
 
 LIST = (f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\nsheet = "people/alex.toml"\n\n'
         f'[people.beta]\nfirst = "Beta"\nhandles = ["{B1}"]\nsheet = "people/beta.toml"\n')
@@ -126,14 +129,44 @@ class Clock:
         return self.t
 
 
-def make(tmp: Path, mode: str = "live", night: str = "hold", t: float = WED, **conf: Any) -> tuple[sender.Sender, Ledger, Clock]:
+class Thread:
+    """The person's thread as the link reads it at that moment: rows the test adds; `down`, the bridge away."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+        self.down, self.reads = False, 0
+
+    def add(self, guid: str, t: float, text: str = "see you at six", mine: bool = False, tapback: bool = False) -> None:
+        self.rows.append({"guid": guid, "is_from_me": mine, "text": text, "is_reaction": tapback, "chat_identifier": A1,
+                          "created_at": datetime.fromtimestamp(t, timezone.utc).isoformat().replace("+00:00", "Z")})
+
+    async def __call__(self, key: str, limit: int) -> list[dict[str, Any]]:
+        self.reads += 1
+        if self.down:
+            raise BridgeDown("the bridge is away")
+        return list(self.rows)
+
+
+def make(tmp: Path, mode: str = "live", night: str = "hold", t: float = WED, kind: str = "ok", posted: list[str] | None = None,
+         **conf: Any) -> tuple[sender.Sender, Ledger, Clock]:
     file, clock = people(tmp, night), Clock(t)
-    led = Ledger(tmp / "ledger.sqlite")
-    return sender.Sender({"mode": mode, **conf}, file, led, clock=clock), led, clock
+    led, thread = Ledger(tmp / "ledger.sqlite"), Thread()
+    hand: Any = hands.Live(file, "/Users/someone/outbox", fake(tmp, kind)) if mode == "live" else hands.Dry(file, tmp / "state")
+
+    async def post(room: str, line: str) -> None:
+        (posted if posted is not None else []).append(f"{room}: {line}")
+    s = sender.Sender({"mode": mode, **conf}, file, led, thread, hand, post=post, to="owner-room", clock=clock)
+    s.thread_rows = thread                                # type: ignore[attr-defined]
+    return s, led, clock
 
 
-def their(led: Ledger, guid: str, created: float, person: str = "alex") -> None:
+def rows(s: sender.Sender) -> Thread:
+    return s.thread_rows                                  # type: ignore[attr-defined,no-any-return]
+
+
+def their(led: Ledger, guid: str, created: float, person: str = "alex", text: str = "see you at six") -> None:
     led.inbound_add(guid, "texting", f"imessage:{person}", person, 5, created=created)
+    led.inbound_set(guid, digest=digest(text))
 
 
 def his(led: Ledger, guid: str, created: float, side: str = "owner") -> None:
@@ -199,5 +232,74 @@ def test_a_restart_keeps_the_stored_fire_time_and_draws_nothing_new(tmp_path: Pa
     class Never(sender.random.Random):
         def uniform(self, a: float, b: float) -> float:
             raise AssertionError("drew again")
-    again = sender.Sender({"mode": "live"}, s.file, led, clock=clock, rand=Never())
-    assert armed(again, led, rid) == first
+    again = sender.Sender({"mode": "live"}, s.file, led, s.thread, s.hands, clock=clock, rand=Never())
+    assert armed(again, led, rid) == first and calls(tmp_path) == []
+    rows(s).add("t-1", WED - 5)
+    clock.t = first["fire_at"]
+    assert armed(again, led, rid)["handed"] == first["fire_at"] and calls(tmp_path) == [f"yerk-{rid}-1"]
+
+
+def due(s: sender.Sender, led: Ledger, clock: Clock, *guids: str, word: bool = False, state: str = "queued",
+        texts: tuple[str, ...] = ("on my way",)) -> int:
+    """A waiting row armed, its texts on the thread, and the clock at its fire time."""
+    for n, g in enumerate(guids):
+        their(led, g, WED - 30 + n)
+        rows(s).add(g, WED - 30 + n)
+    rid = waiting(led, *guids, word=word, state=state, texts=texts)
+    clock.t = armed(s, led, rid)["fire_at"]
+    return rid
+
+
+def test_a_text_of_theirs_before_the_fire_time_stops_it_and_a_card_his_word_released_says_they_wrote_again(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    shows = Card()
+    h = holds.Holds({"mode": "live"}, s.file, tmp_path / "state", led, "owner-room", Thread(), shows.show)
+    s.edits = h.edits
+    rid = due(s, led, clock, "t-1", word=True)
+    led.texting_set(rid, card="100", shown="📱 Alex · 13:59 · sending\n> see you at six\ndraft:\non my way\nwhy: checked")
+    rows(s).add("t-2", WED - 2, "wait, make it seven")
+    assert armed(s, led, rid)["state"] == "cancelled" and led.texting_get(rid)["reason"] == "they wrote again"
+    asyncio.run(h.flush())
+    assert calls(tmp_path) == [] and shows.posts == []
+    assert shows.edits[-1][2].split("\n")[0] == "📱 Alex · 13:59 · not sent: they wrote again"
+
+
+def test_at_fire_time_a_changed_text_is_decided_again_a_gone_one_cancels_and_an_away_bridge_waits_then_drops_once(tmp_path: Path) -> None:
+    posted: list[str] = []
+    s, led, clock = make(tmp_path, posted=posted)
+    rid = due(s, led, clock, "t-1")
+    rows(s).rows[0]["text"] = "see you at seven"
+    r = armed(s, led, rid)
+    assert (r["state"], r["fire_at"], r["delay"], r["handed"]) == ("deciding", None, None, None)
+    assert led.inbound_get("t-1")["digest"] == digest("see you at seven")
+    rid = due(s, led, clock, "t-2")
+    rows(s).rows = [x for x in rows(s).rows if x["guid"] != "t-2"]
+    assert armed(s, led, rid)["state"] == "cancelled" and led.texting_get(rid)["reason"] == "they took it back"
+    rid = due(s, led, clock, "t-3")
+    rows(s).down = True
+    assert armed(s, led, rid)["state"] == "queued" and calls(tmp_path) == []
+    clock.t += 30 * 60 + 1
+    assert armed(s, led, rid)["state"] == "dropped" and armed(s, led, rid)["state"] == "dropped"
+    assert calls(tmp_path) == [] and len(posted) == 1 and posted[0].startswith("owner-room: not sent: a text to Alex, due ")
+
+
+def test_an_ssh_that_connected_and_answered_otherwise_is_never_tried_again_and_one_that_could_not_connect_is(tmp_path: Path) -> None:
+    for kind, tries in (("odd", 1), ("nolink", 3)):
+        s, led, clock = make(tmp_path / kind, kind=kind)
+        rid = due(s, led, clock, "t-1")
+        for _ in range(3):
+            armed(s, led, rid)
+            clock.t += 5
+        assert len(calls(tmp_path / kind)) == tries
+        assert (led.texting_get(rid)["handed"] is None) is (kind == "nolink")
+
+
+def test_a_whole_dry_pass_writes_the_jobs_live_would_hand_and_never_starts_a_process(tmp_path: Path, monkeypatch: Any) -> None:
+    s, led, clock = make(tmp_path, mode="dry")
+    no_spawn(monkeypatch)
+    rid = due(s, led, clock, "t-1", "t-2", state="would-send", texts=("on my way", "ten min"))
+    r = armed(s, led, rid)
+    assert r["state"] == "would-send" and r["handed"] == clock.t and rows(s).reads == 1
+    for k in (1, 2):
+        got = json.loads((tmp_path / "state" / "texting" / "dry" / f"yerk-{rid}-{k}.json").read_text())
+        assert got == hands.job(r, k, WED - 29) and got["queued"] == WED - 28

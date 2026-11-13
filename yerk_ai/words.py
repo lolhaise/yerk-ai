@@ -558,6 +558,12 @@ TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; the code finds {found}", "n
 TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took over its card"
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
                  "withdrawn": "answered by you {at}", "superseded": "replaced by your edit", "cancelled": "answered by you"}
+TEXTING_SENT = {"sent": "sent {at}", "unseen": "may not have gone, not sent again", "dry": "would have gone {at}",   # texting/sender.py
+                "owner answered": "not sent: you answered first", "they wrote again": "not sent: they wrote again",
+                "they took it back": "not sent: they took it back", "they changed it": "not sent: they changed it"}
+TEXTING_REFUSED = "refused: a handle not on the reply list, or no outbox"
+TEXTING_STALE = "not sent: a text to {first}, due {at}\nthe Mac was out of reach for {minutes} min"
+TEXTING_SWITCHED = "not sent: {n} text{s} left to send by live\ntexting is {mode} now, so they are dropped"
 TEXTING_GONE = "nothing sent: that card is {state}"
 TEXTING_MOVED = "nothing sent: that card no longer shows the text its hold was made for"
 TEXTING_EDIT_EMPTY, TEXTING_OUT_OFF = "nothing changed: edit needs your text after it", "nothing sent: text-out is off in [gates]"

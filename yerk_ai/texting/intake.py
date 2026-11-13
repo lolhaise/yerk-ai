@@ -7,6 +7,7 @@ in `report`). The owner's own text answers every text of theirs before it, open 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,6 +20,11 @@ from .bridge import is_tapback, when_of
 from .people import People, Person
 
 ROOM = "texting"             # the inbound rows' room and the day log's room id: unlisted there, so class private
+
+
+def digest(text: str) -> str:
+    """A text's words, hashed: what the sender's recheck compares with the thread at fire time."""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 @dataclass
@@ -49,6 +55,7 @@ class Intake:
         at = when.timestamp() if when else None
         if not self.ledger.inbound_add(guid, ROOM, f"imessage:{p.key}", "owner" if mine else p.key, len(text), created=at):
             return "seen"
+        self.ledger.inbound_set(guid, digest=digest(text))
         files = [(Path(str(a.get("transfer_name") or a.get("filename") or "file")).name, str(a.get("mime_type") or ""),
                   int(a.get("total_bytes") or 0)) for a in msg.get("attachments") or [] if isinstance(a, dict)]
         for name, kind, size in files:            # what each is, never its bytes: nothing is fetched
