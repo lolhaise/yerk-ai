@@ -8,6 +8,20 @@ version changes.
 
 ## 2026-11-13
 
+### idle-copy (#?)
+
+- A room quiet for 25 minutes whose session holds 0.7 of its window or more is now compacted on a copy of the session in
+  every room, as a room with fast mode on has been since yesterday. A message sent while the copy compacts is answered at
+  once, in place of waiting under the card that says the conversation is being shortened, and what was said meanwhile is
+  carried to the copy, which becomes the room's session as that turn ends. With no process alive (after a restart) the
+  room's process is started first and a message sent during that start waits for it alone; a room with fast mode on still
+  waits for its next turn, as before.
+- What can still make a message wait under that card: the compaction when a turn ends right at Claude Code's own line (the
+  last resort before Claude Code compacts inside the next turn), the one before a rerun when a turn overflowed, and
+  `yerk room compact`, which someone asked for.
+- budgets.toml: `[code] lines` 31,677 to 31,699, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-7a-asof (#71)
 
 - `yerk texting replay`: the memory a replayed decision sees is held to the cut more tightly. A log named for its day is as

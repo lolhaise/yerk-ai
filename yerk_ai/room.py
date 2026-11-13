@@ -21,14 +21,15 @@ adapter's event loop.
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session. A new
   model, effort or account (the settings tool) closes it when the running turn ends, never inside it.
-- A session compacts between turns: idle `compact_after` past `compact_at` of its window (idle_compact), or at once when a
-  turn ends within `compact_within` of Claude Code's own line (_ended); a message meanwhile waits, its card up saying so.
-  A turn that ends further out, within `precompact_within` of the line, compacts a copy of the session instead, the room
-  left free (_precompact): a message meanwhile runs at once on the live session and the copy goes on compacting; once it
-  has, it becomes the room's session in one step, at once when no turn runs, else as the running turn ends, before a
-  message waiting runs, so the next message finds it small without waiting. What the live session said since the copy
-  was made rides once, as text, in the first message the copy gets (_tail); while one compacts, the turn-end compaction
-  waits for it as long as a turn still fits under the line ([session] copy_room).
+- A session compacts between turns: at once when a turn ends within `compact_within` of Claude Code's own line (_ended),
+  the room held, a message meanwhile waiting under its card. A turn that ends further out, within `precompact_within` of
+  the line, and a room idle `compact_after` past `compact_at` of its window (idle_compact: with no process alive it starts
+  one, the room held for that start only, and a fast room's waits for a turn) compact a copy of the session instead, the
+  room left free (_precompact): a message meanwhile runs at once on the live session and the copy goes on compacting;
+  once it has, it becomes the room's session in one step, at once when no turn runs, else as the running turn ends,
+  before a message waiting runs, so the next message finds it small without waiting. What the live session said since
+  the copy was made rides once, as text, in the first message the copy gets (_tail); while one compacts, the turn-end
+  compaction waits for it as long as a turn still fits under the line ([session] copy_room).
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
