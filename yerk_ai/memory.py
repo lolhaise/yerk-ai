@@ -985,13 +985,14 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
     k = max(1, min(int(k), 20))
+    limited = bool(reader and (not reader.owner or reader.sealed))
 
-    def whole(path: str, text: str) -> bool:
-        """A room that is not an owner room, or is sealed, ranks and gets only chunks it can read whole (R2), its pool drawn from those
-        alone (READ_ON): its own line beside a hidden one reaches it through its pack, its topic hits and read_memory, never recall,
-        since a chunk read in part ranks on words it may not see."""
-        return allowed_text(reader, Path(path), text, daily=s.daily) == text
-    keep = whole if reader and (not reader.owner or reader.sealed) else None
+    def mine(path: str, text: str) -> bool:
+        """What a room ranks, its pool drawn from these alone (READ_ON): with its own `also`, its roots' chunks (every root is indexed);
+        a room that is not an owner room, or is sealed, the chunks it can read whole (R2): its own line beside a hidden one reaches it
+        through its pack, its topic hits and read_memory, never recall, since a chunk read in part ranks on words it may not see."""
+        return (not s.scoped or s.scope.contains(Path(path))) and (not limited or allowed_text(reader, Path(path), text, daily=s.daily) == text)
+    keep = mine if s.scoped or limited else None
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
@@ -1010,8 +1011,6 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
-    if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
-        keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
     if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
         vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
     if keep:                 # nor this one: the meaning rows pass the same filter as the keyword rows

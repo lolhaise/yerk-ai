@@ -42,3 +42,27 @@ def test_a_sealed_room_finds_its_own_lines_on_a_name_the_owners_notes_hold_in_20
     file names her: its 80 candidates were the owner's, drawn from the whole index, and its filter left none."""
     got = texts(memory.recall(tree(tmp_path), "Alex", 6, reader=SEALED))
     assert "example lake" in got and "example picnic" in got
+
+
+def test_a_person_room_and_an_owner_room_with_its_own_also_find_their_own_lines_the_same_way(tmp_path):
+    s = tree(tmp_path)
+    got = texts(memory.recall(s, "Alex", 6, reader=PLAIN))
+    assert "example lake" in got and "example picnic" in got
+    own = s.only(tmp_path / "private", "owner-room", [str(tmp_path / "mine")])
+    got = texts(memory.recall(own, "Alex", 6, reader=OWNS))
+    assert "blue shed" in got and "owner's note" not in got
+
+
+def test_the_room_still_gets_nothing_it_may_not_read_nor_a_line_of_a_chunk_it_reads_in_part(tmp_path):
+    """The filters stay the gate, applied before the pool: no hit, no snippet, no line of a chunk that holds a line of the
+    room's beside one it may not read (the chunker keeps a day log's rooms apart; the index is held to it all the same)."""
+    s = tree(tmp_path)
+    conn = memindex.connect(s.index_db, readonly=False)
+    conn.execute("INSERT INTO chunks (path, lo, hi, sha, body) VALUES (?, 9, 10, 'mixed', ?)", (str(s.daily / "2026-01-20.md"), "\n".join([
+        memory.format_line(AT, "person-room", PERSON, "person", "beta", "Alex and the example canoe", "room", "p2"),
+        memory.format_line(AT, "owner-room", OWNER, "owner", "", "Alex and the example vault code", "private", "o2")])))
+    conn.close()
+    for rd in (SEALED, PLAIN):
+        for got in (texts(memory.recall(s, "Alex", 20, reader=rd)), texts(memory.ranked(s, "Alex", 20, reader=rd))):
+            assert "example lake" in got and "example picnic" in got
+            assert not [w for w in ("owner's note", "kayak", "canoe", "vault") if w in got]
