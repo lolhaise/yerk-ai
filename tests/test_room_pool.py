@@ -1,0 +1,44 @@
+"""Checks that a room that may not read everything (a room for another person, a sealed room, a room with its own `also`) searches
+only the chunks of memory it may read: where your notes name a person in many chunks, the room's own lines on that person still reach
+search, and nothing it may not read reaches it. An owner room's search is the one it was. Every value here is a placeholder."""
+import time
+from datetime import datetime, timezone
+
+from yerk_ai import memindex, memory
+
+AT = datetime(2026, 1, 20, 10, 0, tzinfo=timezone.utc)
+OWNER, PERSON = "discord:OWNER_ID", "discord:PERSON_ID"
+SEALED = memory.Reader("person-room", PERSON, sealed=True)      # sealed, with a person in it: its own lines only
+PLAIN = memory.Reader("person-room", PERSON)                    # a person room: its own lines and shared files
+OWNS = memory.Reader("owner-room", OWNER, owner=True)
+
+
+def tree(tmp_path, crowd: int = 200, word: str = "Alex") -> memory.Settings:
+    """The owner's notes, an `also` root no room lists, name `word` in `crowd` short chunks, each above any other in bm25;
+    person-room's own fact file and its day-log line name Alex, as do an owner line and a line in `mine`, the root owner-room
+    lists as its own `also`. The index is built."""
+    private, other, mine = tmp_path / "private", tmp_path / "other", tmp_path / "mine"
+    for d in (private / "memory" / "facts", private / "memory" / "daily", other, mine):
+        d.mkdir(parents=True)
+    (other / "notes.md").write_text("".join(f"## {word} {n}\n\n{word}, {word}: the owner's note {n}.\n\n" for n in range(crowd)))
+    (mine / "notes.md").write_text("# Notes\n\n- Alex keeps the example ladder in the blue shed by the gate.\n")
+    (private / "memory" / "facts" / "beta.md").write_text(
+        f"---\nclass: room\nroom: {PERSON}\n---\n# Beta\n\n- Beta's brother Alex lives by the example lake.\n")
+    (private / "memory" / "daily" / "2026-01-20.md").write_text("# 2026-01-20\n\n" + "\n".join([
+        memory.format_line(AT, "person-room", PERSON, "person", "beta", "Alex comes to the example picnic on Sunday", "room", "p1"),
+        memory.format_line(AT, "owner-room", OWNER, "owner", "", "Alex owes me the example kayak", "private", "o1")]) + "\n")
+    s = memory.settings(private, tmp_path / "state", {"timezone": "UTC", "also": [str(other), str(mine)]})
+    memindex.Index(s.index_db, s.scope).sync()
+    return s
+
+
+def texts(r: dict) -> str:
+    assert r["ok"], r
+    return "\n".join(h["text"] for h in r["hits"])
+
+
+def test_a_sealed_room_finds_its_own_lines_on_a_name_the_owners_notes_hold_in_200_chunks(tmp_path):
+    """Nov 12: a sealed room with a person in it searched for a relative's name and was told nothing was on file, though its own
+    file names her: its 80 candidates were the owner's, drawn from the whole index, and its filter left none."""
+    got = texts(memory.recall(tree(tmp_path), "Alex", 6, reader=SEALED))
+    assert "example lake" in got and "example picnic" in got
