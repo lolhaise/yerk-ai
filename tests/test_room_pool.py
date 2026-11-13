@@ -112,6 +112,34 @@ def test_an_owner_rooms_search_is_the_read_it_was_with_the_same_hits_in_the_same
     assert asked == [None] * 4                 # no filter, so the read origin/main makes: LIMIT the pool, no row past it
 
 
+def test_the_owners_read_asks_for_its_pool_and_a_rooms_for_the_bound_past_it(tmp_path, monkeypatch):
+    """What each read asks the index for: the owner the pool's rows and not one more (a longer read would hand the cover re-rank
+    other candidates and change the owner's hits on a big index), a room the pool and READ_ON past it."""
+    s, asked, real = tree(tmp_path), [], memindex.connect
+
+    class Spy:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def execute(self, sql, args=()):
+            asked.extend([args[-1]] if "ORDER BY bm25" in sql else [])
+            return self.conn.execute(sql, args)
+
+        def close(self):
+            self.conn.close()
+    monkeypatch.setattr(memindex, "connect", lambda *a, **k: Spy(real(*a, **k)))
+    for rd in (OWNS, None, SEALED, PLAIN):
+        assert memory.ranked(s, "Alex", 6, reader=rd, wide=False)["ok"]
+    assert asked == [memory.POOL * 2] * 2 + [memory.POOL * 2 + memory.READ_ON] * 2
+
+
+def test_a_sealed_owner_room_draws_its_pool_the_same_way_and_gets_no_other_rooms_lines(tmp_path):
+    """A room can be the owner's and sealed: in Yerk's own tree it reads its own lines only, so its search is filtered as a
+    person room's is, before the pool."""
+    got = texts(memory.recall(tree(tmp_path), "Alex example lake picnic kayak", 20, reader=memory.Reader("owner-room", OWNER, owner=True, sealed=True)))
+    assert "example kayak" in got and not [w for w in ("example lake", "example picnic") if w in got]
+
+
 def test_a_room_asks_the_meaning_search_for_its_most_rows_and_keeps_only_its_own(tmp_path, monkeypatch):
     """The meaning half as far as yerk-index serves (400 rows): a room that may not read everything asks for that many and keeps
     those it may read; an owner room asks for the pool, as before."""
