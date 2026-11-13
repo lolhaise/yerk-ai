@@ -14,14 +14,14 @@ version changes.
   person room, a sealed room and a room with its own `also` took the 80 best matches from the whole memory and only then
   dropped what they may not read, so where the owner's notes name someone in hundreds of places, none of the 80 was the
   room's and its assistant said nothing was on file about people in the room's own files. Such a room now reads on past
-  what it may not read, at most 5,000 matches further, and deep recall on a name does the same. It still gets nothing it
+  what it may not read, at most 2,000 matches further, and deep recall on a name does the same. It still gets nothing it
   may not read.
 - Such a room also asks the meaning search for 400 rows, the most it serves, where it asked for 80, and keeps those it
   may read.
-- A search in such a room can take up to about half a second longer when the word is common in the owner's memory
-  (measured on a made-up memory of the live one's size). An owner's room searches as before: the same results in the
-  same order, at the same cost.
-- budgets.toml: `[code] lines` 31,245 to 31,255, with its dated note.
+- A search in such a room can take up to about a second longer when the word is common in the owner's memory
+  (measured on a made-up memory with 20 rooms). An owner's room searches as before: the same results in the same
+  order, at the same cost.
+- budgets.toml: `[code] lines` 31,245 to 31,256, with its dated note.
 - **Upgrading**: nothing to change.
 
 ### transcribe-voice-joins (#67)

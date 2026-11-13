@@ -4,6 +4,8 @@ search, and nothing it may not read reaches it. An owner room's search is the on
 import time
 from datetime import datetime, timezone
 
+import pytest
+
 from yerk_ai import memindex, memory
 
 AT = datetime(2026, 1, 20, 10, 0, tzinfo=timezone.utc)
@@ -11,6 +13,13 @@ OWNER, PERSON = "discord:OWNER_ID", "discord:PERSON_ID"
 SEALED = memory.Reader("person-room", PERSON, sealed=True)      # sealed, with a person in it: its own lines only
 PLAIN = memory.Reader("person-room", PERSON)                    # a person room: its own lines and shared files
 OWNS = memory.Reader("owner-room", OWNER, owner=True)
+
+
+@pytest.fixture(autouse=True)
+def no_inboxes(monkeypatch):
+    """settings() adds each install's room inboxes to memory.INBOXES, which file_class walks for every chunk outside the day logs:
+    through a whole suite it holds thousands (171 ms a call at 10,000), so a read of the bound's 2,160 rows took past 30 s."""
+    monkeypatch.setattr(memory, "INBOXES", {})
 
 
 def tree(tmp_path, crowd: int = 200, word: str = "Alex") -> memory.Settings:
@@ -70,8 +79,8 @@ def test_the_room_still_gets_nothing_it_may_not_read_nor_a_line_of_a_chunk_it_re
 
 def test_past_the_bound_the_read_stops_inside_its_deadline_as_a_search_that_found_nothing(tmp_path, monkeypatch):
     """More matches than the bound, none of them the room's: the read stops at the bound, inside its deadline (the bench's 30 s
-    here: a whole suite on a busy box took the 0.1 s read past 2 s), and answers no hit; a read its deadline cuts answers a
-    timeout, never no hit (lines_on reads that as no absence)."""
+    here, so a busy box cannot fail it), and answers no hit; a read its deadline cuts answers a timeout, never no hit (lines_on
+    reads that as no absence)."""
     s = tree(tmp_path, memory.POOL * 2 + memory.READ_ON + 40, "kayak")
     seen, real = [], memory.allowed_text
     monkeypatch.setattr(memory, "allowed_text", lambda *a, **k: seen.append(1) or real(*a, **k))

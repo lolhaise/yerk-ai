@@ -870,9 +870,10 @@ SHARE = 0.4          # the keyword rank's part of the fused score, the meaning r
 RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
                      # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
-READ_ON = 5000       # a room that may not read everything reads on at most this many keyword rows past the pool (memindex.search): past
-                     # every match of each name a sealed room was measured on, live, Nov 12 (2,712 at most). Its filter, about 85 microseconds
-                     # a row, takes 0.43 s at the bound on a made-up 440,000-chunk index (the owner's read 0.04 s; live, 5,000 rows 0.3 to 0.8 s)
+READ_ON = 2000       # a room that may not read everything reads on at most this many keyword rows past the pool (memindex.search), past the
+                     # first own chunk of each name a sealed room was measured on, live, Nov 12 (rank 494 at most). Its filter costs 50 to 400
+                     # microseconds a row, the most outside the day logs with many rooms (file_class walks every room's inbox): 0.12 to 0.9 s at
+                     # the bound on a made-up index, with no room or 20, the owner's read 0.03 s (live, 5,000 rows read in 0.3 to 0.8 s)
 MEANING_MOST = 400   # and asks yerk-index for this many meaning rows, the most its handler serves (embeddings.Server.search): over
                      # 440,000 made-up vectors 0.90 s against 0.89 s for the pool, the scan being the cost, and 401 kB of answer against 81
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day

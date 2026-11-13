@@ -1541,5 +1541,5 @@ secs = 60
 # 2026-11-12: texting-5 raised it by 364, the holds, the cards and the owner's word of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 # 2026-11-12: transcribe-words-speakers raised it by 39, the second pass's lines where the first heard only music, Muse in 2-minute windows and no resend of a request that ran long (a 28-minute recording that came back as music marks after six and a half minutes, 2026-11-12), not folded to fit.
 # 2026-11-12: transcribe-voice-joins raised it by 162, a voice's letters joined across a silence: each break's voices spliced and sent to Muse in two orders, a third when one is not used, the joins by groups in window order (the letters that drift on a long call, 2026-11-12), not folded to fit.
-# 2026-11-12: room-recall-pool raised it by 10, a room that may not read everything drawing its search's candidates from the chunks it may read, at most 5,000 rows past the pool, and 400 meaning rows (a sealed room told nothing was on file about people in its own files, 2026-11-12), cut from 15 before the raise.
-lines = 31255
+# 2026-11-12: room-recall-pool raised it by 11, a room that may not read everything drawing its search's candidates from the chunks it may read, at most 2,000 rows past the pool, and 400 meaning rows (a sealed room told nothing was on file about people in its own files, 2026-11-12), cut from 15 before the raise.
+lines = 31256

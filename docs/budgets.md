@@ -701,9 +701,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: transcribe-voice-joins raised it by 162, a voice's letters joined across a silence: each break's voices spliced and sent to Muse in two orders, a third when one is not used, the joins by groups in window order (the letters that drift on a long call, 2026-11-12), not folded to fit.
 
-2026-11-12: room-recall-pool raised it by 10, a room that may not read everything drawing its search's candidates from the chunks it may read, at most 5,000 rows past the pool, and 400 meaning rows (a sealed room told nothing was on file about people in its own files, 2026-11-12), cut from 15 before the raise.
+2026-11-12: room-recall-pool raised it by 11, a room that may not read everything drawing its search's candidates from the chunks it may read, at most 2,000 rows past the pool, and 400 meaning rows (a sealed room told nothing was on file about people in its own files, 2026-11-12), cut from 15 before the raise.
 
-- `lines = 31255`
+- `lines = 31256`
 
 ## Uncapped
 
