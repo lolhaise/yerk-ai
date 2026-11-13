@@ -215,6 +215,16 @@ def test_the_check_passes_over_an_account_with_no_token_and_with_none_anywhere_h
     assert (r["decision"], r["reason"]) == ("held", words.TEXTING_NO_TOKEN) and len(calls(tmp_path)) == 1
 
 
+def test_with_every_account_out_of_the_checks_model_the_fallback_answers_and_the_verdict_says_so(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict(statements=[]))
+    w, led = writer_setup(tmp_path, monkeypatch, fallback="model-y")
+    w.cooldowns.fail("a0", "rate_limit", lambda n: 3600.0, model="model-c")
+    asyncio.run(check.Check({"check_model": "model-c"}, w).check(decided(led)))
+    r, [rec] = led.texting_last("alex") or {}, calls(tmp_path)
+    assert (r["state"], json.loads(r["verdict"])["account"]) == ("release-ready", "a0 (model-y)")
+    assert rec["argv"][rec["argv"].index("--model") + 1] == "model-y" and rec["config_dir"].endswith("check-config")
+
+
 def test_the_loop_checks_each_decided_reply_or_tapback_once_and_never_a_none_or_a_held(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict(statements=[]))
     w, led = writer_setup(tmp_path, monkeypatch)
