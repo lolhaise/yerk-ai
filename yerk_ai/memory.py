@@ -874,6 +874,8 @@ READ_ON = 5000       # a room that may not read everything: keyword rows read pa
                      # every match of each name measured in a sealed room's search on the live index (Nov 12: at most 2,712). Its cost is the
                      # room's filter, about 85 microseconds a row: 0.43 s at the bound on a made-up index of 440,000 chunks (the owner's read
                      # of that word 0.04 s; on the live index a read of 5,000 rows took 0.3 to 0.8 s). The search's deadline cuts it as before
+MEANING_MOST = 400   # and asks yerk-index for this many meaning rows, the most its handler serves (embeddings.Server.search): over
+                     # 440,000 made-up vectors 0.90 s against 0.89 s for the pool, the scan being the cost, and 401 kB of answer against 81
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
 log = logging.getLogger("yerk.memory")
 
@@ -1011,12 +1013,12 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
+    state, vectors = meaning(s, query, pool=MEANING_MOST if keep else POOL, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
         vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
-    if keep:                 # nor this one: the meaning rows pass the same filter as the keyword rows
+    if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
         vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
     hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words

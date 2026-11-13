@@ -101,3 +101,18 @@ def test_an_owner_rooms_search_is_the_read_it_was_with_the_same_hits_in_the_same
     for q, main in MAIN.items():              # as origin/main ranks them, for an owner room and for no room alike
         assert [h["cite"] for h in memory.recall(s, q, 6, reader=OWNS)["hits"]] == [h["cite"] for h in memory.recall(s, q, 6)["hits"]] == main
     assert asked == [None] * 4                 # no filter, so the read origin/main makes: LIMIT the pool, no row past it
+
+
+def test_a_room_asks_the_meaning_search_for_its_most_rows_and_keeps_only_its_own(tmp_path, monkeypatch):
+    """The meaning half as far as yerk-index serves (400 rows): a room that may not read everything asks for that many and keeps
+    those it may read; an owner room asks for the pool, as before."""
+    s = tree(tmp_path)
+    conn = memindex.connect(s.index_db, readonly=True)
+    rows = conn.execute("SELECT id, path, lo, body FROM chunks ORDER BY instr(body, 'example lake') > 0, id").fetchall()
+    conn.close()
+    near = [{"id": i, "path": p, "line": lo, "text": b, "score": 0.9 - 0.0001 * n} for n, (i, p, lo, b) in enumerate(rows)]
+    asked = []
+    monkeypatch.setattr(memory, "meaning", lambda s, q, pool=memory.POOL, **k: asked.append(pool) or ("ok", near[:pool]))
+    assert "example lake" in texts(memory.recall(s, "a relative near the shore", 6, reader=PLAIN))      # no keyword of its line
+    assert "example lake" not in texts(memory.recall(s, "a relative near the shore", 6, reader=OWNS))   # the owner's 80 are its notes
+    assert asked == [memory.MEANING_MOST, memory.POOL]
