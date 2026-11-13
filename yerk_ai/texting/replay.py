@@ -153,10 +153,11 @@ def score(c: Cut, decision: str, parts: list[str]) -> str:
     return ("agree" if c.went else "more") if decision in ("reply", "held") else ("less" if c.went else "agree")
 
 
-def as_of(hits: list[dict[str, Any]], at: datetime, root: Path, imports: Path, cache: dict[Path, datetime | None]) -> tuple[list[dict[str, Any]], int]:
-    """J31: the hits a cut may see, and how many lines were taken out. A hit from a file under the texts import folder that
-    holds a message line dated at or after the cut's minute goes whole; so does a hit from a file whose name begins with a
-    date on or after the cut's day. A hit with no file in its cite leaves the whole part out."""
+def as_of(hits: list[dict[str, Any]], at: datetime, root: Path, imports: Path) -> tuple[list[dict[str, Any]], int]:
+    """J31: the hits a cut may see, and how many lines were taken out. A hit from a file under the texts import folder is
+    kept only when every line of its text but a gap mark is a message line that begins with its own minute, before the
+    cut's (a snippet's lines are picked, not a span, and a long one is cut around its match); a hit from a file whose name
+    begins with a date on or after the cut's day goes whole. A hit with no file in its cite leaves the whole part out."""
     if any(not str(h.get("cite") or "").rpartition(":")[0] for h in hits):
         return [], sum(len(str(h.get("text") or "").splitlines()) or 1 for h in hits)
     kept, dropped = [], 0
@@ -164,13 +165,8 @@ def as_of(hits: list[dict[str, Any]], at: datetime, root: Path, imports: Path, c
         f = Path(str(h["cite"]).rpartition(":")[0])
         f = (f if f.is_absolute() else root / f).resolve()
         if f.is_relative_to(imports):
-            if f not in cache:
-                try:
-                    cache[f] = max((datetime.strptime(m[1], "%Y-%m-%d %H:%M").replace(tzinfo=at.tzinfo)
-                                    for m in map(MSG.match, f.read_text(errors="replace").splitlines()) if m), default=None)
-                except OSError:
-                    cache[f] = at
-            late = cache[f] is not None and cache[f] >= at          # type: ignore[operator]
+            late = any(x.strip() not in ("", "…") and not ((m := MSG.match(x)) and m[1] < f"{at:%Y-%m-%d %H:%M}")
+                       for x in str(h.get("text") or "").splitlines())
         else:
             late = bool(d := DAY.match(f.name)) and d[1] >= f"{at:%Y-%m-%d}"     # type: ignore[index]
         if late:
@@ -196,14 +192,14 @@ async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, t
     the live writer with no tool and, a reply or a tapback, checked by the live check; at most `parallel` cuts at once,
     cooldowns in memory only. Each cut's line goes to `add` as it ends; a cut that raises is written with its `error` (the
     exception's name and first line, never a text) and the run goes on. How many cuts raised."""
-    led, cache = Ledger(scratch / "ledger.sqlite"), {}  # type: ignore[var-annotated]
+    led = Ledger(scratch / "ledger.sqlite")
 
     async def thread(key: str, limit: int) -> list[dict[str, Any]]:
         return rows(CUT.get())
 
     def recall(text: str) -> str:
         c = CUT.get()
-        hits, c.dropped = as_of(search(text), c.at, root, imports.resolve(), cache)
+        hits, c.dropped = as_of(search(text), c.at, root, imports.resolve())
         return "\n".join(f"{h['cite']} {h['text']}" for h in hits)
 
     w = writer.Writer(conf, file, scratch, led, report, thread, recall, lambda now: "", accounts, Cooldowns(), failures, model,

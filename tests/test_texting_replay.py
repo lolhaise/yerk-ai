@@ -122,12 +122,15 @@ def test_a_cut_is_decided_and_checked_by_the_live_code_as_of_its_minute_with_no_
     (priv / "memory" / "daily").mkdir(parents=True)
     (priv / "memory" / "daily" / "2026-10-02.md").write_text("the day after\n")
     (priv / "memory" / "daily" / "2026-09-24.md").write_text("a week before\n")
-    hits = [{"cite": f"{priv / 'imports' / 'texts' / 'alex.md'}:7", "text": "- 2026-10-01 09:20 Sam: sure, at ten"},
-            {"cite": "daily/2026-10-02.md:1", "text": "DAY-AFTER-LINE"}, {"cite": "daily/2026-09-24.md:1", "text": "WEEK-BEFORE-LINE"}]
+    alex = priv / "imports" / "texts" / "alex.md"
+    hits = [{"cite": f"{alex}:7", "text": "- 2026-10-01 09:20 Sam: sure, at ten"},
+            {"cite": "daily/2026-10-02.md:1", "text": "DAY-AFTER-LINE"}, {"cite": "daily/2026-09-24.md:1", "text": "WEEK-BEFORE-LINE"},
+            {"cite": f"{alex}:4", "text": "- 2026-10-01 09:00 Sam: morning"}, {"cite": f"{alex}:2", "text": "6 messages, 2026-10-01 to 2026-10-03"}]
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yes!"]))
     f = run(tmp_path, monkeypatch, priv, state, thread_cuts(priv)[2:], hits)
     stdin = (tmp_path / "stdin.txt").read_text()
     assert "WEEK-BEFORE-LINE" in stdin and "DAY-AFTER-LINE" not in stdin and "sure, at ten" not in stdin
+    assert "alex.md:4 - 2026-10-01 09:00 Sam: morning" in stdin and "6 messages" not in stdin   # the same thread's older line, by line
     pack = stdin.split("=== end their texts")[0]
     assert "alex:4 " in pack and "alex:5 " in pack and "alex:6 " in pack and "alex:7 " not in pack and "alex:8 " not in pack
     assert "=== held" in stdin and stdin.split("=== held")[1].split("\n")[1] == "none"
@@ -137,7 +140,7 @@ def test_a_cut_is_decided_and_checked_by_the_live_code_as_of_its_minute_with_no_
     assert "--json-schema" in ch and str(writer.PROMPT) not in ch
     head, cut = [json.loads(x) for x in f.read_text().splitlines()]
     assert head == {"since": "2026-10-01"} and cut["id"] == "alex:5" and cut["at"] == "2026-10-01 09:06"
-    assert cut["decision"] in ("reply", "held") and cut["verdict"] and cut["dropped"] == 2 and cut["score"] == "agree"
+    assert cut["decision"] in ("reply", "held") and cut["verdict"] and cut["dropped"] == 3 and cut["score"] == "agree"
     assert cut["went"] == [{"at": "2026-10-01 09:20", "side": "owner", "text": "sure, at ten"}] and cut["account"] == "a0"
 
 
