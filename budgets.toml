@@ -1540,4 +1540,5 @@ secs = 60
 # 2026-11-12: texting-4 raised it by 218, the check of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 # 2026-11-12: texting-5 raised it by 364, the holds, the cards and the owner's word of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 # 2026-11-12: transcribe-words-speakers raised it by 39, the second pass's lines where the first heard only music, Muse in 2-minute windows and no resend of a request that ran long (a 28-minute recording that came back as music marks after six and a half minutes, 2026-11-12), not folded to fit.
-lines = 31083
+# 2026-11-12: transcribe-voice-joins raised it by 162, a voice's letters joined across a silence: each break's voices spliced and sent to Muse in two orders, a third when one is not used, the joins by groups in window order (the letters that drift on a long call, 2026-11-12), not folded to fit.
+lines = 31245

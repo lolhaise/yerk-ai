@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import urllib.error
+import wave
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -310,7 +311,8 @@ def test_a_window_is_mono_16_khz_16_bit_wav_cut_at_its_start_for_its_length(tmp_
 def test_a_muse_answer_maps_to_turns_in_seconds_from_the_recordings_start():
     got = answer((0.5, 4.25, "A"), (5, 9, "B"))
     got["turns"] += [{"turnId": 9, "startMs": 9500, "endMs": 9600, "transcript": " ", "speaker": "A"},     # no words
-                     {"turnId": 10, "startMs": 9700, "endMs": 9900, "transcript": "mm", "speaker": ""}]     # no letter
+                     {"turnId": 10, "startMs": 9700, "endMs": 9900, "transcript": "mm", "speaker": ""},     # no letter
+                     {"turnId": 11, "startMs": 9950, "endMs": 9950, "transcript": "ok", "speaker": "B"}]    # no length, as Muse sends now and then
     assert transcribe.turns(got, 450) == [turn(450.5, 454.25, "A"), turn(455, 459, "B")]
     with pytest.raises(transcribe.Failed, match=r"did not read as turns \(KeyError 'turns'; its keys: audioDurationMs, sessionId"):
         transcribe.turns({"sessionId": "session-0001", "audioDurationMs": 10080}, 0)
@@ -321,20 +323,20 @@ def test_letters_are_reconciled_by_the_time_they_share_in_each_overlap():
     at = [0, 450]
     first = [turn(0, 300, "A"), turn(300, 470, "B"), turn(470, 540, "A")]
     swapped = [turn(450, 470, "A"), turn(470, 540, "B"), turn(540, 700, "A"), turn(700, 990, "B")]   # window 2 heard B first
-    out, new = transcribe.reconcile([first, swapped], at)
+    out, new, _ = transcribe.reconcile([first, swapped], at)
     assert new == 0 and out == first + [turn(540, 700, "B"), turn(700, 990, "A")]   # its A is the recording's B: comes out B
     same = [turn(450, 470, "B"), turn(470, 540, "A"), turn(540, 700, "B")]
-    assert transcribe.reconcile([first, same], at) == (first + [turn(540, 700, "B")], 0)    # no swap: stays as it is
+    assert transcribe.reconcile([first, same], at)[:2] == (first + [turn(540, 700, "B")], 0)    # no swap: stays as it is
 
 
 @pytest.mark.usefixtures("long_windows")
 def test_a_letter_with_no_time_in_the_overlap_gets_the_next_letter_and_is_counted():
     first = [turn(0, 400, "A"), turn(400, 540, "B")]
     second = [turn(450, 540, "A"), turn(540, 600, "B"), turn(600, 990, "A")]   # its B never spoke in the overlap
-    out, new = transcribe.reconcile([first, second], [0, 450])
+    out, new, _ = transcribe.reconcile([first, second], [0, 450])
     assert new == 1 and out == first + [turn(540, 600, "C"), turn(600, 990, "B")]
     third = [turn(900, 1000, "A"), turn(1000, 1100, "B")]                    # window 3 from 900: its A is window 2's A, so B
-    out, new = transcribe.reconcile([first, second, third], [0, 450, 900])
+    out, new, _ = transcribe.reconcile([first, second, third], [0, 450, 900])
     assert new == 2 and out[-2:] == [turn(990, 1000, "B"), turn(1000, 1100, "D")]   # A, B and C taken: D, the second counted
 
 
@@ -342,7 +344,7 @@ def test_a_letter_with_no_time_in_the_overlap_gets_the_next_letter_and_is_counte
 def test_a_turn_inside_an_overlap_is_kept_from_the_earlier_window_only():
     first = [turn(0, 500, "A"), turn(500, 540, "B")]
     second = [turn(450, 500, "B"), turn(500, 560, "A"), turn(560, 600, "B")]   # 500-540 heard twice, 540-560 once
-    out, new = transcribe.reconcile([first, second], [0, 450])
+    out, new, _ = transcribe.reconcile([first, second], [0, 450])
     assert new == 0 and out == [turn(0, 500, "A"), turn(500, 540, "B"), turn(540, 560, "B"), turn(560, 600, "A")]
     assert sum(t["end"] - t["start"] for t in out) == 600                  # every second once
 
@@ -354,6 +356,193 @@ def test_a_segment_takes_the_letter_covering_most_of_it_else_the_nearest_within_
     assert transcribe.speaker({"start": 40, "end": 41}, heard) is None and transcribe.speaker({"start": 0, "end": 1}, []) is None
     assert transcribe.line({"start": 10, "end": 20, "text": "Fine.", "other": "Find.", "speaker": "B"}) == (
         "[00:00:10 -> 00:00:20] B: (uncertain) Fine. | second pass: Find.")
+
+
+def test_a_voices_clip_is_its_dense_speech_nearest_the_moment_about_10_s_in_at_most_8_pieces_never_a_stretch_twice():
+    def cuts(said: list[dict[str, object]], near: float) -> list[tuple[float, float]]:
+        return [(round(s, 2), round(e, 2)) for s, e in transcribe.clip(said, near)]
+    said = [turn(0, 20, "A"), turn(30, 33, "A"), turn(40, 52, "A"), turn(40, 52, "A"), turn(60, 61, "A"), turn(80, 84, "A")]
+    assert cuts(said, 50) == [(30, 33), (40, 48)]                  # turns of 2.5 to 15 s nearest 50 first, 8 s at most: 11 s
+    assert cuts(said[:1] + said[4:5], 50) == [(0, 8), (59.85, 61.15)]     # then a long turn's first 8 s, then a short one padded
+    assert cuts([turn(25, 26, "A"), turn(26.1, 27, "A"), turn(0, 20, "A")], 30) == [(0, 8), (25.95, 27.15)]   # 26.1 never twice
+    shorts = cuts([turn(2 * k, 2 * k + 0.8, "A") for k in range(12)] + [turn(30, 30.5, "A")], 0)
+    assert len(shorts) == 8 and shorts[0] == (0, 0.95) and shorts[-1] == (13.85, 14.95)    # 8 pieces at most; under 0.7 s never
+
+
+def test_a_break_is_a_window_past_the_first_voices_with_a_letter_matched_by_none_and_its_voices_are_clipped_each_side():
+    at, a = [0, 60, 120, 180, 240, 300, 360], [turn(s, s + 5, "A") for s in (60, 105, 130, 200, 250, 300)]
+    each = [[], [a[0], turn(65, 100, "B"), turn(100, 105, "C"), a[1], a[2]], [a[2], a[3]], [a[3], a[4]], [a[4], a[5]],
+            [a[5], turn(370, 375, "D"), turn(380, 383, "D")],                   # D is new where B, silent since 100 s, may be back
+            [turn(370, 375, "D"), turn(380, 383, "D"), turn(470, 471, "E")]]    # E's one second, padded, is under 1.5 s
+    heard = [turn(65, 100, "B"), turn(100, 105, "C")]                           # B spoke 35 s, C 5 s
+    assert transcribe.breaks(heard, each, at) == [                              # window 2's first voices are no break
+        ([("A", [(250, 255), (300, 305)]), ("B", [(65, 73)])], [("D", [(370, 375), (380, 383)])])]   # A nearest 300, D nearest 360
+    first = [turn(130, 140, "A"), turn(140, 150, "B")]
+    assert transcribe.reconcile([[], first], [0, 60]) == (first, 0, [[], first])   # a first window that heard no one: none counted
+
+
+def pcm(path: Path, seconds: float, value: int) -> Path:
+    """A WAV as the windows are, every sample `value`: made up, so no test of a splice cuts real audio."""
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(value.to_bytes(2, "little") * round(seconds * 16000))
+    return path
+
+
+def test_a_splice_is_one_wav_of_each_voices_pieces_with_silence_after_each_and_its_answer_gives_each_voice_a_letter(tmp_path):
+    wavs = [pcm(tmp_path / "w000.wav", 10, 1), pcm(tmp_path / "w001.wav", 5, 2)]          # windows from 0 s and from 5 s
+    spans, seconds = transcribe.splice([("X", [(1, 2), (6, 6.5)]), ("Y", [(9.5, 10.5)])], wavs, [0, 5], tmp_path / "b000.wav")
+    assert [(who, round(a, 2), round(b, 2)) for who, a, b in spans] == [("X", 0, 1.9), ("Y", 2.4, 3.6)] and round(seconds, 2) == 4.1
+    with wave.open(str(tmp_path / "b000.wav")) as w:
+        assert (w.getnchannels(), w.getsampwidth(), w.getframerate()) == (1, 2, 16000)
+        got = w.readframes(w.getnframes())
+    one, two, quiet = b"\1\0", b"\2\0", b"\0\0"
+    assert got == (one * 16000 + quiet * 3200 + two * 8000 + quiet * 3200 + quiet * 8000       # X: 1 s of window 1, 0.5 s of window 2
+                   + two * 8000 + quiet * 8000 + quiet * 3200 + quiet * 8000)                 # Y: past window 2's end, silence
+    heard = answer((0, 1.5, "A"), (1.5, 1.9, "B"), (2.4, 3.0, "A"), (4.5, 5, "C"))
+    assert transcribe.letters(spans + [("Z", 4.1, 4.4)], heard) == {"X": "A", "Y": "A", "Z": None}   # C is near Z but not on it
+
+
+def test_a_minted_letter_joins_the_one_group_two_used_splices_put_it_with_and_a_join_counts_at_a_later_break():
+    p, apart = [(0.0, 5.0)], [{"A", "B"}, {"C", "M"}]                         # windows heard A and B, and C and M, as two voices
+    found = [([("A", p), ("B", p)], [("C", p)]), ([("A", p), ("B", p), ("C", p)], [("D", p)]), ([("A", p), ("B", p)], [("E", p)]),
+             ([("A", p), ("B", p)], [("F", p)]), ([("A", p)], [("G", p)]), ([("A", p)], [("H", p)]),
+             ([("A", p), ("K", p)], [("L", p)]), ([("A", p), ("B", p)], [("M", p)]), ([("A", p)], [("N", p)]),
+             ([("A", p), ("B", p)], [("P", p)]), ([("A", p), ("B", p)], [("Q", p)])]
+    tries = [[{"A": "s1", "B": "s2", "C": "s2"}, {"C": "s1", "A": "s2", "B": "s1"}],                  # C with B both times: joined
+             [{"A": "s1", "B": "s2", "C": "s3", "D": "s3"}, {"D": "s1", "A": "s2", "B": "s1", "C": "s3"}],   # with C, then B: one group
+             [{"A": "s1", "B": "s2", "E": "s1"}, {"E": "s1", "A": "s2", "B": "s1"}],                  # with A, then with B: no
+             [{"A": "s1", "B": "s1", "F": "s2"}, {"F": "s1", "A": "s1", "B": "s2"}],                  # A and B one letter: not used
+             [None, {"G": "s1", "A": "s1"}], [{"A": "s1", "H": None}, {"H": "s1", "A": "s1"}],          # failed; H not heard once
+             [{"A": "s1", "K": "s1", "L": "s1"}, {"L": "s1", "A": "s1", "K": "s1"}],                  # with A and K, two groups: no
+             [{"A": "s1", "B": "s2", "M": "s2"}, {"M": "s1", "A": "s2", "B": "s1"}],                  # with B, whose C a window heard apart from M: no
+             [{"A": "s1", "N": "s2"}, {"N": "s1", "A": "s2"}],                                        # heard twice, with no one: a new voice
+             [{"A": None, "B": "s1", "P": None}, {"P": "s1", "A": "s1", "B": "s2"}],                  # P and A unheard once: that splice is no vote
+             [{"A": "s1", "B": "s2", "Q": "s2"}, {"Q": "s1", "A": "s1", "B": "s2"}, {"B": "s1", "A": "s2", "Q": "s1"}]]   # with B in two of three
+    assert transcribe.join(found, tries, apart) == ({"C": "B", "D": "B", "Q": "B"}, ["E", "F", "G", "H", "L", "M", "P"])   # N is in neither
+
+
+def bridged(tmp_path, monkeypatch, answers: dict[str, object]) -> list[str]:
+    """Three made-up windows (A and B heard apart in the first, C new in the third) and a stub Muse answering each splice
+    by its file's name from `answers`; returns the names it was sent. Each voice is one 5 s piece: in a splice its span is
+    0 to 5.2 s, 5.7 to 10.9 s, then 11.4 to 16.6 s."""
+    sent: list[str] = []
+
+    def muse(secret, wav, timeout=600):
+        sent.append(wav.name)
+        if isinstance(got := answers[wav.stem], Exception):
+            raise got
+        return got
+    monkeypatch.setattr(transcribe, "muse", muse)
+    return sent
+
+
+def test_a_splice_that_gives_two_voices_a_window_heard_apart_one_letter_is_not_used_and_a_third_order_decides(tmp_path, monkeypatch):
+    each, at = [[turn(10, 15, "A"), turn(20, 25, "B")], [], [turn(190, 195, "C")]], [0, 60, 120]
+    wavs = [pcm(tmp_path / f"w{i:03d}.wav", 1, 0) for i in range(3)]
+    sent = bridged(tmp_path, monkeypatch, {
+        "b000": answer((0, 10.9, "s1"), (11.4, 16.6, "s2")),                       # A, B, C: A and B one letter, not used
+        "b001": answer((0, 5.2, "s1"), (5.7, 10.9, "s1"), (11.4, 16.6, "s2")),      # C, A, B: C with A
+        "b002": answer((0, 5.2, "s1"), (5.7, 10.9, "s2"), (11.4, 16.6, "s2"))})     # the third, B, A, C: C with A again
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: None) == ({"C": "A"}, []) and sent[2:] == ["b002.wav"]
+
+
+def test_a_second_letter_a_window_gave_a_voice_for_two_seconds_is_no_second_voice_and_five_seconds_is(tmp_path, monkeypatch):
+    each, at = [[turn(10, 15, "A"), turn(20, 25, "B")], [turn(70, 75, "B")], [turn(130, 135, "B"), turn(140, 142, "C")]], [0, 60, 120]
+    wavs = [pcm(tmp_path / f"w{i:03d}.wav", 1, 0) for i in range(3)]
+    bridged(tmp_path, monkeypatch, {"b000": answer((0, 5.2, "s1"), (5.7, 19.1, "s2")),                       # A, B, C: C with B
+                                    "b001": answer((0, 2.5, "s1"), (3.0, 8.2, "s2"), (8.7, 19.1, "s1"))})   # C, A, B: C with B
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: None) == ({"C": "B"}, [])   # C spoke 2 s beside B
+    each[2][1] = turn(140, 145, "C")                                         # 5 s beside B: the window heard two voices
+    sent = bridged(tmp_path, monkeypatch, {"b000": answer((0, 5.2, "s1"), (5.7, 21.8, "s2")),
+                                           "b001": answer((0, 5.2, "s1"), (5.7, 10.9, "s2"), (11.4, 21.8, "s1"))})
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: None) == ({}, ["C"]) and len(sent) == 2   # neither used, no third
+
+
+def test_each_bridge_request_answered_is_one_spend_row_and_a_bridge_that_fails_joins_nothing(tmp_path, monkeypatch):
+    each, at = [[turn(10, 15, "A"), turn(20, 25, "B")], [], [turn(190, 195, "C")]], [0, 60, 120]
+    wavs, rows = [pcm(tmp_path / f"w{i:03d}.wav", 1, 0) for i in range(3)], []
+    late = transcribe.Failed("muse-voice-transcribe-1.0 did not answer: TimeoutError after 100 s")
+    with_a = answer((0, 5.2, "s1"), (5.7, 10.9, "s2"), (11.4, 16.6, "s1"))     # A, B, C, then the third C, B, A: C with A both times
+    bridged(tmp_path, monkeypatch, {"b000": with_a, "b001": late, "b002": with_a})
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == ({"C": "A"}, [])
+    assert [(e, round(u, 6), n) for e, u, n in rows] == [("meta/muse-voice-transcribe-1.0", 0.000855, "bridge 1 of 2, 17 s"),
+                                                          ("meta/muse-voice-transcribe-1.0", 0.000855, "bridge 3 of 3, 17 s")]   # 17.1 s each
+    rows.clear()
+    sent = bridged(tmp_path, monkeypatch, {"b000": late, "b001": late})
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == ({}, ["C"]) and rows == []
+    (tmp_path / "w000.wav").write_bytes(b"RIFF")                                 # a window that cannot be read: nothing is sent
+    sent.clear()
+    assert transcribe.bridge([], each, at, wavs, tmp_path, "meta-test-key-123456", lambda *r: rows.append(r)) == ({}, ["C"]) and sent == []
+
+
+def silent_minute(tmp_path, monkeypatch, bridges: dict[str, object], third: bool = False) -> tuple[dict[str, object], list[tuple[str, float, str]]]:
+    """A made-up 5-minute call in four windows: A talks throughout, B from 25 to 50 s, then says nothing through window
+    2 and is back at 200 s, where window 3 gives it a new letter, C; with `third`, a voice new at 190 s too, D. Muse
+    answers the splices by file name from `bridges`. Returns the result and the spend rows."""
+    z = [(70, 79, "C")] if third else []
+    answers = {("openai", 0): {"segments": [seg(5, 20, "Hello there."), seg(26, 48, "Hi, good to hear you.")]
+                                            + ([seg(190, 199, "Press one.")] if third else []) + [seg(200, 228, "I am back now.")]},
+               ("meta", 0): answer((5, 25, "A"), (25, 50, "B"), (60, 110, "A")), ("meta", 1): answer((0, 50, "A"), (70, 110, "A")),
+               ("meta", 2): answer((10, 50, "B"), *z, (80, 110, "A"), (115, 120, "B")),           # its A is B back, from 200 s
+               ("meta", 3): answer(*[(a - 60, b - 60, w) for a, b, w in z], (20, 50, "B"), (55, 60, "A"), (70, 110, "A"))}
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 300], answers, groq=None, meta="meta-test-key-123456")
+
+    def muse(secret, wav, timeout=600):
+        got = answers[("meta", int(wav.stem[1:]))] if wav.stem[0] == "w" else bridges[wav.stem]
+        if isinstance(got, Exception):
+            raise got
+        return got
+    monkeypatch.setattr(transcribe, "muse", muse)
+    monkeypatch.setattr(transcribe, "windows", lambda audio, into, at: [pcm(into / f"w{i:03d}.wav", 0, 0) for i in range(len(at))])
+    r = transcribe.run(audio, *keys, lambda e, usd, note: rows.append((e, usd, note)), meta_key=META(tmp_path))
+    return r, rows
+
+
+AGREE = {"b000": answer((0, 16.4, "s1"), (16.9, 33.8, "s2")),                       # A, B, C: C with B
+         "b001": answer((0, 8.2, "s2"), (8.7, 25.1, "s1"), (25.6, 33.8, "s2"))}     # C, A, B: C with B
+APART = ["[00:00:05 -> 00:00:20] A: Hello there.", "[00:00:26 -> 00:00:48] B: Hi, good to hear you.", "[00:03:20 -> 00:03:48] C: I am back now."]
+
+
+def test_a_voice_silent_through_a_shared_minute_keeps_its_letter_and_each_bridge_request_is_a_spend_row(tmp_path, monkeypatch):
+    r, rows = silent_minute(tmp_path, monkeypatch, AGREE)
+    assert Path(str(r["file"])).read_text().splitlines()[1:] == [
+        "speakers: A 2:35, B 0:55 (letters, not names: say who is who as a guess from what is said, unless the owner tells you)",
+        "[00:00:05 -> 00:00:20] A: Hello there.", "[00:00:26 -> 00:00:48] B: Hi, good to hear you.", "[00:03:20 -> 00:03:48] B: I am back now."]
+    assert r["speakers"] == {"A": 155, "B": 55} and r["speakers_joined"] == 1
+    assert sorted((round(u, 6), n) for e, u, n in rows if e.startswith("meta/")) == [                  # 34.3 s each at Muse's price
+        (0.001715, "bridge 1 of 2, 34 s"), (0.001715, "bridge 2 of 2, 34 s")] + [(0.006, f"window {i} of 4, 120 s") for i in (1, 2, 3, 4)]
+
+
+def test_a_voice_both_splices_hear_with_no_earlier_one_is_a_new_voice_joined_to_nothing_and_not_counted(tmp_path, monkeypatch):
+    r, _ = silent_minute(tmp_path, monkeypatch, {"b000": answer((0, 16.4, "s1"), (16.9, 33.8, "s2"), (34.3, 42.5, "s3")),   # A, B, C, D
+                                                 "b001": answer((0, 8.2, "s2"), (8.7, 16.9, "s3"), (17.4, 33.8, "s1"), (34.3, 42.5, "s2"))},
+                         third=True)                                                   # C, D, A, B: C with B, D with no one, twice
+    assert r["speakers_how"] == ("speakers: A 2:35, B 0:55, D 0:09 (letters, not names: say who is who as a guess from what is said, unless the "
+                                 "owner tells you)")
+    assert r["speakers_joined"] == 1
+
+
+def test_two_orders_that_disagree_get_a_third_and_three_that_disagree_join_nothing_and_the_letter_is_counted(tmp_path, monkeypatch):
+    alone = answer((0, 8.2, "s3"), (8.7, 25.1, "s1"), (25.6, 33.8, "s2"))               # C, A, B: C with no one
+    r, rows = silent_minute(tmp_path, monkeypatch, AGREE | {"b001": alone, "b002": answer((0, 16.9, "s1"), (17.4, 33.8, "s2"))})
+    assert r["speakers"] == {"A": 155, "B": 55} and r["speakers_joined"] == 1           # the third, C, B, A: C with B again, two of three
+    assert sorted(n for e, u, n in rows if n.startswith("bridge")) == ["bridge 1 of 2, 34 s", "bridge 2 of 2, 34 s", "bridge 3 of 3, 34 s"]
+    (tmp_path / "secrets").rename(tmp_path / "secrets-1")                               # the same call again, on a fresh folder
+    (tmp_path / "inbox").rename(tmp_path / "inbox-1")
+    r, _ = silent_minute(tmp_path, monkeypatch, AGREE | {"b001": alone, "b002": answer((0, 8.2, "s1"), (8.7, 16.9, "s2"), (17.4, 33.8, "s1"))})   # C with A, heard apart from it: not used
+    assert r["speakers"] == {"A": 155, "B": 25, "C": 30} and r["speakers_joined"] == 0 and r["speakers_how"].endswith(
+        ", 1 letter could not be matched across windows, so one voice may have two letters")
+
+
+def test_a_failed_bridge_leaves_the_words_the_windows_letters_and_the_count_as_before_it(tmp_path, monkeypatch):
+    late = transcribe.Failed("muse-voice-transcribe-1.0 did not answer: TimeoutError after 100 s")
+    r, rows = silent_minute(tmp_path, monkeypatch, {"b000": late, "b001": late})
+    assert r["ok"] and r["text"].splitlines() == APART and r["speakers"] == {"A": 155, "B": 25, "C": 30} and r["speakers_joined"] == 0
+    assert r["speakers_how"].endswith(", 1 letter could not be matched across windows, so one voice may have two letters")
+    assert not [n for e, u, n in rows if n.startswith("bridge")]                        # a failed request is not billed
 
 
 def two_chunks() -> dict[tuple[str, int], object]:
