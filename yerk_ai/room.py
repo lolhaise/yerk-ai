@@ -279,7 +279,7 @@ class Room:
         With the room's process alive a copy compacts (_fork_off), launched without fast mode, the room free, and is taken
         (_take), so nobody waits on it (seen live: held 150 s on its own session, a message 66 s
         in waited 84 s). With none alive to copy, a room whose next process runs with fast mode (usage credits) waits for a
-        turn, and any other compacts its own session on a process it starts, the room held, as `yerk room compact` does."""
+        turn, and any other starts its process first, the room held for that start only (_idle_start)."""
         now = time.time() if now is None else now
         fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
         with self.lock:
@@ -287,19 +287,39 @@ class Room:
                     or self.fork or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
                 return False
             self.grown, idle, fast = False, (now - self.last_active) / 60, self._fast_next()
+            why = f"idle {idle:.0f} min{' with fast mode on' if fast else ''}"
             if copy := fast or bool(self.rp and self.rp.alive()):
-                self._fork_off(f"idle {idle:.0f} min{' with fast mode on' if fast else ''}")
+                self._fork_off(why)
                 started = self.fork is not None
             else:
-                self.busy = self.shortening = True
+                self.busy = True                  # for its process's start only (_idle_start)
         if copy:
             if fast and not started:
                 log.info("room %s: idle %.0f min at %d of its %d tokens with no process alive, and the next one runs with fast "
                          "mode, so the compaction waits for a turn", self.name, idle, self.context, self.window)
             return started
-        log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, idle, self.context, self.window)
-        threading.Thread(target=self._idle_compact, name=f"compact-{self.name}", daemon=True).start()
+        log.info("room %s: idle %.0f min at %d of its %d tokens with no process alive, starting one to copy", self.name, idle,
+                 self.context, self.window)
+        threading.Thread(target=self._idle_start, args=(why,), name=f"compact-{self.name}", daemon=True).start()
         return True
+
+    def _idle_start(self, why: str) -> None:
+        """idle_compact with no process alive (a daemon restart): the room's process starts, the room held for that start
+        only, then a copy compacts (_fork_off) and a message that came in meanwhile runs at once on the live session."""
+        try:
+            self._start(self._account())
+        except Exception as e:
+            log.warning("room %s: the idle compaction could not start the room's process (%s); not tried again before the next "
+                        "turn", self.name, e)
+        with self.lock:
+            if not self.closing:
+                self._fork_off(why)
+            waiting = list(self.queue)
+            self.busy = run = bool(waiting) and not self.closing
+        if run:
+            log.info("room %s: %d message(s) waited up to %.0f s for the room's process to start (idle), running now", self.name,
+                     len(waiting), time.time() - min(m.received for m in waiting))
+            threading.Thread(target=self._run, name=f"room-{self.name}", daemon=True).start()
 
     def _fast_next(self) -> bool:
         """Under the lock, whether the room's /compact would reach a process launched with fast mode: the live one's key,

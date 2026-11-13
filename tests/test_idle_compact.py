@@ -172,8 +172,7 @@ def test_a_room_under_its_line_is_left_alone_and_rooms_toml_may_move_the_line(y,
     reap(y, room, 9 * 60)                                    # under its 10 minutes
     assert compactions(tmp_path) == 0
     reap(y, room, 11 * 60)                                   # 150,000 is past 0.5 of 250,000
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # its process started, then a copy
     room.rp.close()
 
 
@@ -191,8 +190,7 @@ def test_a_room_that_turns_it_off_or_leaves_its_window_to_the_model_is_never_com
     y.room_confs[ROOM] = base                                # the budget's line again: the same session compacts
     room = y.add_room(ROOM, Chan())
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # its process started, then a copy
     room.rp.close()
 
 
@@ -279,6 +277,32 @@ def test_a_message_during_a_quiet_rooms_copy_runs_at_once_and_the_copy_is_taken_
     room.rp.close()
 
 
+def test_with_no_process_alive_the_room_is_held_for_its_start_only_and_then_compacts_a_copy(y, tmp_path, gate, written, monkeypatch, caplog):
+    """After a daemon restart no room has a process until its first message: a message during the idle compaction's start
+    of one waits for that start alone, is answered on the live session while the copy compacts, and rides to the copy."""
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True)
+    up, start = threading.Event(), RoomProcess.start
+    monkeypatch.setattr(RoomProcess, "start", lambda self, *a, **k: (k.get("fork") or up.wait(20)) and start(self, *a, **k))
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        reap(y, room, IDLE)                                  # the room's own process starting, held until `up`
+        assert room.busy and not room.shortening and say(y, room, "2", "CONTEXT:21000 meanwhile") == "queued"
+        up.set()
+        until(lambda: len(chan.replies) == 2)
+        assert room.fork is not None and chan.replies[1] == "echo: CONTEXT:21000 meanwhile"   # the copy still at the gate
+        gate.set()
+        until(lambda: any("compacted on a copy" in m for m in caplog.messages))
+        wait_idle(room)
+    assert any("1 message(s) waited up to" in m and "to start (idle)" in m for m in caplog.messages)
+    say(y, room, "3", "and now?")
+    wait_idle(room)
+    assert echoed(chan, 2).startswith(TAIL_HEAD) and "CONTEXT:21000 meanwhile" in echoed(chan, 2) and room.rp.session_id == bound(tmp_path)
+    assert (False, "/compact") not in written and written.count((True, "/compact")) == 1
+    room.rp.close()
+
+
 def test_a_message_sent_during_yerk_room_compact_is_answered_right_after_it(y, tmp_path, monkeypatch):
     """It was queued and then left until the next message came in: compact_now cleared `busy` and never ran the queue."""
     monkeypatch.setenv("FAKE_CLAUDE_COMPACT_SLOW", "1.5")
@@ -305,8 +329,7 @@ def test_the_sessions_size_comes_from_the_rooms_own_calls_and_a_restart_keeps_it
     again = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))   # a restart or a deploy
     room = again.add_room(ROOM, Chan())
     reap(again, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # its process started, then a copy
     room.rp.close()
 
 
