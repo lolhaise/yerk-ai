@@ -4,10 +4,11 @@ One night an owner's room read 12k on its card while its next call carried about
 
 import json
 import logging
+import threading
 import time
 
 import pytest
-from test_idle_compact import FAKE, IDLE, ROOM, Chan, band, compactions, reap, say, until, wait_idle
+from test_idle_compact import FAKE, ROOM, Chan, band, compactions, say, until, wait_idle
 from test_observe import Timers
 
 from yerk_ai import engine, status
@@ -32,30 +33,29 @@ def shown(d, tmp_path):
     return status.room_card(s, ROOM)[1]
 
 
-def idle_compacted(y, chan, caplog, tmp_path):
+def held_compacted(y, chan, caplog, tmp_path):
     room = y.add_room(ROOM, chan)
-    say(y, room, "1", "CONTEXT:200000 hello")             # past 0.7 of the 250,000 window: the reaper compacts it
+    say(y, room, "1", "CONTEXT:200000 hello")             # past 0.7 of the 250,000 window
     wait_idle(room)
     with caplog.at_level(logging.INFO):
-        reap(y, room, IDLE)
-        wait_idle(room)
+        assert room.compact_now() == "ok"                 # `yerk room compact`'s, on the room's own session (an idle one runs on a copy)
     assert compactions(tmp_path) == 1
     return room
 
 
 def test_a_held_compaction_leaves_the_room_its_row_and_its_card_at_the_size_claude_code_answers(y, tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("FAKE_CLAUDE_CONTEXT", "180000")
-    room = idle_compacted(y, Chan(), caplog, tmp_path)
+    room = held_compacted(y,Chan(), caplog, tmp_path)
     row = y.ledger.rows(1)[0]
     assert (room.context, row["context"], row["outcome"]) == (180000, 180000, "compacted")
     assert shown(y, tmp_path).startswith("📚 180k/250k (72%)")
-    assert any("compact (idle) ended compacted" in m and "200000 to 180000 tokens" in m for m in caplog.messages)
+    assert any("compact (asked) ended compacted" in m and "200000 to 180000 tokens" in m for m in caplog.messages)
     room.rp.close()
 
 
 def test_a_daemon_restart_after_a_compaction_reads_the_answered_size_from_the_ledger(y, tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("FAKE_CLAUDE_CONTEXT", "180000")
-    idle_compacted(y, Chan(), caplog, tmp_path).rp.close()
+    held_compacted(y,Chan(), caplog, tmp_path).rp.close()
     again = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
     assert again.add_room(ROOM, Chan()).context == 180000 and shown(again, tmp_path).startswith("📚 180k/250k")
 
@@ -90,7 +90,7 @@ def test_the_overflow_compactions_row_carries_the_answered_size(y, tmp_path, mon
 def test_no_answer_keeps_todays_numbers_and_the_room_goes_on(y, tmp_path, monkeypatch, caplog, how, why):
     monkeypatch.setenv("FAKE_CLAUDE_CONTEXT", how)
     monkeypatch.setattr(engine, "SIZE_WAIT", 0.4, raising=False)
-    room = idle_compacted(y, chan := Chan(), caplog, tmp_path)
+    room = held_compacted(y,chan := Chan(), caplog, tmp_path)
     assert room.context == 20000 == y.ledger.rows(1)[0]["context"]          # post_tokens, as today
     said = [m for m in caplog.messages if "did not say the session's size" in m]
     assert len(said) == 1 and why in said[0]
@@ -109,7 +109,7 @@ def test_a_message_sent_during_a_compaction_is_answered_after_it_in_order_with_o
     room = y.add_room(ROOM, chan := Chan())
     say(y, room, "1", "CONTEXT:200000 hello")
     wait_idle(room)
-    reap(y, room, IDLE)
+    threading.Thread(target=room.compact_now, daemon=True).start()   # held, as `yerk room compact` (an idle one runs on a copy)
     until(lambda: compactions(tmp_path) == 1)
     say(y, room, "2", "and now?")                             # waits for the compaction and its ask, then runs
     wait_idle(room)
@@ -122,7 +122,7 @@ def test_a_message_sent_during_a_compaction_is_answered_after_it_in_order_with_o
 def test_the_ask_is_claude_codes_own_request_and_a_recorded_answer_reads_as_its_total(y, tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("FAKE_CLAUDE_CONTEXT", "recorded")      # fixtures/context_usage.json: 2.1.321's answer after /compact
     monkeypatch.setenv("FAKE_CLAUDE_ASKS", str(asks := tmp_path / "asks.jsonl"))
-    room = idle_compacted(y, Chan(), caplog, tmp_path)
+    room = held_compacted(y,Chan(), caplog, tmp_path)
     [line] = asks.read_text().splitlines(keepends=True)
     rid = json.loads(line)["request_id"]
     assert line == json.dumps({"type": "control_request", "request_id": rid, "request": {"subtype": "get_context_usage"}}) + "\n"

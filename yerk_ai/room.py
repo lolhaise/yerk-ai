@@ -272,27 +272,28 @@ class Room:
         return "ok" if t.outcome in ("ok", "empty", "compacted") else t.outcome
 
     def idle_compact(self, now: float | None = None) -> bool:
-        """`yerk room compact`, by the daemon (its reaper's minute): a room with no turn and nothing queued for `compact_after`
+        """The daemon's idle compaction (its reaper's minute): a room with no turn and nothing queued for `compact_after`
         seconds, whose session holds `compact_at` of its window or more, compacts in the background, so the next message finds
         it small instead of waiting minutes in its own turn for Claude Code's compaction. Once per growth: a try, kept or
         failed, waits for a turn to grow the session again. Never when its next run starts a fresh session. True: started.
-        Fast mode bills usage credits, and nobody waits on this one: where it reaches the process the /compact would go to,
-        a copy launched without it compacts (_fork_off), the room free, and is taken and closed (_take), so the next message
-        resumes it fast; with no process alive to copy, the compaction waits for a turn."""
+        With the room's process alive a copy compacts (_fork_off), launched without fast mode, the room free, and is taken
+        (_take), so nobody waits on it (seen live: held 150 s on its own session, a message 66 s
+        in waited 84 s). With none alive to copy, a room whose next process runs with fast mode (usage credits) waits for a
+        turn, and any other compacts its own session on a process it starts, the room held, as `yerk room compact` does."""
         now = time.time() if now is None else now
         fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
         with self.lock:
             if (self.busy or self.queue or self.closing or fresh or not self.grown or not self.window or not self.compact_at
                     or self.fork or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
                 return False
-            self.grown, idle = False, (now - self.last_active) / 60
-            if fast := self._fast_next():
-                self._fork_off(f"idle {idle:.0f} min with fast mode on")
+            self.grown, idle, fast = False, (now - self.last_active) / 60, self._fast_next()
+            if copy := fast or bool(self.rp and self.rp.alive()):
+                self._fork_off(f"idle {idle:.0f} min{' with fast mode on' if fast else ''}")
                 started = self.fork is not None
             else:
                 self.busy = self.shortening = True
-        if fast:
-            if not started:
+        if copy:
+            if fast and not started:
                 log.info("room %s: idle %.0f min at %d of its %d tokens with no process alive, and the next one runs with fast "
                          "mode, so the compaction waits for a turn", self.name, idle, self.context, self.window)
             return started
@@ -348,7 +349,7 @@ class Room:
         """Under the lock, a turn ended in the copy's band (_ended): the room's session copied (--fork-session) and compacted
         off to the side, on the live process's own spec and account, so the copy's requests read the prompt cache the live
         session warmed and its one hook (SessionStart compact: the recall pack added again) answers as the room's. One copy
-        per growth: none while one compacts or waits to be taken; never without a live process to copy from. A fast room's
+        per growth: none while one compacts or waits to be taken; never without a live process to copy from. A quiet room's
         idle compaction comes here too (idle_compact), `why` saying so in the line."""
         if self.fork is not None or self.ready is not None or not (self.rp and self.rp.alive()):
             return

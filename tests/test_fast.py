@@ -599,11 +599,11 @@ def test_a_fast_room_with_no_process_alive_launches_nothing_to_compact_while_idl
 
 
 @pytest.mark.parametrize("setting", ["off", "opus"])
-def test_a_room_fast_mode_does_not_reach_compacts_while_idle_on_its_own_process_as_on_main(idle, y, tmp_path, setting):
+def test_a_room_fast_mode_does_not_reach_compacts_while_idle_on_a_copy_it_keeps_as_its_process(idle, y, tmp_path, setting):
     room, chan, launches, sent = idle(setting)
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert launches == [(False, False)] and sent == [(False, "CONTEXT:200000 hello"), (False, "/compact")] and compactions(tmp_path) == 1
+    assert copied(y) == room.rp.session_id                    # taken and kept: no fast mode to give back
+    assert launches == [(False, False), (True, False)] and sent == [(False, "CONTEXT:200000 hello"), (False, "/compact")] and compactions(tmp_path) == 1
 
 
 def test_a_failed_idle_copy_in_a_fast_room_is_not_tried_again_at_the_next_minute(idle, y, tmp_path, monkeypatch, caplog):
