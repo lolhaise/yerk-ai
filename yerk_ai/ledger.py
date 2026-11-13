@@ -591,7 +591,10 @@ class Ledger:
         return self._first("SELECT * FROM texting WHERE card = ? ORDER BY id DESC LIMIT 1", (message_id,))
 
     def texting_held(self) -> list[dict[str, Any]]:
-        return self._select("SELECT * FROM texting WHERE state = 'held' ORDER BY id", ())
+        return self.texting_in("held")
+
+    def texting_in(self, state: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM texting WHERE state = ? ORDER BY id", (state,))
 
     def texting_last(self, person: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM texting WHERE person = ? ORDER BY id DESC LIMIT 1", (person,))

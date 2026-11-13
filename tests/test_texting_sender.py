@@ -9,11 +9,15 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from test_texting_link import A1, B1
-from yerk_ai.texting import hands
+from yerk_ai.ledger import Ledger
+from yerk_ai.texting import hands, sender
 
 LIST = (f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\nsheet = "people/alex.toml"\n\n'
         f'[people.beta]\nfirst = "Beta"\nhandles = ["{B1}"]\nsheet = "people/beta.toml"\n')
@@ -105,3 +109,95 @@ def test_a_to_not_on_the_reply_list_or_an_outbox_that_is_not_a_whole_path_is_ref
     for box in ("outbox", "/Users/someone/out box", "/Users/x;touch y"):
         assert asyncio.run(hands.Live(file, box, fake(tmp_path)).hand("yerk-7-1", ours)) == hands.REFUSED
     assert calls(tmp_path) == [] and not list((tmp_path / "outbox").iterdir()) and not (tmp_path / "state").exists()
+
+
+def at(month: int, day: int, hour: int, minute: int, second: int = 0) -> float:
+    return datetime(2026, month, day, hour, minute, second).timestamp()
+
+
+WED = at(11, 11, 14, 0)          # a Wednesday afternoon, local time
+
+
+class Clock:
+    def __init__(self, t: float) -> None:
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def make(tmp: Path, mode: str = "live", night: str = "hold", t: float = WED, **conf: Any) -> tuple[sender.Sender, Ledger, Clock]:
+    file, clock = people(tmp, night), Clock(t)
+    led = Ledger(tmp / "ledger.sqlite")
+    return sender.Sender({"mode": mode, **conf}, file, led, clock=clock), led, clock
+
+
+def their(led: Ledger, guid: str, created: float, person: str = "alex") -> None:
+    led.inbound_add(guid, "texting", f"imessage:{person}", person, 5, created=created)
+
+
+def his(led: Ledger, guid: str, created: float, side: str = "owner") -> None:
+    led.inbound_add(guid, "texting", "imessage:alex", side, 5, created=created)
+
+
+def waiting(led: Ledger, *guids: str, state: str = "queued", texts: tuple[str, ...] = ("on my way",), word: bool = False,
+            decision: str = "reply", react: str = "", person: str = "alex") -> int:
+    return led.texting_add(person=person, handle=A1 if person == "alex" else B1, inbound=",".join(guids), decision=decision,
+                           parts=json.dumps(list(texts) if decision == "reply" else []), react=react, reply_to="", statements="[]",
+                           state=state, reason="", mode="live" if state == "queued" else "dry", approval_id=7 if word else None)
+
+
+def armed(s: sender.Sender, led: Ledger, rid: int) -> dict[str, Any]:
+    asyncio.run(s.tick())
+    return led.texting_get(rid) or {}
+
+
+def test_his_first_shot_draws_150_to_240_s_when_his_own_text_is_newest_and_young_and_not_after_an_auto_row(tmp_path: Path) -> None:
+    s, led, _ = make(tmp_path)
+    his(led, "m-1", WED - 100)
+    for n in range(8):
+        their(led, f"t-{n}", WED - 5)
+        r = armed(s, led, rid := waiting(led, f"t-{n}"))
+        assert 150 <= r["delay"] <= 240 and r["fire_at"] == pytest.approx(WED - 5 + r["delay"])
+        led.texting_set(rid, state="sent")
+    his(led, "m-2", WED - 50, side="auto")                # texting's own send is the owner's side's newest: no first shot
+    their(led, "t-9", WED - 5)
+    r = armed(s, led, waiting(led, "t-9"))
+    assert 30 <= r["delay"] <= 60                         # the sheet's active bucket, 0.5 to 1 minute
+
+
+def test_fire_at_is_the_later_of_now_and_their_texts_own_time_plus_the_draw(tmp_path: Path) -> None:
+    s, led, _ = make(tmp_path)
+    their(led, "t-old", WED - 1000)
+    assert armed(s, led, rid := waiting(led, "t-old"))["fire_at"] == WED
+    led.texting_set(rid, state="sent")
+    their(led, "t-new", WED - 10)
+    r = armed(s, led, waiting(led, "t-new"))
+    assert 120 <= r["delay"] <= 240 and r["fire_at"] == pytest.approx(WED - 10 + r["delay"])
+
+
+def test_quiet_hours_hold_a_night_text_to_a_morning_draw_unless_the_sheet_answers_and_his_word_goes_at_once(tmp_path: Path) -> None:
+    for night, when in (("hold", at(11, 11, 23, 45)), ("hold", at(11, 12, 3, 0)), ("answer", at(11, 11, 23, 45)),
+                        ("answer", at(11, 12, 3, 0)), ("word", at(11, 11, 23, 45))):
+        tmp = tmp_path / f"{night}-{int(when)}"
+        s, led, _ = make(tmp, night="hold" if night == "word" else night, t=when)
+        their(led, "t-1", when - 30)
+        r = armed(s, led, waiting(led, "t-1", word=night == "word"))
+        if night == "hold":
+            assert at(11, 12, 7, 40) <= r["fire_at"] <= at(11, 12, 9, 0), datetime.fromtimestamp(r["fire_at"])
+        elif night == "answer":
+            assert 120 <= r["fire_at"] - (when - 30) <= 240
+        else:
+            assert when <= r["fire_at"] <= when + 30
+
+
+def test_a_restart_keeps_the_stored_fire_time_and_draws_nothing_new(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    their(led, "t-1", WED - 5)
+    first = armed(s, led, rid := waiting(led, "t-1"))
+
+    class Never(sender.random.Random):
+        def uniform(self, a: float, b: float) -> float:
+            raise AssertionError("drew again")
+    again = sender.Sender({"mode": "live"}, s.file, led, clock=clock, rand=Never())
+    assert armed(again, led, rid) == first
