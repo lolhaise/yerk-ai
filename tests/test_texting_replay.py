@@ -70,6 +70,15 @@ def test_a_thread_file_reads_into_lines_bursts_and_cuts_newest_first_and_only_it
     assert len(replay.find(priv / "imports" / "texts", who.people["alex"])) == 2    # two files: a skip, never a guess
 
 
+def test_a_burst_they_followed_with_another_of_their_own_is_not_open_and_scores_by_what_went(tmp_path):
+    priv, _ = install(tmp_path)
+    with open(priv / "imports" / "texts" / "alex.md", "a") as f:
+        f.write("- 2026-10-03 08:30 Alex: hello?\n")                       # half an hour on: the file ends in two bursts of theirs
+    last, first = thread_cuts(priv)[:2]
+    assert [x.n for x in first.burst] == [9] and first.went == [] and not first.open and last.open
+    assert [replay.score(first, d, p) for d, p in (("none", []), ("reply", ["a"]))] == ["agree", "more"]
+
+
 def test_what_went_is_marked_the_old_agents_by_its_log_and_each_cut_gets_one_score(tmp_path):
     priv, _ = install(tmp_path)
     log = tmp_path / "old.log"

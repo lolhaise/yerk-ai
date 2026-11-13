@@ -46,7 +46,7 @@ class Cut:
     before: list[Line]      # the thread as it stood before the burst
     burst: list[Line]       # their texts
     went: list[Line]        # the owner's lines that followed, before their next line and within catch_up_hours
-    open: bool              # the file's last line is inside the answer window
+    open: bool              # no line of theirs follows and the file's last line is inside the answer window
     dropped: int = 0        # memory lines the as-of cut took out
 
     @property
@@ -112,7 +112,8 @@ def cuts(key: str, lines: list[Line], since: date, limit: int, hours: float) -> 
             if x.side == "them" or (x.at - last).total_seconds() > hours * 3600:
                 break
             went.append(x)
-        out.append(Cut(key, lines[max(0, i - writer.THREAD):i], lines[i:j], went, (lines[-1].at - last).total_seconds() <= hours * 3600))
+        out.append(Cut(key, lines[max(0, i - writer.THREAD):i], lines[i:j], went,
+                       all(x.side != "them" for x in lines[j:]) and (lines[-1].at - last).total_seconds() <= hours * 3600))
     return out[::-1][:max(0, limit)]
 
 
