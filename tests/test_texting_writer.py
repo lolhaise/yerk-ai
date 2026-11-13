@@ -45,9 +45,10 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, accounts: int = 1, **
     for f, text in ((priv / "people.toml", LIST), (priv / "people" / "alex.toml", SHEET), (priv / "baseline.md", "few words")):
         f.write_text(text)
         os.chmod(f, 0o600)
-    accts = [Account(f"a{i}", tmp_path / f"cfg{i}") for i in range(accounts)]
+    accts = [Account(f"a{i}", tmp_path / f"cfg{i}", token_file=tmp_path / f"a{i}.token") for i in range(accounts)]
     for a in accts:
         a.config_dir.mkdir()
+        (tmp_path / f"{a.name}.token").write_text(f"token-{a.name}")      # the check's call runs on it alone (J28)
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl"))
     monkeypatch.setenv("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt"))
     led = Ledger(tmp_path / "ledger.sqlite")

@@ -196,10 +196,11 @@ CUT: ContextVar[Cut] = ContextVar("cut")
 
 
 def unanswered(d: dict[str, Any]) -> bool:
-    """A call no model answered (writer.hop's own holds: refused or timed out, or no account free): a failed cut, never a
-    decision. A hold the code itself made names its rule, and one a model made carries its tokens."""
+    """A call no model answered (writer.hop's own holds: refused or timed out, no account free, or no token for the check): a
+    failed cut, never a decision. A hold the code itself made names its rule, and one a model made carries its tokens."""
     why = str(d.get("reason") or "")
-    return not d.get("tokens") and (why == words.TEXTING_NO_CLEAN or why.startswith(words.TEXTING_NO_ACCOUNT.partition("{")[0]))
+    return not d.get("tokens") and (why in (words.TEXTING_NO_CLEAN, words.TEXTING_NO_TOKEN)
+                                    or why.startswith(words.TEXTING_NO_ACCOUNT.partition("{")[0]))
 
 
 def rows(c: Cut) -> list[dict[str, Any]]:

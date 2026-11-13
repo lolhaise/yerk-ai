@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .. import words
-from ..accounts import Account, Cooldowns, account_env, pick
+from ..accounts import Account, Cooldowns, account_env, pick, read_token
 from ..ledger import Ledger
 from ..lifted.classify import FailureTable
 from ..workers import mcp_config
@@ -223,15 +223,21 @@ class Writer:
         return self.hop(self.argv, pack, self.cwd, self.cap, self.model, lambda out: parse(out, guids, open_), held)
 
     def hop(self, argv: list[str], stdin: str, cwd: Path, cap: float, model: str, read: Callable[[str], dict[str, Any]],
-            hold: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
+            hold: Callable[[str], dict[str, Any]], config: Path | None = None) -> dict[str, Any]:
         """One call (the writer's or the check's) on the first free account for `model`; a quota or rate-limit failure rests
-        that account and hops, at most twice; past `cap` seconds, no clean answer; no account free, a hold that says until when."""
+        that account and hops, at most twice; past `cap` seconds, no clean answer; no account free, a hold that says until when.
+        With `config` (the check's own empty folder, J28) the call runs from it in place of the account's folder, on the
+        account's token: an account with none is passed over, and with none anywhere the call is held and never made."""
+        pool = [a for a in self.accounts if read_token(a)[0]] if config else self.accounts
+        if config and not pool:
+            return hold(words.TEXTING_NO_TOKEN)
         for _ in range(3):
-            a = pick(self.accounts, self.cooldowns, model=model)
+            a = pick(pool, self.cooldowns, model=model)
             if self.cooldowns.until(a.name, model=model) is not None:
                 break
+            env = {**account_env(a), "CLAUDE_CONFIG_DIR": str(config)} if config else account_env(a)
             try:
-                out = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=cap, cwd=cwd, env=account_env(a)).stdout
+                out = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=cap, cwd=cwd, env=env).stdout
             except subprocess.TimeoutExpired:
                 return {**hold(words.TEXTING_NO_CLEAN), "account": a.name, "seconds": cap}
             d = read(out)
@@ -241,7 +247,7 @@ class Writer:
                                     model=model if kind == "rate_limit" else "")
                 continue
             return {**d, "account": a.name}
-        free = min([u for a in self.accounts if (u := self.cooldowns.until(a.name, model=model)) is not None] or [self.clock()])
+        free = min([u for a in pool if (u := self.cooldowns.until(a.name, model=model)) is not None] or [self.clock()])
         return hold(words.TEXTING_NO_ACCOUNT.format(at=f"{datetime.fromtimestamp(free):%H:%M}"))
 
 
