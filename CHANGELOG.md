@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-13
 
-### texting-7a (#?)
+### texting-7a (#69)
 
 - Nothing changes until an install has a `[texting]` table with a report room and someone runs the new command.
 - `yerk texting replay --since YYYY-MM-DD` shows the plan and calls nothing: each person on the reply list who has a
