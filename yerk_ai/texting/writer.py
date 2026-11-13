@@ -226,10 +226,9 @@ class Writer:
     def hop(self, argv: list[str], stdin: str, cwd: Path, cap: float, model: str, read: Callable[[str], dict[str, Any]],
             hold: Callable[[str], dict[str, Any]], config: Path | None = None) -> dict[str, Any]:
         """One call (the writer's or the check's) on the first free account for `model`; a quota or rate-limit failure rests
-        that account and hops, at most twice; past `cap` seconds, no clean answer; no account free, the same tries once more
-        on `fallback` when it names another model, its answer's account then `<account> (<model>)`; still none, a hold that
-        says until when. With `config` (the check's own empty folder, J28) the call runs from it in place of the account's
-        folder, on the account's token: an account with none is passed over, and with none anywhere the call is held, never made."""
+        that account and hops, at most twice; past `cap` seconds, no clean answer; no account free, the same tries on `fallback`
+        when it names another model, its account then `<account> (<model>)`, and still none, a hold that says until when. With
+        `config` (J28), the check's own empty folder, the call runs from it on the account's token, passing over one with none."""
         pool = [a for a in self.accounts if read_token(a)[0]] if config else self.accounts
         if config and not pool:
             return hold(words.TEXTING_NO_TOKEN)

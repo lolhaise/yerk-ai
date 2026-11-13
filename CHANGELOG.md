@@ -8,6 +8,19 @@ version changes.
 
 ## 2026-11-13
 
+### texting-6b (#?)
+
+- Texting: nothing changes on an install with no `[texting]` table. With one, the check runs from a config folder of its
+  own, `<state>/texting/check-config` (empty, 0700), in place of an account's, so it is handed the four inputs and no
+  account's settings or address. It runs on an account's one-year token and passes over an account that has none; with
+  none anywhere each draft is held with "the check needs an account token, and no account has one", and `yerk doctor`
+  says the same while texting is on. A replay counts that hold as a call no model answered.
+- `[texting] fallback` names a second model. When every account refuses the writer's or the check's model, the same call
+  is made on this one in place of holding the text, and the row's account reads `<account> (<model>)`. With no key the
+  text is held as before. A replay falls back the same way, and its `--model` flag still names the first model.
+- budgets.toml: `[code] lines` 31,677 to 31,696, with its dated note.
+- **Upgrading**: nothing to change; `yerk doctor` says so if no account has a token.
+
 ### texting-7a-asof (#71)
 
 - `yerk texting replay`: the memory a replayed decision sees is held to the cut more tightly. A log named for its day is as
