@@ -134,11 +134,11 @@ class Writer:
         for d in (state / "texting", self.cwd):
             d.mkdir(mode=0o700, parents=True, exist_ok=True)
         from ..engine import claude_bin
-        tools = TOOLS if tools is None else tools          # the replay's writer: none (J31)
+        tools = TOOLS if tools is None else tools          # the replay's writer: none (J31), and no MCP at all, as the check
+        mcp = ["--mcp-config", str(mcp_config(state, report, tools, state / "texting" / "writer-mcp.json")), "--strict-mcp-config",
+               "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in tools)] if tools else ["--strict-mcp-config"]
         self.argv = [claude or claude_bin(), "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
-                     "--system-prompt-file", str(PROMPT), "--tools", "",
-                     "--mcp-config", str(mcp_config(state, report, tools, state / "texting" / "writer-mcp.json")),
-                     "--strict-mcp-config", "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in tools),
+                     "--system-prompt-file", str(PROMPT), "--tools", "", *mcp,
                      "--setting-sources", "", "--no-session-persistence", *(["--model", self.model] if self.model else []),
                      "--effort", str(conf.get("effort") or "high")]
         self.busy: set[int] = set()

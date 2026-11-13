@@ -99,12 +99,16 @@ def test_what_went_is_marked_the_old_agents_by_its_log_and_each_cut_gets_one_sco
 
 def test_the_live_writers_argv_is_what_it_was_and_the_replayed_writer_has_no_tool_and_no_server(tmp_path, monkeypatch):
     w, _ = setup(tmp_path, monkeypatch)
-    assert w.argv[w.argv.index("--allowedTools") + 1] == "mcp__yerk__recall,mcp__yerk__read_memory"
+    assert w.argv == [str(FAKE), "-p", "--output-format", "json", "--json-schema", json.dumps(writer.SCHEMA), "--system-prompt-file",
+                      str(writer.PROMPT), "--tools", "", "--mcp-config", str(tmp_path / "state" / "texting" / "writer-mcp.json"),
+                      "--strict-mcp-config", "--allowedTools", "mcp__yerk__recall,mcp__yerk__read_memory", "--setting-sources", "",
+                      "--no-session-persistence", "--model", "model-x", "--effort", "high"]           # as on main, byte for byte
     assert list(json.loads(Path(w.argv[w.argv.index("--mcp-config") + 1]).read_text())["mcpServers"]) == ["yerk"]
     bare = writer.Writer({"mode": "dry"}, w.file, tmp_path / "s2", w.ledger, "owner-room", w.thread, w.recall, w.place, w.accounts,
                          w.cooldowns, w.failures, claude=str(FAKE), tools=[])
-    assert not [a for a in bare.argv if "mcp__" in a]
-    assert json.loads(Path(bare.argv[bare.argv.index("--mcp-config") + 1]).read_text()) == {"mcpServers": {}}
+    assert "--mcp-config" not in bare.argv and "--allowedTools" not in bare.argv and not [a for a in bare.argv if "mcp__" in a]
+    assert sorted(a for a in bare.argv if a.startswith("-")) == sorted(a for a in replay.check.Check({}, bare).argv if a.startswith("-"))
+    assert not (tmp_path / "s2" / "texting" / "writer-mcp.json").exists()        # the check's flags, as the canary ran them
 
 
 def run(tmp_path: Path, monkeypatch, priv: Path, state: Path, cs: list[replay.Cut], hits: list[dict]) -> list[dict]:
@@ -158,7 +162,8 @@ def test_a_replay_writes_only_under_its_own_folder_and_leaves_the_install_as_it_
     assert after == set(before) and all((p.read_bytes(), p.stat().st_mtime_ns) == before[p] for p in before)
     assert sorted(x.name for x in base.iterdir()) == ["t1.jsonl"]          # the scratch folder is gone after a clean run
     assert stat.S_IMODE(base.stat().st_mode) == 0o700 and stat.S_IMODE(f.stat().st_mode) == 0o600
-    assert [json.loads(x)["score"] for x in f.read_text().splitlines()[1:]] == ["open", "agree", "less"]
+    assert {(c := json.loads(x))["id"]: c["score"] for x in f.read_text().splitlines()[1:]} == \
+        {"alex:9": "open", "alex:8": "agree", "alex:5": "less"}                # each cut's line lands as it ends
 
 
 def test_a_cut_that_raises_is_written_with_its_error_the_run_goes_on_and_its_scratch_folder_stays(tmp_path, monkeypatch):
