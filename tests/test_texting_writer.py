@@ -189,6 +189,19 @@ def test_with_no_fallback_or_one_refused_too_the_hold_is_todays_and_a_timeout_or
     assert [c["argv"][c["argv"].index("--model") + 1] for c in calls(tmp_path)[2:]] == ["model-x", "model-x"]
 
 
+def test_every_account_is_tried_once_for_the_model_before_the_fallback_or_the_hold(tmp_path, monkeypatch):
+    """J33 says every account: with five and the first three out of the model, the fourth answers on it, never the second model."""
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, _ = setup(tmp_path, monkeypatch, accounts=5, fallback="model-y")
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", ",".join(str(tmp_path / f"cfg{i}") for i in range(3)))
+    assert w.call("a pack", set(), ())["account"] == "a3"
+    assert [c["argv"][c["argv"].index("--model") + 1] for c in calls(tmp_path)] == ["model-x"] * 4
+    w.fallback = ""                                                          # and with no second model: the fifth, never a hold
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", ",".join(str(tmp_path / f"cfg{i}") for i in range(4)))
+    w.cooldowns.clear("a0")
+    assert w.call("a pack", set(), ())["account"] == "a4"
+
+
 def test_a_deciding_row_older_than_catch_up_is_missed_and_never_decided(tmp_path, monkeypatch):
     w, led = setup(tmp_path, monkeypatch)
     asyncio.run(w.decide(deciding(led, ago=7 * 3600)))
