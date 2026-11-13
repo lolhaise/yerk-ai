@@ -428,7 +428,7 @@ taste = 1500
 # (the box's day log), so the clause that the first token slows with size went.
 compact_window = 250000
 # A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session holds `idle_compact_at` of its window
-# or more is compacted then by the daemon, as `yerk room compact` does it, so a compaction never lands in a person's turn
+# or more is compacted then by the daemon, on a copy of the session, so a compaction never lands in a person's turn
 # (2026-10-21: a one-line question waited 5 min 20 s for one). Measured that day: Claude Code compacts at the window less
 # 33,000 (2.1.304: its 20,000 output reserve and 13,000 buffer); the most a room's session grew in one turn was 100,831,
 # and a process start added up to 43,479, so at 0.7 a 700,000 window keeps 177,000 for the next turn and 400,000 keeps
