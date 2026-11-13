@@ -79,9 +79,9 @@ class Sender:
     def __init__(self, conf: dict[str, Any], file: Path, ledger: Ledger, thread: Callable[[str, int], Awaitable[list[dict[str, Any]]]],
                  hands: Any, edits: list[tuple[int, str]] | None = None, post: Callable[[str, str], Awaitable[Any]] | None = None,
                  to: str = "", clock: Callable[[], float] = time.time, rand: random.Random | None = None,
-                 status: Callable[[dict[str, Any]], None] | None = None):
+                 status: Callable[[dict[str, Any]], None] | None = None, out: bool = True):
         self.mode, self.file, self.ledger, self.clock = str(conf.get("mode") or "off"), file, ledger, clock
-        self.thread, self.hands, self.post, self.to, self.status = thread, hands, post, to, status
+        self.thread, self.hands, self.post, self.to, self.status, self.out = thread, hands, post, to, status, out
         self.edits = edits if edits is not None else []     # the holds' card edits (Holds.edits), made at their next pass
         self.stale, self.claim_s = float(conf.get("stale_minutes", 30)) * 60, float(conf.get("claim_seconds", 180))
         self.wait = WAITS.get(self.mode, "queued")
@@ -97,9 +97,13 @@ class Sender:
         self.said: dict[str, Any] = {}
 
     async def start(self) -> None:
-        """At a start in dry: what a live run left to send is dropped and listed once, in the dry card room only."""
-        if self.mode == "dry" and (left := switched_off(self.ledger)) and self.post is not None and self.to:
-            await self.post(self.to, words.TEXTING_SWITCHED.format(n=len(left), s="s" * (len(left) != 1), mode=self.mode))
+        """At a start in dry: what a live run left to send is dropped and listed once, in the dry card room only. In live
+        with text-out off in [gates] (`out`), the install's switch for texts, it is dropped too, with a log line."""
+        if (self.mode == "dry" or not self.out) and (left := switched_off(self.ledger)):
+            if self.mode != "dry":
+                log.warning("texting: text-out is off in [gates]: %d text(s) left to send dropped, none sent", len(left))
+            elif self.post is not None and self.to:
+                await self.post(self.to, words.TEXTING_SWITCHED.format(n=len(left), s="s" * (len(left) != 1), mode=self.mode))
 
     def counts(self) -> None:
         """The last text out (live: claimed; dry: its job file written), how many held, how many unseen today, to status."""

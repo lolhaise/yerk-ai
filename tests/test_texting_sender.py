@@ -38,8 +38,9 @@ name = re.search(r"echo queued:(\\S+)", cmd).group(1)
 with open(box.parent / "calls.log", "a") as f:
     f.write(name + "\\n")
 data = sys.stdin.read()
-if kind == "nolink":
-    sys.stderr.write("ssh: connect to host mac port 22: Connection refused\\n")
+if kind in ("nolink", "cap", "closed"):
+    sys.stderr.write({"nolink": "ssh: connect to host mac port 22: Connection refused", "closed": "Connection closed by mac port 22",
+                      "cap": "kex_exchange_identification: read: Connection reset by peer"}[kind] + "\\n")
     sys.exit(255)
 (box / (name + ".json")).write_text(data)
 print("queued:" + name if kind == "ok" else "Connection to mac closed.")
@@ -58,7 +59,8 @@ def people(tmp: Path, night: str = "hold") -> Path:
 
 def fake(tmp: Path, kind: str = "ok") -> list[str]:
     """The tests' "ssh": writes its stdin as <tmp>/outbox/<id>.json and answers as the Mac would (`kind` ok), or cannot
-    connect (`nolink`), or connects and answers something else (`odd`); every call is a line of <tmp>/calls.log."""
+    connect (`nolink`), is hung up on before its greeting (`cap`), is closed with no such sign (`closed`), or connects and
+    answers something else (`odd`); every call is a line of <tmp>/calls.log."""
     (box := tmp / "outbox").mkdir(exist_ok=True)
     (script := tmp / "fake_ssh.py").write_text(FAKE)
     return [sys.executable, str(script), str(box), kind]
@@ -107,6 +109,15 @@ def test_live_writes_the_job_on_stdin_and_reads_what_the_mac_answered(tmp_path: 
     assert asyncio.run(hands.Live(file, "/Users/someone/outbox", fake(tmp_path, "nolink")).hand("yerk-8-1", job)) == hands.DOWN
     assert asyncio.run(hands.Live(file, "/Users/someone/outbox", fake(tmp_path, "odd")).hand("yerk-9-1", job)) == hands.MAYBE
     assert calls(tmp_path) == ["yerk-7-1", "yerk-8-1", "yerk-9-1"]
+
+
+def test_an_ssh_hung_up_on_before_its_greeting_wrote_nothing_so_it_is_down_and_a_close_with_no_such_sign_may_have_gone(tmp_path: Path) -> None:
+    """A Mac at its ssh session cap hangs up before the greeting: no command ran, so the next pass may try again. Any other
+    close may have written the job: a text lost can be sent again by the owner, one sent twice cannot be taken back."""
+    file, job = people(tmp_path), hands.job(reply("on my way"), 1, 100.0)
+    assert asyncio.run(hands.Live(file, "/Users/someone/outbox", fake(tmp_path, "cap")).hand("yerk-7-1", job)) == hands.DOWN
+    assert asyncio.run(hands.Live(file, "/Users/someone/outbox", fake(tmp_path, "closed")).hand("yerk-8-1", job)) == hands.MAYBE
+    assert calls(tmp_path) == ["yerk-7-1", "yerk-8-1"] and not list((tmp_path / "outbox").iterdir())
 
 
 def test_a_to_not_on_the_reply_list_or_an_outbox_that_is_not_a_whole_path_is_refused_and_nothing_is_written(tmp_path: Path) -> None:
@@ -454,6 +465,38 @@ def test_a_start_with_texting_off_drops_what_live_left_with_a_log_line_and_with_
         with caplog.at_level(logging.WARNING):
             assert y.texting() == [] and y.ledger.texting_get(rid)["state"] == after
         assert ("left to send dropped" in caplog.text) == (after == "dropped")
+
+
+def test_live_with_text_out_off_in_gates_drops_what_was_left_to_send_and_gives_the_hands_no_command(tmp_path: Path, caplog: Any) -> None:
+    """[gates] off = ["text-out"] is the install's switch for texts: one that waited through the restart must not go after it."""
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "texting").mkdir()
+    listed(private / "texting")
+    for gate, head in (("", ["mac"]), ('\n[gates]\noff = ["text-out"]\n', [])):
+        (private / "yerkd.toml").write_text('[texting]\nmode = "live"\nreport = "example-room"\noutbox = "/Users/someone/outbox"\n'
+                                            '\n[imessage]\nhost = "mac"\nsocket = "/Users/someone/bridge.sock"\n' + gate)
+        (state := tmp_path / f"state{len(head)}").mkdir()
+        y = Yerkd(private, state)
+        rid = waiting(y.ledger, "t-1")
+        got = y.texting()
+        send = got[-1].cr_frame.f_locals["self"]             # the sender, from its own task
+        with caplog.at_level(logging.WARNING):
+            asyncio.run(send.start())
+        for c in got:
+            c.close()
+        assert send.hands.argv[-1:] == head and y.ledger.texting_get(rid)["state"] == ("queued" if head else "dropped")
+        assert ("text-out is off" in caplog.text) == (not head)
+    s, led, clock = make(tmp_path / "pass")                  # and a pass after such a start hands nothing
+    s.out = False
+    their(led, "t-1", WED - 30)
+    rows(s).add("t-1", WED - 30)
+    left = waiting(led, "t-1")
+    asyncio.run(s.start())
+    for _ in range(3):
+        clock.t += 600
+        asyncio.run(s.tick())
+    assert led.texting_get(left)["state"] == "dropped" and calls(tmp_path / "pass") == []
 
 
 def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(tmp_path: Path) -> None:

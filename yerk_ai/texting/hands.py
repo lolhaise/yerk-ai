@@ -15,7 +15,10 @@ from .. import texts
 from .people import load
 
 PUT, REFUSED, DOWN, MAYBE = "put", "refused", "down", "may have gone"   # what a hand-off came to
-NO_LINK = re.compile(r"ssh: connect to host|Could not resolve hostname|Permission denied|Host key verification failed")
+# what ssh says when no command can have run: no connection, no login, or hung up before its greeting (a Mac at its ssh
+# session cap, seen 2026-11-13); a close that says none of these may have written the job, so it is never tried again
+NO_LINK = re.compile(r"ssh: connect to host|Could not resolve hostname|Permission denied|Host key verification failed|"
+                     r"kex_exchange_identification|banner exchange")
 
 
 def parts(row: dict[str, Any]) -> int:

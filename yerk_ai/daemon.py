@@ -834,14 +834,15 @@ class Yerkd:
                                lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
                                named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
                                room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
+        out = "text-out" in self.gates.external                # [gates] off = ["text-out"]: no text goes, one left waiting included
         self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
-                                  self.texting_show, out="text-out" in self.gates.external, window_s=self.gates.window_s, word=self.gates.word)
+                                  self.texting_show, out=out, window_s=self.gates.window_s, word=self.gates.word)
         file, host = tpeople.path(self.private, conf), str(self.imessage().get("host") or "")
-        hands = thands.Live(file, str(conf.get("outbox") or ""), [*texts.SSH, host] if host and not host.startswith("-") else []) \
+        hands = thands.Live(file, str(conf.get("outbox") or ""), [*texts.SSH, host] if out and host and not host.startswith("-") else []) \
             if conf["mode"] == "live" else thands.Dry(file, self.state)          # the hands, chosen once: nothing shared
         try:
             send = tsender.Sender(conf, file, self.ledger, link.thread, hands, self.holds.edits, self.texting_post, self.texting_to,
-                                  status=link.more)
+                                  status=link.more, out=out)
         except ValueError as e:                               # `yerk doctor` names it
             log.error("texting is off: %s", e)
             self.holds = None
