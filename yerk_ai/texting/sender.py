@@ -194,11 +194,10 @@ class Sender:
         owner's newer than the newest of them that is not texting's own claimed send (a tapback of his too), or a text of
         theirs newer than it."""
         gs, newest, got = gs_of(r), self.newest(r), {str(x.get("guid")): x for x in rows}
-        for g in gs:
-            if g not in got:
-                return "they took it back"
-            if (d := (self.ledger.inbound_get(g) or {}).get("digest")) and digest(str(got[g].get("text") or "")) != d:
-                return "they changed it"
+        if any(g not in got for g in gs):
+            return "they took it back"
+        if any((d := (self.ledger.inbound_get(g) or {}).get("digest")) and digest(str(got[g].get("text") or "")) != d for g in gs):
+            return "they changed it"
         newer = [x for x in rows if (w := when_of(x)) is not None and w.timestamp() > newest and str(x.get("guid")) not in gs]
         if any(x.get("is_from_me") is True and (self.ledger.inbound_get(str(x.get("guid"))) or {}).get("sender") != "auto" for x in newer):
             return "owner answered"

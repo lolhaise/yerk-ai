@@ -278,8 +278,8 @@ def test_at_fire_time_a_changed_text_is_decided_again_a_gone_one_cancels_and_an_
     r = armed(s, led, rid)
     assert (r["state"], r["fire_at"], r["delay"], r["handed"]) == ("deciding", None, None, None)
     assert led.inbound_get("t-1")["digest"] == digest("see you at seven")
-    rid = due(s, led, clock, "t-2")
-    rows(s).rows = [x for x in rows(s).rows if x["guid"] != "t-2"]
+    rid = due(s, led, clock, "t-2", "t-2b")
+    rows(s).rows = [{**x, "text": "see you at nine"} if x["guid"] == "t-2" else x for x in rows(s).rows if x["guid"] != "t-2b"]
     assert armed(s, led, rid)["state"] == "cancelled" and led.texting_get(rid)["reason"] == "they took it back"
     rid = due(s, led, clock, "t-3")
     rows(s).down = True
