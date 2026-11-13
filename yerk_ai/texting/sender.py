@@ -5,7 +5,9 @@ younger than `first_shot_window`; else the sheet's pacing bucket, counted from t
 `quiet` for a sheet that holds at night moves to the end of quiet hours plus a `morning` draw (J38). At `fire_at` the
 thread is read again on the link and the text is handed only when every text it answers is still there unchanged and
 nothing newer of the owner's (texting's own claimed sends aside) or of theirs is (J39); with the bridge away it waits, and past
-`stale_minutes` it is dropped and listed once, never fired late. Each job is handed once (J41)."""
+`stale_minutes` it is dropped and listed once, never fired late. Each job is handed once (J41). A from-me row inside a
+handed job's window claims it (J42): `auto`, not the owner's answer; all parts claimed, `sent`; unclaimed after the window,
+`unseen`, never handed again. Dry claims nothing: its row stays `would-send`, `handed` saying the job file was written."""
 from __future__ import annotations
 
 import asyncio
@@ -58,7 +60,7 @@ class Sender:
         self.mode, self.file, self.ledger, self.clock = str(conf.get("mode") or "off"), file, ledger, clock
         self.thread, self.hands, self.post, self.to = thread, hands, post, to
         self.edits = edits if edits is not None else []     # the holds' card edits (Holds.edits), made at their next pass
-        self.stale = float(conf.get("stale_minutes", 30)) * 60
+        self.stale, self.claim_s = float(conf.get("stale_minutes", 30)) * 60, float(conf.get("claim_seconds", 180))
         self.wait = WAITS.get(self.mode, "queued")
         self.first_shot, self.window = pair(conf.get("first_shot"), (150.0, 240.0)), float(conf.get("first_shot_window", 300))
         self.send_delay, self.morning = pair(conf.get("send_delay"), (0.0, 30.0)), pair(conf.get("morning"), (10.0, 90.0))
@@ -105,6 +107,9 @@ class Sender:
         self.who = who = await asyncio.to_thread(load, self.file)
         for r in self.ledger.texting_in(self.wait):
             if r["handed"] is not None:
+                if self.mode == "live" and self.clock() > float(r["handed"]) + self.claim_s:     # never seen: never again
+                    self.end(r, "unseen", words.TEXTING_SENT["unseen"])
+                    self.card(r, words.TEXTING_SENT["unseen"])
                 continue
             if (p := who.people.get(str(r["person"]))) is None:
                 self.end(r, "dropped", words.TEXTING_UNLISTED)
@@ -168,6 +173,27 @@ class Sender:
                 log.warning("texting: %s, row %d part %d may have gone; never handed again", r["person"], rid, part)
         if self.mode == "dry":
             self.card(r, words.TEXTING_SENT["dry"].format(at=f"{datetime.fromtimestamp(now):%H:%M}"))
+
+    def claim(self, p: Person, msg: dict[str, Any], at: float | None) -> bool:
+        """A from-me row new on the link (the intake asks): True when it is texting's own send, claiming the oldest handed,
+        unclaimed job of the thread whose window [handed - 10 s, handed + claim_seconds] holds the row's own time, a
+        tapback row only a tapback job and a text row only a text job. The last part claimed: `sent`; else the next part is
+        due a `burst_gap` draw from now (J40)."""
+        t = self.clock() if at is None else at
+        jobs = [r for r in self.ledger.texting_rows(p.key, "queued") if self.mode == "live" and r["handed"] is not None
+                and (r["decision"] == "react") == is_tapback(msg) and float(r["handed"]) - 10 <= t <= float(r["handed"]) + self.claim_s]
+        if not jobs:
+            return False
+        r = min(jobs, key=lambda r: float(r["handed"]))
+        rid, got = int(r["id"]), ",".join([*gs_of(r, "claimed"), str(msg.get("guid") or "")])
+        if len(got.split(",")) >= parts(r):
+            self.ledger.texting_set(rid, claimed=got, state="sent", reason="")
+            self.card(r, words.TEXTING_SENT["sent"].format(at=f"{datetime.fromtimestamp(t):%H:%M}"))
+        else:
+            sheet = (self.who.sheets.get(p.key) if self.who else None) or Sheet()
+            gap = self.draw(pair(sheet.pacing.get("burst_gap"), (10.0, 35.0)))
+            self.ledger.texting_set(rid, claimed=got, handed=None, delay=round(gap, 3), fire_at=self.clock() + gap)
+        return True
 
     def cancel(self, r: dict[str, Any], why: str) -> None:
         """A text that may go, stopped: cancelled with why, and its card says so."""

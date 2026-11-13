@@ -18,9 +18,10 @@ import pytest
 from test_texting_link import A1, B1
 from test_texting_holds import Card
 from yerk_ai.ledger import Ledger
-from yerk_ai.texting import hands, holds, sender
+from yerk_ai.texting import hands, holds, intake, sender, writer
 from yerk_ai.texting.bridge import BridgeDown
 from yerk_ai.texting.intake import digest
+from yerk_ai.texting.people import load
 
 LIST = (f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\nsheet = "people/alex.toml"\n\n'
         f'[people.beta]\nfirst = "Beta"\nhandles = ["{B1}"]\nsheet = "people/beta.toml"\n')
@@ -303,3 +304,39 @@ def test_a_whole_dry_pass_writes_the_jobs_live_would_hand_and_never_starts_a_pro
     for k in (1, 2):
         got = json.loads((tmp_path / "state" / "texting" / "dry" / f"yerk-{rid}-{k}.json").read_text())
         assert got == hands.job(r, k, WED - 29) and got["queued"] == WED - 28
+
+
+def test_a_job_handed_and_never_claimed_is_unseen_after_the_window_and_never_written_again(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    rid = due(s, led, clock, "t-1")
+    assert armed(s, led, rid)["handed"] == clock.t
+    for _ in range(5):
+        clock.t += 60
+        armed(s, led, rid)
+    assert led.texting_get(rid)["state"] == "unseen" and calls(tmp_path) == [f"yerk-{rid}-1"]
+
+
+def intake_for(s: sender.Sender, led: Ledger) -> tuple[intake.Intake, list[Any]]:
+    took, withdrawn = intake.Intake({"mode": "live"}, load(s.file), led, lambda *a, **k: True, clock=s.clock), []
+    took.claim, took.withdraw = s.claim, lambda p, at: withdrawn.append(at)
+    return took, withdrawn
+
+
+def test_a_from_me_row_in_the_window_claims_the_oldest_text_job_as_auto_and_answers_nothing(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, withdrawn = intake_for(s, led)
+    alex = load(s.file).people["alex"]
+    their(led, "t-0", WED - 60)
+    pending = waiting(led, "t-0", state="deciding")
+    rid = due(s, led, clock, "t-1")
+    handed = armed(s, led, rid)["handed"]
+    rows(s).add("m-tap", handed + 5, "", mine=True, tapback=True)
+    assert took.take(alex, rows(s).rows[-1]) == "tapback" and led.texting_get(rid)["claimed"] is None
+    rows(s).add("m-1", handed + 20, "on my way", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "auto"
+    assert (led.texting_get(rid)["state"], led.texting_get(rid)["claimed"]) == ("sent", "m-1")
+    assert led.inbound_get("m-1")["sender"] == "auto" and led.texting_get(pending)["state"] == "deciding" and withdrawn == []
+    assert " auto: on my way" in writer.line(rows(s).rows[-1], auto={"m-1"})
+    rows(s).add("m-2", handed + 400, "running late", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "owner" and led.inbound_get("m-2")["sender"] == "owner"
+    assert led.texting_get(pending)["state"] == "cancelled" and withdrawn == [pytest.approx(handed + 400, abs=1e-3)]
