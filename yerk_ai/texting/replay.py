@@ -28,6 +28,7 @@ from .people import Person, load, norm, sheet_file
 HEAD = re.compile(r"^# Texts with .*\(([^()]*)\)\s*$")
 MSG = re.compile(r"^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) (.*)$")
 DAY = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+NAMED = re.compile(r"\d{4}-\d{2}-\d{2}")       # a day anywhere in a file's name: a screenshot's, a fragment's
 OLD = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) (.+?) IN:")
 BURST = 120.0               # seconds from a burst's first text to its last
 OLD_BEFORE = 900.0          # an old agent's OUT counts from this long before the owner's line up to its own minute
@@ -167,9 +168,11 @@ def located(name: str, cites: tuple[tuple[Path, str], ...], root: Path) -> Path:
 def as_of(hits: list[dict[str, Any]], at: datetime, where: Callable[[str], Path], imports: Path) -> tuple[list[dict[str, Any]], int]:
     """J31: the hits a cut may see, and how many lines were taken out. A hit from a file under the texts import folder is
     kept only when every line of its text but a gap mark is a message line that begins with its own minute, before the
-    cut's (a snippet's lines are picked, not a span, and a long one is cut around its match); a hit from a file whose name
-    begins with a date on or after the cut's day goes whole, as does one from any file that holds a message line at or after
-    the cut, and one whose cite names no file on disk. A hit with no file in its cite leaves the whole part out."""
+    cut's (a snippet's lines are picked, not a span, and a long one is cut around its match). Of the other files, a log
+    named for its day is as of that day and any other file as of its last change: a hit goes whole when its file's name
+    holds a date on or after the cut's day, when its file is no dated log and changed at or after the cut (a people or facts
+    file kept up to date, a picture's text filed since: each can hold what was sent next), when it holds a message line at
+    or after the cut, and when its cite names no file on disk. A hit with no file in its cite leaves the whole part out."""
     if any(not str(h.get("cite") or "").rpartition(":")[0] for h in hits):
         return [], sum(len(str(h.get("text") or "").splitlines()) or 1 for h in hits)
     kept, dropped, cut = [], 0, f"{at:%Y-%m-%d %H:%M}"
@@ -180,7 +183,8 @@ def as_of(hits: list[dict[str, Any]], at: datetime, where: Callable[[str], Path]
         elif f.is_relative_to(imports):
             late = any(x.strip() not in ("", "…") and not ((m := MSG.match(x)) and m[1] < cut) for x in text)
         else:
-            late = bool((d := DAY.match(f.name)) and d[1] >= cut[:10]) or any((m := MSG.match(x)) and m[1] >= cut for x in text)
+            late = (any(x >= cut[:10] for x in NAMED.findall(f.name)) or not DAY.match(f.name) and f.stat().st_mtime >= at.timestamp()
+                    or any((m := MSG.match(x)) and m[1] >= cut for x in text))
         if late:
             dropped += len(str(h.get("text") or "").splitlines()) or 1
         else:

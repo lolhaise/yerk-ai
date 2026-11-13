@@ -541,7 +541,7 @@ REPLAY_PLAN = "{cuts} cuts since {since}, at most {limit} a person, newest first
 REPLAY_DRY = "the plan only: nothing called; --run makes the calls"
 REPLAY_AS_OF = "pack memory only, as of each cut; no dig tools"
 REPLAY_LEFT_OUT = "left out: the recall part (its lines name no file, so none can be dated)"
-REPLAY_LIMITS = ("limit: files with no date in their name (people, facts) are today's",
+REPLAY_LIMITS = ("limit: a memory file kept up to date (people, facts) is left out once it changed after a cut, so the writer knows less than it did",
                  "limit: a text answered with a tapback reads as unanswered (an import holds no tapbacks)",
                  "limit: a writer with no dig tools holds more often than the live one")
 REPLAY_COLUMNS = ("cuts", "reply", "react", "none", "held", "agree", "more", "less", "asks", "tapback", "auto", "open",

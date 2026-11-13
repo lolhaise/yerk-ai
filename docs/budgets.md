@@ -707,7 +707,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-13: texting-7a-fix raised it by 16, a replayed call no model answered counted as failed and the replay's model flag (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 31673`
+2026-11-13: texting-7a-asof raised it by 4, the replay's memory files held to their last change (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 31677`
 
 ## Uncapped
 

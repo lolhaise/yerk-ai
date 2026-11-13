@@ -8,6 +8,16 @@ version changes.
 
 ## 2026-11-13
 
+### texting-7a-asof (#71)
+
+- `yerk texting replay`: the memory a replayed decision sees is held to the cut more tightly. A log named for its day is as
+  of that day, as before. Any other memory file is as of its last change: a hit from one that changed at or after the cut
+  is left out, and so is one whose name holds a later day anywhere in it. The first real run showed why: a people file kept
+  up to date and the text of a screenshot filed minutes after a cut both held what the owner sent next, and two drafts
+  matched his words because of it. The run's header says the writer now knows less than it did at the time.
+- budgets.toml: `[code] lines` 31,673 to 31,677, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-7a-fix (#70)
 
 - A one-shot call (the texting writer and check, the judges) whose account answers "You've reached your <model> limit. Switch
