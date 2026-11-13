@@ -7,7 +7,9 @@ thread is read again on the link and the text is handed only when every text it 
 nothing newer of the owner's (texting's own claimed sends aside) or of theirs is (J39); with the bridge away it waits, and past
 `stale_minutes` it is dropped and listed once, never fired late. Each job is handed once (J41). A from-me row inside a
 handed job's window claims it (J42): `auto`, not the owner's answer; all parts claimed, `sent`; unclaimed after the window,
-`unseen`, never handed again. Dry claims nothing: its row stays `would-send`, `handed` saying the job file was written."""
+`unseen`, never handed again. Dry claims nothing: its row stays `would-send`, `handed` saying the job file was written.
+A newer decision for the person cancels the older text not yet gone; a stopped text already handed and unclaimed gets
+one cancel job first (live)."""
 from __future__ import annotations
 
 import asyncio
@@ -68,6 +70,7 @@ class Sender:
         self.quiet = (minute(q[0]), minute(q[1]))
         self.rand = rand or random.Random()
         self.who: People | None = None
+        self.cancels: list[tuple[int, str, float]] = []      # (row, handle, until): a cancel job owed to the Mac
 
     def draw(self, span: tuple[float, float]) -> float:
         return self.rand.uniform(*span)
@@ -105,6 +108,11 @@ class Sender:
     async def tick(self) -> None:
         """One pass: the reply list as it is now (J16); each waiting row armed once, then fired when due."""
         self.who = who = await asyncio.to_thread(load, self.file)
+        for new in self.ledger.texting_in(self.wait):            # a newer decision takes over (supersede)
+            for old in self.ledger.texting_rows(str(new["person"]), self.wait) if new["fire_at"] is None else []:
+                if int(old["id"]) < int(new["id"]) and (self.mode == "live" or old["handed"] is None):
+                    self.cancel(old, "a newer decision")
+        await self.cancel_jobs()
         for r in self.ledger.texting_in(self.wait):
             if r["handed"] is not None:
                 if self.mode == "live" and self.clock() > float(r["handed"]) + self.claim_s:     # never seen: never again
@@ -195,13 +203,23 @@ class Sender:
             self.ledger.texting_set(rid, claimed=got, handed=None, delay=round(gap, 3), fire_at=self.clock() + gap)
         return True
 
+    async def cancel_jobs(self) -> None:
+        """Each cancel job owed, once: one that could not connect is tried again while its job may still be on the Mac."""
+        owed, self.cancels = self.cancels, []
+        for rid, to, until in owed:
+            if await self.hands.hand(f"yerk-{rid}-cancel", {"to": to, "cancel": True, "queued": self.clock()}) == DOWN and self.clock() < until:
+                self.cancels.append((rid, to, until))
+
     def cancel(self, r: dict[str, Any], why: str) -> None:
-        """A text that may go, stopped: cancelled with why, and its card says so."""
+        """A text that may go, stopped: cancelled with why, and its card says so; handed and unclaimed in live, a cancel job
+        for its handle is owed first (written at the start of the next pass)."""
+        if self.mode == "live" and r["handed"] is not None:
+            self.cancels.append((int(r["id"]), str(r["handle"]), float(r["handed"]) + self.claim_s))
         self.ledger.texting_set(int(r["id"]), state="cancelled", reason=why)
         if why == "owner answered":
             for g in gs_of(r):
                 self.ledger.inbound_set(g, state="answered", note="the owner answered himself")
-        self.card(r, words.TEXTING_SENT[why])
+        self.card(r, words.TEXTING_SENT.get(why, why))
 
     def end(self, r: dict[str, Any], state: str, why: str) -> None:
         self.ledger.texting_set(int(r["id"]), state=state, reason=why)

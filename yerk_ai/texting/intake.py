@@ -46,6 +46,7 @@ class Intake:
         self.bursts: dict[str, Burst] = {}
         self.withdraw: Callable[[Person, float | None], None] | None = None   # the holds' (holds.Holds.withdraw), once made
         self.claim: Callable[[Person, dict[str, Any], float | None], bool] | None = None   # the sender's (sender.Sender.claim)
+        self.stop: Callable[[dict[str, Any], str], None] | None = None     # the sender's (sender.Sender.cancel)
 
     def take(self, p: Person, msg: dict[str, Any]) -> str:
         """One row: what it was taken as (the link saves its cursor after this returns)."""
@@ -79,7 +80,8 @@ class Intake:
         return "them"
 
     def answered(self, p: Person, at: float | None) -> None:
-        """The owner texted the thread: every text of theirs made before his, in the open burst or a pending decision, is his."""
+        """The owner texted the thread: every text of theirs made before the owner's, in the open burst, a pending decision or a text
+        waiting to go (dry: one whose job file is not written yet), is the owner's; a waiting one is stopped by the sender (J43)."""
         def before(c: float | None) -> bool:
             return at is None or c is None or c <= at
         if (b := self.bursts.get(p.key)) is not None:
@@ -88,10 +90,15 @@ class Intake:
             b.texts = [x for x in b.texts if not before(x[1])]
             if not b.texts:
                 del self.bursts[p.key]
-        for r in (r for state in ("deciding", "decided", "release-ready") for r in self.ledger.texting_rows(p.key, state)):
+        for r in (r for state in ("deciding", "decided", "release-ready", "queued", "would-send") for r in self.ledger.texting_rows(p.key, state)):
             gs = str(r["inbound"]).split(",")
+            if r["state"] == "would-send" and r["handed"] is not None:
+                continue
             if all(before((self.ledger.inbound_get(g) or {}).get("created")) for g in gs):
-                self.ledger.texting_set(int(r["id"]), state="cancelled", reason="owner answered")
+                if r["state"] in ("queued", "would-send") and self.stop is not None:
+                    self.stop(r, "owner answered")
+                else:
+                    self.ledger.texting_set(int(r["id"]), state="cancelled", reason="owner answered")
                 for g in gs:
                     self.ledger.inbound_set(g, state="answered", note="the owner answered himself")
         if self.withdraw is not None:             # a card of theirs: withdrawn, and the card says the owner answered

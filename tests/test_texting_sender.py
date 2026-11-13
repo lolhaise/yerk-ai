@@ -369,3 +369,51 @@ def test_part_two_waits_for_part_one_to_be_seen_goes_a_burst_gap_later_and_never
         clock.t += 60
         armed(s, led, late)
     assert led.texting_get(late)["state"] == "unseen" and calls(tmp_path)[2:] == [f"yerk-{late}-1"]
+
+
+
+def test_his_own_text_cancels_a_queued_text_and_one_handed_and_unclaimed_gets_exactly_one_cancel_job(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, _ = intake_for(s, led)
+    took.stop = s.cancel
+    alex = load(s.file).people["alex"]
+    rid = due(s, led, clock, "t-1")
+    clock.t -= 20                                          # before its fire time
+    rows(s).add("m-1", WED - 10, "be right there", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "owner"
+    assert armed(s, led, rid)["state"] == "cancelled" and led.texting_get(rid)["reason"] == "owner answered"
+    assert calls(tmp_path) == []
+    tap = led.texting_add(person="alex", handle=A1, inbound="t-2", decision="react", parts="[]", react="love", reply_to="",
+                          statements="[]", state="queued", reason="", mode="live")
+    their(led, "t-2", clock.t - 5)
+    rows(s).add("t-2", clock.t - 5)
+    clock.t = armed(s, led, tap)["fire_at"]
+    handed = armed(s, led, tap)["handed"]
+    assert json.loads((tmp_path / "outbox" / f"yerk-{tap}-1.json").read_text())["react"] == "love"
+    rows(s).add("m-2", handed + 3, "actually call me", mine=True)        # a text row never claims a tapback job: the owner's
+    assert took.take(alex, rows(s).rows[-1]) == "owner" and led.texting_get(tap)["state"] == "cancelled"
+    for _ in range(3):
+        clock.t += 5
+        armed(s, led, tap)
+    assert calls(tmp_path) == [f"yerk-{tap}-1", f"yerk-{tap}-cancel"]
+    sent = json.loads((tmp_path / "outbox" / f"yerk-{tap}-cancel.json").read_text())
+    assert sent == {"to": A1, "cancel": True, "queued": handed + 5}
+
+
+def test_a_newer_decision_for_the_person_cancels_the_older_text_not_yet_gone(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    older = due(s, led, clock, "t-1")
+    clock.t -= 20
+    their(led, "t-2", clock.t - 2)
+    rows(s).add("t-2", clock.t - 2)
+    newer = waiting(led, "t-2")
+    assert armed(s, led, newer)["fire_at"] is not None
+    assert led.texting_get(older)["state"] == "cancelled" and led.texting_get(older)["reason"] == "a newer decision"
+    assert calls(tmp_path) == []
+    clock.t = led.texting_get(newer)["fire_at"]
+    assert armed(s, led, newer)["handed"] == clock.t
+    their(led, "t-3", clock.t + 1)
+    rows(s).add("t-3", clock.t + 1)
+    newest = waiting(led, "t-3")
+    armed(s, led, newest)
+    assert led.texting_get(newer)["state"] == "cancelled" and calls(tmp_path) == [f"yerk-{newer}-1", f"yerk-{newer}-cancel"]
