@@ -8,6 +8,18 @@ version changes.
 
 ## 2026-11-13
 
+### texting-7a-fix (#70)
+
+- A one-shot call (the texting writer and check, the judges) whose account answers "You've reached your <model> limit. Switch
+  to another model" now rests that account for that model and goes on to the next one. One wording of it matched no rule, so
+  the call stopped there with no answer; the other read as billing and rested the whole account. `failures.toml`: a new
+  `model_limit` pattern ahead of `billing`.
+- `yerk texting replay`: a cut whose call no model answered (refused, timed out, no account free) is written as failed and
+  counted under `failed`, never as a held decision. `--model NAME` runs a replay's calls on that model in place of the report
+  room's; the run's header and the first line of its file name the model.
+- budgets.toml: `[code] lines` 31,657 to 31,673, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-7a (#69)
 
 - Nothing changes until an install has a `[texting]` table with a report room and someone runs the new command.

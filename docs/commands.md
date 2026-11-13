@@ -228,6 +228,7 @@ sheets --check: the reply list and each person's sheet read, nothing written; on
 - `--limit LIMIT`: replay: cuts a person, newest first (default 10)
 - `--old-log OLD_LOG`: replay: the old agent's log; an answer it quotes is marked auto, not the owner's
 - `--run`: replay: make the calls; without it the plan only, nothing called
+- `--model MODEL`: replay: the model its calls run on (default: the report room's, as the live writer)
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 

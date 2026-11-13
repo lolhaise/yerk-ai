@@ -691,7 +691,10 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
     if not ((state := state_dir(a.state)) / "docs").is_dir():         # memory.settings would make it; an install has it
         print(words.REPLAY_NO_DOCS.format(docs=state / "docs"))
         return 1
-    print("\n".join([words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]), flush=True)
+    model = a.model or room_settings(room_confs[report], state, report, models(conf))["model"][0]
+    if a.model:                                                   # the flag's model for the writer and the check, whatever [texting] names
+        t = {**t, "model": a.model, "check_model": a.model}
+    print("\n".join([words.REPLAY_MODEL.format(model=t.get("model") or model), words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]), flush=True)
 
     class Search:
         search, reader, owner = Yerkd.search, Yerkd.reader, Yerkd.owner
@@ -708,9 +711,9 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
     accts = load_accounts(priv / "accounts.toml")
     named = [x for n in room_confs[report].get("accounts") or [] for x in accts if x.name == n]     # its order, as daemon.texting
     f = replay.go(state, f"{datetime.now(tz):%Y-%m-%d-%H%M%S}", {"since": a.since, "limit": a.limit, "people": sorted({c.key for c, _ in todo}),
-                  "left_out": ["recall"]}, t, file, report, todo, search,
+                  "left_out": ["recall"], "model": t.get("model") or model}, t, file, report, todo, search,
                   lambda name: replay.located(name, d.memory.cites, d.memory.root), texts, named + [x for x in accts if x not in named],
-                  FailureTable.load(table("failures.toml")), room_settings(room_confs[report], state, report, models(conf))["model"][0])
+                  FailureTable.load(table("failures.toml")), model)
     lines = [json.loads(x) for x in f.read_text().splitlines()[1:]]
     print("\n".join([*replay.table(lines), words.REPLAY_FILE.format(file=f)]))
     if failed := sum(1 for x in lines if x.get("error")):
@@ -968,6 +971,7 @@ def parser() -> argparse.ArgumentParser:
     tx.add_argument("--limit", type=int, default=10, help="replay: cuts a person, newest first (default 10)")
     tx.add_argument("--old-log", help="replay: the old agent's log; an answer it quotes is marked auto, not the owner's")
     tx.add_argument("--run", action="store_true", help="replay: make the calls; without it the plan only, nothing called")
+    tx.add_argument("--model", help="replay: the model its calls run on (default: the report room's, as the live writer)")
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ad = sub.add_parser("add", help="an add-on into this install (a folder, a git URL, or an ability whose entry names its repo): "
                         "fetched, checked against its own size, its package, server, tables and units in, its tests run")

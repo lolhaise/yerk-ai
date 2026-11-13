@@ -191,6 +191,13 @@ def as_of(hits: list[dict[str, Any]], at: datetime, where: Callable[[str], Path]
 CUT: ContextVar[Cut] = ContextVar("cut")
 
 
+def unanswered(d: dict[str, Any]) -> bool:
+    """A call no model answered (writer.hop's own holds: refused or timed out, or no account free): a failed cut, never a
+    decision. A hold the code itself made names its rule, and one a model made carries its tokens."""
+    why = str(d.get("reason") or "")
+    return not d.get("tokens") and (why == words.TEXTING_NO_CLEAN or why.startswith(words.TEXTING_NO_ACCOUNT.partition("{")[0]))
+
+
 def rows(c: Cut) -> list[dict[str, Any]]:
     """The thread as it stood, in the shape of the link's rows: the lines before the burst and the burst (`Writer.last` keeps THREAD)."""
     return [{"guid": f"{c.key}:{x.n}", "is_from_me": x.side != "them", "text": x.text, "created_at": x.at.isoformat()}
@@ -230,8 +237,12 @@ async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, t
                 rid = led.texting_add(person=c.key, handle=handle, inbound=",".join(f"{c.key}:{x.n}" for x in c.burst),
                                       state="deciding", mode="dry")
                 await w._decide(led.texting_get(rid) or {})
-                if (r := led.texting_get(rid) or {}).get("decision") in ("reply", "react"):
+                if unanswered(r := led.texting_get(rid) or {}):
+                    raise LookupError(words.REPLAY_UNANSWERED.format(why=r.get("reason")))
+                if r.get("decision") in ("reply", "react"):
                     await chk.check(r)
+                    if unanswered(v := json.loads((led.texting_get(rid) or {}).get("verdict") or "{}")):
+                        raise LookupError(words.REPLAY_UNANSWERED.format(why=v.get("reason")))
             except Exception as e:
                 error = f"{type(e).__name__}: {(str(e).splitlines() or [''])[0]}"
         line = entry(c, (led.texting_get(rid) or {}) if rid else {})
