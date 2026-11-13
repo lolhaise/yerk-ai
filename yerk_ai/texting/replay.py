@@ -50,6 +50,7 @@ class Cut:
     went: list[Line]        # the owner's lines that followed, before their next line and within catch_up_hours
     open: bool              # no line of theirs follows and the file's last line is inside the answer window
     dropped: int = 0        # memory lines the as-of cut took out
+    kept: int = 0           # memory hits that reached the writer
     then: int | None = None  # minutes to their next line when nothing of the owner's came between
 
     @property
@@ -167,17 +168,19 @@ def as_of(hits: list[dict[str, Any]], at: datetime, where: Callable[[str], Path]
     """J31: the hits a cut may see, and how many lines were taken out. A hit from a file under the texts import folder is
     kept only when every line of its text but a gap mark is a message line that begins with its own minute, before the
     cut's (a snippet's lines are picked, not a span, and a long one is cut around its match); a hit from a file whose name
-    begins with a date on or after the cut's day goes whole. A hit with no file in its cite leaves the whole part out."""
+    begins with a date on or after the cut's day goes whole, as does one from any file that holds a message line at or after
+    the cut, and one whose cite names no file on disk. A hit with no file in its cite leaves the whole part out."""
     if any(not str(h.get("cite") or "").rpartition(":")[0] for h in hits):
         return [], sum(len(str(h.get("text") or "").splitlines()) or 1 for h in hits)
-    kept, dropped = [], 0
+    kept, dropped, cut = [], 0, f"{at:%Y-%m-%d %H:%M}"
     for h in hits:
-        f = where(str(h["cite"]).rpartition(":")[0]).resolve()
-        if f.is_relative_to(imports):
-            late = any(x.strip() not in ("", "…") and not ((m := MSG.match(x)) and m[1] < f"{at:%Y-%m-%d %H:%M}")
-                       for x in str(h.get("text") or "").splitlines())
+        f, text = where(str(h["cite"]).rpartition(":")[0]).resolve(), str(h.get("text") or "").splitlines()
+        if not f.is_file():                     # a cite read back to no file: where it is from cannot be told, so it goes
+            late = True
+        elif f.is_relative_to(imports):
+            late = any(x.strip() not in ("", "…") and not ((m := MSG.match(x)) and m[1] < cut) for x in text)
         else:
-            late = bool(d := DAY.match(f.name)) and d[1] >= f"{at:%Y-%m-%d}"     # type: ignore[index]
+            late = bool((d := DAY.match(f.name)) and d[1] >= cut[:10]) or any((m := MSG.match(x)) and m[1] >= cut for x in text)
         if late:
             dropped += len(str(h.get("text") or "").splitlines()) or 1
         else:
@@ -209,6 +212,7 @@ async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, t
     def recall(text: str) -> str:
         c = CUT.get()
         hits, c.dropped = as_of(search(text), c.at, where, imports.resolve())
+        c.kept = len(hits)
         return "\n".join(f"{h['cite']} {h['text']}" for h in hits)
 
     w = writer.Writer(conf, file, scratch, led, report, thread, recall, lambda now: "", accounts, Cooldowns(), failures, model,
@@ -244,7 +248,7 @@ def entry(c: Cut, r: dict[str, Any]) -> dict[str, Any]:
             "statements": json.loads(r.get("statements") or "[]"), "reason": r.get("reason") or "",
             "verdict": json.loads(r.get("verdict") or "null"), "state": r.get("state") or "",
             "went": [{"at": f"{x.at:%Y-%m-%d %H:%M}", "side": x.side, "text": x.text} for x in c.went], "then": c.then,
-            "score": score(c, str(r.get("decision") or ""), parts), "dropped": c.dropped, "seconds": r.get("seconds") or 0,
+            "score": score(c, str(r.get("decision") or ""), parts), "dropped": c.dropped, "kept": c.kept, "seconds": r.get("seconds") or 0,
             "tokens": r.get("tokens") or 0, "account": r.get("account") or ""}
 
 

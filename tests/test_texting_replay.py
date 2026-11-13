@@ -118,13 +118,13 @@ def test_the_live_writers_argv_is_what_it_was_and_the_replayed_writer_has_no_too
     assert not (tmp_path / "s2" / "texting" / "writer-mcp.json").exists()        # the check's flags, as the canary ran them
 
 
-def run(tmp_path: Path, monkeypatch, priv: Path, state: Path, cs: list[replay.Cut], hits: list[dict]) -> list[dict]:
+def run(tmp_path: Path, monkeypatch, priv: Path, state: Path, cs: list[replay.Cut], hits: list[dict], search=None) -> list[dict]:
     acct = Account("a0", tmp_path / "cfg0")
     acct.config_dir.mkdir(exist_ok=True)
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl"))
     monkeypatch.setenv("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt"))
     return replay.go(state, "t1", {"since": "2026-10-01"}, {"mode": "dry", "model": "model-x"}, priv / "texting" / "people.toml",
-                     "owner-room", [(c, A1) for c in cs], lambda text: hits, lambda name: priv / "memory" / name, priv / "imports" / "texts",
+                     "owner-room", [(c, A1) for c in cs], search or (lambda text: hits), lambda name: priv / "memory" / name, priv / "imports" / "texts",
                      [acct], FailureTable.load(config.table("failures.toml")), claude=str(FAKE))
 
 
@@ -136,12 +136,16 @@ def test_a_cut_is_decided_and_checked_by_the_live_code_as_of_its_minute_with_no_
     alex = priv / "imports" / "texts" / "alex.md"
     hits = [{"cite": f"{alex}:7", "text": "- 2026-10-01 09:20 Sam: sure, at ten"},
             {"cite": "daily/2026-10-02.md:1", "text": "DAY-AFTER-LINE"}, {"cite": "daily/2026-09-24.md:1", "text": "WEEK-BEFORE-LINE"},
-            {"cite": f"{alex}:4", "text": "- 2026-10-01 09:00 Sam: morning"}, {"cite": f"{alex}:2", "text": "6 messages, 2026-10-01 to 2026-10-03"}]
+            {"cite": f"{alex}:4", "text": "- 2026-10-01 09:00 Sam: morning"}, {"cite": f"{alex}:2", "text": "6 messages, 2026-10-01 to 2026-10-03"},
+            {"cite": "daily/2026-09-01.md:1", "text": "NO-SUCH-FILE-LINE"},                # a cite read back to no file on disk
+            {"cite": "notes.md:1", "text": "- 2026-10-01 09:20 Sam: COPIED-LATER-LINE"}]    # a later line kept in an undated file
+    (priv / "memory" / "notes.md").write_text("- 2026-10-01 09:20 Sam: COPIED-LATER-LINE\n")
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yes!"]))
     f = run(tmp_path, monkeypatch, priv, state, thread_cuts(priv)[2:], hits)
     stdin = (tmp_path / "stdin.txt").read_text()
     assert "WEEK-BEFORE-LINE" in stdin and "DAY-AFTER-LINE" not in stdin and "sure, at ten" not in stdin
     assert "alex.md:4 - 2026-10-01 09:00 Sam: morning" in stdin and "6 messages" not in stdin   # the same thread's older line, by line
+    assert "NO-SUCH-FILE-LINE" not in stdin and "COPIED-LATER-LINE" not in stdin
     pack = stdin.split("=== end their texts")[0]
     assert "alex:4 " in pack and "alex:5 " in pack and "alex:6 " in pack and "alex:7 " not in pack and "alex:8 " not in pack
     assert "=== held" in stdin and stdin.split("=== held")[1].split("\n")[1] == "none"
@@ -151,7 +155,7 @@ def test_a_cut_is_decided_and_checked_by_the_live_code_as_of_its_minute_with_no_
     assert "--json-schema" in ch and str(writer.PROMPT) not in ch
     head, cut = [json.loads(x) for x in f.read_text().splitlines()]
     assert head == {"since": "2026-10-01"} and cut["id"] == "alex:5" and cut["at"] == "2026-10-01 09:06"
-    assert cut["decision"] in ("reply", "held") and cut["verdict"] and cut["dropped"] == 3 and cut["score"] == "agree"
+    assert cut["decision"] in ("reply", "held") and cut["verdict"] and cut["dropped"] == 5 and cut["kept"] == 2 and cut["score"] == "agree"
     assert cut["went"] == [{"at": "2026-10-01 09:20", "side": "owner", "text": "sure, at ten"}] and cut["account"] == "a0"
 
 
@@ -177,9 +181,13 @@ def test_a_cut_that_raises_is_written_with_its_error_the_run_goes_on_and_its_scr
     priv, state = install(tmp_path)
     live = writer.Writer._decide
 
+    seen: list[str] = []
+
     async def decide(self, row):
         if row["inbound"] == "alex:8":
             raise RuntimeError("boom\nsecond line")
+        if row["inbound"].startswith("alex:5"):       # it starts once the cut that raised has ended: that line is on disk by now
+            seen.extend((state / "texting" / "replay" / "t1.jsonl").read_text().splitlines())
         await live(self, row)
     monkeypatch.setattr(writer.Writer, "_decide", decide)
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
@@ -187,7 +195,20 @@ def test_a_cut_that_raises_is_written_with_its_error_the_run_goes_on_and_its_scr
     head, *got = [json.loads(x) for x in f.read_text().splitlines()]
     assert head == {"since": "2026-10-01"} and sorted(x["id"] for x in got) == ["alex:5", "alex:8", "alex:9"]
     assert {x["id"]: x.get("error") for x in got} == {"alex:9": None, "alex:8": "RuntimeError: boom", "alex:5": None}
+    assert json.loads(seen[0]) == {"since": "2026-10-01"} and [json.loads(x)["id"] for x in seen[1:]][:1] == ["alex:8"]
     assert (state / "texting" / "replay" / "t1" / "ledger.sqlite").exists()
+    shutil.rmtree(state / "texting" / "replay" / "t1")
+
+
+def test_a_search_that_does_not_answer_fails_its_cut_before_any_call(tmp_path, monkeypatch):
+    priv, state = install(tmp_path)
+
+    def search(text: str) -> list[dict]:
+        raise LookupError(words.REPLAY_NO_SEARCH.format(why="timeout"))
+    f = run(tmp_path, monkeypatch, priv, state, thread_cuts(priv), [], search)
+    got = [json.loads(x) for x in f.read_text().splitlines()[1:]]
+    assert len(got) == 3 and {x["error"] for x in got} == {"LookupError: the memory search did not answer: timeout"}
+    assert {x["decision"] for x in got} == {""} and not (tmp_path / "record.jsonl").exists()     # never decided blind: no call made
     shutil.rmtree(state / "texting" / "replay" / "t1")
 
 
@@ -205,9 +226,20 @@ def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path,
     assert cli.main(yerk) == 0 and not (tmp_path / "record.jsonl").exists()               # the plan: nothing called
     assert capsys.readouterr().out.splitlines() == ["alex: alex.md, 3 cuts", words.REPLAY_PLAN.format(cuts=3, since="2026-10-01", limit=10),
                                                     words.REPLAY_DRY]
+    (priv / "imports" / "texts" / "alex-2.md").write_text(THREAD)                # two files hold their handle: skipped, never a guess
+    assert cli.main(yerk) == 0 and capsys.readouterr().out.splitlines()[:2] == [
+        words.REPLAY_FILES.format(key="alex", n=2, files="alex-2.md, alex.md"), words.REPLAY_PLAN.format(cuts=0, since="2026-10-01", limit=10)]
+    (priv / "imports" / "texts" / "alex-2.md").unlink()
     assert cli.main([*yerk, "--run"]) == 1 and not (state / "docs").exists() and not (tmp_path / "record.jsonl").exists()
     assert capsys.readouterr().out.splitlines()[-1] == words.REPLAY_NO_DOCS.format(docs=state / "docs")
     (state / "docs").mkdir()
+    assert cli.main([*yerk, "--run", "--limit", "2"]) == 1 and not (tmp_path / "record.jsonl").exists()     # no index: no search, no call
+    [f] = (state / "texting" / "replay").glob("*.jsonl")
+    assert {json.loads(x)["error"].split(":")[0] for x in f.read_text().splitlines()[1:]} == {"LookupError"}
+    assert capsys.readouterr().out.splitlines()[-1] == words.REPLAY_KEPT.format(n=2, folder=f.with_suffix(""))
+    shutil.rmtree(state / "texting" / "replay")
+    from yerk_ai.daemon import Yerkd
+    monkeypatch.setattr(Yerkd, "search", lambda self, room, query, **kw: {"ok": True, "hits": []})
     assert cli.main([*yerk, "--run", "--limit", "2"]) == 0 and len(calls(tmp_path)) == 4      # two cuts: a writer and a check call each
     out = capsys.readouterr().out
     lines = out.splitlines()

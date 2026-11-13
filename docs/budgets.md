@@ -703,9 +703,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-12: room-recall-pool raised it by 11, a room that may not read everything drawing its search's candidates from the chunks it may read, at most 2,000 rows past the pool, and 400 meaning rows (a sealed room told nothing was on file about people in its own files, 2026-11-12), cut from 15 before the raise.
 
-2026-11-13: texting-7a raised it by 392, the replay of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+2026-11-13: texting-7a raised it by 401, the replay of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 31648`
+- `lines = 31657`
 
 ## Uncapped
 

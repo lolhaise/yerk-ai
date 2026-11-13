@@ -17,13 +17,14 @@ version changes.
   makes.
 - With `--run` it puts each cut through the writer and the check as they run live, as of the cut's minute: the thread
   ends before the burst, the memory part is the report room's search with every line dated at or after the cut taken
-  out, and the writer has no tool. It prints counts only, a row a person and the total (the decisions, each beside what
+  out, and the writer has no tool. A cut whose memory search does not answer is written as failed and never decided.
+  It prints counts only, a row a person and the total (the decisions, each beside what
   was sent next, the check's verdicts, seconds and tokens), and keeps each decision beside what went in one private
   file under `<state>/texting/replay/`. Every cut is a real model call on the install's accounts, in the report room's
   order.
 - It sends nothing and changes nothing the running install uses: not the ledger, the dry folder, a day log, a room or
   the account cooldowns.
-- budgets.toml: `[code] lines` 31,256 to 31,648, with its dated note.
+- budgets.toml: `[code] lines` 31,256 to 31,657, with its dated note.
 - **Upgrading**: nothing to change.
 
 ## 2026-11-12

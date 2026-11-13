@@ -700,10 +700,15 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
             self.room_confs, self.memory = room_confs, memory.settings(priv, state, dict(conf.get("memory", {})))
             self.scoped = {n: self.memory.only(priv, n, c["also"]) for n, c in room_confs.items() if "also" in c}
     d: Any = Search()
+
+    def search(text: str) -> list[dict[str, Any]]:      # a search that does not answer fails its cut: never decided blind
+        if not (r := d.search(report, text, docs=False)).get("ok"):
+            raise LookupError(words.REPLAY_NO_SEARCH.format(why=r.get("status") or "failed"))
+        return list(r.get("hits") or [])
     accts = load_accounts(priv / "accounts.toml")
     named = [x for n in room_confs[report].get("accounts") or [] for x in accts if x.name == n]     # its order, as daemon.texting
     f = replay.go(state, f"{datetime.now(tz):%Y-%m-%d-%H%M%S}", {"since": a.since, "limit": a.limit, "people": sorted({c.key for c, _ in todo}),
-                  "left_out": ["recall"]}, t, file, report, todo, lambda text: d.search(report, text, docs=False).get("hits") or [],
+                  "left_out": ["recall"]}, t, file, report, todo, search,
                   lambda name: replay.located(name, d.memory.cites, d.memory.root), texts, named + [x for x in accts if x not in named],
                   FailureTable.load(table("failures.toml")), room_settings(room_confs[report], state, report, models(conf))["model"][0])
     lines = [json.loads(x) for x in f.read_text().splitlines()[1:]]
