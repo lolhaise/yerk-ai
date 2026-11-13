@@ -66,3 +66,17 @@ def test_the_room_still_gets_nothing_it_may_not_read_nor_a_line_of_a_chunk_it_re
         for got in (texts(memory.recall(s, "Alex", 20, reader=rd)), texts(memory.ranked(s, "Alex", 20, reader=rd))):
             assert "example lake" in got and "example picnic" in got
             assert not [w for w in ("owner's note", "kayak", "canoe", "vault") if w in got]
+
+
+def test_past_the_bound_the_read_stops_inside_its_deadline_as_a_search_that_found_nothing(tmp_path, monkeypatch):
+    """More matches than the bound, none of them the room's: the read stops at the bound, inside its deadline, and answers no
+    hit; a read its deadline cuts answers a timeout, never no hit (lines_on reads that as no absence)."""
+    s = tree(tmp_path, memory.POOL * 2 + memory.READ_ON + 40, "kayak")
+    seen, real = [], memory.allowed_text
+    monkeypatch.setattr(memory, "allowed_text", lambda *a, **k: seen.append(1) or real(*a, **k))
+    t = time.monotonic()
+    assert memory.ranked(s, "kayak", 8, 2.0, PLAIN, wide=False) == {"ok": True, "status": "ok", "hits": []}
+    assert time.monotonic() - t < 2.0 and len(seen) == memory.POOL * 2 + memory.READ_ON     # the bound, and not a row past it
+    monkeypatch.setattr(memory, "allowed_text", lambda *a, **k: time.sleep(0.002) or real(*a, **k))
+    t = time.monotonic()
+    assert memory.ranked(s, "kayak", 8, 0.3, PLAIN, wide=False)["status"] == "timeout" and time.monotonic() - t < 1.5
