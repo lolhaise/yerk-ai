@@ -166,5 +166,6 @@ class Check:
             v.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"state": "release-ready"} if v["release"] else {"decision": "held", "reason": v["reason"]}
         self.w.ledger.texting_set(rid, verdict=json.dumps(v), **fields)
-        dry(self.w.state, datetime.fromtimestamp(now).astimezone(), {"t": now, "id": rid, "person": key, "verdict": v, **fields})
-        log.info("texting: %s checked: %s (dry)", key, fields.get("state") or "held")
+        if self.w.mode == "dry":
+            dry(self.w.state, datetime.fromtimestamp(now).astimezone(), {"t": now, "id": rid, "person": key, "verdict": v, **fields})
+        log.info("texting: %s checked: %s (%s)", key, fields.get("state") or "held", self.w.mode)

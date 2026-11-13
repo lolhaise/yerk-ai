@@ -9,7 +9,7 @@ nothing newer of the owner's (texting's own claimed sends aside) or of theirs is
 handed job's window claims it (J42): `auto`, not the owner's answer; all parts claimed, `sent`; unclaimed after the window,
 `unseen`, never handed again. Dry claims nothing: its row stays `would-send`, `handed` saying the job file was written.
 A newer decision for the person cancels the older text not yet gone; a stopped text already handed and unclaimed gets
-one cancel job first (live)."""
+one cancel job first (live). At a start in dry, what a live run left to send is dropped and listed once."""
 from __future__ import annotations
 
 import asyncio
@@ -38,12 +38,32 @@ def gs_of(r: dict[str, Any], col: str = "inbound") -> list[str]:
 
 
 def pair(v: Any, default: tuple[float, float]) -> tuple[float, float]:
-    return (float(v[0]), float(v[1])) if isinstance(v, (list, tuple)) and len(v) == 2 else default
+    """[low, high], two numbers from 0 up; none set, `default`; anything else is refused (`yerk doctor` names it)."""
+    if v is None:
+        return default
+    if not (isinstance(v, (list, tuple)) and len(v) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v)
+            and 0 <= v[0] <= v[1]):
+        raise ValueError(f"{v!r} is not two numbers, low then high")
+    return float(v[0]), float(v[1])
 
 
-def minute(hhmm: str) -> int:
-    h, m = str(hhmm).split(":")
-    return int(h) * 60 + int(m)
+def switched_off(ledger: Ledger) -> list[dict[str, Any]]:
+    """What a live run left to send, at a start that is not live: dropped, never handed."""
+    rows = ledger.texting_in("queued")
+    for r in rows:
+        ledger.texting_set(int(r["id"]), state="dropped", reason="switched off")
+    return rows
+
+
+def quiet_of(v: Any) -> tuple[int, int]:
+    """[start, end], local HH:MM, as minutes of the day; anything else is refused."""
+    try:
+        q = tuple(int(h) * 60 + int(m) for h, m in (str(x).split(":") for x in v))
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{v!r} is not two HH:MM times") from e
+    if len(q) != 2 or not all(0 <= m < 24 * 60 for m in q):
+        raise ValueError(f"{v!r} is not two HH:MM times")
+    return q[0], q[1]
 
 
 def quiet_end(at: datetime, quiet: tuple[int, int]) -> datetime | None:
@@ -58,19 +78,37 @@ def quiet_end(at: datetime, quiet: tuple[int, int]) -> datetime | None:
 class Sender:
     def __init__(self, conf: dict[str, Any], file: Path, ledger: Ledger, thread: Callable[[str, int], Awaitable[list[dict[str, Any]]]],
                  hands: Any, edits: list[tuple[int, str]] | None = None, post: Callable[[str, str], Awaitable[Any]] | None = None,
-                 to: str = "", clock: Callable[[], float] = time.time, rand: random.Random | None = None):
+                 to: str = "", clock: Callable[[], float] = time.time, rand: random.Random | None = None,
+                 status: Callable[[dict[str, Any]], None] | None = None):
         self.mode, self.file, self.ledger, self.clock = str(conf.get("mode") or "off"), file, ledger, clock
-        self.thread, self.hands, self.post, self.to = thread, hands, post, to
+        self.thread, self.hands, self.post, self.to, self.status = thread, hands, post, to, status
         self.edits = edits if edits is not None else []     # the holds' card edits (Holds.edits), made at their next pass
         self.stale, self.claim_s = float(conf.get("stale_minutes", 30)) * 60, float(conf.get("claim_seconds", 180))
         self.wait = WAITS.get(self.mode, "queued")
         self.first_shot, self.window = pair(conf.get("first_shot"), (150.0, 240.0)), float(conf.get("first_shot_window", 300))
         self.send_delay, self.morning = pair(conf.get("send_delay"), (0.0, 30.0)), pair(conf.get("morning"), (10.0, 90.0))
-        q = conf.get("quiet") or ("23:30", "07:30")
-        self.quiet = (minute(q[0]), minute(q[1]))
+        self.quiet = quiet_of(conf.get("quiet", ("23:30", "07:30")))
+        for k in ("first_shot_window", "claim_seconds", "stale_minutes"):
+            if k in conf and not (isinstance(conf[k], (int, float)) and not isinstance(conf[k], bool) and conf[k] > 0):
+                raise ValueError(f"{k} is not a number above 0")
         self.rand = rand or random.Random()
         self.who: People | None = None
         self.cancels: list[tuple[int, str, float]] = []      # (row, handle, until): a cancel job owed to the Mac
+        self.said: dict[str, Any] = {}
+
+    async def start(self) -> None:
+        """At a start in dry: what a live run left to send is dropped and listed once, in the dry card room only."""
+        if self.mode == "dry" and (left := switched_off(self.ledger)) and self.post is not None and self.to:
+            await self.post(self.to, words.TEXTING_SWITCHED.format(n=len(left), s="s" * (len(left) != 1), mode=self.mode))
+
+    def counts(self) -> None:
+        """The last text out (live: claimed; dry: its job file written), how many held, how many unseen today, to status."""
+        now, outs = self.clock(), [float(r["handed"]) for r in self.ledger.texting_in("sent" if self.mode == "live" else self.wait) if r["handed"]]
+        said = {"last_out": max(outs, default=None), "held": len(self.ledger.texting_in("held")),
+                "unseen": sum(1 for r in self.ledger.texting_in("unseen") if float(r["handed"] or 0) > now - 86400)}
+        if said != self.said and self.status is not None:
+            self.status(said)
+        self.said = said
 
     def draw(self, span: tuple[float, float]) -> float:
         return self.rand.uniform(*span)
@@ -125,6 +163,7 @@ class Sender:
                 self.arm(who, r)
             elif float(r["fire_at"]) <= self.clock():
                 await self.fire(p, r)
+        self.counts()
 
     async def fire(self, p: Person, r: dict[str, Any]) -> None:
         if (now := self.clock()) - float(r["fire_at"]) > self.stale:          # never late
@@ -229,6 +268,7 @@ class Sender:
             self.edits.append((int(r["id"]), said))
 
     async def run(self, every: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+        await self.start()
         while True:
             try:
                 await self.tick()

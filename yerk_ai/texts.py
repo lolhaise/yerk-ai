@@ -28,6 +28,7 @@ MAYBE = -32001               # imsg: the operation may have completed or remains
 PHONE, EMAIL = re.compile(r"\+?[\d\s().-]+"), re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 SOCKET = "imessage_socket"   # the Mac's bridge socket in an add-on's mac.json, beside its ssh: a whole path, nothing a shell reads
 WHOLE = re.compile(r"/[\w.@+/-]+", re.ASCII)
+SSH = ("ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")     # ssh to the Mac: the bridge's way and the hands'
 
 
 def reach(conf: dict[str, Any], mac: dict[str, Any]) -> dict[str, Any]:
@@ -47,7 +48,7 @@ def transport(conf: dict[str, Any]) -> list[str]:
         return shlex.split(c) if isinstance(c, str) else [str(x) for x in c]
     if not conf.get("host") or not conf.get("socket"):
         return []
-    return ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", str(conf["host"]),
+    return [*SSH, str(conf["host"]),
             str(conf.get("socat", "/opt/homebrew/bin/socat")), "-", f"UNIX-CONNECT:{conf['socket']}"]
 
 

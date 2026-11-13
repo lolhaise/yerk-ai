@@ -254,7 +254,9 @@ YERKD_WORDS = {
                                  "Mac answers, so the `texts` tool can read them while the Mac sleeps (default 120; 0 turns the "
                                  "copy off and the tool answers only when the Mac is awake)"},
     "texting": {"mode": "off, dry or live (default off, as with no table: nothing connects); dry reads the reply list's 1:1 "
-                        "threads on the Mac's bridge, reached as [imessage] reaches it, writes each text down and sends nothing",
+                        "threads on the Mac's bridge, reached as [imessage] reaches it, and does all live does but send: each text "
+                        "that would go waits its time, is checked against the thread again and is written as a job file; live "
+                        "hands it to the Mac's runner over ssh to that Mac, once",
                 "report": "the owner room (no people) that is told what texting must tell the owner, the missed texts and a card "
                           "for each text that waits for the owner's word, which is read there; never while dry",
                 "dry_report": "dry only: an owner room (no people) that is told it in report's place, the cards marked DRY, "
@@ -266,11 +268,23 @@ YERKD_WORDS = {
                 "model": "the model that decides what to answer as the owner (default: the report room's model)",
                 "effort": "its thinking effort (default high)",
                 "parallel": "decisions that run at once, one person each (default 2)",
-                "decide_seconds": "seconds one decision may take; past it the text is held with no clean answer (default 240). "
-                                  "Every decision is dry, written down and never sent, until texting can send",
+                "decide_seconds": "seconds one decision may take; past it the text is held with no clean answer (default 240)",
                 "check_model": "the model of the check, which reads only the thread, the person's sheet, their texts and the "
                                "draft before a reply or tapback may go (default: the writer's model)",
                 "check_seconds": "seconds one check may take; past it the draft is held with no clean answer (default 120)",
+                "outbox": "live only: the Mac runner's outbox, a whole path on the Mac each text's job is written into "
+                          "(default none: live sends nothing)",
+                "first_shot": "[low, high] seconds a text waits when the owner's own text is their side's newest and younger "
+                              "than first_shot_window (default [150, 240])",
+                "first_shot_window": "seconds the owner's own text counts as just sent (default 300)",
+                "send_delay": "[low, high] seconds after the owner's send on a card before its text goes, any hour (default [0, 30])",
+                "quiet": "[start, end] quiet hours, local HH:MM: a text due inside them to a person whose sheet holds at night "
+                         "waits for their end and a morning draw (default [\"23:30\", \"07:30\"])",
+                "morning": "[low, high] minutes after quiet hours end that such a text goes (default [10, 90])",
+                "claim_seconds": "seconds after a job is handed in which a text of the owner's side on the thread is taken "
+                                 "as that job sent; none by then, unseen and never sent again (default 180)",
+                "stale_minutes": "minutes past its time a text that could not be handed is dropped and listed once, never "
+                                 "sent late (default 30)",
                 "never_say": "names an assistant goes by on this install: a draft that holds one, as whole words in any case, is "
                              "held before any model reads it (default none)",
                 "hold_hours": "hours a held text's card waits for the owner's word; past it the card says expired, not sent, "

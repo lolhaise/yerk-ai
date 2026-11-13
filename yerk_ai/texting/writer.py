@@ -130,6 +130,7 @@ class Writer:
         self.file, self.state, self.ledger, self.thread, self.recall, self.place = file, state, ledger, thread, recall, place
         self.accounts, self.cooldowns, self.failures, self.clock = accounts, cooldowns, failures, clock
         self.model, self.hours = str(conf.get("model") or model), float(conf.get("catch_up_hours", 6))
+        self.mode = "live" if conf.get("mode") == "live" else "dry"      # what a decision says it was made in (J44)
         self.cap, self.parallel = float(conf.get("decide_seconds", 240)), max(1, int(conf.get("parallel", 2)))
         self.cwd = state / "texting" / "writer-cwd"
         for d in (state / "texting", self.cwd):
@@ -210,12 +211,13 @@ class Writer:
         d.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"decision": d["decision"], "parts": json.dumps(d["parts"]), "react": d["react"], "reply_to": d["reply_to"],
                   "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
-                  "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": "dry"}
+                  "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": self.mode}
         self.ledger.texting_set(rid, state="decided", **fields)
         for g in gs:
             self.ledger.inbound_set(g, state="decided")
-        dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"]})
-        log.info("texting: %s decided %s (dry, %.0f s)", key, d["decision"], d["seconds"])
+        if self.mode == "dry":
+            dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"]})
+        log.info("texting: %s decided %s (%s, %.0f s)", key, d["decision"], self.mode, d["seconds"])
 
     async def last(self, key: str) -> list[dict[str, Any]]:
         """The person's last THREAD rows, every chat merged by time: the thread a pack and a check are handed."""

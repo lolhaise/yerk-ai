@@ -44,7 +44,8 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
-from .texting import check as tcheck, holds as tholds, intake as tintake, link as tlink, people as tpeople, writer as twriter
+from .texting import check as tcheck, hands as thands, holds as tholds, intake as tintake, link as tlink, people as tpeople, \
+    sender as tsender, writer as twriter
 from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
@@ -806,11 +807,14 @@ class Yerkd:
         return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
 
     def texting(self) -> list[Any]:
-        """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer
-        and the check (texting/), to run as tasks. No table, mode off, a reply list that does not load or no way to the bridge: none, so
-        nothing connects or is written."""
+        """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer,
+        the check, the holds and the sender with its hands (texting/), to run as tasks. No table, mode off, a reply list that
+        does not load or no way to the bridge: none, so nothing connects or is written; a table set off drops, with a log line,
+        what a live run left to send."""
         conf = dict(self.conf.get("texting") or {})
         if str(conf.get("mode") or "off") not in ("dry", "live"):
+            if "texting" in self.conf and (left := tsender.switched_off(self.ledger)):
+                log.warning("texting is off: %d text(s) a live run left to send dropped, none sent", len(left))
             return []
         self.texting_to = self.texting_room(conf)
         try:
@@ -832,8 +836,18 @@ class Yerkd:
                                room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
         self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
                                   self.texting_show, out="text-out" in self.gates.external, window_s=self.gates.window_s, word=self.gates.word)
-        took.withdraw = self.holds.withdraw
-        return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run(), self.holds.run()]
+        file, host = tpeople.path(self.private, conf), str(self.imessage().get("host") or "")
+        hands = thands.Live(file, str(conf.get("outbox") or ""), [*texts.SSH, host] if host and not host.startswith("-") else []) \
+            if conf["mode"] == "live" else thands.Dry(file, self.state)          # the hands, chosen once: nothing shared
+        try:
+            send = tsender.Sender(conf, file, self.ledger, link.thread, hands, self.holds.edits, self.texting_post, self.texting_to,
+                                  status=link.more)
+        except ValueError as e:                               # `yerk doctor` names it
+            log.error("texting is off: %s", e)
+            self.holds = None
+            return []
+        took.withdraw, took.claim, took.stop = self.holds.withdraw, send.claim, send.cancel
+        return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run(), self.holds.run(), send.run()]
 
     def texting_room(self, conf: dict[str, Any]) -> str:
         """The one room texting may show anything in (J25): live, `report`; dry, `dry_report`, none when it is empty. Only an

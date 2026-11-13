@@ -226,7 +226,7 @@ async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, t
         c.kept = len(hits)
         return "\n".join(f"{h['cite']} {h['text']}" for h in hits)
 
-    w = writer.Writer(conf, file, scratch, led, report, thread, recall, lambda now: "", accounts, Cooldowns(), failures, model,
+    w = writer.Writer({**conf, "mode": "dry"}, file, scratch, led, report, thread, recall, lambda now: "", accounts, Cooldowns(), failures, model,
                       claude, lambda: CUT.get().at.timestamp(), tools=[])
     chk, slots = check.Check(conf, w), asyncio.Semaphore(w.parallel)
 

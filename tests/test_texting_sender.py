@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -15,8 +17,11 @@ from typing import Any
 
 import pytest
 
-from test_texting_link import A1, B1
+from test_texting_link import A1, B1, listed
 from test_texting_holds import Card
+from yerk_ai import words
+from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
 from yerk_ai.texting import hands, holds, intake, sender, writer
 from yerk_ai.texting.bridge import BridgeDown
@@ -417,3 +422,55 @@ def test_a_newer_decision_for_the_person_cancels_the_older_text_not_yet_gone(tmp
     newest = waiting(led, "t-3")
     armed(s, led, newest)
     assert led.texting_get(newer)["state"] == "cancelled" and calls(tmp_path) == [f"yerk-{newer}-1", f"yerk-{newer}-cancel"]
+
+
+
+def test_a_dry_start_drops_what_live_left_to_send_lists_it_once_in_the_card_room_and_hands_nothing(tmp_path: Path) -> None:
+    posted: list[str] = []
+    s, led, clock = make(tmp_path, mode="dry", posted=posted)
+    their(led, "t-1", WED - 30)
+    rows(s).add("t-1", WED - 30)
+    left = waiting(led, "t-1")
+    for _ in range(2):
+        asyncio.run(s.start())
+    for _ in range(3):
+        clock.t += 600
+        asyncio.run(s.tick())
+    assert (led.texting_get(left)["state"], led.texting_get(left)["reason"]) == ("dropped", "switched off")
+    assert posted == ["owner-room: " + words.TEXTING_SWITCHED.format(n=1, s="", mode="dry")]
+    assert not (tmp_path / "state" / "texting" / "dry").exists() and calls(tmp_path) == []
+
+
+def test_a_start_with_texting_off_drops_what_live_left_with_a_log_line_and_with_no_table_touches_nothing(tmp_path: Path, caplog: Any) -> None:
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "texting").mkdir()
+    listed(private / "texting")
+    for table, after in (("", "queued"), ('[texting]\nmode = "off"\n', "dropped")):
+        (private / "yerkd.toml").write_text(table + '\n[imessage]\ncommand = ["true"]\n')
+        (state := tmp_path / f"state-{after}").mkdir()
+        y = Yerkd(private, state)
+        rid = waiting(y.ledger, "t-1")
+        with caplog.at_level(logging.WARNING):
+            assert y.texting() == [] and y.ledger.texting_get(rid)["state"] == after
+        assert ("left to send dropped" in caplog.text) == (after == "dropped")
+
+
+def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    told: list[dict[str, Any]] = []
+    s.status = told.append
+    took, _ = intake_for(s, led)
+    lost = due(s, led, clock, "t-1")
+    armed(s, led, lost)
+    led.texting_add(person="beta", handle=B1, inbound="t-b", decision="held", state="held", reason="", mode="live")
+    for _ in range(4):
+        clock.t += 60
+        armed(s, led, lost)
+    assert told[-1] == {"last_out": None, "held": 1, "unseen": 1}
+    rid = due(s, led, clock, "t-2")
+    handed = armed(s, led, rid)["handed"]
+    rows(s).add("m-1", handed + 4, "on my way", mine=True)
+    assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == "auto"
+    armed(s, led, rid)
+    assert told[-1] == {"last_out": handed, "held": 1, "unseen": 1}

@@ -77,6 +77,13 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     assert [x for x in said(on) if "0600" in x]
     os.chmod(priv / "texting" / "people.toml", 0o600)
     assert said(on) == [] and said('[texting]\nmode = "dry"\n') == ["[texting] report: none is not an owner room in rooms.toml"]
+    assert said(on + 'quiet = ["23:30"]\nfirst_shot = [240, 150]\nclaim_seconds = 0\nmorning = [10, 90]\n') == [
+        "[texting] claim_seconds: not a number above 0; texting stays off",
+        "[texting] first_shot: [240, 150] is not two numbers, low then high; texting stays off",
+        "[texting] quiet: ['23:30'] is not two HH:MM times; texting stays off"]
+    live = on.replace('"dry"', '"live"')
+    assert "[texting] outbox: not a whole path on the Mac; live sends nothing" in said(live)
+    assert not [x for x in said(live + 'outbox = "/Users/someone/outbox"\n') if "outbox" in x]
 
 
 A1, B1 = "+15550000101", "+15550000102"

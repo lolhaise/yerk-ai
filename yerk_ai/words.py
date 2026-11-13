@@ -486,7 +486,7 @@ TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
-TEXTING_DRY_LIVE = "texting decides dry: nothing sends yet"      # live before the sender exists (texting/writer.py)
+TEXTING_OUT, TEXTING_NONE_OUT = "texting out {at}, {held} held, {unseen} unseen", "texting: none out, {held} held, {unseen} unseen"
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
