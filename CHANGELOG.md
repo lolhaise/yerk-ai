@@ -8,6 +8,25 @@ version changes.
 
 ## 2026-11-12
 
+### room-recall-pool (#68)
+
+- A room that is not the owner's now finds its own lines about a name or a word that is common in the owner's memory. A
+  person room, a sealed room and a room with its own `also` took the 80 best matches from the whole memory and only then
+  dropped what they may not read, so where the owner's notes name someone in hundreds of places, none of the 80 was the
+  room's and its assistant said nothing was on file about people in the room's own files. Such a room now reads on past
+  what it may not read, at most 2,000 matches further, and deep recall on a name does the same. It still gets nothing it
+  may not read.
+- Such a room also asks the meaning search for 400 rows, the most it serves, where it asked for 80, and keeps those it
+  may read.
+- A search in such a room can take up to about a second longer when the word is common in the owner's memory
+  (measured on a made-up memory with 20 rooms, and on a real one of 440,000 chunks with nine rooms: up to 1.2 s for a
+  word the room has nothing on). An owner's room with no `also` searches as before: the same results in the same
+  order, at the same cost. An owner's room that lists its own sources draws its pool from them too: on a real
+  install's 177 recall questions the answer was in the top six as often as before (117), and at the top in 69 against
+  70.
+- budgets.toml: `[code] lines` 31,245 to 31,256, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### transcribe-voice-joins (#67)
 
 - On a long recording a person keeps one letter through a silence. Where a voice said nothing through the minute two

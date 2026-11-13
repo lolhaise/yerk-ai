@@ -35,6 +35,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from fnmatch import fnmatch
+from itertools import islice
 from pathlib import Path
 from typing import Any, Callable
 
@@ -453,20 +454,22 @@ def rarity(total: int, df: int) -> float:
     return math.log(1 + (max(total, df) - df + 0.5) / (df + 0.5))
 
 
-def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
-           weights: dict[str, float] | None = None, skip: Path | None = None) -> list[dict[str, Any]]:
+def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80, weights: dict[str, float] | None = None,
+           skip: Path | None = None, keep: Callable[[str, str], bool] | None = None, most: int = 0) -> list[dict[str, Any]]:
     """Ranked chunks for a query: any of its words (FTS5, stemmed), ordered by how much of the
     query's weight a chunk covers (each distinct word weighted by its rarity), then by bm25.
     `weights`, when given, gets each word's weight (recall's snippet cut reads them). No chunk under the
-    folder `skip` is a candidate, so none of them takes a place in the pool (a filter after it could leave none)."""
+    folder `skip` is a candidate, so none of them takes a place in the pool (a filter after it could leave none); with `keep`, a reader's
+    filter (path, text), the pool is the first `pool` rows it keeps in bm25 order, at most `most` past it, inside the connection's deadline."""
     if not (ts := terms(query)):
         return []
     out, args = "", [" OR ".join(f'"{t}"' for t in ts)]
     if skip:
         out, args = " AND instr(c.path, ?) != 1", [*args, f"{skip}/"]
-    rows = conn.execute("SELECT c.id, c.path, c.lo, c.hi, c.body, bm25(chunks_fts) FROM chunks_fts "
-                        f"JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?{out} "
-                        "ORDER BY bm25(chunks_fts) LIMIT ?", (*args, pool)).fetchall()
+    cur = conn.execute("SELECT c.id, c.path, c.lo, c.hi, c.body, bm25(chunks_fts) FROM chunks_fts "
+                       f"JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?{out} "
+                       "ORDER BY bm25(chunks_fts) LIMIT ?", (*args, pool + most if keep else pool))
+    rows = list(islice((r for r in cur if keep(r[1], r[4])), pool)) if keep else cur.fetchall()
     if not rows:
         return []
     total = int((conn.execute("SELECT value FROM meta WHERE key = 'chunks'").fetchone() or [len(rows)])[0])

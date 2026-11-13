@@ -870,6 +870,12 @@ SHARE = 0.4          # the keyword rank's part of the fused score, the meaning r
 RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
                      # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
+READ_ON = 2000       # a room that may not read everything reads on at most this many keyword rows past the pool (memindex.search), past the
+                     # first own chunk of each name a sealed room was measured on, live, Nov 12 (rank 494 at most). Its filter costs 50 to 400
+                     # microseconds a row, the most outside the day logs with many rooms (file_class walks every room's inbox): 0.12 to 0.9 s at
+                     # the bound on a made-up index, with no room or 20, the owner's read 0.03 s (live, 5,000 rows read in 0.3 to 0.8 s)
+MEANING_MOST = 400   # and asks yerk-index for this many meaning rows, the most its handler serves (embeddings.Server.search): over
+                     # 440,000 made-up vectors 0.90 s against 0.89 s for the pool, the scan being the cost, and 401 kB of answer against 81
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
 log = logging.getLogger("yerk.memory")
 
@@ -984,12 +990,17 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
     k = max(1, min(int(k), 20))
+    def mine(path: str, text: str) -> bool:
+        """What a room ranks, its pool drawn from these alone: in its own `also` roots, and a chunk it reads whole (R2), since one read in
+        part ranks on words it may not see (its own line beside a hidden one reaches it by its pack, its topic hits and read_memory)."""
+        return (not s.scoped or s.scope.contains(Path(path))) and allowed_text(reader, Path(path), text, daily=s.daily) == text
+    keep = mine if s.scoped or reader and (not reader.owner or reader.sealed) else None     # an unscoped owner room: no filter, as before
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs, keep=keep, most=READ_ON)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -999,17 +1010,14 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
+    state, vectors = meaning(s, query, pool=MEANING_MOST if keep else POOL, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
-    if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
-        keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
     if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
         vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
-    if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
-        keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
-                             for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
-    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
+    if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
+        vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
+    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
     hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
