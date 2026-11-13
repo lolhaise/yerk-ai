@@ -12,7 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from yerk_ai import config
+from yerk_ai import config, words
 from yerk_ai.accounts import Account
 from yerk_ai.lifted.classify import FailureTable
 from yerk_ai.texting import replay, writer
@@ -124,7 +124,7 @@ def run(tmp_path: Path, monkeypatch, priv: Path, state: Path, cs: list[replay.Cu
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl"))
     monkeypatch.setenv("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt"))
     return replay.go(state, "t1", {"since": "2026-10-01"}, {"mode": "dry", "model": "model-x"}, priv / "texting" / "people.toml",
-                     "owner-room", [(c, A1) for c in cs], lambda text: hits, priv / "memory", priv / "imports" / "texts",
+                     "owner-room", [(c, A1) for c in cs], lambda text: hits, lambda name: priv / "memory" / name, priv / "imports" / "texts",
                      [acct], FailureTable.load(config.table("failures.toml")), claude=str(FAKE))
 
 
@@ -189,6 +189,37 @@ def test_a_cut_that_raises_is_written_with_its_error_the_run_goes_on_and_its_scr
     assert {x["id"]: x.get("error") for x in got} == {"alex:9": None, "alex:8": "RuntimeError: boom", "alex:5": None}
     assert (state / "texting" / "replay" / "t1" / "ledger.sqlite").exists()
     shutil.rmtree(state / "texting" / "replay" / "t1")
+
+
+def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path, monkeypatch, capsys):
+    from yerk_ai import cli
+    priv, state = install(tmp_path)
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "owner-room"\n')
+    (priv / "rooms.toml").write_text('[rooms.owner-room]\nchannel = "discord:1"\n')
+    (priv / "accounts.toml").write_text(f'[accounts.a0]\nconfig_dir = "{tmp_path / "cfg0"}"\n')
+    (tmp_path / "cfg0").mkdir()
+    for k, v in (("YERK_CLAUDE", str(FAKE)), ("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl")),
+                 ("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt")), ("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["DRAFT-TEXT"]))):
+        monkeypatch.setenv(k, v)
+    yerk = ["texting", "replay", "--since", "2026-10-01", "--private", str(priv), "--state", str(state)]
+    assert cli.main(yerk) == 0 and not (tmp_path / "record.jsonl").exists()               # the plan: nothing called
+    assert capsys.readouterr().out.splitlines() == ["alex: alex.md, 3 cuts", words.REPLAY_PLAN.format(cuts=3, since="2026-10-01", limit=10),
+                                                    words.REPLAY_DRY]
+    assert cli.main([*yerk, "--run"]) == 1 and not (state / "docs").exists() and not (tmp_path / "record.jsonl").exists()
+    assert capsys.readouterr().out.splitlines()[-1] == words.REPLAY_NO_DOCS.format(docs=state / "docs")
+    (state / "docs").mkdir()
+    assert cli.main([*yerk, "--run", "--limit", "2"]) == 0 and len(calls(tmp_path)) == 4      # two cuts: a writer and a check call each
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert lines[2:7] == [words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]
+    assert lines[7].split() == list(words.REPLAY_COLUMNS) and [x.split()[:2] for x in lines[8:10]] == [["alex", "2"], ["total", "2"]]
+    for said in ("morning", "you up", "coffee", "sure, at ten", "the game", "attachment", "DRAFT-TEXT"):
+        assert said not in out
+    [f] = (state / "texting" / "replay").glob("*.jsonl")
+    assert lines[10] == words.REPLAY_FILE.format(file=f) and json.loads(f.read_text().splitlines()[0])["people"] == ["alex"]
+    assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 0 and capsys.readouterr().out == "every sheet loads\n"
+    assert replay.located("imports/texts/alex.md", ((priv / "memory", "memory"), (priv / "imports", "imports")), priv / "memory") == \
+        priv / "imports" / "texts" / "alex.md"                                    # a cite read back as memory.cite names it
 
 
 def test_the_replay_never_imports_the_hands():

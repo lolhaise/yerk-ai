@@ -11,17 +11,19 @@ import json
 import os
 import re
 import shutil
+from collections import Counter
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime, tzinfo
 from pathlib import Path
 from typing import Any, Callable
 
+from .. import words
 from ..accounts import Account, Cooldowns
 from ..ledger import Ledger
 from ..lifted.classify import FailureTable
 from . import check, writer
-from .people import Person, norm
+from .people import Person, load, norm, sheet_file
 
 HEAD = re.compile(r"^# Texts with .*\(([^()]*)\)\s*$")
 MSG = re.compile(r"^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) (.*)$")
@@ -155,7 +157,13 @@ def score(c: Cut, decision: str, parts: list[str]) -> str:
     return ("agree" if c.went else "more") if decision in ("reply", "held") else ("less" if c.went else "agree")
 
 
-def as_of(hits: list[dict[str, Any]], at: datetime, root: Path, imports: Path) -> tuple[list[dict[str, Any]], int]:
+def located(name: str, cites: tuple[tuple[Path, str], ...], root: Path) -> Path:
+    """The file a cite names, as memory.cite names one: its root's cite name, the longest that fits, then the path under it."""
+    return next((r / name[len(n):].lstrip("/") for r, n in sorted(cites, key=lambda x: -len(x[1]))
+                 if name == n or name.startswith(n + "/")), root / name)
+
+
+def as_of(hits: list[dict[str, Any]], at: datetime, where: Callable[[str], Path], imports: Path) -> tuple[list[dict[str, Any]], int]:
     """J31: the hits a cut may see, and how many lines were taken out. A hit from a file under the texts import folder is
     kept only when every line of its text but a gap mark is a message line that begins with its own minute, before the
     cut's (a snippet's lines are picked, not a span, and a long one is cut around its match); a hit from a file whose name
@@ -164,8 +172,7 @@ def as_of(hits: list[dict[str, Any]], at: datetime, root: Path, imports: Path) -
         return [], sum(len(str(h.get("text") or "").splitlines()) or 1 for h in hits)
     kept, dropped = [], 0
     for h in hits:
-        f = Path(str(h["cite"]).rpartition(":")[0])
-        f = (f if f.is_absolute() else root / f).resolve()
+        f = where(str(h["cite"]).rpartition(":")[0]).resolve()
         if f.is_relative_to(imports):
             late = any(x.strip() not in ("", "…") and not ((m := MSG.match(x)) and m[1] < f"{at:%Y-%m-%d %H:%M}")
                        for x in str(h.get("text") or "").splitlines())
@@ -188,7 +195,7 @@ def rows(c: Cut) -> list[dict[str, Any]]:
 
 
 async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, todo: list[tuple[Cut, str]],
-                 search: Callable[[str], list[dict[str, Any]]], root: Path, imports: Path, accounts: list[Account],
+                 search: Callable[[str], list[dict[str, Any]]], where: Callable[[str], Path], imports: Path, accounts: list[Account],
                  failures: FailureTable, add: Callable[[dict[str, Any]], None], model: str = "", claude: str = "") -> int:
     """Each cut (with the handle its thread was found by) one `deciding` row of a scratch ledger in `scratch`, decided by
     the live writer with no tool and, a reply or a tapback, checked by the live check; at most `parallel` cuts at once,
@@ -201,7 +208,7 @@ async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, t
 
     def recall(text: str) -> str:
         c = CUT.get()
-        hits, c.dropped = as_of(search(text), c.at, root, imports.resolve())
+        hits, c.dropped = as_of(search(text), c.at, where, imports.resolve())
         return "\n".join(f"{h['cite']} {h['text']}" for h in hits)
 
     w = writer.Writer(conf, file, scratch, led, report, thread, recall, lambda now: "", accounts, Cooldowns(), failures, model,
@@ -242,8 +249,8 @@ def entry(c: Cut, r: dict[str, Any]) -> dict[str, Any]:
 
 
 def go(state: Path, stamp: str, head: dict[str, Any], conf: dict[str, Any], file: Path, report: str, todo: list[tuple[Cut, str]],
-       search: Callable[[str], list[dict[str, Any]]], root: Path, imports: Path, accounts: list[Account], failures: FailureTable,
-       model: str = "", claude: str = "") -> Path:
+       search: Callable[[str], list[dict[str, Any]]], where: Callable[[str], Path], imports: Path, accounts: list[Account],
+       failures: FailureTable, model: str = "", claude: str = "") -> Path:
     """One run under <state>/texting/replay/ (0700): <stamp>.jsonl (0600, refused if it is there) made at the start with
     line 1, the run, and one line added as each cut ends; its scratch folder <stamp>/ for the ledger and the working
     folders goes when no cut raised and stays where it is when one did, or when the run dies."""
@@ -257,7 +264,46 @@ def go(state: Path, stamp: str, head: dict[str, Any], conf: dict[str, Any], file
             out.flush()
         add(head)
         (scratch := base / stamp).mkdir(mode=0o700)
-        failed = asyncio.run(decide(conf, file, scratch, report, todo, search, root, imports, accounts, failures, add, model, claude))
+        failed = asyncio.run(decide(conf, file, scratch, report, todo, search, where, imports, accounts, failures, add, model, claude))
     if not failed:
         shutil.rmtree(scratch)
     return f
+
+
+def plan(file: Path, folder: Path, since: date, limit: int, hours: float, tz: tzinfo, only: str = "",
+         log: Path | None = None) -> tuple[list[tuple[Cut, str]], list[str]]:
+    """A run's cuts, each with the handle its thread was found by, and a line a person: the thread file found, by its name,
+    and its cuts, or why they are skipped (no sheet, no file, two or more: never a guess). Everyone on the reply list, or the
+    one `only` names. Nothing is called and nothing is searched."""
+    who, marks, todo = load(file, sheets=False), old_log(log, tz) if log else [], list[tuple[Cut, str]]()
+    said = [] if not only or only in who.people else [words.TEXTING_NO_ONE.format(key=only, keys=", ".join(who.people))]
+    for p in (p for p in who.people.values() if not only or p.key == only):
+        found = find(folder, p)
+        why = (words.REPLAY_NO_SHEET if not sheet_file(file, p).is_file() else words.REPLAY_NO_FILE if not found
+               else words.REPLAY_FILES if len(found) > 1 else "")
+        if why:
+            said.append(why.format(key=p.key, n=len(found), files=", ".join(f.name for f in found)))
+            continue
+        mark(lines := read_thread(found[0], who.owner, tz), marks, p.first)
+        cs = cuts(p.key, lines, since, limit, hours)
+        todo += [(c, next(h for h in p.handles if h in handles(found[0]))) for c in cs]
+        said.append(words.REPLAY_FOUND.format(key=p.key, file=found[0].name, cuts=len(cs)))
+    return todo, said
+
+
+def table(lines: list[dict[str, Any]]) -> list[str]:
+    """The run's counts from its file's cut lines, a row a person and the total (words.REPLAY_COLUMNS): never a text or a
+    draft. A cut that raised counts as cuts and failed only; seconds and tokens are the writer's and the check's."""
+    per: dict[str, Counter[str]] = {}
+    for x in lines:
+        n, v = per.setdefault(x["person"], Counter()), x.get("verdict") or {}
+        n["cuts"] += 1
+        if x.get("error"):
+            n["failed"] += 1
+            continue
+        n.update([x["decision"], x["score"], *(["check-ok" if v.get("release") else "check-held"] if v else [])])
+        n["seconds"] += round(float(x.get("seconds") or 0) + float(v.get("seconds") or 0))
+        n["tokens"] += int(x.get("tokens") or 0) + int(v.get("tokens") or 0)
+    rows, w = [*per.items(), (words.REPLAY_TOTAL, sum(per.values(), Counter[str]()))], max(len(k) for k in [*per, words.REPLAY_TOTAL])
+    return [" ".join([" " * w, *words.REPLAY_COLUMNS]),
+            *(" ".join([k.ljust(w), *(str(c[col]).rjust(len(col)) for col in words.REPLAY_COLUMNS)]) for k, c in rows)]
