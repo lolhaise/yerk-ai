@@ -79,6 +79,13 @@ def test_a_burst_they_followed_with_another_of_their_own_is_not_open_and_scores_
     assert [replay.score(first, d, p) for d, p in (("none", []), ("reply", ["a"]))] == ["agree", "more"]
 
 
+def test_then_is_the_minutes_to_their_next_line_when_nothing_of_the_owners_came_between(tmp_path):
+    priv, _ = install(tmp_path)
+    cs = thread_cuts(priv)
+    assert [c.then for c in cs] == [None, 840, None]      # the file's last burst; a night to their next; the owner's answer between
+    assert replay.entry(cs[1], {})["then"] == 840
+
+
 def test_what_went_is_marked_the_old_agents_by_its_log_and_each_cut_gets_one_score(tmp_path):
     priv, _ = install(tmp_path)
     log = tmp_path / "old.log"

@@ -48,6 +48,7 @@ class Cut:
     went: list[Line]        # the owner's lines that followed, before their next line and within catch_up_hours
     open: bool              # no line of theirs follows and the file's last line is inside the answer window
     dropped: int = 0        # memory lines the as-of cut took out
+    then: int | None = None  # minutes to their next line when nothing of the owner's came between
 
     @property
     def at(self) -> datetime:
@@ -113,7 +114,8 @@ def cuts(key: str, lines: list[Line], since: date, limit: int, hours: float) -> 
                 break
             went.append(x)
         out.append(Cut(key, lines[max(0, i - writer.THREAD):i], lines[i:j], went,
-                       all(x.side != "them" for x in lines[j:]) and (lines[-1].at - last).total_seconds() <= hours * 3600))
+                       all(x.side != "them" for x in lines[j:]) and (lines[-1].at - last).total_seconds() <= hours * 3600,
+                       then=int((lines[j].at - last).total_seconds() // 60) if j < len(lines) and lines[j].side == "them" else None))
     return out[::-1][:max(0, limit)]
 
 
@@ -234,7 +236,7 @@ def entry(c: Cut, r: dict[str, Any]) -> dict[str, Any]:
             "decision": r.get("decision") or "", "parts": parts, "react": r.get("react") or "", "reply_to": r.get("reply_to") or "",
             "statements": json.loads(r.get("statements") or "[]"), "reason": r.get("reason") or "",
             "verdict": json.loads(r.get("verdict") or "null"), "state": r.get("state") or "",
-            "went": [{"at": f"{x.at:%Y-%m-%d %H:%M}", "side": x.side, "text": x.text} for x in c.went],
+            "went": [{"at": f"{x.at:%Y-%m-%d %H:%M}", "side": x.side, "text": x.text} for x in c.went], "then": c.then,
             "score": score(c, str(r.get("decision") or ""), parts), "dropped": c.dropped, "seconds": r.get("seconds") or 0,
             "tokens": r.get("tokens") or 0, "account": r.get("account") or ""}
 
