@@ -141,6 +141,8 @@ class Check:
         self.names = never(conf.get("never_say"))
         self.cwd = writer.state / "texting" / "check-cwd"            # empty, and nothing is ever written into it
         self.cwd.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.config = writer.state / "texting" / "check-config"      # its own config folder, as empty: no account's settings or name
+        self.config.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.argv = [writer.argv[0], "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA), "--system-prompt-file",
                      str(PROMPT), "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--no-session-persistence",
                      *(["--model", self.model] if self.model else []), "--effort", str(conf.get("effort") or "high")]
@@ -162,7 +164,7 @@ class Check:
                 int(x["n"]): str(x.get("text") or "") for x in json.loads(row["statements"] or "[]")}
             t0 = time.monotonic()
             v = await asyncio.to_thread(self.w.hop, self.argv, inputs(row, rows, s, secrets.token_hex(4)), self.cwd, self.cap,
-                                        self.model, lambda out: read(out, said, his, keys(s)), hold)
+                                        self.model, lambda out: read(out, said, his, keys(s)), hold, config=self.config)
             v.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"state": "release-ready"} if v["release"] else {"decision": "held", "reason": v["reason"]}
         self.w.ledger.texting_set(rid, verdict=json.dumps(v), **fields)

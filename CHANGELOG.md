@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-13
 
-### texting-6 (#?)
+### texting-6 (#76)
 
 - Nothing changes until an install has a `[texting]` table.
 - In dry, each text that would go now waits its own time: a reply released by the owner's word goes 0 to 30 seconds after
@@ -27,8 +27,35 @@ version changes.
   `yerk doctor` checks the new keys.
 - yerkd.toml `[texting]`: new keys `outbox`, `first_shot`, `first_shot_window`, `send_delay`, `quiet`, `morning`,
   `claim_seconds`, `stale_minutes`, each with its default in docs/settings.md.
-- budgets.toml: `[code] lines` 31,677 to 32,118, with its dated note.
+- budgets.toml: `[code] lines` 31,718 to 32,167, with its dated note.
 - **Upgrading**: nothing to change. `outbox` (the Mac runner's folder, a whole path) is needed before `mode = "live"`.
+
+### idle-copy (#75)
+
+- A room quiet for 25 minutes whose session holds 0.7 of its window or more is now compacted on a copy of the session in
+  every room, as a room with fast mode on has been since yesterday. A message sent while the copy compacts is answered at
+  once, in place of waiting under the card that says the conversation is being shortened, and what was said meanwhile is
+  carried to the copy, which becomes the room's session as that turn ends. With no process alive (after a restart) the
+  room's process is started first and a message sent during that start waits for it alone; a room with fast mode on still
+  waits for its next turn, as before.
+- What can still make a message wait under that card: the compaction when a turn ends right at Claude Code's own line (the
+  last resort before Claude Code compacts inside the next turn), the one before a rerun when a turn overflowed, and
+  `yerk room compact`, which someone asked for.
+- budgets.toml: `[code] lines` 31,696 to 31,718, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-6b (#74)
+
+- Texting: nothing changes on an install with no `[texting]` table. With one, the check runs from a config folder of its
+  own, `<state>/texting/check-config` (empty, 0700), in place of an account's, so it is handed the four inputs and no
+  account's settings or address. It runs on an account's one-year token and passes over an account that has none; with
+  none anywhere each draft is held with "the check needs an account token, and no account has one", and `yerk doctor`
+  says the same while texting is on. A replay counts that hold as a call no model answered.
+- `[texting] fallback` names a second model. When every account refuses the writer's or the check's model, the same call
+  is made on this one in place of holding the text, and the row's account reads `<account> (<model>)`. With no key the
+  text is held as before. A replay falls back the same way, and its `--model` flag still names the first model.
+- budgets.toml: `[code] lines` 31,677 to 31,696, with its dated note.
+- **Upgrading**: nothing to change; `yerk doctor` says so if no account has a token.
 
 ### texting-7a-asof (#71)
 

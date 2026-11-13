@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .. import words
-from ..accounts import Account, Cooldowns, account_env, pick
+from ..accounts import Account, Cooldowns, account_env, pick, read_token
 from ..ledger import Ledger
 from ..lifted.classify import FailureTable
 from ..workers import mcp_config
@@ -132,6 +132,7 @@ class Writer:
         self.model, self.hours = str(conf.get("model") or model), float(conf.get("catch_up_hours", 6))
         self.mode = "live" if conf.get("mode") == "live" else "dry"      # what a decision says it was made in (J44)
         self.cap, self.parallel = float(conf.get("decide_seconds", 240)), max(1, int(conf.get("parallel", 2)))
+        self.fallback = str(conf.get("fallback") or "")       # the second model, when every account refuses the first (J33)
         self.cwd = state / "texting" / "writer-cwd"
         for d in (state / "texting", self.cwd):
             d.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -227,25 +228,35 @@ class Writer:
         return self.hop(self.argv, pack, self.cwd, self.cap, self.model, lambda out: parse(out, guids, open_), held)
 
     def hop(self, argv: list[str], stdin: str, cwd: Path, cap: float, model: str, read: Callable[[str], dict[str, Any]],
-            hold: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
+            hold: Callable[[str], dict[str, Any]], config: Path | None = None) -> dict[str, Any]:
         """One call (the writer's or the check's) on the first free account for `model`; a quota or rate-limit failure rests
-        that account and hops, at most twice; past `cap` seconds, no clean answer; no account free, a hold that says until when."""
-        for _ in range(3):
-            a = pick(self.accounts, self.cooldowns, model=model)
-            if self.cooldowns.until(a.name, model=model) is not None:
-                break
-            try:
-                out = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=cap, cwd=cwd, env=account_env(a)).stdout
-            except subprocess.TimeoutExpired:
-                return {**hold(words.TEXTING_NO_CLEAN), "account": a.name, "seconds": cap}
-            d = read(out)
-            if (err := d.pop("error", None)) is not None and (f := self.failures.classify(text=err)).action == "hop_account":
-                kind = f.kind or "auth"
-                self.cooldowns.fail(a.name, kind, lambda n: self.failures.cooldown_seconds(kind, n),
-                                    model=model if kind == "rate_limit" else "")
-                continue
-            return {**d, "account": a.name}
-        free = min([u for a in self.accounts if (u := self.cooldowns.until(a.name, model=model)) is not None] or [self.clock()])
+        that account and hops, each account once; past `cap` seconds, no clean answer; no account free, the same tries on `fallback`
+        when it names another model, its account then `<account> (<model>)`, and still none, a hold that says until when. With
+        `config` (J28), the check's own empty folder, the call runs from it on the account's token, passing over one with none."""
+        pool = [a for a in self.accounts if read_token(a)[0]] if config else self.accounts
+        if config and not pool:
+            return hold(words.TEXTING_NO_TOKEN)
+        for m in (model, self.fallback) if self.fallback not in ("", model) else (model,):
+            if m != model:                  # the second model, named in --model in place of the first, or added
+                argv = [*argv[:i], m, *argv[i + 1:]] if (i := argv.index("--model") + 1 if "--model" in argv else 0) else [*argv, "--model", m]
+            for _ in pool:                  # each account once a model: the second model only when EVERY one refused (J33)
+                a = pick(pool, self.cooldowns, model=m)
+                if self.cooldowns.until(a.name, model=m) is not None:
+                    break
+                who = a.name if m == model else f"{a.name} ({m})"
+                env = {**account_env(a), "CLAUDE_CONFIG_DIR": str(config)} if config else account_env(a)
+                try:
+                    out = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=cap, cwd=cwd, env=env).stdout
+                except subprocess.TimeoutExpired:
+                    return {**hold(words.TEXTING_NO_CLEAN), "account": who, "seconds": cap}
+                d = read(out)
+                if (err := d.pop("error", None)) is not None and (f := self.failures.classify(text=err)).action == "hop_account":
+                    kind = f.kind or "auth"
+                    self.cooldowns.fail(a.name, kind, lambda n: self.failures.cooldown_seconds(kind, n),
+                                        model=m if kind == "rate_limit" else "")
+                    continue
+                return {**d, "account": who}
+        free = min([u for a in pool if (u := self.cooldowns.until(a.name, model=model)) is not None] or [self.clock()])
         return hold(words.TEXTING_NO_ACCOUNT.format(at=f"{datetime.fromtimestamp(free):%H:%M}"))
 
 

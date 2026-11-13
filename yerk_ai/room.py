@@ -21,14 +21,15 @@ adapter's event loop.
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session. A new
   model, effort or account (the settings tool) closes it when the running turn ends, never inside it.
-- A session compacts between turns: idle `compact_after` past `compact_at` of its window (idle_compact), or at once when a
-  turn ends within `compact_within` of Claude Code's own line (_ended); a message meanwhile waits, its card up saying so.
-  A turn that ends further out, within `precompact_within` of the line, compacts a copy of the session instead, the room
-  left free (_precompact): a message meanwhile runs at once on the live session and the copy goes on compacting; once it
-  has, it becomes the room's session in one step, at once when no turn runs, else as the running turn ends, before a
-  message waiting runs, so the next message finds it small without waiting. What the live session said since the copy
-  was made rides once, as text, in the first message the copy gets (_tail); while one compacts, the turn-end compaction
-  waits for it as long as a turn still fits under the line ([session] copy_room).
+- A session compacts between turns: at once when a turn ends within `compact_within` of Claude Code's own line (_ended),
+  the room held, a message meanwhile waiting under its card. A turn that ends further out, within `precompact_within` of
+  the line, and a room idle `compact_after` past `compact_at` of its window (idle_compact: with no process alive it starts
+  one, the room held for that start only, and a fast room's waits for a turn) compact a copy of the session instead, the
+  room left free (_precompact): a message meanwhile runs at once on the live session and the copy goes on compacting;
+  once it has, it becomes the room's session in one step, at once when no turn runs, else as the running turn ends,
+  before a message waiting runs, so the next message finds it small without waiting. What the live session said since
+  the copy was made rides once, as text, in the first message the copy gets (_tail); while one compacts, the turn-end
+  compaction waits for it as long as a turn still fits under the line ([session] copy_room).
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
@@ -272,33 +273,54 @@ class Room:
         return "ok" if t.outcome in ("ok", "empty", "compacted") else t.outcome
 
     def idle_compact(self, now: float | None = None) -> bool:
-        """`yerk room compact`, by the daemon (its reaper's minute): a room with no turn and nothing queued for `compact_after`
+        """The daemon's idle compaction (its reaper's minute): a room with no turn and nothing queued for `compact_after`
         seconds, whose session holds `compact_at` of its window or more, compacts in the background, so the next message finds
         it small instead of waiting minutes in its own turn for Claude Code's compaction. Once per growth: a try, kept or
         failed, waits for a turn to grow the session again. Never when its next run starts a fresh session. True: started.
-        Fast mode bills usage credits, and nobody waits on this one: where it reaches the process the /compact would go to,
-        a copy launched without it compacts (_fork_off), the room free, and is taken and closed (_take), so the next message
-        resumes it fast; with no process alive to copy, the compaction waits for a turn."""
+        With the room's process alive a copy compacts (_fork_off), launched without fast mode, the room free, and is taken
+        (_take), so nobody waits on it (seen live: held 150 s on its own session, a message 66 s
+        in waited 84 s). With none alive to copy, a room whose next process runs with fast mode (usage credits) waits for a
+        turn, and any other starts its process first, the room held for that start only (_idle_start)."""
         now = time.time() if now is None else now
         fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
         with self.lock:
             if (self.busy or self.queue or self.closing or fresh or not self.grown or not self.window or not self.compact_at
                     or self.fork or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
                 return False
-            self.grown, idle = False, (now - self.last_active) / 60
-            if fast := self._fast_next():
-                self._fork_off(f"idle {idle:.0f} min with fast mode on")
+            self.grown, idle, fast = False, (now - self.last_active) / 60, self._fast_next()
+            why = f"idle {idle:.0f} min{' with fast mode on' if fast else ''}"
+            if copy := fast or bool(self.rp and self.rp.alive()):
+                self._fork_off(why)
                 started = self.fork is not None
             else:
-                self.busy = self.shortening = True
-        if fast:
-            if not started:
+                self.busy = True                  # for its process's start only (_idle_start)
+        if copy:
+            if fast and not started:
                 log.info("room %s: idle %.0f min at %d of its %d tokens with no process alive, and the next one runs with fast "
                          "mode, so the compaction waits for a turn", self.name, idle, self.context, self.window)
             return started
-        log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, idle, self.context, self.window)
-        threading.Thread(target=self._idle_compact, name=f"compact-{self.name}", daemon=True).start()
+        log.info("room %s: idle %.0f min at %d of its %d tokens with no process alive, starting one to copy", self.name, idle,
+                 self.context, self.window)
+        threading.Thread(target=self._idle_start, args=(why,), name=f"compact-{self.name}", daemon=True).start()
         return True
+
+    def _idle_start(self, why: str) -> None:
+        """idle_compact with no process alive (a daemon restart): the room's process starts, the room held for that start
+        only, then a copy compacts (_fork_off) and a message that came in meanwhile runs at once on the live session."""
+        try:
+            self._start(self._account())
+        except Exception as e:
+            log.warning("room %s: the idle compaction could not start the room's process (%s); not tried again before the next "
+                        "turn", self.name, e)
+        with self.lock:
+            if not self.closing:
+                self._fork_off(why)
+            waiting = list(self.queue)
+            self.busy = run = bool(waiting) and not self.closing
+        if run:
+            log.info("room %s: %d message(s) waited up to %.0f s for the room's process to start (idle), running now", self.name,
+                     len(waiting), time.time() - min(m.received for m in waiting))
+            threading.Thread(target=self._run, name=f"room-{self.name}", daemon=True).start()
 
     def _fast_next(self) -> bool:
         """Under the lock, whether the room's /compact would reach a process launched with fast mode: the live one's key,
@@ -348,7 +370,7 @@ class Room:
         """Under the lock, a turn ended in the copy's band (_ended): the room's session copied (--fork-session) and compacted
         off to the side, on the live process's own spec and account, so the copy's requests read the prompt cache the live
         session warmed and its one hook (SessionStart compact: the recall pack added again) answers as the room's. One copy
-        per growth: none while one compacts or waits to be taken; never without a live process to copy from. A fast room's
+        per growth: none while one compacts or waits to be taken; never without a live process to copy from. A quiet room's
         idle compaction comes here too (idle_compact), `why` saying so in the line."""
         if self.fork is not None or self.ready is not None or not (self.rp and self.rp.alive()):
             return

@@ -46,6 +46,7 @@ def install(tmp_path: Path) -> tuple[Path, Path]:
     (texts / "alex.md").write_text(THREAD)
     (texts / "group-1.md").write_text(f"# Texts in group Pals (members: {A1})\n1 messages\n\n- 2026-10-01 09:00 Alex: hi all\n")
     state.mkdir()
+    (tmp_path / "a0.token").write_text("token-a0")                               # the check runs on a token alone (J28)
     return priv, state
 
 
@@ -119,7 +120,7 @@ def test_the_live_writers_argv_is_what_it_was_and_the_replayed_writer_has_no_too
 
 
 def run(tmp_path: Path, monkeypatch, priv: Path, state: Path, cs: list[replay.Cut], hits: list[dict], search=None) -> list[dict]:
-    acct = Account("a0", tmp_path / "cfg0")
+    acct = Account("a0", tmp_path / "cfg0", token_file=tmp_path / "a0.token")
     acct.config_dir.mkdir(exist_ok=True)
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl"))
     monkeypatch.setenv("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt"))
@@ -234,6 +235,7 @@ def test_a_call_no_model_answered_is_a_failed_cut_never_a_decision(tmp_path, mon
     assert replay.table(got)[1].split()[list(words.REPLAY_COLUMNS).index("failed") + 1] == "3"
     assert not replay.unanswered({"reason": words.TEXTING_NO_CLEAN, "tokens": 900})     # a model answered and it would not parse: a real hold
     assert not replay.unanswered({"reason": "held by money", "tokens": 0})              # the code's own hold names its rule
+    assert replay.unanswered({"reason": words.TEXTING_NO_TOKEN})                        # the check had no token to run on
     shutil.rmtree(state / "texting" / "replay" / "t1")
 
 
@@ -242,7 +244,7 @@ def test_a_check_no_model_answered_is_a_failed_cut_too(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yes!"]))
     live = writer.Writer.hop
 
-    def hop(self, argv, stdin, cwd, cap, model, read, hold):
+    def hop(self, argv, stdin, cwd, cap, model, read, hold, config=None):
         if str(writer.PROMPT) in argv:
             return live(self, argv, stdin, cwd, cap, model, read, hold)
         return {**hold(words.TEXTING_NO_CLEAN), "account": "a0", "seconds": cap}          # the check's call ran out of time
@@ -260,6 +262,8 @@ def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path,
     (priv / "rooms.toml").write_text('[rooms.owner-room]\nchannel = "discord:1"\n')
     (priv / "accounts.toml").write_text(f'[accounts.a0]\nconfig_dir = "{tmp_path / "cfg0"}"\n')
     (tmp_path / "cfg0").mkdir()
+    (priv / "secrets").mkdir()
+    (priv / "secrets" / "claude-a0.token").write_text("token-a0")
     for k, v in (("YERK_CLAUDE", str(FAKE)), ("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl")),
                  ("FAKE_CLAUDE_STDIN", str(tmp_path / "stdin.txt")), ("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["DRAFT-TEXT"]))):
         monkeypatch.setenv(k, v)

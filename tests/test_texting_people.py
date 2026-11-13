@@ -62,6 +62,9 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     priv, state = tmp_path / "private", tmp_path / "state"
     shutil.copytree(EXAMPLE_PRIVATE, priv)
     state.mkdir()
+    (priv / "secrets").mkdir()
+    (token := priv / "secrets" / "claude-one.token").write_text("token-one")      # the check runs on a token alone (J28)
+    os.chmod(token, 0o600)
 
     def said(table: str) -> list[str]:
         (priv / "yerkd.toml").write_text(table)
@@ -84,6 +87,8 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     live = on.replace('"dry"', '"live"')
     assert "[texting] outbox: not a whole path on the Mac; live sends nothing" in said(live)
     assert not [x for x in said(live + 'outbox = "/Users/someone/outbox"\n') if "outbox" in x]
+    token.unlink()
+    assert said(on) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
 
 
 A1, B1 = "+15550000101", "+15550000102"

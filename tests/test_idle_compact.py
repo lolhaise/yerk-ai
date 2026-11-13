@@ -108,18 +108,31 @@ def compactions(tmp_path):
     return len(f.read_text().splitlines()) if f.is_file() else 0
 
 
-def test_the_reaper_compacts_a_room_idle_near_its_window_once_and_the_next_message_finds_it_small(y, tmp_path):
+@pytest.fixture
+def written(monkeypatch):
+    """Each line written to a Claude Code process, as (a copy's, the line)."""
+    sent, send = [], RoomProcess.send
+    monkeypatch.setattr(RoomProcess, "send", lambda self, text: sent.append((bool(self.fork_of), text)) or send(self, text))
+    return sent
+
+
+def test_the_reaper_compacts_a_room_idle_near_its_window_once_and_the_next_message_finds_it_small(y, tmp_path, gate, written):
+    """With its process alive, on a copy, the room free (seen live in a busy room: compacted on its own
+    session, the room held 150 s, a message 66 s in waited 84 s)."""
     room = y.add_room(ROOM, chan := Chan())
     say(y, room, "1", "CONTEXT:200000 hello")
     wait_idle(room)
     reap(y)                                                  # just answered: not idle long enough
-    assert compactions(tmp_path) == 0
+    assert compactions(tmp_path) == 0 and room.fork is None  # and no copy on its way either: a copy waits at the gate uncounted
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
-    rows = y.ledger.rows(2)                                  # the /compact's own row holds the size after it
-    assert [r["context"] for r in rows] == [20000, 200000] and rows[0]["session_id"] == rows[1]["session_id"]
+    started(tmp_path)                                        # the copy's /compact, held at the gate
+    assert room.fork is not None and not room.busy and not room.shortening
+    gate.set()
+    until(lambda: y.ledger.rows(1)[0]["outcome"] == "compacted")
+    rows = y.ledger.rows(2)                                  # the copy's row holds the size after it, its session the room's
+    assert [r["context"] for r in rows] == [20000, 200000] and room.rp.session_id == rows[0]["session_id"] != rows[1]["session_id"]
     assert rows[0]["outcome"] == "compacted" and y.ledger.turn_summary(0)[1] == []   # never one of the day's failed turns
+    assert written == [(False, "CONTEXT:200000 hello"), (True, "/compact")]          # nothing to the room's own process
     reap(y, room, IDLE)                                      # once per growth: not again at this size
     wait_idle(room)
     assert compactions(tmp_path) == 1
@@ -142,8 +155,7 @@ def test_no_idle_compaction_while_a_turn_runs_or_a_message_waits_and_one_once_th
     wait_idle(room)
     assert chan.replies[-2:] == ["echo: SLOW a long job", "echo: and one more"]
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # on a copy: the room is never held for it
     room.rp.close()
 
 
@@ -160,8 +172,7 @@ def test_a_room_under_its_line_is_left_alone_and_rooms_toml_may_move_the_line(y,
     reap(y, room, 9 * 60)                                    # under its 10 minutes
     assert compactions(tmp_path) == 0
     reap(y, room, 11 * 60)                                   # 150,000 is past 0.5 of 250,000
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # its process started, then a copy
     room.rp.close()
 
 
@@ -179,8 +190,7 @@ def test_a_room_that_turns_it_off_or_leaves_its_window_to_the_model_is_never_com
     y.room_confs[ROOM] = base                                # the budget's line again: the same session compacts
     room = y.add_room(ROOM, Chan())
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # its process started, then a copy
     room.rp.close()
 
 
@@ -190,8 +200,7 @@ def test_a_compaction_that_leaves_the_session_past_its_line_is_not_repeated_unti
     say(y, room, "1", "CONTEXT:200000 hello")
     wait_idle(room)
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)
     for _ in range(2):
         reap(y, room, IDLE)
         wait_idle(room)
@@ -199,8 +208,7 @@ def test_a_compaction_that_leaves_the_session_past_its_line_is_not_repeated_unti
     say(y, room, "2", "CONTEXT:210000 more")
     wait_idle(room)
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 2
+    until(lambda: compactions(tmp_path) == 2 and room.fork is None)
     room.rp.close()
 
 
@@ -209,28 +217,30 @@ def test_a_failed_idle_compaction_is_said_once_and_waits_for_the_next_turn(y, tm
     room = y.add_room(ROOM, chan := Chan())
     say(y, room, "1", "CONTEXT:200000 hello")
     wait_idle(room)
-    with caplog.at_level(logging.WARNING, logger="yerk.room"):
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
         for _ in range(3):
             reap(y, room, IDLE)
             wait_idle(room)
+        until(lambda: any("compaction on a copy is dropped" in m for m in caplog.messages))
     assert compactions(tmp_path) == 1
-    assert len([r for r in caplog.records if "idle compaction did not compact" in r.getMessage()]) == 1
+    assert len([m for m in caplog.messages if "is dropped" in m and "its compaction failed" in m]) == 1
     assert chan.replies == ["echo: CONTEXT:200000 hello"]   # nothing said in the room
     say(y, room, "2", "CONTEXT:201000 more")
     wait_idle(room)
     reap(y, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 2                        # the turn grew it: one more try
+    until(lambda: compactions(tmp_path) == 2 and room.fork is None)   # the turn grew it: one more try
     room.rp.close()
 
 
-def test_a_message_sent_during_an_idle_compaction_is_answered_right_after_it_and_its_wait_logged(y, tmp_path, monkeypatch, caplog):
+def test_a_message_sent_during_a_held_compaction_is_answered_right_after_it_and_its_wait_logged(y, tmp_path, monkeypatch, caplog):
+    """`yerk room compact`'s, as the turn-end and overflow ones (a quiet room's runs on a copy: the next test)."""
     monkeypatch.setenv("FAKE_CLAUDE_COMPACT_SLOW", "1.5")
     room = y.add_room(ROOM, chan := Cards())
     say(y, room, "1", "CONTEXT:200000 hello")
     wait_idle(room)
     with caplog.at_level(logging.INFO, logger="yerk.room"):
-        reap(y, room, IDLE)                                  # the compaction starts, and runs on for 1.5 s
+        threading.Thread(target=room.compact_now, daemon=True).start()   # the compaction starts, and runs on for 1.5 s
+        started(tmp_path)
         at = len(chan.cards)
         assert say(y, room, "2", "are you there?") == "queued"
         assert chan.cards[at:] == [("open", f"{words.WORKING} {words.COMPACTING}")]   # its card, from the moment it came
@@ -240,6 +250,101 @@ def test_a_message_sent_during_an_idle_compaction_is_answered_right_after_it_and
                                ("edit", f"{words.WORKING} echo: are you there?")]          # one card: its turn took it over
     assert [r.getMessage() for r in caplog.records if "waited up to" in r.getMessage()][0].startswith(
         f"room {ROOM}: 1 message(s) waited up to ")
+    room.rp.close()
+
+
+def test_a_message_during_a_quiet_rooms_copy_runs_at_once_and_the_copy_is_taken_as_its_turn_ends(y, tmp_path, gate, caplog):
+    """Seen live in a busy room: a message 66 s into the idle compaction waited 84 s under the card."""
+    room = y.add_room(ROOM, chan := Cards())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    live = room.rp.session_id
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        reap(y, room, IDLE)
+        started(tmp_path)                                    # the copy's /compact, held at the gate
+        assert room.fork is not None and say(y, room, "2", "CONTEXT:21000 SLOW meanwhile") == "started"
+        until(lambda: room.reading)                          # its turn, on the live session
+        gate.set()
+        until(lambda: room.ready is not None)                # compacted while that turn runs: taken as it ends
+        wait_idle(room)
+    assert chan.replies[1] == "echo: CONTEXT:21000 SLOW meanwhile" and room.rp.session_id == bound(tmp_path) != live
+    assert not any(words.COMPACTING in text for _, text in chan.cards) and not any("waited up to" in m for m in caplog.messages)
+    say(y, room, "3", "and now?")
+    say(y, room, "4", "once more", alone=True)
+    wait_idle(room)
+    assert echoed(chan, 2).startswith(TAIL_HEAD) and "owner: CONTEXT:21000 SLOW meanwhile" in echoed(chan, 2)
+    assert echoed(chan, 2).endswith("\n\nand now?") and chan.replies[3] == "echo: once more"     # the tail, once
+    room.rp.close()
+
+
+def test_with_no_process_alive_the_room_is_held_for_its_start_only_and_then_compacts_a_copy(y, tmp_path, gate, written, monkeypatch, caplog):
+    """After a daemon restart no room has a process until its first message: a message during the idle compaction's start
+    of one waits for that start alone, is answered on the live session while the copy compacts, and rides to the copy."""
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True)
+    up, start = threading.Event(), RoomProcess.start
+    monkeypatch.setattr(RoomProcess, "start", lambda self, *a, **k: (k.get("fork") or up.wait(20)) and start(self, *a, **k))
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        reap(y, room, IDLE)                                  # the room's own process starting, held until `up`
+        assert room.busy and not room.shortening and say(y, room, "2", "CONTEXT:21000 meanwhile") == "queued"
+        up.set()
+        until(lambda: len(chan.replies) == 2)
+        assert room.fork is not None and chan.replies[1] == "echo: CONTEXT:21000 meanwhile"   # the copy still at the gate
+        gate.set()
+        until(lambda: any("compacted on a copy" in m for m in caplog.messages))
+        wait_idle(room)
+    assert any("1 message(s) waited up to" in m and "to start (idle)" in m for m in caplog.messages)
+    say(y, room, "3", "and now?")
+    wait_idle(room)
+    assert echoed(chan, 2).startswith(TAIL_HEAD) and "CONTEXT:21000 meanwhile" in echoed(chan, 2) and room.rp.session_id == bound(tmp_path)
+    assert (False, "/compact") not in written and written.count((True, "/compact")) == 1
+    room.rp.close()
+
+
+def test_with_no_process_alive_and_nothing_waiting_the_room_is_free_after_the_start_and_answers_the_next_message_at_once(y, tmp_path, gate):
+    """The start holds the room for itself alone: with no message in it, the room must come back free, or the next message
+    would sit queued behind a hold nothing ends."""
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True)                        # no process alive, as after a daemon restart
+    reap(y, room, IDLE)
+    started(tmp_path)                                        # the start is over and the copy's /compact is at the gate
+    assert room.fork is not None and not room.busy and not room.shortening
+    say(y, room, "2", "CONTEXT:21000 meanwhile")
+    until(lambda: len(chan.replies) == 2)
+    assert chan.replies[1] == "echo: CONTEXT:21000 meanwhile" and room.fork is not None    # answered while the copy is still held
+    gate.set()
+    until(lambda: y.ledger.rows(1)[0]["outcome"] == "compacted")
+    wait_idle(room)
+    room.rp.close()
+
+
+def test_a_start_that_fails_frees_the_room_is_said_once_and_is_not_tried_again_before_the_next_turn(y, tmp_path, monkeypatch, caplog):
+    """A process that died without being closed keeps its session's lock, so the start of a new one can fail: the room
+    must come back free, never stay held, and the reaper must not try again every minute."""
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True)
+    tries, start = [], room._start
+
+    def failing(*a, **k):
+        tries.append(1)
+        raise RuntimeError("the session is busy")
+    monkeypatch.setattr(room, "_start", failing)
+    with caplog.at_level(logging.WARNING, logger="yerk.room"):
+        for _ in range(3):
+            reap(y, room, IDLE)
+            wait_idle(room, timeout=5)
+    assert len(tries) == 1 and room.fork is None and compactions(tmp_path) == 0
+    assert sum("could not start the room's process" in m for m in caplog.messages) == 1
+    monkeypatch.setattr(room, "_start", start)
+    say(y, room, "2", "and now?")
+    wait_idle(room)
+    assert chan.replies[-1] == "echo: and now?"
     room.rp.close()
 
 
@@ -269,8 +374,7 @@ def test_the_sessions_size_comes_from_the_rooms_own_calls_and_a_restart_keeps_it
     again = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))   # a restart or a deploy
     room = again.add_room(ROOM, Chan())
     reap(again, room, IDLE)
-    wait_idle(room)
-    assert compactions(tmp_path) == 1
+    until(lambda: compactions(tmp_path) == 1 and room.fork is None)   # its process started, then a copy
     room.rp.close()
 
 

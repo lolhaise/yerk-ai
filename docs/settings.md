@@ -174,6 +174,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `decide_seconds`: seconds one decision may take; past it the text is held with no clean answer (default 240)
 - `check_model`: the model of the check, which reads only the thread, the person's sheet, their texts and the draft before a reply or tapback may go (default: the writer's model)
 - `check_seconds`: seconds one check may take; past it the draft is held with no clean answer (default 120)
+- `fallback`: a second model the writer and the check run on when every account refuses theirs, the row then naming it beside the account (default none: the text is held)
 - `outbox`: live only: the Mac runner's outbox, a whole path on the Mac each text's job is written into (default none: live sends nothing)
 - `first_shot`: [low, high] seconds a text waits when the owner's own text is their side's newest and younger than first_shot_window (default [150, 240])
 - `first_shot_window`: seconds the owner's own text counts as just sent (default 300)

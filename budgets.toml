@@ -428,7 +428,7 @@ taste = 1500
 # (the box's day log), so the clause that the first token slows with size went.
 compact_window = 250000
 # A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session holds `idle_compact_at` of its window
-# or more is compacted then by the daemon, as `yerk room compact` does it, so a compaction never lands in a person's turn
+# or more is compacted then by the daemon, on a copy of the session, so a compaction never lands in a person's turn
 # (2026-10-21: a one-line question waited 5 min 20 s for one). Measured that day: Claude Code compacts at the window less
 # 33,000 (2.1.304: its 20,000 output reserve and 13,000 buffer); the most a room's session grew in one turn was 100,831,
 # and a process start added up to 43,479, so at 0.7 a 700,000 window keeps 177,000 for the next turn and 400,000 keeps
@@ -1545,5 +1545,7 @@ secs = 60
 # 2026-11-13: texting-7a raised it by 401, the replay of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 # 2026-11-13: texting-7a-fix raised it by 16, a replayed call no model answered counted as failed and the replay's model flag (the owner's ask, 2026-11-12), not folded to fit.
 # 2026-11-13: texting-7a-asof raised it by 4, the replay's memory files held to their last change (the owner's ask, 2026-11-12), not folded to fit.
+# 2026-11-13: texting-6b raised it by 19, the check's own config folder and the second model of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+# 2026-11-13: idle-copy raised it by 22, every room's idle compaction on a copy, the follow-up to copy-survives (#46) and fast-idle (#60) (the owner's ask, 2026-11-13), not folded to fit.
 # 2026-11-13: texting-6 raised it by 449, the sender and the hands of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
-lines = 32126
+lines = 32167
