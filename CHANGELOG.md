@@ -6,6 +6,26 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-13
+
+### texting-7a (#?)
+
+- Nothing changes until an install has a `[texting]` table with a report room and someone runs the new command.
+- `yerk texting replay --since YYYY-MM-DD` shows the plan and calls nothing: each person on the reply list who has a
+  sheet, the one thread file of theirs under `imports/texts/` (by its name), how many cuts that is (each burst of their
+  texts on or after that day, at most `--limit` a person, newest first, 10 unless asked) and how many model calls a run
+  makes.
+- With `--run` it puts each cut through the writer and the check as they run live, as of the cut's minute: the thread
+  ends before the burst, the memory part is the report room's search with every line dated at or after the cut taken
+  out, and the writer has no tool. It prints counts only, a row a person and the total (the decisions, each beside what
+  was sent next, the check's verdicts, seconds and tokens), and keeps each decision beside what went in one private
+  file under `<state>/texting/replay/`. Every cut is a real model call on the install's accounts, in the report room's
+  order.
+- It sends nothing and changes nothing the running install uses: not the ledger, the dry folder, a day log, a room or
+  the account cooldowns.
+- budgets.toml: `[code] lines` 31,256 to 31,648, with its dated note.
+- **Upgrading**: nothing to change.
+
 ## 2026-11-12
 
 ### room-recall-pool (#68)

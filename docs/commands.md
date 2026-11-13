@@ -219,10 +219,15 @@ taste: the taste judge replayed over the owner's complaints and the replies they
 
 ### yerk texting ACTION
 
-sheets --check: the reply list and each person's sheet read, nothing written; one line, with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then
+sheets --check: the reply list and each person's sheet read, nothing written; one line, with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then. replay --since DAY: past threads through the writer and the check as of each cut, the plan only without --run; counts printed, each cut beside what went in one private file, nothing sent
 
-- `ACTION`: one of sheets
-- `--check`
+- `ACTION`: one of sheets, replay
+- `--check`: sheets: needed
+- `--since SINCE`: replay: the first day a cut may fall on, YYYY-MM-DD (needed)
+- `--person PERSON`: replay: one person's key on the reply list, not everyone with a sheet
+- `--limit LIMIT`: replay: cuts a person, newest first (default 10)
+- `--old-log OLD_LOG`: replay: the old agent's log; an answer it quotes is marked auto, not the owner's
+- `--run`: replay: make the calls; without it the plan only, nothing called
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
