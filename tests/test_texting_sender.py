@@ -19,7 +19,7 @@ import pytest
 
 from test_texting_link import A1, B1, listed
 from test_texting_holds import Card
-from yerk_ai import words
+from yerk_ai import texts, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -497,6 +497,68 @@ def test_live_with_text_out_off_in_gates_drops_what_was_left_to_send_and_gives_t
         clock.t += 600
         asyncio.run(s.tick())
     assert led.texting_get(left)["state"] == "dropped" and calls(tmp_path / "pass") == []
+
+
+def test_at_fire_time_a_text_or_a_tapback_of_his_own_that_only_the_thread_holds_stops_the_text(tmp_path: Path) -> None:
+    """The watch can miss a row (the link away, a replay still to come), so the thread read at fire time is the guard that
+    is left: his own text after theirs stops the text, and so does a tapback of his."""
+    for n, (said, tapback) in enumerate((("running late", False), ("", True))):
+        s, led, clock = make(tmp_path / str(n))
+        rid = due(s, led, clock, "t-1")
+        rows(s).add("m-1", WED - 2, said, mine=True, tapback=tapback)      # on the thread only: the intake never saw it
+        r = armed(s, led, rid)
+        assert (r["state"], r["reason"], r["handed"]) == ("cancelled", "owner answered", None)
+        assert calls(tmp_path / str(n)) == [] and led.inbound_get("t-1")["state"] == "answered"
+
+
+def test_a_from_me_row_outside_a_handed_jobs_window_is_the_owners_and_claims_nothing(tmp_path: Path) -> None:
+    for name, offset, side in (("early", -11.0, "owner"), ("late", 181.0, "owner"), ("inside", 179.0, "auto")):
+        s, led, clock = make(tmp_path / name)
+        took, _ = intake_for(s, led)
+        rid = due(s, led, clock, "t-1")
+        handed = armed(s, led, rid)["handed"]
+        rows(s).add("m-1", handed + offset, "on my way", mine=True)
+        assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == side
+        assert bool(led.texting_get(rid)["claimed"]) is (side == "auto")
+
+
+def test_a_stop_in_the_middle_of_a_hand_off_counts_as_handed_and_the_text_is_never_handed_again(tmp_path: Path) -> None:
+    """J41: the mark is written before the hands run, so a daemon stopped between the write on the Mac and the mark can
+    never write that job a second time."""
+    s, led, clock = make(tmp_path)
+    rid = due(s, led, clock, "t-1")
+    real = s.hands
+
+    class Stopped:
+        async def hand(self, name: str, job: dict[str, Any]) -> str:
+            await real.hand(name, job)                       # the job is on the Mac
+            raise RuntimeError("the daemon stopped")          # and the daemon is gone before it hears so
+    s.hands = Stopped()
+    with pytest.raises(RuntimeError):
+        asyncio.run(s.tick())
+    assert led.texting_get(rid)["handed"] == clock.t and calls(tmp_path) == [f"yerk-{rid}-1"]
+    again = sender.Sender({"mode": "live"}, s.file, led, s.thread, real, clock=clock)       # the next start
+    for _ in range(4):
+        clock.t += 60
+        asyncio.run(again.tick())
+    assert calls(tmp_path) == [f"yerk-{rid}-1"] and led.texting_get(rid)["state"] == "unseen"
+
+
+def test_the_daemon_gives_dry_hands_that_only_write_files_and_live_ones_ssh_to_a_plain_host_or_no_command(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "texting").mkdir()
+    listed(private / "texting")
+    for n, (mode, kind, host, argv) in enumerate((("dry", hands.Dry, "mac", None), ("live", hands.Live, "mac", [*texts.SSH, "mac"]),
+                                                  ("live", hands.Live, "-oProxyCommand=x", []))):
+        (private / "yerkd.toml").write_text(f'[texting]\nmode = "{mode}"\nreport = "example-room"\noutbox = "/Users/someone/outbox"\n'
+                                            f'\n[imessage]\nhost = "{host}"\nsocket = "/Users/someone/bridge.sock"\n')
+        (state := tmp_path / f"state{n}").mkdir()
+        got = Yerkd(private, state).texting()
+        send = got[-1].cr_frame.f_locals["self"]             # the sender, from its own task
+        for c in got:
+            c.close()
+        assert type(send.hands) is kind and getattr(send.hands, "argv", None) == argv
 
 
 def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(tmp_path: Path) -> None:
