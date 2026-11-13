@@ -531,6 +531,23 @@ TEXTING_CHECK_PARTS, TEXTING_CHECK_LONG = "more than {n} texts", "a text over {c
 TEXTING_CHECK_FAILED, TEXTING_CHECK_UNSAID = "the check failed {tests}", "it says more about the owner than it lists: {what}"
 TEXTING_CHECK_NO_BASIS, TEXTING_CHECK_HELD = "nothing they already know says: {what}", "the check did not release it"
 TEXTING_CHECK_CLAIMED = "claimed, not the owner's side"
+# yerk texting replay (texting/replay.py, J30 to J32): file names and counts only, never a text or a draft
+REPLAY_NEEDS = "yerk texting {action} needs {flag}"
+REPLAY_OFF = "no [texting] report room in rooms.toml: nothing to replay"
+REPLAY_NO_DOCS = "{docs} is not there, so this is no running install's state folder: nothing replayed, nothing made"
+REPLAY_FOUND, REPLAY_NO_SHEET = "{key}: {file}, {cuts} cuts", "{key}: skipped, no sheet"
+REPLAY_NO_FILE, REPLAY_FILES = "{key}: skipped, no thread file has their handle", "{key}: skipped, {n} thread files have their handle: {files}"
+REPLAY_PLAN = "{cuts} cuts since {since}, at most {limit} a person, newest first: {cuts} writer calls, and the check may add as many"
+REPLAY_DRY = "the plan only: nothing called; --run makes the calls"
+REPLAY_AS_OF = "pack memory only, as of each cut; no dig tools"
+REPLAY_LEFT_OUT = "left out: the recall part (its lines name no file, so none can be dated)"
+REPLAY_LIMITS = ("limit: files with no date in their name (people, facts) are today's",
+                 "limit: a text answered with a tapback reads as unanswered (an import holds no tapbacks)",
+                 "limit: a writer with no dig tools holds more often than the live one")
+REPLAY_COLUMNS = ("cuts", "reply", "react", "none", "held", "agree", "more", "less", "asks", "tapback", "auto", "open",
+                  "check-ok", "check-held", "failed", "seconds", "tokens")
+REPLAY_TOTAL, REPLAY_FILE = "total", "each cut beside what went: {file}"
+REPLAY_KEPT, REPLAY_NO_SEARCH = "{n} cuts failed; the scratch folder stays at {folder}", "the memory search did not answer: {why}"
 # a text that may not go on its own (texting/holds.py): one card in the owner's texting room, answered by his word there
 TEXTING_CARD, TEXTING_CARD_MARK = "{mark} {first} · {at} · {state}", {"live": "📱", "dry": "DRY"}
 TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK = "draft:", "draft: a {react} tapback"

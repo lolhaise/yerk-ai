@@ -645,14 +645,77 @@ def cmd_eval(a: argparse.Namespace) -> int:
 
 def cmd_texting(a: argparse.Namespace) -> int:
     """`yerk texting sheets --check`: the reply list and each person's sheet read (texting/people.check), nothing written;
-    each that does not load, is missing or is named by no one, one line with its file; exit 1 then."""
+    each that does not load, is missing or is named by no one, one line with its file; exit 1 then. `replay`: texting_replay."""
+    from . import words
     from .config import load_toml
     from .texting import people
+    if not (a.check if a.action == "sheets" else a.since):
+        print(words.REPLAY_NEEDS.format(action=a.action, flag="--check" if a.action == "sheets" else "--since YYYY-MM-DD"), file=sys.stderr)
+        return 2
     priv = private_dir(a.private)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    if a.action == "replay":
+        return texting_replay(a, priv, conf)
     bad = people.check(people.path(priv, dict(conf.get("texting") or {})))
     print("\n".join(bad) or "every sheet loads")
     return 1 if bad else 0
+
+
+def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> int:
+    """`yerk texting replay` (texting/replay.py, J30 to J32): the plan, which calls and searches nothing; with --run the header,
+    each cut through the live writer and check on the install's accounts in the report room's order, the table, the file.
+    The memory part is the report room's search as the daemon runs it, borrowed with no daemon made (its constructor opens
+    the install's ledger); the index is read, never built or refreshed. The recall part is left out whole (J31)."""
+    from datetime import date
+    from pathlib import Path
+    from zoneinfo import ZoneInfo
+
+    from . import words
+    from .accounts import load_accounts
+    from .config import models, room_settings, table
+    from .daemon import Yerkd
+    from .lifted.classify import FailureTable
+    from .texting import people, replay
+    t, room_confs = dict(conf.get("texting") or {}), rooms(priv)
+    if (report := str(t.get("report") or "")) not in room_confs:
+        print(words.REPLAY_OFF)
+        return 1
+    tz = ZoneInfo(str(dict(conf.get("memory") or {}).get("timezone") or memory.system_zone()))   # the import's own, memory.settings
+    texts, file = priv / "imports" / "texts", people.path(priv, t)
+    todo, said = replay.plan(file, texts, date.fromisoformat(a.since), a.limit, float(t.get("catch_up_hours", 6)), tz,
+                             a.person or "", Path(a.old_log).expanduser() if a.old_log else None)
+    print("\n".join([*said, words.REPLAY_PLAN.format(cuts=len(todo), since=a.since, limit=a.limit)]), flush=True)
+    if not a.run:
+        print(words.REPLAY_DRY)
+        return 0
+    if not ((state := state_dir(a.state)) / "docs").is_dir():         # memory.settings would make it; an install has it
+        print(words.REPLAY_NO_DOCS.format(docs=state / "docs"))
+        return 1
+    print("\n".join([words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]), flush=True)
+
+    class Search:
+        search, reader, owner = Yerkd.search, Yerkd.reader, Yerkd.owner
+
+        def __init__(self) -> None:                  # as Yerkd.__init__ makes them
+            self.room_confs, self.memory = room_confs, memory.settings(priv, state, dict(conf.get("memory", {})))
+            self.scoped = {n: self.memory.only(priv, n, c["also"]) for n, c in room_confs.items() if "also" in c}
+    d: Any = Search()
+
+    def search(text: str) -> list[dict[str, Any]]:      # a search that does not answer fails its cut: never decided blind
+        if not (r := d.search(report, text, docs=False)).get("ok"):
+            raise LookupError(words.REPLAY_NO_SEARCH.format(why=r.get("status") or "failed"))
+        return list(r.get("hits") or [])
+    accts = load_accounts(priv / "accounts.toml")
+    named = [x for n in room_confs[report].get("accounts") or [] for x in accts if x.name == n]     # its order, as daemon.texting
+    f = replay.go(state, f"{datetime.now(tz):%Y-%m-%d-%H%M%S}", {"since": a.since, "limit": a.limit, "people": sorted({c.key for c, _ in todo}),
+                  "left_out": ["recall"]}, t, file, report, todo, search,
+                  lambda name: replay.located(name, d.memory.cites, d.memory.root), texts, named + [x for x in accts if x not in named],
+                  FailureTable.load(table("failures.toml")), room_settings(room_confs[report], state, report, models(conf))["model"][0])
+    lines = [json.loads(x) for x in f.read_text().splitlines()[1:]]
+    print("\n".join([*replay.table(lines), words.REPLAY_FILE.format(file=f)]))
+    if failed := sum(1 for x in lines if x.get("error")):
+        print(words.REPLAY_KEPT.format(n=failed, folder=f.with_suffix("")))
+    return 1 if failed else 0
 
 
 def cmd_abilities(a: argparse.Namespace) -> int:
@@ -895,9 +958,16 @@ def parser() -> argparse.ArgumentParser:
     ev.add_argument("--cap", type=float, default=20.0, help="seconds a judge call may take (default 20)")
     ev.add_argument("--sample", type=int, default=0, help="a stratified N cases (by verdict) and N controls (by room), not all")
     tx = sub.add_parser("texting", help="sheets --check: the reply list and each person's sheet read, nothing written; one line, "
-                        "with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then")
-    tx.add_argument("action", choices=["sheets"])
-    tx.add_argument("--check", action="store_true", required=True)
+                        "with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then. "
+                        "replay --since DAY: past threads through the writer and the check as of each cut, the plan only without "
+                        "--run; counts printed, each cut beside what went in one private file, nothing sent")
+    tx.add_argument("action", choices=["sheets", "replay"])
+    tx.add_argument("--check", action="store_true", help="sheets: needed")
+    tx.add_argument("--since", help="replay: the first day a cut may fall on, YYYY-MM-DD (needed)")
+    tx.add_argument("--person", help="replay: one person's key on the reply list, not everyone with a sheet")
+    tx.add_argument("--limit", type=int, default=10, help="replay: cuts a person, newest first (default 10)")
+    tx.add_argument("--old-log", help="replay: the old agent's log; an answer it quotes is marked auto, not the owner's")
+    tx.add_argument("--run", action="store_true", help="replay: make the calls; without it the plan only, nothing called")
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ad = sub.add_parser("add", help="an add-on into this install (a folder, a git URL, or an ability whose entry names its repo): "
                         "fetched, checked against its own size, its package, server, tables and units in, its tests run")
