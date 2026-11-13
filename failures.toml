@@ -78,6 +78,12 @@ class = "overflow"
 regex = '''context[-_ ](overflow|length|window)|too many tokens|maximum context|prompt is too long|exceeds? the (model'?s )?context|context exceeds the token limit|input length .* exceed|request too large|\b413\b'''
 
 [[patterns]]
+name = "model_limit"      # one model's own limit on an account ("You've reached your Fable limit. Switch to another model ..."):
+class = "quota"           # the account still has its other models, so it rests for that model only, as a rate limit does. It
+kind = "rate_limit"       # sits before billing because one wording of it goes on to name usage credits
+regex = '''reached your [\w .-]{1,40} limit\. switch to another model'''
+
+[[patterns]]
 name = "billing"
 class = "quota"
 kind = "billing"

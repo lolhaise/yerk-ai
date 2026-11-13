@@ -212,10 +212,42 @@ def test_a_search_that_does_not_answer_fails_its_cut_before_any_call(tmp_path, m
     shutil.rmtree(state / "texting" / "replay" / "t1")
 
 
+def test_a_call_no_model_answered_is_a_failed_cut_never_a_decision(tmp_path, monkeypatch):
+    """2026-11-13, the first real run: every account refused the model, the writer held with "no clean answer" in 0.4 s and no
+    tokens, and the run counted two held decisions that no model had made."""
+    priv, state = install(tmp_path)
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg0"))               # the one account refuses: no account free
+    f = run(tmp_path, monkeypatch, priv, state, thread_cuts(priv), [])
+    got = [json.loads(x) for x in f.read_text().splitlines()[1:]]
+    assert len(got) == 3 and all(x["error"].startswith("LookupError: no model answered: no account free until ") for x in got)
+    assert [x.split() for x in replay.table(got)][1][:1] == ["alex"] and replay.table(got)[1].split()[1:6] == ["3", "0", "0", "0", "0"]
+    assert replay.table(got)[1].split()[list(words.REPLAY_COLUMNS).index("failed") + 1] == "3"
+    assert not replay.unanswered({"reason": words.TEXTING_NO_CLEAN, "tokens": 900})     # a model answered and it would not parse: a real hold
+    assert not replay.unanswered({"reason": "held by money", "tokens": 0})              # the code's own hold names its rule
+    shutil.rmtree(state / "texting" / "replay" / "t1")
+
+
+def test_a_check_no_model_answered_is_a_failed_cut_too(tmp_path, monkeypatch):
+    priv, state = install(tmp_path)
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yes!"]))
+    live = writer.Writer.hop
+
+    def hop(self, argv, stdin, cwd, cap, model, read, hold):
+        if str(writer.PROMPT) in argv:
+            return live(self, argv, stdin, cwd, cap, model, read, hold)
+        return {**hold(words.TEXTING_NO_CLEAN), "account": "a0", "seconds": cap}          # the check's call ran out of time
+    monkeypatch.setattr(writer.Writer, "hop", hop)
+    f = run(tmp_path, monkeypatch, priv, state, thread_cuts(priv)[2:], [])
+    [cut] = [json.loads(x) for x in f.read_text().splitlines()[1:]]
+    assert cut["error"] == "LookupError: no model answered: no clean answer"
+    shutil.rmtree(state / "texting" / "replay" / "t1")
+
+
 def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path, monkeypatch, capsys):
     from yerk_ai import cli
     priv, state = install(tmp_path)
-    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "owner-room"\n')
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "owner-room"\nmodel = "model-z"\ncheck_model = "model-z"\n')
     (priv / "rooms.toml").write_text('[rooms.owner-room]\nchannel = "discord:1"\n')
     (priv / "accounts.toml").write_text(f'[accounts.a0]\nconfig_dir = "{tmp_path / "cfg0"}"\n')
     (tmp_path / "cfg0").mkdir()
@@ -240,15 +272,17 @@ def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path,
     shutil.rmtree(state / "texting" / "replay")
     from yerk_ai.daemon import Yerkd
     monkeypatch.setattr(Yerkd, "search", lambda self, room, query, **kw: {"ok": True, "hits": []})
-    assert cli.main([*yerk, "--run", "--limit", "2"]) == 0 and len(calls(tmp_path)) == 4      # two cuts: a writer and a check call each
+    assert cli.main([*yerk, "--run", "--limit", "2", "--model", "model-y"]) == 0 and len(calls(tmp_path)) == 4   # two cuts: a writer and a check call each
+    assert all(c["argv"][c["argv"].index("--model") + 1] == "model-y" for c in calls(tmp_path))       # the flag's model, the writer's and the check's
     out = capsys.readouterr().out
     lines = out.splitlines()
-    assert lines[2:7] == [words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]
-    assert lines[7].split() == list(words.REPLAY_COLUMNS) and [x.split()[:2] for x in lines[8:10]] == [["alex", "2"], ["total", "2"]]
+    assert lines[2:8] == [words.REPLAY_MODEL.format(model="model-y"), words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]
+    assert lines[8].split() == list(words.REPLAY_COLUMNS) and [x.split()[:2] for x in lines[9:11]] == [["alex", "2"], ["total", "2"]]
     for said in ("morning", "you up", "coffee", "sure, at ten", "the game", "attachment", "DRAFT-TEXT"):
         assert said not in out
     [f] = (state / "texting" / "replay").glob("*.jsonl")
-    assert lines[10] == words.REPLAY_FILE.format(file=f) and json.loads(f.read_text().splitlines()[0])["people"] == ["alex"]
+    assert lines[11] == words.REPLAY_FILE.format(file=f) and json.loads(f.read_text().splitlines()[0])["people"] == ["alex"]
+    assert json.loads(f.read_text().splitlines()[0])["model"] == "model-y"
     assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 0 and capsys.readouterr().out == "every sheet loads\n"
     assert replay.located("imports/texts/alex.md", ((priv / "memory", "memory"), (priv / "imports", "imports")), priv / "memory") == \
         priv / "imports" / "texts" / "alex.md"                                    # a cite read back as memory.cite names it

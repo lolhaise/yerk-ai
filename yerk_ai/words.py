@@ -548,6 +548,7 @@ REPLAY_COLUMNS = ("cuts", "reply", "react", "none", "held", "agree", "more", "le
                   "check-ok", "check-held", "failed", "seconds", "tokens")
 REPLAY_TOTAL, REPLAY_FILE = "total", "each cut beside what went: {file}"
 REPLAY_KEPT, REPLAY_NO_SEARCH = "{n} cuts failed; the scratch folder stays at {folder}", "the memory search did not answer: {why}"
+REPLAY_UNANSWERED, REPLAY_MODEL = "no model answered: {why}", "model: {model}"
 # a text that may not go on its own (texting/holds.py): one card in the owner's texting room, answered by his word there
 TEXTING_CARD, TEXTING_CARD_MARK = "{mark} {first} · {at} · {state}", {"live": "📱", "dry": "DRY"}
 TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK = "draft:", "draft: a {react} tapback"

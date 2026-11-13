@@ -76,6 +76,8 @@ def test_by_event(event, cls, action, kind):
     ("Spend limit reached", "quota"),
     ("Credit balance is too low", "quota"),
     ("You're out of usage credits", "quota"),
+    ("You've reached your Fable limit. Switch to another model to continue.", "quota"),
+    ("You've reached your Fable limit. Switch to another model, or manage usage credits at https://claude.ai/settings/usage, to continue.", "quota"),
     # authentication
     ("Not logged in · Please run /login", "auth"),
     ("Invalid API key · Please run /login", "auth"),
@@ -117,6 +119,17 @@ def test_by_event(event, cls, action, kind):
 ])
 def test_by_text(text, cls):
     assert T.classify("unknown", text).cls == cls
+
+
+@pytest.mark.parametrize("text", [
+    "You've reached your Fable limit. Switch to another model to continue.",
+    "You've reached your Fable limit. Switch to another model, or manage usage credits at https://claude.ai/settings/usage, to continue."])
+def test_one_models_limit_rests_the_account_for_that_model_only(text):
+    """2026-11-13: a one-shot has no stream events, only this text. The first wording matched no rule, so a call stopped at that
+    account instead of hopping; the second read as billing, which rests the whole account and not the one model."""
+    f = T.classify(text=text)
+    assert (f.cls, f.action, f.kind, f.source) == ("quota", "hop_account", "rate_limit", "pattern:model_limit")
+    assert T.classify(text="You've hit your monthly spend limit").kind == "billing"      # a spend limit is still the account's
 
 
 def test_a_missing_session_starts_fresh_with_a_recap():
