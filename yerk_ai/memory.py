@@ -870,10 +870,9 @@ SHARE = 0.4          # the keyword rank's part of the fused score, the meaning r
 RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
                      # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
-READ_ON = 5000       # a room that may not read everything: keyword rows read past the pool for chunks it may read (memindex.search), past
-                     # every match of each name measured in a sealed room's search on the live index (Nov 12: at most 2,712). Its cost is the
-                     # room's filter, about 85 microseconds a row: 0.43 s at the bound on a made-up index of 440,000 chunks (the owner's read
-                     # of that word 0.04 s; on the live index a read of 5,000 rows took 0.3 to 0.8 s). The search's deadline cuts it as before
+READ_ON = 5000       # a room that may not read everything reads on at most this many keyword rows past the pool (memindex.search): past
+                     # every match of each name a sealed room was measured on, live, Nov 12 (2,712 at most). Its filter, about 85 microseconds
+                     # a row, takes 0.43 s at the bound on a made-up 440,000-chunk index (the owner's read 0.04 s; live, 5,000 rows 0.3 to 0.8 s)
 MEANING_MOST = 400   # and asks yerk-index for this many meaning rows, the most its handler serves (embeddings.Server.search): over
                      # 440,000 made-up vectors 0.90 s against 0.89 s for the pool, the scan being the cost, and 401 kB of answer against 81
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
@@ -990,14 +989,11 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
     k = max(1, min(int(k), 20))
-    limited = bool(reader and (not reader.owner or reader.sealed))
-
     def mine(path: str, text: str) -> bool:
-        """What a room ranks, its pool drawn from these alone (READ_ON): with its own `also`, its roots' chunks (every root is indexed);
-        a room that is not an owner room, or is sealed, the chunks it can read whole (R2): its own line beside a hidden one reaches it
-        through its pack, its topic hits and read_memory, never recall, since a chunk read in part ranks on words it may not see."""
-        return (not s.scoped or s.scope.contains(Path(path))) and (not limited or allowed_text(reader, Path(path), text, daily=s.daily) == text)
-    keep = mine if s.scoped or limited else None
+        """What a room ranks, its pool drawn from these alone: in its own `also` roots, and a chunk it reads whole (R2), since one read in
+        part ranks on words it may not see (its own line beside a hidden one reaches it by its pack, its topic hits and read_memory)."""
+        return (not s.scoped or s.scope.contains(Path(path))) and allowed_text(reader, Path(path), text, daily=s.daily) == text
+    keep = mine if s.scoped or reader and (not reader.owner or reader.sealed) else None     # an unscoped owner room: no filter, as before
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:

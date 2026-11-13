@@ -459,9 +459,8 @@ def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80, wei
     """Ranked chunks for a query: any of its words (FTS5, stemmed), ordered by how much of the
     query's weight a chunk covers (each distinct word weighted by its rarity), then by bm25.
     `weights`, when given, gets each word's weight (recall's snippet cut reads them). No chunk under the
-    folder `skip` is a candidate, so none of them takes a place in the pool (a filter after it could leave none). So too a
-    reader's filter `keep` (path, text) runs as the rows are read: the pool is the first `pool` rows it keeps in bm25 order, read
-    on at most `most` rows past the pool; the connection's deadline cuts that read as it cuts any statement."""
+    folder `skip` is a candidate, so none of them takes a place in the pool (a filter after it could leave none); with `keep`, a reader's
+    filter (path, text), the pool is the first `pool` rows it keeps in bm25 order, at most `most` past it, inside the connection's deadline."""
     if not (ts := terms(query)):
         return []
     out, args = "", [" OR ".join(f'"{t}"' for t in ts)]
