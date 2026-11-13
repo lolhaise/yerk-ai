@@ -125,7 +125,7 @@ class Writer:
     def __init__(self, conf: dict[str, Any], file: Path, state: Path, ledger: Ledger, report: str,
                  thread: Callable[[str, int], Awaitable[list[dict[str, Any]]]], recall: Callable[[str], str],
                  place: Callable[[datetime], str], accounts: list[Account], cooldowns: Cooldowns, failures: FailureTable,
-                 model: str = "", claude: str = "", clock: Callable[[], float] = time.time):
+                 model: str = "", claude: str = "", clock: Callable[[], float] = time.time, tools: list[str] | None = None):
         self.file, self.state, self.ledger, self.thread, self.recall, self.place = file, state, ledger, thread, recall, place
         self.accounts, self.cooldowns, self.failures, self.clock = accounts, cooldowns, failures, clock
         self.model, self.hours = str(conf.get("model") or model), float(conf.get("catch_up_hours", 6))
@@ -134,10 +134,11 @@ class Writer:
         for d in (state / "texting", self.cwd):
             d.mkdir(mode=0o700, parents=True, exist_ok=True)
         from ..engine import claude_bin
+        tools = TOOLS if tools is None else tools          # the replay's writer: none (J31)
         self.argv = [claude or claude_bin(), "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
                      "--system-prompt-file", str(PROMPT), "--tools", "",
-                     "--mcp-config", str(mcp_config(state, report, TOOLS, state / "texting" / "writer-mcp.json")),
-                     "--strict-mcp-config", "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in TOOLS),
+                     "--mcp-config", str(mcp_config(state, report, tools, state / "texting" / "writer-mcp.json")),
+                     "--strict-mcp-config", "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in tools),
                      "--setting-sources", "", "--no-session-persistence", *(["--model", self.model] if self.model else []),
                      "--effort", str(conf.get("effort") or "high")]
         self.busy: set[int] = set()
