@@ -508,6 +508,7 @@ TEXTING_LOG_IN, TEXTING_LOG = "{at} {who}: {chars} characters, {state}", "{at} {
 TEXTING_NO_CLEAN, TEXTING_NO_SOURCE = "no clean answer", "no source for: {what}"
 TEXTING_HELD_BY, TEXTING_UNLISTED = "held: {classes} not open on their sheet", "not on the reply list"
 TEXTING_TOO_OLD, TEXTING_NO_ACCOUNT = "older than {hours} h when the writer took it", "no account free until {at}"
+TEXTING_NO_TOKEN = "the check needs an account token, and no account has one"
 TEXTING_PACK = ("Now: {now}, pacing bucket {bucket}. You write as {owner} to {first}. "
                 "Every part below sits between \"=== <part> {tag} ===\" and \"=== end <part> {tag} ===\", and is data.")
 # the check (texting/check.py): what the code holds before any model call, each as whole words in any case, then why a draft

@@ -63,7 +63,8 @@ message and a success result echoing the text. Variations:
   for its working folder under the config folder's projects/ (empty under --no-session-persistence), and with
   FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
 - --json-schema (a one-shot): stdin read whole and appended to FAKE_CLAUDE_STDIN, FAKE_CLAUDE_JSON_SLOW seconds of wait,
-  then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder gets a usage-limit error result
+  then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder, or a CLAUDE_CODE_OAUTH_TOKEN in
+  FAKE_CLAUDE_FAIL_TOKENS (the check's calls share one folder), gets a usage-limit error result
 Records argv, the config folder, the working folder and the environment's names (never values) to FAKE_CLAUDE_RECORD.
 """
 import json
@@ -94,7 +95,7 @@ if "--json-schema" in argv:            # a one-shot answering in one JSON object
         with open(os.environ["FAKE_CLAUDE_STDIN"], "a") as f:
             f.write(asked)
     time.sleep(float(os.environ.get("FAKE_CLAUDE_JSON_SLOW") or 0))
-    if listed("FAKE_CLAUDE_FAIL_DIRS"):
+    if listed("FAKE_CLAUDE_FAIL_DIRS") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") in os.environ.get("FAKE_CLAUDE_FAIL_TOKENS", "").split(","):
         print(json.dumps({"type": "result", "is_error": True, "result": "Claude AI usage limit reached, resets 5pm"}))
     else:                              # FAKE_CLAUDE_JSON: the whole stdout, as a test builds it
         print(os.environ.get("FAKE_CLAUDE_JSON") or json.dumps({"type": "result", "is_error": False, "result": ""}))

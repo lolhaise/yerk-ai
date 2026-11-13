@@ -709,9 +709,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-13: texting-7a-asof raised it by 4, the replay's memory files held to their last change (the owner's ask, 2026-11-12), not folded to fit.
 
+2026-11-13: texting-6b raised it by 19, the check's own config folder and the second model of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
 2026-11-13: idle-copy raised it by 22, every room's idle compaction on a copy, the follow-up to copy-survives (#46) and fast-idle (#60) (the owner's ask, 2026-11-13), not folded to fit.
 
-- `lines = 31699`
+- `lines = 31718`
 
 ## Uncapped
 

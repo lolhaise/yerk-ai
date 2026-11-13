@@ -62,6 +62,9 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     priv, state = tmp_path / "private", tmp_path / "state"
     shutil.copytree(EXAMPLE_PRIVATE, priv)
     state.mkdir()
+    (priv / "secrets").mkdir()
+    (token := priv / "secrets" / "claude-one.token").write_text("token-one")      # the check runs on a token alone (J28)
+    os.chmod(token, 0o600)
 
     def said(table: str) -> list[str]:
         (priv / "yerkd.toml").write_text(table)
@@ -77,6 +80,8 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     assert [x for x in said(on) if "0600" in x]
     os.chmod(priv / "texting" / "people.toml", 0o600)
     assert said(on) == [] and said('[texting]\nmode = "dry"\n') == ["[texting] report: none is not an owner room in rooms.toml"]
+    token.unlink()
+    assert said(on) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
 
 
 A1, B1 = "+15550000101", "+15550000102"
