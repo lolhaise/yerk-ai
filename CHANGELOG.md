@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-13
 
-### texting-6b (#?)
+### texting-6b (#74)
 
 - Texting: nothing changes on an install with no `[texting]` table. With one, the check runs from a config folder of its
   own, `<state>/texting/check-config` (empty, 0700), in place of an account's, so it is handed the four inputs and no
