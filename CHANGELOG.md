@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-14
 
-### texting-7c (#?)
+### texting-7c (#78)
 
 - Nothing changes unless the owner runs `yerk texting replay --since DAY --sender`. It calls no model and sends
   nothing: for every burst of their texts since the day in his imported threads, it times a reply as the live sender
@@ -17,8 +17,10 @@ version changes.
   bursts, the texts it would stop because he answered first or because they wrote again, the ones it would send, and of
   those whether he answered too within the hour, the old agent did, or nobody did. One private file under the state
   folder's `texting/replay/` holds a line a burst; its first line names the limits (times to the minute, no tapbacks in
-  an import, the reply taken as passed when the burst closed). `--of` a finished replay's file keeps only the bursts
-  whose reply passed the check in that run. An answer the old agent sent (`--old-log`) never counts as his.
+  an import, a thread's file ending where its import does, the reply taken as passed when the burst closed) and says
+  whether an old agent's log was given. His answer in the same minute as their last text counts as answered first, by
+  the file's order. `--of` a finished replay's file keeps only the bursts whose reply passed the check in that run. An
+  answer the old agent sent (`--old-log`) never counts as his.
 - **Upgrading**: nothing to change.
 
 ## 2026-11-13
