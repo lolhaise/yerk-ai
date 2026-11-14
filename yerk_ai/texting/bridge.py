@@ -41,6 +41,12 @@ def is_tapback(msg: dict[str, Any]) -> bool:
     return bool(msg.get("is_reaction") or msg.get("is_tapback"))
 
 
+def attached(msg: dict[str, Any]) -> list[dict[str, Any]]:
+    """A row's files, never a link preview's payload: not a file anyone sent (an import leaves it out too, sources.py)."""
+    return [a for a in msg.get("attachments") or [] if isinstance(a, dict)
+            and not str(a.get("transfer_name") or a.get("filename") or "").endswith(".pluginPayloadAttachment")]
+
+
 class Bridge:
     """Requests matched by id, notifications to `on_note`. `unix` opens a local socket instead of the command (the tests'
     stub bridge)."""

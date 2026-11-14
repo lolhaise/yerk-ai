@@ -16,7 +16,7 @@ from typing import Any, Awaitable, Callable
 
 from .. import words
 from ..ledger import Ledger
-from .bridge import is_tapback, when_of
+from .bridge import attached, is_tapback, when_of
 from .people import People, Person
 
 ROOM = "texting"             # the inbound rows' room and the day log's room id: unlisted there, so class private
@@ -60,7 +60,7 @@ class Intake:
         auto = mine and self.claim is not None and self.claim(p, msg, at)     # texting's own send, seen: never his answer
         self.ledger.inbound_set(guid, digest=digest(text), **({"sender": "auto", "state": "filed", "note": "texting's own send"} if auto else {}))
         files = [(Path(str(a.get("transfer_name") or a.get("filename") or "file")).name, str(a.get("mime_type") or ""),
-                  int(a.get("total_bytes") or 0)) for a in msg.get("attachments") or [] if isinstance(a, dict)]
+                  int(a.get("total_bytes") or 0)) for a in attached(msg)]
         for name, kind, size in files:            # what each is, never its bytes: nothing is fetched
             self.ledger.attachment(message_id=guid, room=ROOM, name=name, size=size, type=kind, state="not fetched")
         self.capture(ROOM, guid, "auto" if auto else "owner" if mine else "person", text, files, when=when, who="" if mine else p.key)

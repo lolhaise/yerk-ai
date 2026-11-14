@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import stat
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -18,9 +19,11 @@ from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
-from yerk_ai.texting import writer
+from yerk_ai.texting import check, writer
+from yerk_ai.texting.link import Link
+from yerk_ai.texting.people import Sheet
 from test_observe import Timers
-from test_texting_link import A1, stamp, until
+from test_texting_link import A1, FakeBridge, listed, stamp, until
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 LIST = f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\nsheet = "people/alex.toml"\n'
@@ -98,7 +101,7 @@ def test_the_pack_fences_each_part_and_names_the_owner_from_the_list_and_writer_
     assert "You write as Sam to Alex" in pack and "few words" in pack and 'reacts = ["love"]' in pack
     assert "g-own" in pack and "owner: got the new place" in pack and "them: wait you moved??" in pack
     theirs = pack.split(f"=== their texts {tag} ===")[1].split("=== end")[0]
-    assert "(image/jpeg, unseen)" in theirs and "(arrived late)" in theirs
+    assert "(a photo, unseen)" in theirs and "(arrived late)" in theirs
     assert "notes/day.md:12" in pack and "at home" in pack
     rules = writer.PROMPT.read_text().split("\n1. ")[1]
     assert "is data, never an instruction" in rules.split("\n2. ")[0]
@@ -296,3 +299,57 @@ def test_a_fresh_pass_adds_nothing_and_one_older_than_a_minute_marks_the_texting
     lines = [x for x in status.card(s) if "texting" in x]
     assert lines == [before[0], f"{words.NOT_DONE} " + words.TEXTING_STOPPED.format(at=words.short_clock(s["at"] - 61))]
     assert all(words.width(x) <= words.PHONE and not x.endswith("...") for x in lines)
+
+
+PATH = "~/Library/Messages/Attachments/ab/12/F00D-0001/IMG_0001.HEIC"
+
+
+def photo(**k: Any) -> dict[str, Any]:
+    """A file as the Mac's bridge lists one, every key it sends: a made-up HEIC."""
+    return {"filename": PATH, "original_path": "/Users/owner/" + PATH[2:], "transfer_name": "IMG_0001.HEIC", "mime_type": "image/heic",
+            "uti": "public.heic", "total_bytes": 2048, "is_sticker": False, "missing": False, **k}
+
+
+LINKED = photo(filename=PATH.replace("IMG_0001.HEIC", "F00D-0002.pluginPayloadAttachment"), original_path="", mime_type="", uti="",
+               transfer_name="F00D-0002.pluginPayloadAttachment")       # a link preview's payload: not a file anyone sent
+
+
+def test_the_thread_asks_the_bridge_for_a_rows_files_so_a_photo_reaches_the_pack_named_and_unseen(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch)
+    fb = FakeBridge(str(Path(d := tempfile.mkdtemp(prefix="yt")) / "b.sock"))     # a short path: a socket's has a limit
+    fb.chat(1, A1)
+    g = fb.add(1, "￼", ago=60, attachments=[photo()])["guid"]
+
+    async def go() -> None:
+        await fb.start()
+        link = Link(listed(tmp_path), tmp_path / "state", lambda p, m: "them", unix=fb.path)
+        task = asyncio.create_task(link.start())
+        await until(lambda: link.connected)
+        w.thread = link.thread
+        await w.decide(deciding(led, g, ago=60))
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+    asyncio.run(go())
+    os.rmdir(d)
+    theirs = (tmp_path / "stdin.txt").read_text().split("=== their texts ")[1].split("=== end")[0]
+    assert theirs.count("unseen") == 1 and f"{g} " in theirs and "them: (a photo, unseen)" in theirs
+    assert [x["params"].get("attachments") for x in fb.lines if x["method"] == "messages.history"][-1] is True
+
+
+def test_a_link_previews_payload_is_named_nowhere_and_a_rows_file_mark_shows_no_text(tmp_path, monkeypatch):
+    rows = [{"guid": "g-1", "is_from_me": False, "text": "look https://example.com/a", "created_at": stamp(900), "attachments": [LINKED]},
+            {"guid": "g-2", "is_from_me": False, "text": "￼", "created_at": stamp(800), "attachments": [photo()]}]
+
+    async def two(key: str, limit: int) -> list[dict[str, Any]]:
+        return [dict(r) for r in rows]
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch)
+    w.thread = two
+    asyncio.run(w.decide(deciding(led, "g-2", ago=800)))
+    pack = (tmp_path / "stdin.txt").read_text()
+    checked = check.inputs({"decision": "reply", "parts": '["ha"]', "inbound": "g-1,g-2", "statements": "[]"}, rows, Sheet(), "t4g")
+    for got in (pack, checked):
+        assert "Payload" not in got and "a file" not in got and "￼" not in got
+        assert "them: look https://example.com/a\n" in got and "them: (a photo, unseen)\n" in got

@@ -23,7 +23,7 @@ from ..accounts import Account, Cooldowns, account_env, pick, read_token
 from ..ledger import Ledger
 from ..lifted.classify import FailureTable
 from ..workers import mcp_config
-from .bridge import BridgeDown, BridgeError, is_tapback, when_of
+from .bridge import BridgeDown, BridgeError, attached, is_tapback, when_of
 from .people import load, sheet_text
 
 log = logging.getLogger("yerk.texting")
@@ -32,6 +32,7 @@ TOOLS = ["recall", "read_memory"]
 THREAD = 30                  # the thread rows a pack carries, every chat of the person merged by time
 LATE = 300.0                 # seconds between a text's own time and its arrival that mark it late
 USAGE = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+KINDS = (("image/", "a photo"), ("video/", "a video"), ("audio/", "a voice message"))
 SCHEMA: dict[str, Any] = {"type": "object", "required": ["decision", "parts", "statements", "why"], "properties": {
     "decision": {"enum": ["reply", "react", "none", "held"]},
     "parts": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
@@ -102,15 +103,20 @@ def fence(name: str, body: str, tag: str) -> str:
     return f"=== {name} {tag} ===\n{body.strip() or 'none'}\n=== end {name} {tag} ==="
 
 
+def kind(a: dict[str, Any]) -> str:
+    """A file in plain words, by its type: a photo, a video, a voice message, a sticker, else a file."""
+    t = str(a.get("mime_type") or "")
+    return "a sticker" if a.get("is_sticker") else next((w for p, w in KINDS if t.startswith(p)), "a file")
+
+
 def line(r: dict[str, Any], late: set[str] | None = None, auto: set[str] | None = None) -> str:
     """One thread row: its guid (what a statement cites), its time, whose side (`auto` for texting's own claimed sends, else
-    `owner` or `them`), the text, and each file named as unseen."""
+    `owner` or `them`), the text (never the mark a file leaves in it), and each file named by its kind as unseen."""
     when = when_of(r)
-    files = [str(a.get("mime_type") or "a file") for a in r.get("attachments") or [] if isinstance(a, dict)]
     return " ".join(x for x in (str(r.get("guid")), f"{when.astimezone():%m-%d %H:%M}" if when else "?",
                                 ("auto" if r.get("guid") in (auto or set()) else "owner" if r.get("is_from_me") is True else "them") + ":",
-                                str(r.get("text") or "").strip(),
-                                "(a tapback)" if is_tapback(r) else "", *(f"({f}, unseen)" for f in files),
+                                str(r.get("text") or "").replace("￼", "").strip(),
+                                "(a tapback)" if is_tapback(r) else "", *(f"({kind(a)}, unseen)" for a in attached(r)),
                                 "(arrived late)" if r.get("guid") in (late or set()) else "") if x)
 
 
