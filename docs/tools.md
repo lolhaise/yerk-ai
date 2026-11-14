@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 23 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 24 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -368,6 +368,18 @@ desktop screenshot of the rectangle given) only then; `off` true: off.
 - `where`: string, default ""
 - `screen`: string, default ""
 - `off`: boolean, default false
+
+## show
+
+```text
+Opens a file of this room's folders on the owner's PC screen when they ask to have it up, since your shell reaches
+no screen: `path` its whole path (a built HTML deck, a PDF, a picture, a video). It opens in their own browser, never
+run; `screen` the monitor they name (left, middle, right, primary or its number from the left; default [page] screen)
+puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first.
+```
+
+- `path`: string, required
+- `screen`: string, default ""
 
 ## attachments
 

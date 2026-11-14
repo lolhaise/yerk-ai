@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 130773`
+- `total = 131523`
 
 ## [session_start.claude_code]
 
@@ -120,9 +120,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-12, texting-2: the `texting` tool (the report room reads a person's texting sheet and changes it on the owner's own words; the owner's ask, 2026-11-12) is sent to every room as one line that says only where it works (what it does is its `help`, answered in the report room alone), 481 as this tree builds it, about 510 as sent (as each of Yerk AI's entries goes), on the about 26,644 the rooms send, so about 27,156, 456 over the line; so 27,250, no part could pay, the total rose by the 550 (to 130,773 on 130,223).
 
+2026-11-13, need-2026-11-13-91: the `show` tool (a file of the room's own folders opened on the PC's screen, in a window of the owner's own browser on the monitor named, since a room asked during a timed exam to bring up the slide deck it built had a browser tool that opens only http(s) addresses, a server in its shell the PC could not reach and a Windows command refused outside its sandbox; filed 2026-11-13) is 730 as this tree builds it, about 761 as sent (31 over, as each of Yerk AI's entries goes), on the about 27,156 the rooms send, so about 27,917, 667 over the line; so 28,000, no part could pay, the total rose by the 750 (to 131,523 on main's 130,773). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 27250`
+- `yerk_tools = 28000`
 - `deferred_tool_names = 3581`
 - `mcp__hands__ = 10131`
 - `mcp__web-ladder__web_image = 913`
@@ -715,7 +717,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-13: texting-6 raised it by 449, the sender and the hands of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 32167`
+2026-11-13: need-2026-11-13-91 raised it by 82, a file of a room's own folders opened on the PC's screen for every room (need 91: asked during a timed exam to bring up the slide deck it built, a room had a browser tool that opens only http(s) addresses, a server in its shell the PC could not reach and a Windows command refused outside its sandbox), not folded to fit: daemon.py 36 (the `show` tool: the owner's rooms only, may_send's folders, the types a browser shows itself, the named screen as the page's, else the box's opener, its every end in words), channels/page.py 21 (SHOWN, windows_path, place's file flag and the placing script's match of the browser's new window by its process), words.py 15, mcp_server.py 10 (the tool and its lines in the header). 32,249: main 67a1145's 32,167 plus 82.
+
+2026-11-13: need-2026-11-13-91's cold read raised it by 10, show's path held to a to z, digits, spaces and . _ - ( ) before the placing script or an opener gets it (wslview runs a $( ) of a room's file name as PowerShell on the owner's PC), not folded to fit: channels/page.py 5 (PLAIN and its note), words.py 3, daemon.py 2. 32,259: 32,249 plus 10.
+
+- `lines = 32259`
 
 ## Uncapped
 

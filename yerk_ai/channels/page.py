@@ -117,8 +117,19 @@ WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler
 # window of its own of the default
 # browser, maximized there and raised above the rest without the focus, the display woken by a still mouse event (no
 # click, no key, the pointer unmoved); then the open waits for the tab itself to say it painted (painted). The script is
-# Windows PowerShell's encoded command, its address, screen and room in its environment (WSLENV), never a command line
+# Windows PowerShell's encoded command, its address, screen and room in its environment (WSLENV), never a command line.
+# A room's file goes the same way (the `show` tool): its Windows path for the address, and the browser's new window, whose
+# title is the file's own, found by its process
 SCREENS = ("left", "middle", "right", "primary")
+# what the `show` tool opens on the owner's screen: a type a browser shows itself, so nothing is ever run there (a script,
+# a program, a shortcut, an Office file with its macros); a document goes through `render` to a PDF first
+SHOWN = frozenset((".html", ".htm", ".pdf", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".txt", ".json",
+                   ".mp4", ".webm", ".mp3", ".wav", ".ogg"))
+# the whole path `show` hands the placing script or an opener (its Windows one under WSL), the room's own names in it: a to
+# z, digits, spaces and . _ - ( ) between its slashes, nothing a command reads as code; wslview, the box's opener under WSL
+# with wslu, puts it inside PowerShell's double quotes (`Start "<path>"`), where a $( ) or a backtick runs and a curly quote
+# ends them, and wslpath -w hands those, %, & and ; on unchanged (PR 77's cold read)
+PLAIN = re.compile(r"[\w .()/\\-]+", re.ASCII)
 POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 PLACE_SECONDS = 40        # the placing script's wall clock: PowerShell's start, the browser, its window (it waits 15 s for it)
 PAINT_SECONDS = 10        # how long a placed open waits for its tab to say it painted
@@ -142,6 +153,8 @@ public static class YerkScreen {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int how);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint f);
   [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint f);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static int Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h, out p); return (int)p; }
   [DllImport("user32.dll")] public static extern IntPtr OpenInputDesktop(uint f, bool inherit, uint access);
   [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr d);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint data, UIntPtr extra);
@@ -189,7 +202,8 @@ Start-Process -FilePath $exe -ArgumentList @($flag, ('"' + $url + '"')); $opened
 $h = [IntPtr]::Zero
 for ($t = 0; $t -lt 60 -and $h -eq [IntPtr]::Zero; $t++) {
   Start-Sleep -Milliseconds 250; $now = [YerkScreen]::Windows()
-  foreach ($k in $now.Keys) { if (-not $before.ContainsKey($k) -and ($now[$k].StartsWith($env:YERK_PAGE_ROOM + ': Yerk page') -or $now[$k].StartsWith('Yerk page'))) { $h = [IntPtr]::new($k) } }
+  foreach ($k in $now.Keys) { if (-not $before.ContainsKey($k) -and $(if ($env:YERK_PAGE_FILE) { $now[$k] -and (Get-Process -Id ([YerkScreen]::Pid([IntPtr]::new($k))) -ErrorAction SilentlyContinue).ProcessName -eq $name }
+    else { $now[$k].StartsWith($env:YERK_PAGE_ROOM + ': Yerk page') -or $now[$k].StartsWith('Yerk page') })) { $h = [IntPtr]::new($k) } }
 }
 if ($h -eq [IntPtr]::Zero) { Say @{ ok = $false; error = 'window'; opened = $true }; exit 0 }
 [void][YerkScreen]::ShowWindow($h, 4)
@@ -1100,12 +1114,13 @@ def screen_name(said: Any) -> str:
     return name
 
 
-def place(url: str, screen: str, room: str, seconds: float = PLACE_SECONDS) -> dict[str, Any]:
+def place(url: str, screen: str, room: str, seconds: float = PLACE_SECONDS, file: bool = False) -> dict[str, Any]:
     """`url` opened on the owner's named screen of the PC under WSL (PLACE_PS1): a window of its own of the default browser,
     maximized there and raised without the focus, the display woken first; {"ok": True, the screen's number, count and
-    rectangle, "locked"} once it is there, else {"ok": False, "opened": whether the browser was started, "why": in words}."""
-    env = {**os.environ, "YERK_PAGE_URL": url, "YERK_PAGE_SCREEN": screen, "YERK_PAGE_ROOM": room,
-           "WSLENV": ":".join(x for x in (os.environ.get("WSLENV", ""), "YERK_PAGE_URL/w:YERK_PAGE_SCREEN/w:YERK_PAGE_ROOM/w") if x)}
+    rectangle, "locked"} once it is there, else {"ok": False, "opened": whether the browser was started, "why": in words}.
+    `file`: `url` is a room's file by its Windows path (show), its window the browser's new one."""
+    env = {**os.environ, "YERK_PAGE_URL": url, "YERK_PAGE_SCREEN": screen, "YERK_PAGE_ROOM": room, "YERK_PAGE_FILE": "1" if file else "",
+           "WSLENV": ":".join(x for x in (os.environ.get("WSLENV", ""), "YERK_PAGE_URL/w:YERK_PAGE_SCREEN/w:YERK_PAGE_ROOM/w:YERK_PAGE_FILE/w") if x)}
     script = base64.b64encode(PLACE_PS1.encode("utf-16-le")).decode()
     try:
         p = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", script],
@@ -1124,10 +1139,21 @@ def place(url: str, screen: str, room: str, seconds: float = PLACE_SECONDS) -> d
     if got.get("ok") is True:
         return {"ok": True, **{k: int(got.get(k) or 0) for k in ("n", "of", "x", "y", "w", "h")}, "locked": got.get("locked") is True}
     why = {"screen": words.PAGE_NO_SUCH_SCREEN.format(screen=screen, n=got.get("of", 0)), "browser": words.PAGE_NO_BROWSER,
-           "window": words.PAGE_NO_WINDOW, "moved": words.PAGE_NOT_MOVED.format(screen=screen)}.get(str(got.get("error")))
+           "window": words.SHOW_NO_WINDOW if file else words.PAGE_NO_WINDOW, "moved": words.PAGE_NOT_MOVED.format(screen=screen)}.get(str(got.get("error")))
     opened = got.get("opened") is True         # the opener opens it instead only when nothing did and the screen is there
     return {"ok": False, "opened": opened, "again": not opened and got.get("error") != "screen", "locked": got.get("locked") is True,
             "why": why or words.PAGE_OPEN_FAILED.format(why=str(got.get("why") or words.PAGE_OPEN_SILENT).replace(url, "the address")[:200])}
+
+
+def windows_path(p: Path, seconds: float = OPEN_SECONDS) -> str:
+    r"""A file of the box's as Windows reads it under WSL (\\wsl.localhost\DISTRO\...), as `wslpath -w` says it; "" when it
+    cannot. A name's character Windows forbids comes back as the stand-in WSL's share shows, so no quote reaches the script."""
+    try:
+        r = subprocess.run(["wslpath", "-w", str(p)], capture_output=True, text=True, timeout=seconds, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    said = r.stdout.strip()
+    return said if r.returncode == 0 and said.startswith("\\\\") and "\n" not in said and '"' not in said else ""
 
 
 def mac(conf: dict[str, Any], port: int, servers: Any = (), state: Path | None = None) -> tuple[list[str], str] | str:

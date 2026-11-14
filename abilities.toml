@@ -1836,6 +1836,30 @@ asked_as = ["talk in the code", "talk to you in the code", "talk through comment
             "typing indicator on the page", "colours in the editor", "syntax highlighting on the page",
             "want a chat box", "chat on the right", "hide the chat", "bring the chat back"]
 
+# need-2026-11-13-91: asked during a timed exam to bring up the slide deck it built, a web page in its work folder, on the
+# owner's PC, a room had a browser tool that opens only http(s) addresses, a server in its shell the PC could not reach and a
+# command to open it through Windows refused outside its sandbox; filed 2026-11-13.
+[abilities.show]
+state = "built"
+what = "Opens a file of the room's own folders on the owner's PC screen, such as a slide deck it built as a web page, a PDF or a picture: the room's `show` tool, and yerkd puts it in a window of the owner's own browser on the monitor the owner names, maximized and woken with no click, as the live page opens; a reload there shows the file's newest save."
+how = [
+  "Opened by yerkd, not the room: a room's shell runs in its sandbox, reaches no screen and starts no Windows program, and a server in it is not reachable from the PC; yerkd runs outside it, as the owner.",
+  "Only the room's own folders (its work folder and the files sent to it, never a secret) and only what a browser shows itself: a web page, a PDF, a picture, text, a video or a sound. A script, a program, a shortcut or an Office file, which the PC could run, is never handed over; a document goes to a PDF with `render` first.",
+  "A named screen (`screen`, else [page] screen), on a Windows PC under WSL: the file's Windows path, as `wslpath -w` names it, handed to Windows' own PowerShell in its environment, never on a command line, and opened in a new window of the default browser, found as that browser's new window, moved to the screen, maximized and raised without the focus, the display woken first, as page-mac says for the page.",
+  "No screen named, or a box that is not a Windows PC: the box's own opener, where it puts it ([page] open, else wslview or Windows' url.dll under WSL, open on a Mac, xdg-open on a Linux desktop).",
+  "Told in words, opened once at most: a screen that is not there, a browser yerkd opens no window of, a window that never showed, a locked screen, a type it does not open, a file outside the room's folders.",
+  "A plain path only: a to z, digits, spaces and . _ - ( ) in the file's name and its folders', since wslview, the box's opener under WSL with wslu, puts the path inside PowerShell's double quotes, where a $( ) in a name the room chose would run as a command on the PC; any other is refused in words, with the way (a copy under a plain name).",
+  "Owner rooms only: a person's room puts nothing on the owner's screen.",
+  "Named where a room looks first: the hands plug-in's browser, whose window is kept off the owner's screen, refuses an open of a file (a file: address or a path) as before, and its words name `show`.",
+]
+tier = "free"
+needs = "an owner room; a screen on the box yerkd runs on, or the Windows PC whose WSL it runs in, with Chrome, Edge, Brave, Vivaldi, Opera or Firefox as the default browser for a named screen; nothing to install"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["open it on my computer", "open it on my pc", "bring it up on my computer", "bring it up on my pc", "bring up on my computer",
+            "bring it up on my screen", "put it on my screen", "show it on my screen", "open the deck on my pc", "open the file on my pc",
+            "open a local file", "open a file on my pc", "on my computer screen"]
+
 [abilities.work-writes]
 state = "built"
 what = "Writes a text file in the room's own work folder with no approval asked: every room's settings carry one Edit rule on its work folder, so Claude Code's Write and Edit tools and a shell redirect there run as called, where Claude Code asked for each one its sandbox did not auto-allow (\"Output redirection ... needs approval\") with nobody at the keyboard to say yes. A write anywhere else is asked as before; a trusted room keeps Write and Edit on its layer too."
