@@ -14,7 +14,7 @@ import pytest
 
 from starlette.testclient import TestClient
 
-from yerk_ai import context, hooks, mcp_server
+from yerk_ai import context, hooks, mcp_server, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
 from yerk_ai.daemon import YERK_TOOLS, Yerkd
 from fake_channel import ConsoleChannel
@@ -33,6 +33,27 @@ def test_user_prompt_submit_adds_the_clock_and_metadata_for_the_bound_room(tmp_p
                                 "[message] room example-room, from owner, privacy owner"]
     assert len(ctx) < b["hook"]["output_cap"]
     assert hooks.user_prompt_submit({"session_id": "other"}, tmp_path, rs, meta, b) == hooks.UNBOUND   # never a silent {}
+
+
+def test_the_texting_block_is_in_the_report_rooms_context_alone_in_dry_and_live_and_absent_with_texting_off(tmp_path):
+    shutil.copytree(EXAMPLE_PRIVATE, private := tmp_path / "private")
+    now, b, made = datetime(2026, 1, 7, 12, 0, tzinfo=timezone.utc), budgets(), iter(range(99))
+
+    def ctx(table: str, room: str) -> str:
+        (private / "yerkd.toml").write_text(table)
+        (state := tmp_path / f"state{next(made)}").mkdir()
+        d = Yerkd(private, state)
+        d.room_confs["person-room"] = {**d.room_confs["example-room"], "privacy": "family", "people": [1]}
+        out = hooks.user_prompt_submit({"session_id": "sid-1", "prompt": "hi"}, tmp_path, d.room_confs, lambda r, p: ("owner", None),
+                                       b, now=now, room=room, texting=d.texting_told)
+        return str(out["hookSpecificOutput"]["additionalContext"])
+    for mode in ("dry", "live"):
+        on = f'[texting]\nmode = "{mode}"\nreport = "example-room"\n'
+        said, block = ctx(on, "example-room"), words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID[mode])
+        assert block in said and context.hook_parts("UserPromptSubmit", said)["texting"] == context.chars(block)
+        assert all("[texting]" not in ctx(on, r) for r in ("example-quiet", "person-room"))       # another owner room, a person's
+        assert "[texting]" not in ctx(on.replace("example-room", "person-room"), "person-room")    # never a person's, named or not
+    assert all("[texting]" not in ctx(t, "example-room") for t in ("", '[texting]\nmode = "off"\nreport = "example-room"\n'))
 
 
 def daemon(tmp_path):

@@ -493,6 +493,14 @@ TEXTING_SENDER_DOWN = "texting: the sender stopped on an error ({error})\nno tex
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
 TEXTING_OFF, TEXTING_WHERE = "texting is off", "texting works only in {room}"
+TEXTING_TOLD = (   # the report room's own block, every turn while texting is dry or live (J29); no person, no thread
+    "[texting] This room is texting's own. Texting answers some of the owner's iMessage threads in their name, only for the people "
+    "on the reply list. It is {mode}.\nA card in this room is posted by the texting code, never by you; the owner's reply `send`, `skip` "
+    "or `edit <text>` to a card is taken by the code before your turn starts.\nAny other word of the owner's about a card, a person on the "
+    "reply list or texting itself is yours to answer: read the `texting` tool's `why`, `log` or `sheet` in that turn first.\n"
+    "Call a text sent only when its row says sent.")
+TEXTING_MODE_SAID = {"dry": "dry: replies are drafted and checked, and what would have gone is written down; nothing is sent",
+                     "live": "live: a reply that passes the check, or that he releases, is sent from his Mac"}
 TEXTING_ONLY = "this tool works only in the owner's texting room"      # a person's room: no room named, on or off
 TEXTING_HELP = ("Texting as the owner. Read a person's sheet (op `sheet`), a day of their texts and decisions (`log`, `value` "
                 "YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or `close` a class, `knows` "
