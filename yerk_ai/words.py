@@ -554,10 +554,11 @@ REPLAY_SENDER = "{cuts} cuts since {since}, every burst: no model call, the live
 REPLAY_OF = "--of {file}: {kept} of the {n} cuts it marks released are in the threads as they are now"
 REPLAY_SENDER_LIMITS = (
     "as if each burst's reply passed the check the minute the burst closed; early, middle, late: every draw at the low end, the middle, the high end",
-    "limit: times are to the minute; a line in a send time's own minute counts as before it (leans toward he-first), and his line in the "
-    "burst's own last minute is not newer than the burst to the live check (leans toward handed)",
+    "limit: times are to the minute; a line in a send time's own minute counts as before it (leans toward he-first), and a line after the "
+    "burst in the burst's own last minute counts as after it, as the file's order says",
     "limit: an import holds no tapbacks, so no tapback of the owner's stops a text here",
-    "he-too, old-agent, nobody: of the texts handed, what came first in the hour after the send time, his line before an old agent's")
+    "limit: a thread's file ends where its import does, so its last burst reads as handed with nobody after",
+    "he-too, old-agent, nobody: of the texts handed, what came in the hour after the send time; a line of the owner's counts over an old agent's")
 REPLAY_WHEN, REPLAY_SENDER_COLUMNS = ("early", "middle", "late"), ("bursts", "he-first", "they-again", "handed", "he-too", "old-agent", "nobody")
 # a text that may not go on its own (texting/holds.py): one card in the owner's texting room, answered by his word there
 TEXTING_CARD, TEXTING_CARD_MARK = "{mark} {first} · {at} · {state}", {"live": "📱", "dry": "DRY"}

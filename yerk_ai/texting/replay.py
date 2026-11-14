@@ -13,8 +13,8 @@ import re
 import shutil
 from collections import Counter
 from contextvars import ContextVar
-from dataclasses import dataclass, field
-from datetime import date, datetime, tzinfo
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timedelta, tzinfo
 from itertools import islice, takewhile
 from pathlib import Path
 from typing import Any, Callable
@@ -314,7 +314,10 @@ class Pinned(Sender):
 
 
 def after(c: Cut, until: float) -> list[Line]:
-    return list(takewhile(lambda x: x.at.timestamp() <= until, islice(c.thread, c.end, None)))
+    """The lines after the burst up to `until`. One in the burst's own last minute is put a second after it: the file's
+    order says it came after, and to the minute the live check would read it as no newer than the burst."""
+    return [replace(x, at=x.at + timedelta(seconds=1)) if x.at == c.at else x
+            for x in takewhile(lambda x: x.at.timestamp() <= until, islice(c.thread, c.end, None))]
 
 
 def sending(conf: dict[str, Any], file: Path, led: Ledger, todo: list[tuple[Cut, str]]) -> list[dict[str, Any]]:

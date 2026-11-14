@@ -348,6 +348,41 @@ def test_their_next_text_stops_it_and_an_old_agents_answer_is_never_his(tmp_path
     assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["old-agent", "nobody", "nobody"]   # the old agent's: texting's own
 
 
+def test_his_line_in_the_bursts_own_last_minute_came_after_it_and_no_later_line_is_there_when_a_burst_is_armed(tmp_path):
+    cut = sender_run(tmp_path, "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:20 Alex: hello?\n- 2026-10-01 10:20 Sam: here\n")
+    assert cut["alex:4"]["outcome"] == ["handed"] * 3
+    assert cut["alex:5"]["outcome"] == ["he-first"] * 3                           # to the minute the owner is no newer; the file's order says they are
+    assert cut["alex:5"]["span"] == [300.0, 600.0]                                # the sheet's bucket: the owner's answer was not there for a first shot
+
+
+def test_a_line_in_the_send_times_own_minute_is_before_it_and_his_text_just_before_the_burst_makes_it_his_first_shot(tmp_path):
+    [x] = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:05 Sam: yeah\n").values()
+    assert x["send"][0] == "2026-10-01 10:05:00" and x["outcome"] == ["he-first"] * 3
+    [x] = sender_run(tmp_path / "c", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:05 Sam: on my way\n",
+                     '2026-10-01 10:05 Alex IN: "you around" OUT: "on my way"\n').values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["nobody"] * 3     # the old agent's, in that minute: not what followed
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 09:58 Sam: you up\n- 2026-10-01 10:00 Alex: yeah\n").values()
+    assert x["span"] == [150.0, 240.0] and x["send"] == ["2026-10-01 10:02:30", "2026-10-01 10:03:15", "2026-10-01 10:04:00"]
+
+
+def test_what_followed_is_read_an_hour_past_each_send_time_and_his_line_counts_over_an_old_agents(tmp_path):
+    [x] = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 11:08 Sam: sorry\n").values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["nobody", "nobody", "he-too"]     # an hour past 10:10:00 only
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:20 Sam: on my way\n- 2026-10-01 10:30 Sam: sorry\n",
+                     '2026-10-01 10:19 Alex IN: "you around" OUT: "on my way"\n').values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["he-too"] * 3
+
+
+def test_a_sender_pass_that_dies_leaves_its_scratch_ledger_inside_the_replay_folder_and_nothing_outside_it(tmp_path, monkeypatch):
+    priv, state = install(tmp_path)
+    monkeypatch.setattr(replay, "sending", lambda *a: 1 / 0)
+    before, base = set(tmp_path.rglob("*")), state / "texting" / "replay"
+    with pytest.raises(ZeroDivisionError):
+        replay.go_sender(state, "t1", {}, {"mode": "dry"}, priv / "texting" / "people.toml", [])
+    assert (base / "t1-sender" / "ledger.sqlite").is_file() and (base / "t1-sender.jsonl").read_text() == "{}\n"
+    assert all(p == state / "texting" or p.is_relative_to(base) for p in set(tmp_path.rglob("*")) - before)
+
+
 def test_the_sender_command_calls_no_model_opens_no_connection_and_writes_only_its_own_file(tmp_path, monkeypatch, capsys):
     import socket
 
@@ -360,17 +395,19 @@ def test_the_sender_command_calls_no_model_opens_no_connection_and_writes_only_i
         monkeypatch.setenv(k, v)
     dialed: list = []
     monkeypatch.setattr(socket.socket, "connect", lambda self, *a: dialed.append(a))
-    before, yerk = set(tmp_path.rglob("*")), ["texting", "replay", "--since", "2026-10-01", "--sender", "--private", str(priv), "--state", str(state)]
+    before, yerk = set(tmp_path.rglob("*")), ["texting", "replay", "--since", "2026-10-01", "--sender", "--limit", "1", "--private", str(priv),
+                                              "--state", str(state)]                 # every burst, whatever --limit says
     assert cli.main(yerk) == 0 and not (tmp_path / "record.jsonl").exists() and not dialed
     [f], out = (state / "texting" / "replay").iterdir(), capsys.readouterr().out
     assert set(tmp_path.rglob("*")) - before == {state / "texting", f.parent, f} and f.name.endswith("-sender.jsonl")   # scratch gone
     assert stat.S_IMODE(f.stat().st_mode) == 0o600 and stat.S_IMODE(f.parent.stat().st_mode) == 0o700
     head, *lines = map(json.loads, f.read_text().splitlines())
     assert head["limits"] == list(words.REPLAY_SENDER_LIMITS) and [x["id"] for x in lines] == ["alex:5", "alex:8", "alex:9"]
+    assert head["old_log"] is False                                               # no --old-log: an old agent's lines were read as the owner's
     said = out.splitlines()
-    assert said[:6] == ["alex: alex.md, 3 cuts", words.REPLAY_SENDER.format(cuts=3, since="2026-10-01"), *words.REPLAY_SENDER_LIMITS]
-    assert said[6].split() == list(words.REPLAY_SENDER_COLUMNS) and said[-1] == words.REPLAY_FILE.format(file=f)
-    assert [r.split()[:3] for r in said[7:-1]] == [[k, w, "3"] for k in ("alex", "total") for w in words.REPLAY_WHEN]
+    assert said[:7] == ["alex: alex.md, 3 cuts", words.REPLAY_SENDER.format(cuts=3, since="2026-10-01"), *words.REPLAY_SENDER_LIMITS]
+    assert said[7].split() == list(words.REPLAY_SENDER_COLUMNS) and said[-1] == words.REPLAY_FILE.format(file=f)
+    assert [r.split()[:3] for r in said[8:-1]] == [[k, w, "3"] for k in ("alex", "total") for w in words.REPLAY_WHEN]
     for text in ("morning", "you up", "coffee", "sure, at ten", "the game", "attachment", A1):
         assert text not in out
     assert not re.search(r"\d\d:\d\d", out)                                       # no time of a text
@@ -380,7 +417,9 @@ def test_the_sender_command_calls_no_model_opens_no_connection_and_writes_only_i
     (tmp_path / "run.jsonl").write_text("{}\n" + "".join(json.dumps(x) + "\n" for x in (
         {"id": "alex:8", "at": "2026-10-02 18:00", "verdict": {"release": True}}, {"id": "alex:9", "at": "2026-10-03 08:00", "verdict": {"release": False}},
         {"id": "alex:5", "at": "2026-10-01 09:07", "verdict": {"release": True}})))       # a minute that moved: not the same cut
-    assert cli.main([*yerk, "--of", str(tmp_path / "run.jsonl")]) == 0
+    (tmp_path / "old.log").write_text("")
+    assert cli.main([*yerk, "--of", str(tmp_path / "run.jsonl"), "--old-log", str(tmp_path / "old.log")]) == 0
     assert words.REPLAY_OF.format(file=tmp_path / "run.jsonl", kept=1, n=2) in capsys.readouterr().out
     [f] = (state / "texting" / "replay").iterdir()
-    assert [json.loads(x)["id"] for x in f.read_text().splitlines()[1:]] == ["alex:8"]
+    head, *lines = map(json.loads, f.read_text().splitlines())
+    assert head["old_log"] is True and [x["id"] for x in lines] == ["alex:8"]

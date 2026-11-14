@@ -697,11 +697,11 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
         return 1
     if a.sender:                                                  # no model call, no writer, no check: the live sender's pass alone
         f = replay.go_sender(state, f"{datetime.now(tz):%Y-%m-%d-%H%M%S}", {"since": a.since, "people": sorted({c.key for c, _ in todo}),
-                             "of": a.of or "", "limits": list(words.REPLAY_SENDER_LIMITS)}, t, file, todo)
+                             "of": a.of or "", "old_log": bool(a.old_log), "limits": list(words.REPLAY_SENDER_LIMITS)}, t, file, todo)
         print("\n".join([*words.REPLAY_SENDER_LIMITS, *replay.sender_table([json.loads(x) for x in f.read_text().splitlines()[1:]]),
                          words.REPLAY_FILE.format(file=f)]))
         return 0
-    model =a.model or room_settings(room_confs[report], state, report, models(conf))["model"][0]
+    model = a.model or room_settings(room_confs[report], state, report, models(conf))["model"][0]
     if a.model:                                                   # the flag's model for the writer and the check, whatever [texting] names
         t = {**t, "model": a.model, "check_model": a.model}
     print("\n".join([words.REPLAY_MODEL.format(model=t.get("model") or model), words.REPLAY_AS_OF, words.REPLAY_LEFT_OUT, *words.REPLAY_LIMITS]), flush=True)
