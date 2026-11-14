@@ -12,6 +12,8 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from yerk_ai import config, words
 from yerk_ai.accounts import Account
 from yerk_ai.lifted.classify import FailureTable
@@ -345,3 +347,40 @@ def test_their_next_text_stops_it_and_an_old_agents_answer_is_never_his(tmp_path
                      '2026-10-01 10:05 Alex IN: "you around" OUT: "on my way"\n').values()
     assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["old-agent", "nobody", "nobody"]   # the old agent's: texting's own
 
+
+def test_the_sender_command_calls_no_model_opens_no_connection_and_writes_only_its_own_file(tmp_path, monkeypatch, capsys):
+    import socket
+
+    from yerk_ai import cli
+    priv, state = install(tmp_path)
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "owner-room"\n')
+    (priv / "rooms.toml").write_text('[rooms.owner-room]\nchannel = "discord:1"\n')
+    (state / "docs").mkdir()
+    for k, v in (("YERK_CLAUDE", str(FAKE)), ("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl")), ("XDG_STATE_HOME", str(tmp_path / "xdg"))):
+        monkeypatch.setenv(k, v)
+    dialed: list = []
+    monkeypatch.setattr(socket.socket, "connect", lambda self, *a: dialed.append(a))
+    before, yerk = set(tmp_path.rglob("*")), ["texting", "replay", "--since", "2026-10-01", "--sender", "--private", str(priv), "--state", str(state)]
+    assert cli.main(yerk) == 0 and not (tmp_path / "record.jsonl").exists() and not dialed
+    [f], out = (state / "texting" / "replay").iterdir(), capsys.readouterr().out
+    assert set(tmp_path.rglob("*")) - before == {state / "texting", f.parent, f} and f.name.endswith("-sender.jsonl")   # scratch gone
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600 and stat.S_IMODE(f.parent.stat().st_mode) == 0o700
+    head, *lines = map(json.loads, f.read_text().splitlines())
+    assert head["limits"] == list(words.REPLAY_SENDER_LIMITS) and [x["id"] for x in lines] == ["alex:5", "alex:8", "alex:9"]
+    said = out.splitlines()
+    assert said[:6] == ["alex: alex.md, 3 cuts", words.REPLAY_SENDER.format(cuts=3, since="2026-10-01"), *words.REPLAY_SENDER_LIMITS]
+    assert said[6].split() == list(words.REPLAY_SENDER_COLUMNS) and said[-1] == words.REPLAY_FILE.format(file=f)
+    assert [r.split()[:3] for r in said[7:-1]] == [[k, w, "3"] for k in ("alex", "total") for w in words.REPLAY_WHEN]
+    for text in ("morning", "you up", "coffee", "sure, at ten", "the game", "attachment", A1):
+        assert text not in out
+    assert not re.search(r"\d\d:\d\d", out)                                       # no time of a text
+    with pytest.raises(FileExistsError):                                          # never over a run's file
+        replay.go_sender(state, f.name.removesuffix("-sender.jsonl"), {}, {}, priv / "texting" / "people.toml", [])
+    shutil.rmtree(f.parent)
+    (tmp_path / "run.jsonl").write_text("{}\n" + "".join(json.dumps(x) + "\n" for x in (
+        {"id": "alex:8", "at": "2026-10-02 18:00", "verdict": {"release": True}}, {"id": "alex:9", "at": "2026-10-03 08:00", "verdict": {"release": False}},
+        {"id": "alex:5", "at": "2026-10-01 09:07", "verdict": {"release": True}})))       # a minute that moved: not the same cut
+    assert cli.main([*yerk, "--of", str(tmp_path / "run.jsonl")]) == 0
+    assert words.REPLAY_OF.format(file=tmp_path / "run.jsonl", kept=1, n=2) in capsys.readouterr().out
+    [f] = (state / "texting" / "replay").iterdir()
+    assert [json.loads(x)["id"] for x in f.read_text().splitlines()[1:]] == ["alex:8"]

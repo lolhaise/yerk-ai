@@ -550,6 +550,8 @@ REPLAY_COLUMNS = ("cuts", "reply", "react", "none", "held", "agree", "more", "le
 REPLAY_TOTAL, REPLAY_FILE = "total", "each cut beside what went: {file}"
 REPLAY_KEPT, REPLAY_NO_SEARCH = "{n} cuts failed; the scratch folder stays at {folder}", "the memory search did not answer: {why}"
 REPLAY_UNANSWERED, REPLAY_MODEL = "no model answered: {why}", "model: {model}"
+REPLAY_SENDER = "{cuts} cuts since {since}, every burst: no model call, the live sender's three send times and its read of the thread at each"
+REPLAY_OF = "--of {file}: {kept} of the {n} cuts it marks released are in the threads as they are now"
 REPLAY_SENDER_LIMITS = (
     "as if each burst's reply passed the check the minute the burst closed; early, middle, late: every draw at the low end, the middle, the high end",
     "limit: times are to the minute; a line in a send time's own minute counts as before it (leans toward he-first), and his line in the "
