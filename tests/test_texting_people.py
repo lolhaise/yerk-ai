@@ -72,8 +72,8 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
         (priv / "yerkd.toml").write_text(table)
         return [x[2:] for x in doctor.run(priv, state, dry=True) if "[texting]" in x]
     assert said("") == [] and said('[texting]\nmode = "off"\nburst_cap = "soon"\n') == []
-    on = '[texting]\nmode = "dry"\nreport = "example-room"\n'
-    missing = said(on + 'burst_cap = "soon"\ndry_report = "nowhere"\n')
+    on, mac = '[texting]\nmode = "dry"\nreport = "example-room"\n', '\n[imessage]\nhost = "mac"\nsocket = "/Users/someone/bridge.sock"\n'
+    missing = said(on + 'burst_cap = "soon"\ndry_report = "nowhere"\n' + mac)
     assert missing[0] == "[texting] burst_cap: not a number above 0; texting stays off"
     assert missing[1].startswith("[texting] people: ") and missing[1].endswith("; texting stays off")
     assert missing[2:] == ["[texting] dry_report: nowhere is not an owner room in rooms.toml"]
@@ -81,8 +81,10 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     write(priv / "texting", LIST, 0o644)
     assert [x for x in said(on) if "0600" in x]
     os.chmod(priv / "texting" / "people.toml", 0o600)
-    assert said(on) == [] and said('[texting]\nmode = "dry"\n') == ["[texting] report: none is not an owner room in rooms.toml"]
-    assert said(on + 'quiet = ["23:30"]\nfirst_shot = [240, 150]\nclaim_seconds = 0\nmorning = [10, 90]\n') == [
+    assert said(on + mac) == [] and said('[texting]\nmode = "dry"\n' + mac) == ["[texting] report: none is not an owner room in rooms.toml"]
+    assert said(on) == ["[texting] no way to the Mac's bridge: texting stays off; [imessage] host and socket name it (else an owner "
+                        "room's add-on's mac.json)"]                             # the daemon turns texting off with one log line
+    assert said(on + 'quiet = ["23:30"]\nfirst_shot = [240, 150]\nclaim_seconds = 0\nmorning = [10, 90]\n' + mac) == [
         "[texting] claim_seconds: not a number above 0; texting stays off",
         "[texting] first_shot: [240, 150] is not two numbers, low then high; texting stays off",
         "[texting] quiet: ['23:30'] is not two HH:MM times; texting stays off"]
@@ -90,7 +92,7 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     assert "[texting] outbox: not a whole path on the Mac; live sends nothing" in said(live)
     assert not [x for x in said(live + 'outbox = "/Users/someone/outbox"\n') if "outbox" in x]
     token.unlink()
-    assert said(on) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
+    assert said(on + mac) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
 
 
 def test_doctor_is_red_for_a_sender_whose_last_pass_is_older_than_a_minute_only_while_yerkd_runs(tmp_path, monkeypatch):

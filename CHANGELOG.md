@@ -27,9 +27,10 @@ version changes.
 - A text of texting's own that the Mac sent while the bridge was away, seen only after its job was settled unseen, is
   no longer filed as your own words: its job reads sent, seen late, and it cancels nothing.
 - `yerk doctor` is red in live when the hands have no way to the Mac: no `[imessage] host` and no ssh in an owner room's
-  add-on's mac.json, or a host that begins with a dash.
+  add-on's mac.json, or a host that begins with a dash. In dry or live it is red when nothing names the Mac's bridge
+  at all, which until now turned texting off with one log line and no other word.
 - docs/GUIDE.md has "Texts as you", the README names it, and `yerk abilities` lists text-as-you as built.
-- budgets.toml: `[code] lines` 32,385 to 32,506, with its dated note.
+- budgets.toml: `[code] lines` 32,385 to 32,508, with its dated note.
 ### texting-7c (#78)
 
 - Nothing changes unless the owner runs `yerk texting replay --since DAY --sender`. It calls no model and sends

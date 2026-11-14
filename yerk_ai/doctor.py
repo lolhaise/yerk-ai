@@ -277,6 +277,8 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                           "in an owner room's add-on's mac.json), never one that begins with a dash"]
                          if tmode == "live" and not texts.head(texts.way(conf, rs, state)) else [])
             found.extend([f"{RED} [texting] mode: {tmode} is not off, dry or live"] if tmode not in ("dry", "live") else [])
+            found.extend([f"{RED} [texting] no way to the Mac's bridge: texting stays off; [imessage] host and socket name it (else an "
+                          "owner room's add-on's mac.json)"] if not texts.transport(texts.way(conf, rs, state)) else [])
             accts = load_accounts(private / "accounts.toml")                 # the check runs on an account's token alone (J28)
             found.extend([f"{RED} [texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint {accts[0].name}` makes one"]
                          if accts and not any(token_info(a, now)["token"] != "none" for a in accts) else [])

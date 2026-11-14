@@ -723,9 +723,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-14: texting-7c raised it by 126, the sender's pass in the replay of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-2026-11-14: texting-7b raised it by 121, the sender's pulse, the late claim, the daily line and the report room's block of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+2026-11-14: texting-7b raised it by 123, the sender's pulse, the late claim, the daily line and the report room's block of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 32506`
+- `lines = 32508`
 
 ## Uncapped
 

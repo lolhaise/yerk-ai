@@ -1565,5 +1565,5 @@ secs = 60
 # before the placing script or an opener gets it (wslview runs a $( ) of a room's file name as PowerShell on the owner's
 # PC), not folded to fit: channels/page.py 5 (PLAIN and its note), words.py 3, daemon.py 2. 32,259: 32,249 plus 10.
 # 2026-11-14: texting-7c raised it by 126, the sender's pass in the replay of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
-# 2026-11-14: texting-7b raised it by 121, the sender's pulse, the late claim, the daily line and the report room's block of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
-lines = 32506
+# 2026-11-14: texting-7b raised it by 123, the sender's pulse, the late claim, the daily line and the report room's block of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+lines = 32508
