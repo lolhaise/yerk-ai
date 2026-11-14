@@ -6,6 +6,32 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-14
+
+### texting-7b (#?)
+
+- Nothing changes until an install has a `[texting]` table.
+- `yerk status` and `yerk doctor` say when the sender stopped. The sender writes the time of its last pass, at most every
+  15 seconds; when it is older than a minute in dry or live, the texting row reads "texting sender stopped" with the
+  time, and doctor is red while yerkd runs, with `systemctl --user restart yerkd` as the way back. An error the sender's
+  pass did not expect now stops the sender alone, never yerkd and its rooms, and the machine room gets one line naming
+  the error's kind, never a text or a person.
+- The machine room gets one line a day after 08:00, in dry and in live, counted from the ledger alone for the day to that
+  morning's 08:00: texts in, decisions by kind, held, sent (dry: would have gone), stopped because you answered first,
+  stopped because they wrote again, unseen, and the longest run of texting's own sends to one person with no text of
+  yours between. A quiet day says so in a few words; a restart never says a day twice and never skips one.
+- Your main room, the one `[texting] report` names, is told every turn while texting is dry or live what texting is,
+  that a card there is posted by the texting code and your `send`, `skip` or `edit <text>` on one is taken before the
+  turn starts, and that anything else you say about texting is the room's to answer from the `texting` tool. No other
+  room is told, a person's room least of all.
+- A text of texting's own that the Mac sent while the bridge was away, seen only after its job was settled unseen, is
+  no longer filed as your own words: its job reads sent, seen late, and it cancels nothing.
+- `yerk doctor` is red in live when the hands have no way to the Mac: no `[imessage] host` and no ssh in an owner room's
+  add-on's mac.json, or a host that begins with a dash.
+- docs/GUIDE.md has "Texts as you", the README names it, and `yerk abilities` lists text-as-you as built.
+- budgets.toml: `[code] lines` 32,259 to 32,380, with its dated note.
+- **Upgrading**: nothing to change.
+
 ## 2026-11-13
 
 ### need-2026-11-13-91 (#?)

@@ -721,7 +721,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-13: need-2026-11-13-91's cold read raised it by 10, show's path held to a to z, digits, spaces and . _ - ( ) before the placing script or an opener gets it (wslview runs a $( ) of a room's file name as PowerShell on the owner's PC), not folded to fit: channels/page.py 5 (PLAIN and its note), words.py 3, daemon.py 2. 32,259: 32,249 plus 10.
 
-- `lines = 32259`
+2026-11-14: texting-7b raised it by 121, the sender's pulse, the late claim, the daily line and the report room's block of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 32380`
 
 ## Uncapped
 
