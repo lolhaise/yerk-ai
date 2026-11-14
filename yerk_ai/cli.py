@@ -682,15 +682,25 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
         return 1
     tz = ZoneInfo(str(dict(conf.get("memory") or {}).get("timezone") or memory.system_zone()))   # the import's own, memory.settings
     texts, file = priv / "imports" / "texts", people.path(priv, t)
-    todo, said = replay.plan(file, texts, date.fromisoformat(a.since), a.limit, float(t.get("catch_up_hours", 6)), tz,
-                             a.person or "", Path(a.old_log).expanduser() if a.old_log else None)
-    print("\n".join([*said, words.REPLAY_PLAN.format(cuts=len(todo), since=a.since, limit=a.limit)]), flush=True)
-    if not a.run:
+    todo, said = replay.plan(file, texts, date.fromisoformat(a.since), 1 << 30 if a.sender else a.limit, float(t.get("catch_up_hours", 6)),
+                             tz, a.person or "", Path(a.old_log).expanduser() if a.old_log else None)
+    if a.sender and a.of:                                         # only the cuts the check released in that run
+        todo, n = replay.released(Path(a.of).expanduser(), todo)
+        said.append(words.REPLAY_OF.format(file=a.of, kept=len(todo), n=n))
+    print("\n".join([*said, (words.REPLAY_SENDER if a.sender else words.REPLAY_PLAN).format(cuts=len(todo), since=a.since, limit=a.limit)]),
+          flush=True)
+    if not (a.run or a.sender):
         print(words.REPLAY_DRY)
         return 0
     if not ((state := state_dir(a.state)) / "docs").is_dir():         # memory.settings would make it; an install has it
         print(words.REPLAY_NO_DOCS.format(docs=state / "docs"))
         return 1
+    if a.sender:                                                  # no model call, no writer, no check: the live sender's pass alone
+        f = replay.go_sender(state, f"{datetime.now(tz):%Y-%m-%d-%H%M%S}", {"since": a.since, "people": sorted({c.key for c, _ in todo}),
+                             "of": a.of or "", "old_log": bool(a.old_log), "limits": list(words.REPLAY_SENDER_LIMITS)}, t, file, todo)
+        print("\n".join([*words.REPLAY_SENDER_LIMITS, *replay.sender_table([json.loads(x) for x in f.read_text().splitlines()[1:]]),
+                         words.REPLAY_FILE.format(file=f)]))
+        return 0
     model = a.model or room_settings(room_confs[report], state, report, models(conf))["model"][0]
     if a.model:                                                   # the flag's model for the writer and the check, whatever [texting] names
         t = {**t, "model": a.model, "check_model": a.model}
@@ -972,6 +982,9 @@ def parser() -> argparse.ArgumentParser:
     tx.add_argument("--old-log", help="replay: the old agent's log; an answer it quotes is marked auto, not the owner's")
     tx.add_argument("--run", action="store_true", help="replay: make the calls; without it the plan only, nothing called")
     tx.add_argument("--model", help="replay: the model its calls run on (default: the report room's, as the live writer)")
+    tx.add_argument("--sender", action="store_true", help="replay: no model call: every burst since the day through the live sender, "
+                    "its early, middle and late send time and its read of the thread at each; counts printed, one private file")
+    tx.add_argument("--of", help="replay --sender: only the cuts this finished run's file marks released by the check")
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ad = sub.add_parser("add", help="an add-on into this install (a folder, a git URL, or an ability whose entry names its repo): "
                         "fetched, checked against its own size, its package, server, tables and units in, its tests run")
