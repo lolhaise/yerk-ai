@@ -8,6 +8,28 @@ version changes.
 
 ## 2026-11-14
 
+### texting-7d (#80)
+
+- Nothing changes until an install has a `[texting]` table.
+- A file sent in a thread is named to the writer, which until now was not told of it: the thread it read asked the
+  bridge for each row's text and never for its files. A photo, a video, a voice message, a sticker or another file is
+  named by its kind, in the check's thread too, and the mark a file leaves in a text is no longer shown as words.
+- A photo in the texts being answered, the newest four, is looked at: converted to a small JPEG on the Mac over the
+  hands' ssh (`[imessage] host`, or an owner room's mac.json), with its path on ssh's stdin, and shown to the writer's
+  one call. It is never stored on the box. Its ledger row says seen, too big, refused or not fetched. A video, a voice
+  message, a sticker or an older photo is named and not opened; with no host a photo stays named and unseen, and the
+  call is what it was.
+- The check stays text only and its thread names every photo as unseen. On a real call it held both replies that said
+  what a photo showed and released one that only reacted to it: a reply about what a photo shows waits for the owner's
+  word.
+- A link preview is no longer counted as a file: the writer is not told of one, and the ledger and the day log no
+  longer list it.
+- A text in a watched chat is no longer counted as a dead turn in the morning line or in `yerk status`, nor as a turn a
+  restart cut: it gets a decision and never a turn. The machine room's line read "dead turns: 4" two mornings running,
+  every one of them a text.
+- budgets.toml: `[code] lines` 32,508 to 32,607, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-7b (#79)
 
 - Nothing changes until an install has a `[texting]` table.

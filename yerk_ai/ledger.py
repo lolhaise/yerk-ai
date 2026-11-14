@@ -390,11 +390,12 @@ class Ledger:
         lookup, so the cost is per message, not messages times turns times parts (64 s for a day on Oct 24): a turn
         by its id (i.turn_id, or a link's row_key, which _link writes as the id's text), a part by the key range
         under the turn's key (`<key>:` to `<key>;`, `<key>-s` to `<key>-t`, the keys LIKE matched: a turn key is
-        lowercase hex), a post by its id; the unary + keeps the planner off the link table's (tbl, ...) key."""
+        lowercase hex), a post by its id; the unary + keeps the planner off the link table's (tbl, ...) key. A text in a
+        watched chat (room `texting`) is no room's message: it gets a decision, never a turn, and is never one of these."""
         return self._select(
             "SELECT i.message_id, i.room, i.received FROM inbound i WHERE i.received >= ? AND i.received < ? AND "
-            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN (SELECT ':' AS lo, "
-            "';' AS hi UNION ALL SELECT '-s', '-t') k JOIN deliveries d ON d.state = 'sent' AND d.key >= t.turn_key || k.lo "
+            "i.room != 'texting' AND i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN "
+            "(SELECT ':' AS lo, ';' AS hi UNION ALL SELECT '-s', '-t') k JOIN deliveries d ON d.state = 'sent' AND d.key >= t.turn_key || k.lo "
             "AND d.key < t.turn_key || k.hi WHERE t.turn_key != '' AND t.id IN (SELECT i.turn_id UNION ALL SELECT "
             "CAST(row_key AS INTEGER) FROM message_links WHERE message_id = i.message_id AND +tbl = 'turns' AND "
             "col = 'inbound')) AND NOT EXISTS (SELECT 1 FROM message_links l JOIN outbound o ON o.id = CAST(l.row_key "
@@ -505,11 +506,10 @@ class Ledger:
         return self._first("SELECT * FROM inbound WHERE message_id = ?", (message_id,))
 
     def inbound_open(self, room: str | None = None) -> list[dict[str, Any]]:
-        """Rows a crash left received or running, oldest first."""
-        sql = f"SELECT * FROM inbound WHERE state IN ({', '.join('?' * len(OPEN))})"
-        args: tuple[Any, ...] = OPEN
-        if room:
-            sql, args = sql + " AND room = ?", (*OPEN, room)
+        """Rows a crash left received or running, oldest first: one room's, or with none named every room's and no text
+        of a watched chat (room `texting`: a burst a stop left open is no turn it cut, and the intake asks for its own)."""
+        sql = f"SELECT * FROM inbound WHERE state IN ({', '.join('?' * len(OPEN))}) AND room " + ("= ?" if room else "!= 'texting'")
+        args: tuple[Any, ...] = (*OPEN, room) if room else OPEN
         return self._select(sql + " ORDER BY received", args)
 
     def last_inbound(self, channel: str) -> str | None:
@@ -699,6 +699,12 @@ class Ledger:
     # attachments and cards
     def attachment(self, **row: Any) -> int:
         return self._insert("attachments", {"at": time.time(), **row})
+
+    def attachment_state(self, message_id: str, n: int, state: str) -> None:
+        """The state of a message's `n`th file (0 first, in the order it was ledgered): texting's `seen`, or why not."""
+        with self.lock:
+            self.db.execute("UPDATE attachments SET state = ? WHERE id = (SELECT id FROM attachments WHERE message_id = ? "
+                            "ORDER BY id LIMIT 1 OFFSET ?)", (state, message_id, n))
 
     def card_open(self, message_id: str, room: str, kind: str) -> None:
         self._insert("cards", {"message_id": message_id, "room": room, "kind": kind, "opened": time.time()})

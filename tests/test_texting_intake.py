@@ -178,3 +178,13 @@ def test_no_person_room_reads_a_texting_line(tmp_path):
                    memory.Reader("gym", "gym-id", owner=True, sealed=True)):
         assert memory.allowed_text(reader, f, text, daily=daily) is None
     assert "a private text" in (memory.allowed_text(memory.Reader("main", "main-id", owner=True), f, text, daily=daily) or "")
+
+
+def test_a_link_previews_payload_is_not_ledgered_or_logged_as_a_file(tmp_path):
+    it, led, _ = intake(tmp_path)
+    r = row("G-1", "look https://example.com/a", attachments=[
+        {"transfer_name": "F00D-0002.pluginPayloadAttachment", "mime_type": "", "total_bytes": 900},
+        {"transfer_name": "IMG_1.heic", "mime_type": "image/heic", "total_bytes": 2048}])
+    assert it.take(it.people.people["alex"], r) == "them"
+    assert led.db.execute("SELECT name, type FROM attachments").fetchall() == [("IMG_1.heic", "image/heic")]
+    assert "Payload" not in next((tmp_path / "daily").glob("*.md")).read_text()

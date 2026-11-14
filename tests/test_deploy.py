@@ -22,6 +22,7 @@ from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets, private_dir
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
+from yerk_ai.texting import intake
 
 NOW = 1792303200.0
 NAP = 0.01
@@ -894,6 +895,17 @@ def test_dead_turns_are_found_from_the_message_and_a_changed_set_alerts_once(tmp
     assert f"{words.NOT_DONE} dead turns: unknown, no yerkd answers" in blind   # blind, never clean
     clean, _ = morning.build(priv, state, accounts, cool, Ledger(tmp_path / "empty.sqlite"), live, NOW)
     assert f"{words.PLAIN} dead turns: none in 24h" in clean
+
+
+def test_a_text_in_a_watched_chat_is_never_a_dead_turn_nor_a_turn_a_restart_cut(tmp_path):
+    led, t = Ledger(tmp_path / "ledger.sqlite"), NOW - 3600
+    message(led, "t1", t, room=intake.ROOM, sender="alex", state="decided")         # theirs: it gets a decision, never a turn
+    message(led, "t2", t + 30, room=intake.ROOM, state="filed")                     # the owner's own text in that thread
+    message(led, "t3", t + 60, room=intake.ROOM, sender="alex", state="received")   # a burst a stop left open
+    message(led, "d", t + 90, room="example-quiet", state="received")               # a room's message nobody took
+    assert [d["message_id"] for d in led.dead_turns(NOW - 86400, NOW - 600)] == ["d"]
+    assert [r["message_id"] for r in led.inbound_open()] == ["d"] and deploy.cut(led, set(), NOW) == 1
+    assert [r["message_id"] for r in led.inbound_open(intake.ROOM)] == ["t3"]       # the intake still finds its own
 
 
 def test_a_job_failure_alerts_the_machine_room_before_the_ops_room(tmp_path):

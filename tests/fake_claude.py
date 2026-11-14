@@ -64,7 +64,9 @@ message and a success result echoing the text. Variations:
   FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
 - --json-schema (a one-shot): stdin read whole and appended to FAKE_CLAUDE_STDIN, FAKE_CLAUDE_JSON_SLOW seconds of wait,
   then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder, or a CLAUDE_CODE_OAUTH_TOKEN in
-  FAKE_CLAUDE_FAIL_TOKENS (the check's calls share one folder), gets a usage-limit error result
+  FAKE_CLAUDE_FAIL_TOKENS (the check's calls share one folder), gets a usage-limit error result; with
+  --output-format stream-json (a photo shown), two stream lines first and that answer as the last line, none with
+  FAKE_CLAUDE_STREAM_NO_RESULT, one more line after it with FAKE_CLAUDE_STREAM_AFTER
 Records argv, the config folder, the working folder and the environment's names (never values) to FAKE_CLAUDE_RECORD.
 """
 import json
@@ -96,9 +98,15 @@ if "--json-schema" in argv:            # a one-shot answering in one JSON object
             f.write(asked)
     time.sleep(float(os.environ.get("FAKE_CLAUDE_JSON_SLOW") or 0))
     if listed("FAKE_CLAUDE_FAIL_DIRS") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") in os.environ.get("FAKE_CLAUDE_FAIL_TOKENS", "").split(","):
-        print(json.dumps({"type": "result", "is_error": True, "result": "Claude AI usage limit reached, resets 5pm"}))
+        got = json.dumps({"type": "result", "is_error": True, "result": "Claude AI usage limit reached, resets 5pm"})
     else:                              # FAKE_CLAUDE_JSON: the whole stdout, as a test builds it
-        print(os.environ.get("FAKE_CLAUDE_JSON") or json.dumps({"type": "result", "is_error": False, "result": ""}))
+        got = os.environ.get("FAKE_CLAUDE_JSON") or json.dumps({"type": "result", "is_error": False, "result": ""})
+    if "--output-format" in argv and argv[argv.index("--output-format") + 1] == "stream-json":   # the stream form, a photo shown
+        print(json.dumps({"type": "system", "subtype": "init", "tools": ["StructuredOutput"]}))
+        print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "StructuredOutput"}]}}))
+        got = "" if os.environ.get("FAKE_CLAUDE_STREAM_NO_RESULT") else got
+        got += "\n" + json.dumps({"type": "system", "subtype": "after"}) if os.environ.get("FAKE_CLAUDE_STREAM_AFTER") else ""
+    print(got)
     sys.exit(0)
 if argv[:1] == ["setup-token"]:
     tok = "sk-" + "ant-oat01-" + "Fake" * 25                    # token-shaped (a real one is ~108 characters),

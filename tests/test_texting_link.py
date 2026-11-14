@@ -96,8 +96,9 @@ class FakeBridge:
             after: list[dict[str, Any]] = []
             if m == "chats.list":
                 res: Any = {"chats": list(self.chats.values())}
-            elif m == "messages.history":
-                mine = [x for x in self.rows if x["chat_id"] == p.get("chat_id")]
+            elif m == "messages.history":             # a row's files only when asked for, as the Mac's bridge answers
+                mine = [x if p.get("attachments") else {k: v for k, v in x.items() if k != "attachments"}
+                        for x in self.rows if x["chat_id"] == p.get("chat_id")]
                 res = {"messages": sorted(mine, key=lambda x: -x["id"])[:int(p.get("limit", 50))]}
             elif m == "watch.subscribe":
                 self.subs.append((w, p))

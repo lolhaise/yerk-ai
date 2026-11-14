@@ -871,7 +871,8 @@ class Yerkd:
         wrote = twriter.Writer(conf, tpeople.path(self.private, conf), self.state, self.ledger, report, link.thread,
                                lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
                                named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
-                               room_settings(self.room_confs[report], self.state, report, self.models)["model"][0])
+                               room_settings(self.room_confs[report], self.state, report, self.models)["model"][0],
+                               head=texts.head(self.imessage()))       # a photo in their texts is looked at over the hands' ssh
         out = "text-out" in self.gates.external                # [gates] off = ["text-out"]: no text goes, one left waiting included
         self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
                                   self.texting_show, out=out, window_s=self.gates.window_s, word=self.gates.word)
