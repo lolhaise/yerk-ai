@@ -79,9 +79,10 @@ class Sender:
     def __init__(self, conf: dict[str, Any], file: Path, ledger: Ledger, thread: Callable[[str, int], Awaitable[list[dict[str, Any]]]],
                  hands: Any, edits: list[tuple[int, str]] | None = None, post: Callable[[str, str], Awaitable[Any]] | None = None,
                  to: str = "", clock: Callable[[], float] = time.time, rand: random.Random | None = None,
-                 status: Callable[[dict[str, Any]], None] | None = None, out: bool = True):
+                 status: Callable[[dict[str, Any]], None] | None = None, out: bool = True, down: Callable[[str], None] | None = None):
         self.mode, self.file, self.ledger, self.clock = str(conf.get("mode") or "off"), file, ledger, clock
         self.thread, self.hands, self.post, self.to, self.status, self.out = thread, hands, post, to, status, out
+        self.down = down                                    # one line to the machine room when the sender stops (Daemon.to_machine)
         self.edits = edits if edits is not None else []     # the holds' card edits (Holds.edits), made at their next pass
         self.stale, self.claim_s = float(conf.get("stale_minutes", 30)) * 60, float(conf.get("claim_seconds", 180))
         self.wait = WAITS.get(self.mode, "queued")
@@ -106,10 +107,12 @@ class Sender:
                 await self.post(self.to, words.TEXTING_SWITCHED.format(n=len(left), s="s" * (len(left) != 1), mode=self.mode))
 
     def counts(self) -> None:
-        """The last text out (live: claimed; dry: its job file written), how many held, how many unseen today, to status."""
+        """The last text out (live: claimed; dry: its job file written), how many held, how many unseen today, and the time
+        of this pass at most every 15 s (`pass`: status and doctor say when a sender stopped, J50), to status."""
         now, outs = self.clock(), [float(r["handed"]) for r in self.ledger.texting_in("sent" if self.mode == "live" else self.wait) if r["handed"]]
         said = {"last_out": max(outs, default=None), "held": len(self.ledger.texting_in("held")),
-                "unseen": sum(1 for r in self.ledger.texting_in("unseen") if float(r["handed"] or 0) > now - 86400)}
+                "unseen": sum(1 for r in self.ledger.texting_in("unseen") if float(r["handed"] or 0) > now - 86400),
+                "pass": self.said["pass"] if now - self.said.get("pass", 0) < 15 else round(now)}
         if said != self.said and self.status is not None:
             self.status(said)
         self.said = said
@@ -274,10 +277,17 @@ class Sender:
             self.edits.append((int(r["id"]), said))
 
     async def run(self, every: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+        """A pass a second. Any other error stops the sender and never the daemon (a task that ends ends it): logged, and
+        said once in the machine room by its class alone, never a text or a person (J50); nothing more is timed or sent."""
         await self.start()
         while True:
             try:
                 await self.tick()
             except (OSError, ValueError) as e:
                 log.warning("texting: the sender's pass did not run: %s", e)
+            except Exception as e:
+                log.error("texting: the sender stopped: %s", e, exc_info=True)
+                if self.down is not None:
+                    self.down(words.TEXTING_SENDER_DOWN.format(error=type(e).__name__))
+                await asyncio.Event().wait()
             await every(1.0)

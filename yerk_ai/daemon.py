@@ -880,7 +880,7 @@ class Yerkd:
             if conf["mode"] == "live" else thands.Dry(file, self.state)          # the hands, chosen once: nothing shared
         try:
             send = tsender.Sender(conf, file, self.ledger, link.thread, hands, self.holds.edits, self.texting_post, self.texting_to,
-                                  status=link.more, out=out)
+                                  status=link.more, out=out, down=self.to_machine)
         except ValueError as e:                               # `yerk doctor` names it
             log.error("texting is off: %s", e)
             self.holds = None

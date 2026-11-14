@@ -615,10 +615,40 @@ def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(
     for _ in range(4):
         clock.t += 60
         armed(s, led, lost)
-    assert told[-1] == {"last_out": None, "held": 1, "unseen": 1}
+    assert told[-1] == {"last_out": None, "held": 1, "unseen": 1, "pass": round(clock.t)}      # a pass a minute apart: each one told
     rid = due(s, led, clock, "t-2")
     handed = armed(s, led, rid)["handed"]
     rows(s).add("m-1", handed + 4, "on my way", mine=True)
     assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == "auto"
     armed(s, led, rid)
-    assert told[-1] == {"last_out": handed, "held": 1, "unseen": 1}
+    assert {**told[-1], "pass": 0} == {"last_out": handed, "held": 1, "unseen": 1, "pass": 0}
+
+
+def test_an_error_the_pass_does_not_expect_stops_the_sender_and_says_one_line_in_the_machine_room_with_no_text_or_person(
+        tmp_path: Path, monkeypatch: Any, caplog: Any) -> None:
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "texting").mkdir()
+    listed(private / "texting")
+    (private / "yerkd.toml").write_text('[texting]\nmode = "live"\nreport = "example-room"\noutbox = "/Users/someone/outbox"\n'
+                                        '\n[imessage]\nhost = "mac"\nsocket = "/Users/someone/bridge.sock"\n')
+    (state := tmp_path / "state").mkdir()
+    said: list[str] = []
+    monkeypatch.setattr(Yerkd, "to_machine", lambda self, text: said.append(text))
+    got = Yerkd(private, state).texting()
+    for c in got[:-1]:
+        c.close()
+    send, passes = got[-1].cr_frame.f_locals["self"], []
+
+    async def boom() -> None:
+        passes.append(1)
+        raise KeyError("Alex: see you at six")
+    send.tick = boom
+
+    async def go() -> None:
+        with pytest.raises(asyncio.TimeoutError):            # stopped, never ended: a task that ends ends the daemon
+            await asyncio.wait_for(got[-1], 0.5)
+    with caplog.at_level(logging.ERROR, logger="yerk.texting"):
+        asyncio.run(go())
+    assert said == [words.TEXTING_SENDER_DOWN.format(error="KeyError")] and passes == [1]
+    assert not any(x in said[0].casefold() for x in ("alex", "see you", A1)) and "the sender stopped" in caplog.text

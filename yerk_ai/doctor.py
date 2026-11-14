@@ -287,6 +287,10 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                              or rs.get(str(tx.get(k) or ""), {}).get("people")))
             found.extend([f"{RED} [texting] live with text-out in [gates] off: no text goes, standing release included"]
                          if tmode == "live" and "text-out" in (dict(conf.get("gates") or {}).get("off") or []) else [])
+            with suppress(OSError, ValueError):                   # the sender's last pass, while yerkd runs (J50)
+                last = float(json.loads((state / "texting" / "status.json").read_text()).get("pass") or now)
+                found.extend([f"{RED} [texting] the sender stopped {datetime.fromtimestamp(last):%H:%M}: no text is timed or sent; "
+                              "`systemctl --user restart yerkd` starts it again"] if tmode in ("dry", "live") and now - last > 60 and status.alive(state) else [])
 
     def classes() -> None:
         for name in m.scope.files():

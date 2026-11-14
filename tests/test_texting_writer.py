@@ -282,3 +282,17 @@ def test_the_status_lines_name_the_last_text_in_and_out_how_many_are_held_and_ho
     lines = [x for x in status.card(s) if "texting" in x]
     assert words.TEXTING_OUT.format(at=words.short_clock(s["at"] - 20), held=2, unseen=1) in lines[1]
     assert not any(x.endswith("...") for x in lines)
+
+
+@pytest.mark.parametrize("mode", ["dry", "live"])
+def test_a_fresh_pass_adds_nothing_and_one_older_than_a_minute_marks_the_texting_row_not_done_with_its_time(tmp_path, mode):
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, [], Cooldowns(tmp_path / "c.json"), Ledger(tmp_path / "l.sqlite"), {},
+                       units=set, timers=Timers({}))
+    s["texting"] = {"mode": mode, "up": True, "since": s["at"] - 600, "last_in": s["at"] - 30, "held": 1}
+    before = [x for x in status.card(s) if "texting" in x]
+    s["texting"]["pass"] = s["at"] - 50
+    assert [x for x in status.card(s) if "texting" in x] == before
+    s["texting"]["pass"] = s["at"] - 61
+    lines = [x for x in status.card(s) if "texting" in x]
+    assert lines == [before[0], f"{words.NOT_DONE} " + words.TEXTING_STOPPED.format(at=words.short_clock(s["at"] - 61))]
+    assert all(words.width(x) <= words.PHONE and not x.endswith("...") for x in lines)

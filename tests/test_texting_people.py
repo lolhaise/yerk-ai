@@ -3,8 +3,10 @@ person only. Each person's sheet beside it (run 2), read by code and checked, an
 of this turn, each change one line of sheets.log. Every person and number here is made up."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -89,6 +91,21 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     assert not [x for x in said(live + 'outbox = "/Users/someone/outbox"\n') if "outbox" in x]
     token.unlink()
     assert said(on) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
+
+
+def test_doctor_is_red_for_a_sender_whose_last_pass_is_older_than_a_minute_only_while_yerkd_runs(tmp_path, monkeypatch):
+    priv, state, now = tmp_path / "private", tmp_path / "state", 1_763_000_000.0
+    shutil.copytree(EXAMPLE_PRIVATE, priv)
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "example-room"\n')
+    (state / "texting").mkdir(parents=True)
+
+    def said(ago: float, up: bool) -> list[str]:
+        (state / "texting" / "status.json").write_text(json.dumps({"mode": "dry", "up": True, "pass": now - ago}))
+        monkeypatch.setattr(doctor.status, "alive", lambda s: up)
+        return [x[2:] for x in doctor.run(priv, state, dry=True, now=now) if "sender" in x]
+    assert said(50, True) == [] and said(120, False) == []
+    assert said(120, True) == [f"[texting] the sender stopped {datetime.fromtimestamp(now - 120):%H:%M}: no text is timed or "
+                               "sent; `systemctl --user restart yerkd` starts it again"]
 
 
 A1, B1 = "+15550000101", "+15550000102"
