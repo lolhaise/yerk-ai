@@ -181,7 +181,7 @@ It never brings up anything of yours the thread has not, never says what it is (
 
 To see what it did: `yerk status` has two texting rows, the bridge and the last text in, then the last text out with how many are held and unseen, or, when the sender's last pass is older than a minute, the time it stopped. `yerk doctor` is red for what keeps texting off, for live with no way to the Mac, and for a sender that stopped while yerkd runs. In your main room the `texting` tool reads a person's `sheet`, a day of their texts and decisions (`log`) and the newest reason (`why`), and your main room is told every turn what texting is and what a card is. The machine room gets one line a day after 8 in the morning, counts only: texts in, decisions by kind, held, sent or would-send, stopped because you answered first or they wrote again, unseen, and the longest run of texting's own sends to one person with no text of yours between. `yerk texting replay --since DAY` runs past threads through the writer and the check as of each cut and sends nothing: without `--run` it only prints the plan, `--person KEY` takes one person and `--limit N` the newest N cuts each.
 
-To switch it off, set `mode = "off"` and restart yerkd: what a live run left to send is dropped, never sent. `text-out` in `[gates] off` stops every text at once, standing release included.
+To switch it off, set `mode = "off"` and restart yerkd: what a live run left to send is dropped, never sent. `text-out` in `[gates] off` stops every text from yerkd's next start, one left waiting and standing release included.
 
 ## Deletes you order
 

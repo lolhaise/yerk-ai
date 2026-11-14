@@ -566,6 +566,14 @@ def test_a_late_row_claims_a_queued_job_before_an_unseen_one_and_a_tapback_never
     assert [(r["state"], r["claimed"]) for r in map(led.texting_get, (new, old))] == [("sent", "m-1"), ("sent", "m-2")]
 
 
+def test_dry_claims_nothing_not_even_a_job_a_live_run_left_handed(tmp_path: Path) -> None:
+    s, led, _ = make(tmp_path, mode="dry")
+    rid = waiting(led, "t-1")
+    led.texting_set(rid, handed=WED)
+    rows(s).add("m-1", WED + 5, "on my way", mine=True)
+    assert s.claim(load(s.file).people["alex"], rows(s).rows[-1], WED + 5) is False and led.texting_get(rid)["state"] == "queued"
+
+
 def test_a_stop_in_the_middle_of_a_hand_off_counts_as_handed_and_the_text_is_never_handed_again(tmp_path: Path) -> None:
     """J41: the mark is written before the hands run, so a daemon stopped between the write on the Mac and the mark can
     never write that job a second time."""
@@ -617,6 +625,11 @@ def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(
         clock.t += 60
         armed(s, led, lost)
     assert told[-1] == {"last_out": None, "held": 1, "unseen": 1, "pass": round(clock.t)}      # a pass a minute apart: each one told
+    n = len(told)
+    for _ in range(5):                                           # passes a second apart: the time is told at most every 15 s
+        clock.t += 1
+        armed(s, led, lost)
+    assert len(told) == n
     rid = due(s, led, clock, "t-2")
     handed = armed(s, led, rid)["handed"]
     rows(s).add("m-1", handed + 4, "on my way", mine=True)
@@ -640,6 +653,7 @@ def test_an_error_the_pass_does_not_expect_stops_the_sender_and_says_one_line_in
     for c in got[:-1]:
         c.close()
     send, passes = got[-1].cr_frame.f_locals["self"], []
+    assert send.day_file == state / "texting" / "daily.json"   # the daily line's day, kept where the daemon says
 
     async def boom() -> None:
         passes.append(1)
@@ -648,7 +662,7 @@ def test_an_error_the_pass_does_not_expect_stops_the_sender_and_says_one_line_in
 
     async def go() -> None:
         with pytest.raises(asyncio.TimeoutError):            # stopped, never ended: a task that ends ends the daemon
-            await asyncio.wait_for(got[-1], 0.5)
+            await asyncio.wait_for(got[-1], 1.25)            # past the next pass's second: it never comes
     with caplog.at_level(logging.ERROR, logger="yerk.texting"):
         asyncio.run(go())
     assert said == [words.TEXTING_SENDER_DOWN.format(error="KeyError")] and passes == [1]
@@ -662,9 +676,13 @@ def test_the_daily_line_counts_a_made_up_day_from_the_ledger_says_it_once_across
     s.machine, s.day_file = said.append, tmp_path / "state" / "texting" / "daily.json"
     for n, who in enumerate(("alex", "alex", "beta")):
         their(led, f"t-{n}", WED + n, person=who)
-    his(led, "m-0", WED + 10)                                    # his text, before the run: it starts it over
-    for n, (decision, state, reason, who) in enumerate((("reply", "sent", "", "alex"),) * 3 + (
-            ("react", "cancelled", "owner answered", "beta"), ("reply", "cancelled", "they wrote again", "beta"),
+    their(led, "t-3", at(11, 12, 2, 0), person="beta")           # two in the morning: the day runs to 08:00, not to midnight
+    his(led, "m-0", WED + 10)                                    # the owner's texts: one before the run, one inside it, which starts it over
+    his(led, "m-1", WED + 32.5)
+    alex, beta = ("reply", "sent", "", "alex"), ("reply", "sent", "", "beta")
+    for n, (decision, state, reason, who) in enumerate((alex, alex, beta, alex) + (     # Beta's send between Alex's: a run is one person's
+            ("react", "cancelled", "owner answered", "beta"), ("reply", "cancelled", "owner answered", "beta"),
+            ("reply", "cancelled", "they wrote again", "beta"), ("reply", "cancelled", "a newer decision", "beta"),
             ("none", "decided", "", "beta"), ("held", "held", "", "beta"), ("reply", "unseen", "", "beta"))):
         with monkeypatch.context() as m:                         # a decision's own time is the ledger's clock
             m.setattr(time, "time", lambda: WED + 20 + n)
@@ -672,8 +690,8 @@ def test_the_daily_line_counts_a_made_up_day_from_the_ledger_says_it_once_across
         led.texting_set(rid, reason=reason, handed=WED + 30 + n if state in ("sent", "unseen") else None)
     clock.t = at(11, 12, 9, 0)
     s.daily()
-    line = words.TEXTING_DAY.format(mode="live", day="Thu Nov 12", got=3, kinds="1 held, 1 none, 1 react, 5 reply", held=1, sent=3,
-                                    out="sent", first=1, again=1, unseen=1, run=3)
+    line = words.TEXTING_DAY.format(mode="live", day="Thu Nov 12", got=4, kinds="1 held, 1 none, 1 react, 8 reply", held=1, sent=4,
+                                    out="sent", first=2, again=2, unseen=1, run=2)
     assert said == [line]
     again = sender.Sender({"mode": "live"}, s.file, led, rows(s), s.hands, clock=clock, machine=said.append, day_file=s.day_file)
     again.daily()                                                 # a restart: that day is said no second time
@@ -683,4 +701,8 @@ def test_the_daily_line_counts_a_made_up_day_from_the_ledger_says_it_once_across
     clock.t = at(11, 16, 8, 1)                                    # days on: none is skipped, a quiet one in a few words
     again.daily()
     assert said[1:] == [words.TEXTING_DAY_QUIET.format(mode="live", day=d) for d in ("Fri Nov 13", "Sat Nov 14", "Sun Nov 15", "Mon Nov 16")]
+    clock.t = at(12, 20, 9, 0)                                    # a month on: the last week's days, no more
+    again.daily()
+    assert said[5:] == [words.TEXTING_DAY_QUIET.format(mode="live", day=f"{d} Dec {n}")
+                        for d, n in zip("Mon Tue Wed Thu Fri Sat Sun".split(), range(14, 21))]
     assert not any(x in y.casefold() for y in said for x in ("alex", "beta", "5550000", "see you", "on my way"))

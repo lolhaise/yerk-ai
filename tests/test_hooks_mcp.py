@@ -44,6 +44,8 @@ def test_the_texting_block_is_in_the_report_rooms_context_alone_in_dry_and_live_
         (state := tmp_path / f"state{next(made)}").mkdir()
         d = Yerkd(private, state)
         d.room_confs["person-room"] = {**d.room_confs["example-room"], "privacy": "family", "people": [1]}
+        d.room_confs["family-room"] = {**d.room_confs["example-room"], "privacy": "family"}       # not the owner's, nobody listed
+        d.room_confs["shared-room"] = {**d.room_confs["example-room"], "people": [1]}             # the owner's, with a person in it
         out = hooks.user_prompt_submit({"session_id": "sid-1", "prompt": "hi"}, tmp_path, d.room_confs, lambda r, p: ("owner", None),
                                        b, now=now, room=room, texting=d.texting_told)
         return str(out["hookSpecificOutput"]["additionalContext"])
@@ -52,8 +54,20 @@ def test_the_texting_block_is_in_the_report_rooms_context_alone_in_dry_and_live_
         said, block = ctx(on, "example-room"), words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID[mode])
         assert block in said and context.hook_parts("UserPromptSubmit", said)["texting"] == context.chars(block)
         assert all("[texting]" not in ctx(on, r) for r in ("example-quiet", "person-room"))       # another owner room, a person's
-        assert "[texting]" not in ctx(on.replace("example-room", "person-room"), "person-room")    # never a person's, named or not
+        for r in ("person-room", "family-room", "shared-room"):       # named or not, never a room that is not the owner's alone
+            assert "[texting]" not in ctx(on.replace("example-room", r), r)
     assert all("[texting]" not in ctx(t, "example-room") for t in ("", '[texting]\nmode = "off"\nreport = "example-room"\n'))
+
+
+def test_the_daemons_own_hook_hands_the_report_room_the_texting_block(tmp_path):
+    shutil.copytree(EXAMPLE_PRIVATE, private := tmp_path / "private")
+    (private / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "example-room"\n')
+    (state := tmp_path / "state").mkdir()
+    y = Yerkd(private, state)
+    y.add_room("example-room", ConsoleChannel())
+    SessionTable(state / "sessions.json").bind("example-room", "sid-1", "one")
+    out = asyncio.run(y.hook({"hook_event_name": "UserPromptSubmit", "session_id": "sid-1", "prompt": "hi"}))
+    assert words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID["dry"]) in out["hookSpecificOutput"]["additionalContext"]
 
 
 def daemon(tmp_path):
