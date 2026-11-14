@@ -2,12 +2,13 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-three tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, github_state, page, texts, texting, attachments, zoom), local-only HTTP, preloaded in
+"""Yerk AI's own MCP server: twenty-four tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, email, delete, github_state, page, texts, texting, attachments, zoom, show), local-only HTTP, preloaded in
 page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, watch, text, email, github_state and attachments are here and not
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
-folders read-only, and zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn. A worker gets none of it: by default no MCP server at all, and with
+mounts all but the room's folders read-only, zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn, and show because that
+reaches no screen. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -83,6 +84,7 @@ class Daemon(Protocol):
     async def tool_texting(self, room: str, op: str, person: str, value: str, said: str) -> dict[str, Any]: ...
     async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]: ...
     async def tool_zoom(self, room: str, path: str, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]: ...
+    async def tool_show(self, room: str, path: str, screen: str = "") -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -398,6 +400,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
                                  "open": open or None, "where": where or None, "screen": screen or None, "off": off or None}.items()
                if v is not None}
         return json.dumps(await daemon.tool_page(caller_room(ctx), req))
+
+    @mcp.tool()
+    async def show(path: str, screen: str = "", *, ctx: Context) -> str:
+        """Opens a file of this room's folders on the owner's PC screen when they ask to have it up, since your shell reaches
+        no screen: `path` its whole path (a built HTML deck, a PDF, a picture, a video). It opens in their own browser, never
+        run; `screen` the monitor they name (left, middle, right, primary or its number from the left; default [page] screen)
+        puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first."""
+        return json.dumps(await daemon.tool_show(caller_room(ctx), path, screen))
 
     @mcp.tool()
     async def attachments(message: str = "", name: str = "", *, ctx: Context) -> str:

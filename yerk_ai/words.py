@@ -96,7 +96,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
         "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs", "watch": "watching a video on {what}",
         "github_state": "checking {what} on GitHub", "texts": "reading the owner's texts",
-        "zoom": "zooming in on {what}",
+        "zoom": "zooming in on {what}", "show": "putting {what} on your screen",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -708,6 +708,21 @@ PAGE_NOT_PAINTED = ("not painted after {n} s, so a desktop screenshot would show
                     "sleeps or the window is covered; it paints when the owner wakes it")
 PAGE_LOCKED = ("not painted: the owner's screen is locked, so a desktop screenshot would show an old frame or none; it paints "
                "when the owner unlocks it")
+# the `show` tool (daemon.tool_show): a file of the room's own folders opened on the owner's screen, a named one as the page is
+SHOW_OWNER_ONLY = "show is for the owner's rooms only: it puts a file on the owner's own screen"
+SHOW_NOT_HERE = "{name} is outside this room's folders; show opens a file of its work folder or one sent to it"
+SHOW_NO_FILE = "there is no file {name} in this room's folders"
+SHOW_TYPE = ("{name} is not opened: show takes only what a browser shows itself (a web page, a PDF, a picture, text, a video "
+             "or a sound), never a file the PC would run; a document goes to a PDF with render first")
+SHOW_NO_PATH = "{name} is not opened: yerkd could not name it as Windows reads it (wslpath)"
+SHOW_SCREEN_NOT_HERE = "yerkd places a file on a named screen of a Windows PC (WSL) only"
+SHOW_NO_WINDOW = "no new window of the browser showed in 15 s, so it opened where the browser put it"
+SHOW_OPENED = "{name} is open on the owner's screen; a reload there shows its newest save"
+SHOW_OPENED_SCREEN = ("{name} is open on the owner's {screen} screen, {n} of {of} from the left, maximized and on top; a reload "
+                      "there shows its newest save")
+SHOW_AT = "a desktop screenshot of {x},{y} {w}x{h} shows that screen"
+SHOW_LOCKED = "the owner's screen is locked: it shows when they unlock it"
+SHOW_NOT_OPENED = "{name} is not open on the owner's screen: {why}"
 # [page] listen (channels/page.py listen): the box's one tailnet or LAN address the page is also served on, or why not
 PAGE_LISTEN_EVERY = "[page] listen {x} is every network the box is on, a café's too: name its tailnet or LAN address"
 PAGE_LISTEN_PUBLIC = "[page] listen {x} is a public address, the page on the internet in plain text: name the box's tailnet or LAN one"

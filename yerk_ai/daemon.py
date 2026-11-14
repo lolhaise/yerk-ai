@@ -53,7 +53,7 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
               "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
-              "mcp__yerk__attachments", "mcp__yerk__zoom", "mcp__yerk__texting"]
+              "mcp__yerk__attachments", "mcp__yerk__zoom", "mcp__yerk__texting", "mcp__yerk__show"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -568,6 +568,42 @@ class Yerkd:
             r["tests"] = page.run_line(await self.page.run(room, {}, heard=True))
         log.info("page: %s, %s", room or "?", f"{', '.join(sorted(req))} to {r['tabs']} tab(s)" if r["ok"] else r["error"][:160])
         return {**r, "opened": opened} if opened is not None else r
+
+    async def tool_show(self, room: str, path: str, screen: str = "") -> dict[str, Any]:
+        """The `show` tool: a file of the calling room's own folders (may_send's rule, as render's) opened on the owner's
+        screen, in the owner's rooms only, since a room's shell reaches no screen: a type a browser shows itself (page.SHOWN),
+        never one the PC would run. On a named screen (`screen`, else [page] screen) of a Windows PC under WSL, a window of its
+        own of the default browser, maximized there and raised, the display woken, as the page's (page.place) by the file's
+        Windows path (page.windows_path); else, or when nothing opened, by the box's opener, where it puts it."""
+        if not self.owner(room):
+            return {"ok": False, "error": words.SHOW_OWNER_ONLY}
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.SHOW_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.SHOW_NO_FILE.format(name=p.name)}
+        if p.suffix.lower() not in page.SHOWN:
+            return {"ok": False, "error": words.SHOW_TYPE.format(name=p.name)}
+        lines: list[str] = []
+        try:
+            screen = page.screen_name(screen) or self.screen_named(lines)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        if not (target := await asyncio.to_thread(page.windows_path, p) if (here := page.wsl()) else str(p)):
+            return {"ok": False, "error": words.SHOW_NO_PATH.format(name=p.name)}
+        got = await asyncio.to_thread(page.place, target, screen, room, file=True) if screen and here else {
+            "ok": False, "opened": False, "again": True, "why": words.SHOW_SCREEN_NOT_HERE}
+        if got["ok"]:
+            lines += [words.SHOW_OPENED_SCREEN.format(name=p.name, screen=screen, n=got["n"], of=got["of"]),
+                      words.SHOW_LOCKED if got["locked"] else words.SHOW_AT.format(**{k: got[k] for k in "xywh"})]
+        elif screen:
+            lines.append(words.PAGE_NOT_PLACED.format(screen=screen, why=got["why"]))
+        if got.get("again"):                  # nothing opened, the screen there or none named: the box's opener
+            why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), target)
+            lines.append(words.SHOW_NOT_OPENED.format(name=p.name, why=why) if why else words.SHOW_OPENED.format(name=p.name))
+            got["opened"] = not why
+        log.info("show: room %s, %s, %s", room, p.name, "; ".join(lines)[:200])
+        return {"ok": True, "line": "; ".join(lines)} if got["ok"] or got["opened"] else {"ok": False, "error": "; ".join(lines)}
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what

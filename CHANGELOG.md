@@ -8,6 +8,30 @@ version changes.
 
 ## 2026-11-13
 
+### need-2026-11-13-91 (#?)
+
+- A room opens a file of its own folders on your PC's screen when you ask to have it up: a slide deck it built as a web
+  page, a PDF, a picture, text, a video or a sound. Before, a room asked during a timed exam to bring up the deck it had
+  built had no way: the browser plug-in opens only web addresses in its own browser, a server started in the room's
+  shell is not reachable from the PC, and a command to open the file through Windows was refused outside the room's
+  sandbox.
+- The new `show` tool, in every room: `path` the file, `screen` the monitor (left, middle, right, primary or its number
+  from the left; else `[page] screen`, the live page's). yerkd opens it, since it runs outside the sandbox: on a WSL
+  box, the file's Windows path, as `wslpath -w` names it, goes to Windows' own PowerShell in its environment, never on a
+  command line, and opens in a new window of your default browser (Chrome, Edge, Brave, Vivaldi, Opera or Firefox),
+  moved to that monitor, maximized and raised without taking the focus, the display woken with no click, as the live
+  page opens. With no screen named, or on a box that is not a Windows PC, the box's own opener opens it. A reload there
+  shows the file's newest save.
+- Never a file the PC would run: only what a browser shows itself is opened, so a script, a program, a shortcut or an
+  Office file is refused in words, a document with the way through `render` to a PDF. Only the room's own folders (its
+  work folder and the files sent to it, never a secret), and only in your own rooms.
+- Said in words, opened once at most: a screen that is not there, a browser yerkd opens no window of, a window that
+  never showed, a locked screen.
+- The ability is `show` (`yerk explain show`). The hands plug-in's browser, asked to open a file (a file: address or
+  a path), still refuses, and its words now name `show` (its branch need-2026-11-13-91); its tool entries do not change.
+- budgets.toml: `yerk_tools` 27,250 to 28,000 and the session start's total 130,773 to 131,523 for the tool's entry
+  (about 761 characters as sent), and `[code] lines` 32,167 to 32,249, each with its dated note.
+
 ### texting-6 (#76)
 
 - Nothing changes until an install has a `[texting]` table.
