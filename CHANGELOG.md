@@ -12,14 +12,20 @@ version changes.
 
 - A room asked whether a store has an item in stock, met by a retailer whose product page a captcha or bot-check holds
   shut, now hears that plainly instead of reading an opaque empty page. The hands browser came back empty behind the
-  challenge frame and left the room to improvise off a photo of the stock box; it now names the wall and the honest ways
-  to the count.
-- The browser names a page behind a bot-check as a wall, left alone and never worked around: a dedicated captcha host
-  (such as DataDome's) in a frame on sight, another challenge host or a challenge phrase only when the page's own content
-  never arrived, so a full page that merely embeds a widget on a form, a payment page or a sign-in is not one. The note
-  says hands does not spoof a browser or solve a check, and points to the honest ways: the owner reads the page on their
-  own screen, or Yerk's web reach (web_fetch) reads it through its ladder, which itself names the wall when a page stays
-  shut.
+  challenge frame and left the room to improvise off a photo of the stock box; it now names the check and the ways that
+  still read the count.
+- The browser names a page behind a bot-check: a dedicated captcha host (such as DataDome's) in a frame on sight,
+  another challenge host or a challenge phrase only when the page's own content never arrived, so a full page that
+  merely embeds a widget on a form, a payment page or a sign-in is not one. The note says this browser cannot read or
+  pass it, and that hands does not spoof a browser or solve a check; it says the page's own content never loaded only
+  when it did not.
+- The note names the ways that still read the page, each as what it is: Yerk's web reach (web_fetch), whose ladder is
+  built for such pages, with its own stealth browser and captcha solvers (the machine's where installed, then the paid
+  cloud browser's), and names the wall when the page stays shut; or the owner reads it on their own screen. The check is
+  not called a wall left alone while the room is sent to a ladder that solves one.
+- web_fetch's cloud-browser rungs cost what the web ability's price says: a read inside the Browserbase plan's included
+  calls and hours, each paid call a spend row. Its rungs on the machine, and the owner's own screen, cost nothing. The
+  web ability's one daily cap is web_research's, not web_fetch's.
 - The ability is `store-stock` (`yerk explain store-stock`). The behaviour lives in the hands plug-in (its branch
   need-2026-11-14-97); its browser tool entries do not change, so no budget moves and no room needs new settings.
 

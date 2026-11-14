@@ -578,21 +578,31 @@ def test_an_ability_that_ships_says_built_and_one_that_ships_in_part_names_what_
 ASK_NOUNS = ("RONA", "cactus", "Scarborough", "Midland", "IKEA", "Home Depot")
 
 
-def test_store_stock_names_the_bot_check_wall_and_the_honest_ways_not_a_bypass(tmp_path, capsys):
+def test_store_stock_names_the_bot_check_and_web_fetch_for_what_it_is_and_prices_it_as_the_web_ability_does(tmp_path, capsys):
     """Need 97 (2026-11-14): a room asked to check a store's live stock met a retailer's product page empty behind a captcha
     frame in the automated browser and, handed an opaque empty page, improvised off a photo of the stock box. The ability
-    (it rides on the hands browser plug-in, whose test/run.mjs has the wall note) names a bot-check as a wall left alone and
-    the honest ways to the answer, the owner's own screen or the web plug-in's web_fetch, never defeating the check; a
-    message that asks whether a store has an item in stock surfaces it, and an everyday one does not."""
+    (it rides on the hands browser plug-in, whose test/run.mjs has the note) names the bot-check and the ways that still
+    read the count, web_fetch or the owner's own screen. PR 81's cold read: the first cut called the check a wall never
+    worked around while it sent the room to web_fetch, whose ladder is a stealth browser and captcha solvers, and put
+    web_fetch's paid rungs under the daily cap only web_research has. So "never spoofs a browser or solves a check" is
+    hands' alone, web_fetch's ladder is named for what it is, and its cloud-browser rungs are priced as the web ability's
+    own price line prices them; a message that asks whether a store has an item in stock surfaces it, and an everyday one
+    (a store's parking too) does not."""
     ab = TAB["store-stock"]
     assert ab["state"] == "described" and ab["tier"] == "free" and "key" not in ab
     text = " ".join([ab["what"], *ab["how"], ab["why_not"], ab["free_path"]])
-    assert all(w in text for w in ("bot-check", "a wall", "never worked around", "never spoofs a browser or solves a check",
-                                   "their own screen", "web_fetch", "live read"))
+    assert all(w in text for w in ("bot-check", "hands never spoofs a browser or solves a check", "web_fetch", "stealth browser",
+                                   "captcha solver", "names the wall", "their own screen", "live read"))
+    held = [w for w in ("never worked around", "left alone", "rather than defeating", "honest way") if w in text]
+    assert not held, ("the check is not called left alone while the room is sent to a ladder that solves one", held)
+    assert "daily cap" not in ab["price"] and all(w in ab["price"] for w in ("included calls and hours", "spend row"))
+    assert re.search(r"cloud-browser read inside its plan's included calls and hours", TAB["web"]["price"])
+    assert re.search(r"research run [^;]*daily cap", TAB["web"]["price"]), "the web ability's one daily cap is research's"
     assert not any(n in json.dumps(ab, ensure_ascii=False) for n in ASK_NOUNS), "no person or place from the ask is named"
-    found = abilities.asked("can you make sure the store has one in stock before I go?", None, TAB)
-    assert "store-stock" in [e["key"] for e in found]
-    assert not any(e["key"] == "store-stock" for e in abilities.asked("I have to fill out a form for work", None, TAB))
+    for ask in ("can you make sure the store has one in stock before I go?", "does the store have any left?"):
+        assert "store-stock" in [e["key"] for e in abilities.asked(ask, None, TAB)], ask
+    for ask in ("I have to fill out a form for work", "does the store have parking?", "check my stocks", "out of stock on milk"):
+        assert not any(e["key"] == "store-stock" for e in abilities.asked(ask, None, TAB)), ask
     assert cli.main(["explain", "store-stock", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[:2] == [f"{words.NOTHING} store-stock: {words.ability('described')[1]}", ab["what"]]

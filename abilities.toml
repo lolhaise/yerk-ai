@@ -410,24 +410,27 @@ asked_as = ["use my browser", "control my browser", "drive my browser", "use a b
 
 # need-2026-11-14-97: a room asked to check a store's live stock met a retailer's product page empty behind a captcha
 # frame in the automated browser, and, handed an opaque empty page, improvised off a photo of the stock box instead of
-# naming the wall; filed 2026-11-14.
+# naming the wall; filed 2026-11-14. PR 81's cold read: the first cut called the check a wall never worked around while it
+# sent the room to web_fetch, whose ladder is built to solve one, and put web_fetch under web_research's daily cap.
 [abilities.store-stock]
 state = "described"
-what = "Reads a store's live in-stock count for an item, and when a retailer puts a captcha or bot-check in front of the automated browser it names that wall and the honest ways to the answer rather than defeating it: the owner reads the page on their own screen, or the web plug-in's web_fetch reads it through its own ladder."
+what = "Reads a store's live in-stock count for an item; when a retailer puts a captcha or bot-check in front of the automated browser, that browser names the check instead of handing back an opaque empty page, and the count is read through the web plug-in's web_fetch, whose ladder brings its own stealth browser and captcha solvers, or on the owner's own screen."
 how = [
-  "The automated browser (the hands plug-in's browser) reads the stock panel on a retailer's product page; a page whose panel loads is read and answered as any page is, and only a page the retailer walls needs the rest.",
-  "A bot-check is a wall, left alone and never worked around: the browser names it when a page comes back empty behind a challenge frame (a dedicated captcha host, such as DataDome's, on sight; another challenge host or a challenge phrase only when the page's own content never arrived), and it never spoofs a browser or solves a check, since the retailer put the wall there.",
-  "The honest ways named with the wall: the owner opens the page on their own screen in their own browser and reads the count, or the web plug-in's web_fetch reads it through its plain-read then cloud-browser ladder, which itself names the wall when a page stays shut.",
-  "A count read is reported with where and when it was read, since a store's stock moves; a count a person gives from their own eyes is used and said to be theirs, never passed off as a live read.",
+  "A page whose stock panel loads is read and answered as any page is: the automated browser (the hands plug-in's browser) reads the panel on the retailer's product page, and only a page the retailer walls needs the rest.",
+  "The browser names a bot-check, and hands never spoofs a browser or solves a check itself: a dedicated captcha host, such as DataDome's, in a frame on sight; another challenge host or a challenge phrase only when the page's own content never arrived.",
+  "Then web_fetch reads the page, its ladder built for such pages: a plain read, the machine's own stealth browser and captcha solver where they are installed, then the paid cloud browser with its proxies and captcha solving, and it names the wall (such as captcha_unsolved) when the page stays shut.",
+  "Or the owner reads it on their own screen: they open the page in their own browser and give the count, which is used and said to be theirs, never passed off as a live read.",
+  "A stock panel left on its loading placeholders is no count either: it is said unread, and read the same other ways.",
+  "A count read is reported with where and when it was read: a store's stock moves.",
 ]
 tier = "free"
-needs = "the browser ability's plug-in attached to the room to read a retailer's page, and the web ability's plug-in for web_fetch's ladder when the automated browser is walled; no key and no sign-in"
-price = "none for a plain read and for the owner's own screen; web_fetch's walled rungs cost as any page's do, metered to the web ability's daily cap"
-free_path = "a plain read of a page whose stock panel loads, and the owner's own screen for a walled one; web_fetch's paid rungs only when it falls to them"
-why_not = "It rides on the browser ability and the web ability, which reach the rooms as plug-ins an install attaches, not code in this repo; an install whose browser plug-in names a walled page and whose web plug-in carries web_fetch has the way, and a room asked whether a store has an item in stock reads the page, names any bot-check as a wall, and reads it on the owner's own screen or through web_fetch, never improvising past the wall."
+needs = "the browser ability's plug-in to read a retailer's page, and the web ability's plug-in for web_fetch past a bot-check; no key of its own and no sign-in"
+price = "none for a page whose panel loads, for web_fetch's rungs on the machine and for the owner's own screen; web_fetch's cloud-browser rungs at the web ability's price, inside the Browserbase plan's included calls and hours, each paid call a spend row"
+free_path = "a page whose panel loads, web_fetch's rungs on the machine (its plain read, its stealth browser and its local captcha solver) and the owner's own screen; the paid cloud-browser rungs only when web_fetch climbs to them"
+why_not = "It rides on the browser and web abilities, plug-ins an install attaches, not code in this repo; an install whose browser plug-in names a bot-check and whose web plug-in carries web_fetch has the way, and a room asked whether a store has an item in stock reads the page, names any bot-check and reads the count through web_fetch or on the owner's own screen, never improvising a way of its own."
 asked_as = ["in stock", "in stock at the store", "is it in stock", "do they have it in stock", "stock at the store", "store stock",
-            "does the store have", "check the store has", "is it on the shelf", "available at the store", "the store page won't load",
-            "captcha on the store site", "bot check on the retailer"]
+            "does the store have any left", "the store still has one", "is it on the shelf", "available at the store",
+            "the store page won't load", "captcha on the store site", "bot check on the retailer"]
 
 # need-2026-11-01-31: a form that wants a photo could not be sent, since a file input takes no typed value.
 [abilities.form-files]
