@@ -12,6 +12,8 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from yerk_ai import config, words
 from yerk_ai.accounts import Account
 from yerk_ai.lifted.classify import FailureTable
@@ -304,3 +306,120 @@ def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path,
 def test_the_replay_never_imports_the_hands():
     src = Path(replay.__file__).read_text()
     assert "hands" not in src and "ssh" not in src and not re.search(r"^(from|import) .*\b(link|bridge|intake|holds)\b", src, re.M)
+
+
+def sender_run(tmp_path: Path, body: str, log: str = "") -> dict[str, dict]:
+    """The sender's pass over a made-up thread of Alex's whose sheet paces a weekday day at 5 to 10 minutes: its cut lines by id."""
+    priv, state = install(tmp_path)
+    (priv / "texting" / "people" / "alex.toml").write_text(SHEET + "\n[pacing]\nweekday_day = [5, 10]\n")
+    (priv / "imports" / "texts" / "alex.md").write_text(f"# Texts with Alex ({A1})\n2 messages\n\n{body}")
+    (tmp_path / "old.log").write_text(log)
+    todo, _ = replay.plan(priv / "texting" / "people.toml", priv / "imports" / "texts", date(2026, 10, 1), 1 << 30, 6.0, TZ, log=tmp_path / "old.log")
+    f = replay.go_sender(state, "t1", {"since": "2026-10-01"}, {"mode": "dry"}, priv / "texting" / "people.toml", todo)
+    return {x["id"]: x for x in map(json.loads, f.read_text().splitlines()[1:])}
+
+
+def counts(lines: list[dict]) -> dict[str, dict[str, int]]:
+    head, *body = replay.sender_table(lines)
+    return {" ".join(r.split()[:2]): dict(zip(head.split(), map(int, r.split()[2:]))) for r in body}
+
+
+def test_a_text_he_answered_first_is_stopped_at_every_send_time_and_none_is_handed(tmp_path):
+    [x] = sender_run(tmp_path, "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:02 Sam: yeah\n").values()
+    assert x["id"] == "alex:4" and x["span"] == [300.0, 600.0]                    # the sheet's bucket, drawn by the live arm
+    assert x["send"] == ["2026-10-01 10:05:00", "2026-10-01 10:07:30", "2026-10-01 10:10:00"]
+    assert x["outcome"] == ["he-first"] * 3 and x["followed"] == [None] * 3
+    assert all(c["handed"] == 0 and c["bursts"] == 1 for c in counts([x]).values())
+
+
+def test_a_text_nobody_answered_is_handed_and_his_line_in_the_hour_after_is_he_answered_too(tmp_path):
+    [x] = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 12:01 Sam: sorry, was out\n").values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["nobody"] * 3
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:30 Sam: sorry, was out\n").values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["he-too"] * 3
+    assert counts([x])["total late"] == {"bursts": 1, "he-first": 0, "they-again": 0, "handed": 1, "he-too": 1, "old-agent": 0, "nobody": 0}
+
+
+def test_their_next_text_stops_it_and_an_old_agents_answer_is_never_his(tmp_path):
+    cut = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:03 Alex: hello?\n")
+    assert cut["alex:4"]["outcome"] == ["they-again"] * 3 and cut["alex:5"]["outcome"] == ["handed"] * 3
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:06 Sam: on my way\n",
+                     '2026-10-01 10:05 Alex IN: "you around" OUT: "on my way"\n').values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["old-agent", "nobody", "nobody"]   # the old agent's: texting's own
+
+
+def test_his_line_in_the_bursts_own_last_minute_came_after_it_and_no_later_line_is_there_when_a_burst_is_armed(tmp_path):
+    cut = sender_run(tmp_path, "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:20 Alex: hello?\n- 2026-10-01 10:20 Sam: here\n")
+    assert cut["alex:4"]["outcome"] == ["handed"] * 3
+    assert cut["alex:5"]["outcome"] == ["he-first"] * 3                           # to the minute the owner is no newer; the file's order says they are
+    assert cut["alex:5"]["span"] == [300.0, 600.0]                                # the sheet's bucket: the owner's answer was not there for a first shot
+
+
+def test_a_line_in_the_send_times_own_minute_is_before_it_and_his_text_just_before_the_burst_makes_it_his_first_shot(tmp_path):
+    [x] = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:05 Sam: yeah\n").values()
+    assert x["send"][0] == "2026-10-01 10:05:00" and x["outcome"] == ["he-first"] * 3
+    [x] = sender_run(tmp_path / "c", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:05 Sam: on my way\n",
+                     '2026-10-01 10:05 Alex IN: "you around" OUT: "on my way"\n').values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["nobody"] * 3     # the old agent's, in that minute: not what followed
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 09:58 Sam: you up\n- 2026-10-01 10:00 Alex: yeah\n").values()
+    assert x["span"] == [150.0, 240.0] and x["send"] == ["2026-10-01 10:02:30", "2026-10-01 10:03:15", "2026-10-01 10:04:00"]
+
+
+def test_what_followed_is_read_an_hour_past_each_send_time_and_his_line_counts_over_an_old_agents(tmp_path):
+    [x] = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 11:08 Sam: sorry\n").values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["nobody", "nobody", "he-too"]     # an hour past 10:10:00 only
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:20 Sam: on my way\n- 2026-10-01 10:30 Sam: sorry\n",
+                     '2026-10-01 10:19 Alex IN: "you around" OUT: "on my way"\n').values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["he-too"] * 3
+
+
+def test_a_sender_pass_that_dies_leaves_its_scratch_ledger_inside_the_replay_folder_and_nothing_outside_it(tmp_path, monkeypatch):
+    priv, state = install(tmp_path)
+    monkeypatch.setattr(replay, "sending", lambda *a: 1 / 0)
+    before, base = set(tmp_path.rglob("*")), state / "texting" / "replay"
+    with pytest.raises(ZeroDivisionError):
+        replay.go_sender(state, "t1", {}, {"mode": "dry"}, priv / "texting" / "people.toml", [])
+    assert (base / "t1-sender" / "ledger.sqlite").is_file() and (base / "t1-sender.jsonl").read_text() == "{}\n"
+    assert all(p == state / "texting" or p.is_relative_to(base) for p in set(tmp_path.rglob("*")) - before)
+
+
+def test_the_sender_command_calls_no_model_opens_no_connection_and_writes_only_its_own_file(tmp_path, monkeypatch, capsys):
+    import socket
+
+    from yerk_ai import cli
+    priv, state = install(tmp_path)
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "owner-room"\n')
+    (priv / "rooms.toml").write_text('[rooms.owner-room]\nchannel = "discord:1"\n')
+    (state / "docs").mkdir()
+    for k, v in (("YERK_CLAUDE", str(FAKE)), ("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl")), ("XDG_STATE_HOME", str(tmp_path / "xdg"))):
+        monkeypatch.setenv(k, v)
+    dialed: list = []
+    monkeypatch.setattr(socket.socket, "connect", lambda self, *a: dialed.append(a))
+    before, yerk = set(tmp_path.rglob("*")), ["texting", "replay", "--since", "2026-10-01", "--sender", "--limit", "1", "--private", str(priv),
+                                              "--state", str(state)]                 # every burst, whatever --limit says
+    assert cli.main(yerk) == 0 and not (tmp_path / "record.jsonl").exists() and not dialed
+    [f], out = (state / "texting" / "replay").iterdir(), capsys.readouterr().out
+    assert set(tmp_path.rglob("*")) - before == {state / "texting", f.parent, f} and f.name.endswith("-sender.jsonl")   # scratch gone
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600 and stat.S_IMODE(f.parent.stat().st_mode) == 0o700
+    head, *lines = map(json.loads, f.read_text().splitlines())
+    assert head["limits"] == list(words.REPLAY_SENDER_LIMITS) and [x["id"] for x in lines] == ["alex:5", "alex:8", "alex:9"]
+    assert head["old_log"] is False                                               # no --old-log: an old agent's lines were read as the owner's
+    said = out.splitlines()
+    assert said[:7] == ["alex: alex.md, 3 cuts", words.REPLAY_SENDER.format(cuts=3, since="2026-10-01"), *words.REPLAY_SENDER_LIMITS]
+    assert said[7].split() == list(words.REPLAY_SENDER_COLUMNS) and said[-1] == words.REPLAY_FILE.format(file=f)
+    assert [r.split()[:3] for r in said[8:-1]] == [[k, w, "3"] for k in ("alex", "total") for w in words.REPLAY_WHEN]
+    for text in ("morning", "you up", "coffee", "sure, at ten", "the game", "attachment", A1):
+        assert text not in out
+    assert not re.search(r"\d\d:\d\d", out)                                       # no time of a text
+    with pytest.raises(FileExistsError):                                          # never over a run's file
+        replay.go_sender(state, f.name.removesuffix("-sender.jsonl"), {}, {}, priv / "texting" / "people.toml", [])
+    shutil.rmtree(f.parent)
+    (tmp_path / "run.jsonl").write_text("{}\n" + "".join(json.dumps(x) + "\n" for x in (
+        {"id": "alex:8", "at": "2026-10-02 18:00", "verdict": {"release": True}}, {"id": "alex:9", "at": "2026-10-03 08:00", "verdict": {"release": False}},
+        {"id": "alex:5", "at": "2026-10-01 09:07", "verdict": {"release": True}})))       # a minute that moved: not the same cut
+    (tmp_path / "old.log").write_text("")
+    assert cli.main([*yerk, "--of", str(tmp_path / "run.jsonl"), "--old-log", str(tmp_path / "old.log")]) == 0
+    assert words.REPLAY_OF.format(file=tmp_path / "run.jsonl", kept=1, n=2) in capsys.readouterr().out
+    [f] = (state / "texting" / "replay").iterdir()
+    head, *lines = map(json.loads, f.read_text().splitlines())
+    assert head["old_log"] is True and [x["id"] for x in lines] == ["alex:8"]

@@ -229,6 +229,8 @@ sheets --check: the reply list and each person's sheet read, nothing written; on
 - `--old-log OLD_LOG`: replay: the old agent's log; an answer it quotes is marked auto, not the owner's
 - `--run`: replay: make the calls; without it the plan only, nothing called
 - `--model MODEL`: replay: the model its calls run on (default: the report room's, as the live writer)
+- `--sender`: replay: no model call: every burst since the day through the live sender, its early, middle and late send time and its read of the thread at each; counts printed, one private file
+- `--of OF`: replay --sender: only the cuts this finished run's file marks released by the check
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
