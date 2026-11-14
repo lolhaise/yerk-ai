@@ -108,6 +108,20 @@ def test_doctor_is_red_for_a_sender_whose_last_pass_is_older_than_a_minute_only_
                                "sent; `systemctl --user restart yerkd` starts it again"]
 
 
+def test_doctor_is_red_when_live_would_give_the_hands_no_host_or_one_that_begins_with_a_dash_and_dry_is_not(tmp_path):
+    priv, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, priv)
+    state.mkdir()
+
+    def said(mode: str, host: str = "") -> list[str]:
+        mac = f'\n[imessage]\nhost = "{host}"\nsocket = "/Users/someone/bridge.sock"\n' if host else ""
+        (priv / "yerkd.toml").write_text(f'[texting]\nmode = "{mode}"\nreport = "example-room"\noutbox = "/Users/someone/outbox"\n{mac}')
+        return [x[2:] for x in doctor.run(priv, state, dry=True) if "no host" in x]
+    red = ["[texting] live with no host for the hands: no text can go; [imessage] host names the Mac (else ssh in an owner "
+           "room's add-on's mac.json), never one that begins with a dash"]
+    assert said("live") == red and said("live", "-oProxyCommand=x") == red
+    assert said("live", "mac") == [] and said("dry") == []
+
 A1, B1 = "+15550000101", "+15550000102"
 REPLY = f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\n# kept as written\n\n' \
         f'[people.beta]\nfirst = "Beta"\nhandles = ["{B1}"]\nrelease = false\n'

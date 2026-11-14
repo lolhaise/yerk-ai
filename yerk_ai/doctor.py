@@ -273,6 +273,9 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                     found.append(f"{RED} [texting] {k}: {e}; texting stays off")
             found.extend([f"{RED} [texting] outbox: not a whole path on the Mac; live sends nothing"]
                          if tmode == "live" and not texts.WHOLE.fullmatch(str(tx.get("outbox") or "")) else [])
+            found.extend([f"{RED} [texting] live with no host for the hands: no text can go; [imessage] host names the Mac (else ssh "
+                          "in an owner room's add-on's mac.json), never one that begins with a dash"]
+                         if tmode == "live" and not texts.head(texts.way(conf, rs, state)) else [])
             found.extend([f"{RED} [texting] mode: {tmode} is not off, dry or live"] if tmode not in ("dry", "live") else [])
             accts = load_accounts(private / "accounts.toml")                 # the check runs on an account's token alone (J28)
             found.extend([f"{RED} [texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint {accts[0].name}` makes one"]

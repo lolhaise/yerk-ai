@@ -837,12 +837,12 @@ class Yerkd:
 
     def owner_servers(self) -> list[Any]:
         """The MCP tables of the owner's rooms, where an add-on's mac.json is looked for (page.addon_file); never a person's."""
-        return [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()]
+        return texts.owner_servers(self.room_confs)
 
     def imessage(self) -> dict[str, Any]:
         """[imessage] as the `text` tool reaches the Mac's bridge: yerkd.toml's own way, else the Mac and its bridge's socket
         an owner room's add-on names in its mac.json (texts.reach), as `texts` and the page reach that Mac."""
-        return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
+        return texts.way(self.conf, self.room_confs, self.state)
 
     def texting(self) -> list[Any]:
         """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer,
@@ -875,8 +875,8 @@ class Yerkd:
         out = "text-out" in self.gates.external                # [gates] off = ["text-out"]: no text goes, one left waiting included
         self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
                                   self.texting_show, out=out, window_s=self.gates.window_s, word=self.gates.word)
-        file, host = tpeople.path(self.private, conf), str(self.imessage().get("host") or "")
-        hands = thands.Live(file, str(conf.get("outbox") or ""), [*texts.SSH, host] if out and host and not host.startswith("-") else []) \
+        file = tpeople.path(self.private, conf)
+        hands = thands.Live(file, str(conf.get("outbox") or ""), texts.head(self.imessage()) if out else []) \
             if conf["mode"] == "live" else thands.Dry(file, self.state)          # the hands, chosen once: nothing shared
         try:
             send = tsender.Sender(conf, file, self.ledger, link.thread, hands, self.holds.edits, self.texting_post, self.texting_to,
