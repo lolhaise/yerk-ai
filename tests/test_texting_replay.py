@@ -304,3 +304,44 @@ def test_the_command_plans_with_no_call_then_runs_printing_counts_only(tmp_path,
 def test_the_replay_never_imports_the_hands():
     src = Path(replay.__file__).read_text()
     assert "hands" not in src and "ssh" not in src and not re.search(r"^(from|import) .*\b(link|bridge|intake|holds)\b", src, re.M)
+
+
+def sender_run(tmp_path: Path, body: str, log: str = "") -> dict[str, dict]:
+    """The sender's pass over a made-up thread of Alex's whose sheet paces a weekday day at 5 to 10 minutes: its cut lines by id."""
+    priv, state = install(tmp_path)
+    (priv / "texting" / "people" / "alex.toml").write_text(SHEET + "\n[pacing]\nweekday_day = [5, 10]\n")
+    (priv / "imports" / "texts" / "alex.md").write_text(f"# Texts with Alex ({A1})\n2 messages\n\n{body}")
+    (tmp_path / "old.log").write_text(log)
+    todo, _ = replay.plan(priv / "texting" / "people.toml", priv / "imports" / "texts", date(2026, 10, 1), 1 << 30, 6.0, TZ, log=tmp_path / "old.log")
+    f = replay.go_sender(state, "t1", {"since": "2026-10-01"}, {"mode": "dry"}, priv / "texting" / "people.toml", todo)
+    return {x["id"]: x for x in map(json.loads, f.read_text().splitlines()[1:])}
+
+
+def counts(lines: list[dict]) -> dict[str, dict[str, int]]:
+    head, *body = replay.sender_table(lines)
+    return {" ".join(r.split()[:2]): dict(zip(head.split(), map(int, r.split()[2:]))) for r in body}
+
+
+def test_a_text_he_answered_first_is_stopped_at_every_send_time_and_none_is_handed(tmp_path):
+    [x] = sender_run(tmp_path, "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:02 Sam: yeah\n").values()
+    assert x["id"] == "alex:4" and x["span"] == [300.0, 600.0]                    # the sheet's bucket, drawn by the live arm
+    assert x["send"] == ["2026-10-01 10:05:00", "2026-10-01 10:07:30", "2026-10-01 10:10:00"]
+    assert x["outcome"] == ["he-first"] * 3 and x["followed"] == [None] * 3
+    assert all(c["handed"] == 0 and c["bursts"] == 1 for c in counts([x]).values())
+
+
+def test_a_text_nobody_answered_is_handed_and_his_line_in_the_hour_after_is_he_answered_too(tmp_path):
+    [x] = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 12:01 Sam: sorry, was out\n").values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["nobody"] * 3
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:30 Sam: sorry, was out\n").values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["he-too"] * 3
+    assert counts([x])["total late"] == {"bursts": 1, "he-first": 0, "they-again": 0, "handed": 1, "he-too": 1, "old-agent": 0, "nobody": 0}
+
+
+def test_their_next_text_stops_it_and_an_old_agents_answer_is_never_his(tmp_path):
+    cut = sender_run(tmp_path / "a", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:03 Alex: hello?\n")
+    assert cut["alex:4"]["outcome"] == ["they-again"] * 3 and cut["alex:5"]["outcome"] == ["handed"] * 3
+    [x] = sender_run(tmp_path / "b", "- 2026-10-01 10:00 Alex: you around\n- 2026-10-01 10:06 Sam: on my way\n",
+                     '2026-10-01 10:05 Alex IN: "you around" OUT: "on my way"\n').values()
+    assert x["outcome"] == ["handed"] * 3 and x["followed"] == ["old-agent", "nobody", "nobody"]   # the old agent's: texting's own
+

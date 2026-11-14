@@ -13,8 +13,9 @@ import re
 import shutil
 from collections import Counter
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, tzinfo
+from itertools import islice, takewhile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,6 +25,7 @@ from ..ledger import Ledger
 from ..lifted.classify import FailureTable
 from . import check, writer
 from .people import Person, load, norm, sheet_file
+from .sender import Sender
 
 HEAD = re.compile(r"^# Texts with .*\(([^()]*)\)\s*$")
 MSG = re.compile(r"^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) (.*)$")
@@ -53,6 +55,8 @@ class Cut:
     dropped: int = 0        # memory lines the as-of cut took out
     kept: int = 0           # memory hits that reached the writer
     then: int | None = None  # minutes to their next line when nothing of the owner's came between
+    thread: list[Line] = field(default_factory=list, repr=False, compare=False)   # the file's every line, one list its cuts share
+    end: int = 0            # where the burst ends in it
 
     @property
     def at(self) -> datetime:
@@ -119,7 +123,8 @@ def cuts(key: str, lines: list[Line], since: date, limit: int, hours: float) -> 
             went.append(x)
         out.append(Cut(key, lines[max(0, i - writer.THREAD):i], lines[i:j], went,
                        all(x.side != "them" for x in lines[j:]) and (lines[-1].at - last).total_seconds() <= hours * 3600,
-                       then=int((lines[j].at - last).total_seconds() // 60) if j < len(lines) and lines[j].side == "them" else None))
+                       then=int((lines[j].at - last).total_seconds() // 60) if j < len(lines) and lines[j].side == "them" else None,
+                       thread=lines, end=j))
     return out[::-1][:max(0, limit)]
 
 
@@ -202,10 +207,11 @@ def unanswered(d: dict[str, Any]) -> bool:
     return not d.get("tokens") and (why in (words.TEXTING_NO_CLEAN, words.TEXTING_NO_TOKEN) or why.startswith(words.TEXTING_NO_ACCOUNT.partition("{")[0]))
 
 
-def rows(c: Cut) -> list[dict[str, Any]]:
-    """The thread as it stood, in the shape of the link's rows: the lines before the burst and the burst (`Writer.last` keeps THREAD)."""
+def rows(c: Cut, later: list[Line] | None = None) -> list[dict[str, Any]]:
+    """The thread as it stood, in the shape of the link's rows: the lines before the burst, the burst (`Writer.last` keeps
+    THREAD) and any `later`."""
     return [{"guid": f"{c.key}:{x.n}", "is_from_me": x.side != "them", "text": x.text, "created_at": x.at.isoformat()}
-            for x in c.before + c.burst]
+            for x in c.before + c.burst + (later or [])]
 
 
 async def decide(conf: dict[str, Any], file: Path, scratch: Path, report: str, todo: list[tuple[Cut, str]],
@@ -273,10 +279,7 @@ def go(state: Path, stamp: str, head: dict[str, Any], conf: dict[str, Any], file
     """One run under <state>/texting/replay/ (0700): <stamp>.jsonl (0600, refused if it is there) made at the start with
     line 1, the run, and one line added as each cut ends; its scratch folder <stamp>/ for the ledger and the working
     folders goes when no cut raised and stays where it is when one did, or when the run dies."""
-    base = state / "texting" / "replay"
-    base.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(base, 0o700)
-    f = base / f"{stamp}.jsonl"
+    f = (base := folder(state)) / f"{stamp}.jsonl"
     with os.fdopen(os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as out:
         def add(line: dict[str, Any]) -> None:
             out.write(json.dumps(line) + "\n")
@@ -287,6 +290,88 @@ def go(state: Path, stamp: str, head: dict[str, Any], conf: dict[str, Any], file
     if not failed:
         shutil.rmtree(scratch)
     return f
+
+
+def folder(state: Path) -> Path:
+    """<state>/texting/replay/, 0700: the one folder a replay writes in (J32)."""
+    (base := state / "texting" / "replay").mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(base, 0o700)
+    return base
+
+
+WHEN = (0.0, 0.5, 1.0)      # --sender's early, middle and late send time: every draw at the low end, the middle, the high end
+AFTER = 3600.0              # --sender: what came this long after a send time it would have handed
+OUTCOME: dict[str | None, str] = {"owner answered": "he-first", "they wrote again": "they-again", None: "handed"}
+
+
+class Pinned(Sender):
+    """The live sender with every draw at `at` of its span (0 the low end, 1 the high end), each span kept in `spans`."""
+    at, spans = 0.0, list[tuple[float, float]]()
+
+    def draw(self, span: tuple[float, float]) -> float:
+        self.spans.append(span)
+        return span[0] + (span[1] - span[0]) * self.at
+
+
+def after(c: Cut, until: float) -> list[Line]:
+    return list(takewhile(lambda x: x.at.timestamp() <= until, islice(c.thread, c.end, None)))
+
+
+def sending(conf: dict[str, Any], file: Path, led: Ledger, todo: list[tuple[Cut, str]]) -> list[dict[str, Any]]:
+    """--sender, no model call: each cut as if a checked reply were released when the burst closed, armed by the live
+    `Sender.arm` as of that minute once a WHEN (J36 to J38: the owner's first shot, the sheet's bucket, quiet hours and the morning
+    draw are the live rule's), then the thread as it stood at each send time read by the live `Sender.recheck` (J39), a
+    line of that minute counting as before it. An old agent's line is ledgered `auto`, as the live claim marks texting's
+    own (J42), so the check never reads it as the owner's answer. Every arm comes first, each person's cuts in the thread's order,
+    so no line after a burst is in the scratch ledger when it is armed."""
+    async def unread(key: str, limit: int) -> list[dict[str, Any]]:      # never called: arm and recheck are given the rows
+        return []
+    s, who, out = Pinned({**conf, "mode": "dry"}, file, led, unread, None, clock=lambda: CUT.get().at.timestamp()), load(file), []
+    armed: list[tuple[Cut, int, list[float], tuple[float, float]]] = []
+
+    def put(c: Cut, x: Line) -> None:
+        led.inbound_add(f"{c.key}:{x.n}", "texting", f"imessage:{c.key}", c.key if x.side == "them" else x.side, len(x.text),
+                        created=x.at.timestamp())
+    for c, handle in sorted(todo, key=lambda t: (t[0].key, t[0].end)):
+        CUT.set(c)
+        for x in c.before + c.burst:
+            put(c, x)
+        rid, fires = led.texting_add(person=c.key, handle=handle, inbound=",".join(f"{c.key}:{x.n}" for x in c.burst),
+                                     state="would-send", mode="dry"), list[float]()
+        for at in WHEN:
+            s.at, s.spans = at, []
+            s.arm(who, led.texting_get(rid) or {})
+            fires.append(float((led.texting_get(rid) or {})["fire_at"]))
+        armed.append((c, rid, fires, s.spans[0]))
+    for c, rid, fires, span in armed:
+        for x in (later := after(c, max(fires) + AFTER)):
+            put(c, x)
+        r, went, then = led.texting_get(rid) or {}, list[str](), list[str | None]()
+        for fire in fires:
+            went.append(OUTCOME.get(s.recheck(r, rows(c, [x for x in later if x.at.timestamp() <= fire]))) or "other")
+            sides = {x.side for x in later if fire < x.at.timestamp() <= fire + AFTER}
+            then.append(None if went[-1] != "handed" else "he-too" if "owner" in sides else "old-agent" if "auto" in sides else "nobody")
+        out.append({"person": c.key, "id": f"{c.key}:{c.burst[0].n}", "at": f"{c.at:%Y-%m-%d %H:%M}", "span": list(span),
+                    "send": [f"{datetime.fromtimestamp(t, c.at.tzinfo):%Y-%m-%d %H:%M:%S}" for t in fires], "outcome": went, "followed": then})
+    return out
+
+
+def go_sender(state: Path, stamp: str, head: dict[str, Any], conf: dict[str, Any], file: Path, todo: list[tuple[Cut, str]]) -> Path:
+    """--sender under <state>/texting/replay/: <stamp>-sender.jsonl (0600, refused if it is there), line 1 the run, then a
+    line a cut; its scratch ledger in <stamp>-sender/, which goes when the pass ends clean."""
+    f = (base := folder(state)) / f"{stamp}-sender.jsonl"
+    with os.fdopen(os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as out:
+        out.write(json.dumps(head) + "\n")
+        (scratch := base / f"{stamp}-sender").mkdir(mode=0o700)
+        out.writelines(json.dumps(x) + "\n" for x in sending(conf, file, Ledger(scratch / "ledger.sqlite"), todo))
+    shutil.rmtree(scratch)
+    return f
+
+
+def released(path: Path, todo: list[tuple[Cut, str]]) -> tuple[list[tuple[Cut, str]], int]:
+    """--of: the cuts a finished run's file marks released by the check, found by id and minute; and how many it marks."""
+    ok = {(x["id"], x["at"]) for x in map(json.loads, path.read_text().splitlines()[1:]) if (x.get("verdict") or {}).get("release")}
+    return [(c, h) for c, h in todo if (f"{c.key}:{c.burst[0].n}", f"{c.at:%Y-%m-%d %H:%M}") in ok], len(ok)
 
 
 def plan(file: Path, folder: Path, since: date, limit: int, hours: float, tz: tzinfo, only: str = "",
@@ -323,6 +408,21 @@ def table(lines: list[dict[str, Any]]) -> list[str]:
         n.update([x["decision"], x["score"], *(["check-ok" if v.get("release") else "check-held"] if v else [])])
         n["seconds"] += round(float(x.get("seconds") or 0) + float(v.get("seconds") or 0))
         n["tokens"] += int(x.get("tokens") or 0) + int(v.get("tokens") or 0)
-    rows, w = [*per.items(), (words.REPLAY_TOTAL, sum(per.values(), Counter[str]()))], max(len(k) for k in [*per, words.REPLAY_TOTAL])
-    return [" ".join([" " * w, *words.REPLAY_COLUMNS]),
-            *(" ".join([k.ljust(w), *(str(c[col]).rjust(len(col)) for col in words.REPLAY_COLUMNS)]) for k, c in rows)]
+    return grid([*per.items(), (words.REPLAY_TOTAL, sum(per.values(), Counter[str]()))], words.REPLAY_COLUMNS)
+
+
+def sender_table(lines: list[dict[str, Any]]) -> list[str]:
+    """--sender's counts from its file's cut lines (words.REPLAY_SENDER_COLUMNS), each person's rows and the total's for the
+    early, middle and late send time: never a text, a time or a number."""
+    per: dict[tuple[str, str], Counter[str]] = {}
+    for x in lines:
+        for when, went, then in zip(words.REPLAY_WHEN, x["outcome"], x["followed"]):
+            for who in (x["person"], words.REPLAY_TOTAL):
+                per.setdefault((who, when), Counter()).update(["bursts", went, *([then] if then else [])])
+    return grid([(f"{k} {w}", per.get((k, w), Counter())) for k in [*dict.fromkeys(x["person"] for x in lines), words.REPLAY_TOTAL]
+                 for w in words.REPLAY_WHEN], words.REPLAY_SENDER_COLUMNS)
+
+
+def grid(rows: list[tuple[str, Counter[str]]], cols: tuple[str, ...]) -> list[str]:
+    w = max(len(k) for k, _ in rows)
+    return [" ".join([" " * w, *cols]), *(" ".join([k.ljust(w), *(str(c[col]).rjust(len(col)) for col in cols)]) for k, c in rows)]
