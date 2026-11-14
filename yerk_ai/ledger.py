@@ -584,6 +584,12 @@ class Ledger:
                                      "AND COALESCE(created, received) >= ? AND COALESCE(created, received) < ?", (f"imessage:{person}", start, end)),
                        *self._select("SELECT * FROM texting WHERE person = ? AND t >= ? AND t < ?", (person, start, end))], key=lambda r: r["t"])
 
+    def texting_span(self, start: float, end: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Every person's texts (texting_day's inbound rows) and every texting row from `start` to `end`, each by time."""
+        return (self._select("SELECT *, COALESCE(created, received) AS t FROM inbound WHERE room = 'texting' AND COALESCE(created, "
+                             "received) >= ? AND COALESCE(created, received) < ? ORDER BY t", (start, end)),
+                self._select("SELECT * FROM texting WHERE t >= ? AND t < ? ORDER BY t", (start, end)))
+
     def texting_get(self, row_id: int) -> dict[str, Any] | None:
         return self._first("SELECT * FROM texting WHERE id = ?", (row_id,))
 

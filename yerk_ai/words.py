@@ -487,6 +487,9 @@ TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
 TEXTING_OUT, TEXTING_NONE_OUT = "texting out {at}, {held} held, {unseen} unseen", "texting none out, {held} held, {unseen} unseen"
+TEXTING_DAY = ("texting {mode}, the day to 8a {day}: {got} in; decided {kinds}; {held} held, {sent} {out}; stopped {first} as you "
+               "answered first, {again} as they wrote again; {unseen} unseen; longest run of its own sends to one person {run}")   # J61
+TEXTING_DAY_QUIET, TEXTING_SENT_AS = "texting {mode}, the day to 8a {day}: no text in, nothing decided", {"live": "sent", "dry": "would have gone"}
 TEXTING_STOPPED = "texting sender stopped {at}"           # its last pass older than a minute (texting/sender.py's `pass`)
 TEXTING_SENDER_DOWN = "texting: the sender stopped on an error ({error})\nno text is timed or sent until yerkd restarts"
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)

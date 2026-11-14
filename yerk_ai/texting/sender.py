@@ -13,14 +13,17 @@ one cancel job first (live). At a start in dry, what a live run left to send is 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import time
-from datetime import datetime, timedelta
+from collections import Counter
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .. import words
+from ..config import write_private
 from ..ledger import Ledger
 from .bridge import BridgeDown, BridgeError, is_tapback, when_of
 from .hands import DOWN, MAYBE, REFUSED, job, parts
@@ -75,14 +78,39 @@ def quiet_end(at: datetime, quiet: tuple[int, int]) -> datetime | None:
     return datetime(day.year, day.month, day.day, end // 60, end % 60).astimezone()
 
 
+def eight(d: date) -> float:
+    return datetime(d.year, d.month, d.day, 8).astimezone().timestamp()
+
+
+def day_line(ledger: Ledger, mode: str, d: date) -> str:
+    """The machine room's line for the day to `d`'s 08:00 from the one before (J61), from the ledger alone: counts, never a
+    person, a thread or a text. The run: texting's own sends to one person in a row with no text of the owner's between (J60)."""
+    texts, rows = ledger.texting_span(eight(d - timedelta(days=1)), eight(d))
+    if not texts and not rows:
+        return words.TEXTING_DAY_QUIET.format(mode=mode, day=f"{d:%a %b} {d.day}")
+    sent, runs, longest = [r for r in rows if r["state"] == ("sent" if mode == "live" else "would-send") and r["handed"]], Counter[str](), 0
+    for _, who, his in sorted([(float(r["handed"]), str(r["person"]), False) for r in sent]
+                              + [(float(x["t"]), str(x["channel"]).removeprefix("imessage:"), True) for x in texts if x["sender"] == "owner"]):
+        runs[who] = 0 if his else runs[who] + 1
+        longest = max(longest, runs[who])
+    why = Counter(str(r["reason"]) for r in rows if r["state"] == "cancelled")
+    return words.TEXTING_DAY.format(mode=mode, day=f"{d:%a %b} {d.day}", got=sum(x["sender"] not in SIDE for x in texts),
+                                    kinds=", ".join(f"{n} {k}" for k, n in sorted(Counter(str(r["decision"]) for r in rows if r["decision"]).items())) or "none",
+                                    held=sum(bool(r["approval_id"]) for r in rows), sent=len(sent), out=words.TEXTING_SENT_AS[mode],
+                                    first=why["owner answered"], again=why["they wrote again"] + why["a newer decision"],
+                                    unseen=sum(r["state"] == "unseen" for r in rows), run=longest)
+
+
 class Sender:
     def __init__(self, conf: dict[str, Any], file: Path, ledger: Ledger, thread: Callable[[str, int], Awaitable[list[dict[str, Any]]]],
                  hands: Any, edits: list[tuple[int, str]] | None = None, post: Callable[[str, str], Awaitable[Any]] | None = None,
                  to: str = "", clock: Callable[[], float] = time.time, rand: random.Random | None = None,
-                 status: Callable[[dict[str, Any]], None] | None = None, out: bool = True, down: Callable[[str], None] | None = None):
+                 status: Callable[[dict[str, Any]], None] | None = None, out: bool = True, machine: Callable[[str], None] | None = None,
+                 day_file: Path | None = None):
         self.mode, self.file, self.ledger, self.clock = str(conf.get("mode") or "off"), file, ledger, clock
         self.thread, self.hands, self.post, self.to, self.status, self.out = thread, hands, post, to, status, out
-        self.down = down                                    # one line to the machine room when the sender stops (Daemon.to_machine)
+        self.machine, self.day_file = machine, day_file       # a line to the machine room (Daemon.to_machine); the last day said
+        self.day: date | None = None
         self.edits = edits if edits is not None else []     # the holds' card edits (Holds.edits), made at their next pass
         self.stale, self.claim_s = float(conf.get("stale_minutes", 30)) * 60, float(conf.get("claim_seconds", 180))
         self.wait = WAITS.get(self.mode, "queued")
@@ -171,6 +199,25 @@ class Sender:
             elif float(r["fire_at"]) <= self.clock():
                 await self.fire(p, r)
         self.counts()
+        self.daily()
+
+    def daily(self) -> None:
+        """From 08:00 local, the machine room's line for each day not said yet, at most a week back (J61): the day is kept
+        before its line goes, so a restart never says one twice and never skips one."""
+        if self.machine is None or self.day_file is None:
+            return
+        now = datetime.fromtimestamp(self.clock()).astimezone()
+        due = now.date() - timedelta(days=now.hour < 8)
+        if self.day is None:
+            try:
+                self.day = date.fromisoformat(json.loads(self.day_file.read_text())["day"])
+            except (OSError, ValueError, KeyError, TypeError):
+                self.day = due - timedelta(days=1)           # the first start: this day's line only
+        while self.day < due:
+            self.day = max(self.day + timedelta(days=1), due - timedelta(days=6))
+            self.day_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            write_private(self.day_file, json.dumps({"day": str(self.day)}))
+            self.machine(day_line(self.ledger, self.mode, self.day))
 
     async def fire(self, p: Person, r: dict[str, Any]) -> None:
         if (now := self.clock()) - float(r["fire_at"]) > self.stale:          # never late
@@ -287,7 +334,7 @@ class Sender:
                 log.warning("texting: the sender's pass did not run: %s", e)
             except Exception as e:
                 log.error("texting: the sender stopped: %s", e, exc_info=True)
-                if self.down is not None:
-                    self.down(words.TEXTING_SENDER_DOWN.format(error=type(e).__name__))
+                if self.machine is not None:
+                    self.machine(words.TEXTING_SENDER_DOWN.format(error=type(e).__name__))
                 await asyncio.Event().wait()
             await every(1.0)

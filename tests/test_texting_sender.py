@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -652,3 +653,34 @@ def test_an_error_the_pass_does_not_expect_stops_the_sender_and_says_one_line_in
         asyncio.run(go())
     assert said == [words.TEXTING_SENDER_DOWN.format(error="KeyError")] and passes == [1]
     assert not any(x in said[0].casefold() for x in ("alex", "see you", A1)) and "the sender stopped" in caplog.text
+
+
+def test_the_daily_line_counts_a_made_up_day_from_the_ledger_says_it_once_across_a_restart_skips_none_and_names_no_one(
+        tmp_path: Path, monkeypatch: Any) -> None:
+    s, led, clock = make(tmp_path)
+    said: list[str] = []
+    s.machine, s.day_file = said.append, tmp_path / "state" / "texting" / "daily.json"
+    for n, who in enumerate(("alex", "alex", "beta")):
+        their(led, f"t-{n}", WED + n, person=who)
+    his(led, "m-0", WED + 10)                                    # his text, before the run: it starts it over
+    for n, (decision, state, reason, who) in enumerate((("reply", "sent", "", "alex"),) * 3 + (
+            ("react", "cancelled", "owner answered", "beta"), ("reply", "cancelled", "they wrote again", "beta"),
+            ("none", "decided", "", "beta"), ("held", "held", "", "beta"), ("reply", "unseen", "", "beta"))):
+        with monkeypatch.context() as m:                         # a decision's own time is the ledger's clock
+            m.setattr(time, "time", lambda: WED + 20 + n)
+            rid = waiting(led, "t-2", decision=decision, state=state, word=decision == "held", person=who)
+        led.texting_set(rid, reason=reason, handed=WED + 30 + n if state in ("sent", "unseen") else None)
+    clock.t = at(11, 12, 9, 0)
+    s.daily()
+    line = words.TEXTING_DAY.format(mode="live", day="Thu Nov 12", got=3, kinds="1 held, 1 none, 1 react, 5 reply", held=1, sent=3,
+                                    out="sent", first=1, again=1, unseen=1, run=3)
+    assert said == [line]
+    again = sender.Sender({"mode": "live"}, s.file, led, rows(s), s.hands, clock=clock, machine=said.append, day_file=s.day_file)
+    again.daily()                                                 # a restart: that day is said no second time
+    clock.t = at(11, 13, 7, 59)
+    again.daily()
+    assert said == [line]
+    clock.t = at(11, 16, 8, 1)                                    # days on: none is skipped, a quiet one in a few words
+    again.daily()
+    assert said[1:] == [words.TEXTING_DAY_QUIET.format(mode="live", day=d) for d in ("Fri Nov 13", "Sat Nov 14", "Sun Nov 15", "Mon Nov 16")]
+    assert not any(x in y.casefold() for y in said for x in ("alex", "beta", "5550000", "see you", "on my way"))
