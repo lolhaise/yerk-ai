@@ -713,7 +713,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-13: idle-copy raised it by 22, every room's idle compaction on a copy, the follow-up to copy-survives (#46) and fast-idle (#60) (the owner's ask, 2026-11-13), not folded to fit.
 
-- `lines = 31718`
+2026-11-13: texting-6 raised it by 449, the sender and the hands of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 32167`
 
 ## Uncapped
 

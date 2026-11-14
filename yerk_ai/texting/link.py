@@ -46,6 +46,7 @@ class Link:
         self.away_since: float | None = None
         self.away_said = False
         self.tasks: dict[str, asyncio.Task[None]] = {}
+        self.out: dict[str, Any] = {}               # the sender's: the last text out, how many held, how many unseen
         try:
             got = json.loads((self.folder / "cursor.json").read_text())
             self.cursor = {str(k): int(v) for k, v in dict(got.get("cursor", {})).items()}
@@ -60,7 +61,11 @@ class Link:
         """<state>/texting/status.json, what `yerk status` shows: the mode, the bridge up or down since when, the last text in."""
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         write_private(self.folder / "status.json", json.dumps({"mode": self.mode, "up": self.connected, "since": self.since,
-                                                               "last_in": self.last_in, "watched": len(self.chats)}))
+                                                               "last_in": self.last_in, "watched": len(self.chats), **self.out}))
+
+    def more(self, fields: dict[str, Any]) -> None:
+        self.out.update(fields)
+        self.status()
 
     async def start(self) -> None:
         delay = 1.0

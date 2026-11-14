@@ -148,8 +148,9 @@ TEXTING = ("person", "handle", "inbound", "decision", "parts", "react", "reply_t
            "shown")
 ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER"}   # in line for its account
 ADDED["texting"] = {"shown": "TEXT"}       # a held text's card as it was last shown (texting/holds.py)
+ADDED["inbound"] = {**ADDED["inbound"], "digest": "TEXT"}   # a text's words, hashed: the sender's recheck (texting/)
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
-           "answered", "turn_id", "reply_ids", "note", "created")
+           "answered", "turn_id", "reply_ids", "note", "created", "digest")
 OPEN = ("received", "running")
 
 
@@ -591,7 +592,10 @@ class Ledger:
         return self._first("SELECT * FROM texting WHERE card = ? ORDER BY id DESC LIMIT 1", (message_id,))
 
     def texting_held(self) -> list[dict[str, Any]]:
-        return self._select("SELECT * FROM texting WHERE state = 'held' ORDER BY id", ())
+        return self.texting_in("held")
+
+    def texting_in(self, state: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM texting WHERE state = ? ORDER BY id", (state,))
 
     def texting_last(self, person: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM texting WHERE person = ? ORDER BY id DESC LIMIT 1", (person,))

@@ -486,7 +486,7 @@ TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
-TEXTING_DRY_LIVE = "texting decides dry: nothing sends yet"      # live before the sender exists (texting/writer.py)
+TEXTING_OUT, TEXTING_NONE_OUT = "texting out {at}, {held} held, {unseen} unseen", "texting none out, {held} held, {unseen} unseen"
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
@@ -559,6 +559,13 @@ TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; the code finds {found}", "n
 TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took over its card"
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
                  "withdrawn": "answered by you {at}", "superseded": "replaced by your edit", "cancelled": "answered by you"}
+TEXTING_SENT = {"sent": "sent {at}", "unseen": "may not have gone, not sent again", "dry": "would have gone {at}",   # texting/sender.py
+                "owner answered": "not sent: you answered first", "they wrote again": "not sent: they wrote again",
+                "they took it back": "not sent: they took it back", "they changed it": "not sent: they changed it",
+                "a newer decision": "not sent: a newer decision took over"}
+TEXTING_REFUSED = "refused: a handle not on the reply list, or no outbox"
+TEXTING_STALE = "not sent: a text to {first}, due {at}\nthe Mac was out of reach for {minutes} min"
+TEXTING_SWITCHED = "not sent: {n} text{s} left to send by live\ntexting is {mode} now, so they are dropped"
 TEXTING_GONE = "nothing sent: that card is {state}"
 TEXTING_MOVED = "nothing sent: that card no longer shows the text its hold was made for"
 TEXTING_EDIT_EMPTY, TEXTING_OUT_OFF = "nothing changed: edit needs your text after it", "nothing sent: text-out is off in [gates]"
@@ -885,7 +892,7 @@ ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one
 # the status card's parts in its order (status.card), as `yerk status --help` names them (cli.py): a part the card gains goes here
 STATUS_PARTS = ("the daemon and its rooms", "each account's 5-hour and weekly meters and the one the next turn tries",
                 "each room's running turn and what waits", "the channel a room watches", "the rooms put on an account",
-                "the version and commit", "the add-ons", "texting's mode, its bridge up or down since when and the last text in",
+                "the version and commit", "the add-ons", "texting's mode, its bridge up or down since when, the last text in and out, how many held and unseen",
                 "the running workers (from the ledger, checked against the unit list)",
                 "the jobs due within the hour", "each unit's memory and CPU", "today's median first line and turn",
                 "the spend on an uncapped install", "the newest backup's age", "today's stalls")

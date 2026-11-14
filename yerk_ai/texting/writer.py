@@ -102,13 +102,14 @@ def fence(name: str, body: str, tag: str) -> str:
     return f"=== {name} {tag} ===\n{body.strip() or 'none'}\n=== end {name} {tag} ==="
 
 
-def line(r: dict[str, Any], late: set[str] | None = None) -> str:
-    """One thread row: its guid (what a statement cites), its time, whose side (until texting sends, every row of the owner's
-    side is `owner`), the text, and each file named as unseen."""
+def line(r: dict[str, Any], late: set[str] | None = None, auto: set[str] | None = None) -> str:
+    """One thread row: its guid (what a statement cites), its time, whose side (`auto` for texting's own claimed sends, else
+    `owner` or `them`), the text, and each file named as unseen."""
     when = when_of(r)
     files = [str(a.get("mime_type") or "a file") for a in r.get("attachments") or [] if isinstance(a, dict)]
     return " ".join(x for x in (str(r.get("guid")), f"{when.astimezone():%m-%d %H:%M}" if when else "?",
-                                ("owner" if r.get("is_from_me") is True else "them") + ":", str(r.get("text") or "").strip(),
+                                ("auto" if r.get("guid") in (auto or set()) else "owner" if r.get("is_from_me") is True else "them") + ":",
+                                str(r.get("text") or "").strip(),
                                 "(a tapback)" if is_tapback(r) else "", *(f"({f}, unseen)" for f in files),
                                 "(arrived late)" if r.get("guid") in (late or set()) else "") if x)
 
@@ -129,6 +130,7 @@ class Writer:
         self.file, self.state, self.ledger, self.thread, self.recall, self.place = file, state, ledger, thread, recall, place
         self.accounts, self.cooldowns, self.failures, self.clock = accounts, cooldowns, failures, clock
         self.model, self.hours = str(conf.get("model") or model), float(conf.get("catch_up_hours", 6))
+        self.mode = "live" if conf.get("mode") == "live" else "dry"      # what a decision says it was made in (J44)
         self.cap, self.parallel = float(conf.get("decide_seconds", 240)), max(1, int(conf.get("parallel", 2)))
         self.fallback = str(conf.get("fallback") or "")       # the second model, when every account refuses the first (J33)
         self.cwd = state / "texting" / "writer-cwd"
@@ -189,6 +191,7 @@ class Writer:
         late = {g for g, r in got.items() if r.get("created") and r.get("received") and r["received"] - r["created"] > LATE}
         theirs = [r for r in rows if r.get("guid") in got]
         mine = [w for r in rows if r.get("is_from_me") is True and (w := when_of(r))]
+        auto = {g for r in rows if r.get("is_from_me") is True and (self.ledger.inbound_get(g := str(r.get("guid"))) or {}).get("sender") == "auto"}
         at = datetime.fromtimestamp(now).astimezone()
         text = "\n".join(str(r.get("text") or "") for r in theirs)
         memory = await asyncio.to_thread(self.recall, "\n".join([text, *(str(r.get("text") or "") for r in rows[-3:] if r not in theirs)]))
@@ -201,7 +204,7 @@ class Writer:
         pack = "\n\n".join([words.TEXTING_PACK.format(now=f"{at:%A %Y-%m-%d %H:%M}", bucket=bucket(at, max(mine, default=None)),
                                                       owner=who.owner, first=p.first, tag=tag),
                             fence("baseline", base, tag), fence("sheet", sheet_text(who.sheets[key]), tag),
-                            fence("thread", "\n".join(line(r) for r in rows), tag),
+                            fence("thread", "\n".join(line(r, auto=auto) for r in rows), tag),
                             fence("their texts", "\n".join(line(r, late) for r in theirs), tag), fence("memory", memory, tag),
                             fence("place", await asyncio.to_thread(self.place, at), tag), fence("held", "\n".join(holds), tag)])
         t0 = time.monotonic()
@@ -209,12 +212,13 @@ class Writer:
         d.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"decision": d["decision"], "parts": json.dumps(d["parts"]), "react": d["react"], "reply_to": d["reply_to"],
                   "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
-                  "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": "dry"}
+                  "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": self.mode}
         self.ledger.texting_set(rid, state="decided", **fields)
         for g in gs:
             self.ledger.inbound_set(g, state="decided")
-        dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"]})
-        log.info("texting: %s decided %s (dry, %.0f s)", key, d["decision"], d["seconds"])
+        if self.mode == "dry":
+            dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"]})
+        log.info("texting: %s decided %s (%s, %.0f s)", key, d["decision"], self.mode, d["seconds"])
 
     async def last(self, key: str) -> list[dict[str, Any]]:
         """The person's last THREAD rows, every chat merged by time: the thread a pack and a check are handed."""

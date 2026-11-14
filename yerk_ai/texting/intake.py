@@ -1,12 +1,13 @@
 """The intake: each text or tapback the link hands over, written down once and sorted: a tapback, their text (`them`), texting's
-the day log's private class) and sorted: a tapback, their text (`them`) or the owner's own (`owner`; Yerk's own sends are
-told apart when texting sends, by its claims). Their texts gather into one burst a person, closed by `burst_quiet` seconds
+own send (`auto`, when the sender claims it) or the owner's own (`owner`). Each goes into the inbound ledger keyed by the row's
+guid, room `texting`, and the day log's private class. Their texts gather into one burst a person, closed by `burst_quiet` seconds
 of quiet or `burst_cap` seconds after the first, into one pending decision (a `texting` row, `deciding`). A text older than
 `catch_up_hours` when its burst closes is missed: listed once in the report room (in dry mode only in `dry_report`, never
 in `report`). The owner's own text answers every text of theirs before it, open or pending. Nothing here decides or sends."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,6 +20,11 @@ from .bridge import is_tapback, when_of
 from .people import People, Person
 
 ROOM = "texting"             # the inbound rows' room and the day log's room id: unlisted there, so class private
+
+
+def digest(text: str) -> str:
+    """A text's words, hashed: what the sender's recheck compares with the thread at fire time."""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 @dataclass
@@ -39,6 +45,8 @@ class Intake:
         self.to = str(conf.get("dry_report") or "") if self.mode == "dry" else str(conf.get("report") or "")
         self.bursts: dict[str, Burst] = {}
         self.withdraw: Callable[[Person, float | None], None] | None = None   # the holds' (holds.Holds.withdraw), once made
+        self.claim: Callable[[Person, dict[str, Any], float | None], bool] | None = None   # the sender's (sender.Sender.claim)
+        self.stop: Callable[[dict[str, Any], str], None] | None = None     # the sender's (sender.Sender.cancel)
 
     def take(self, p: Person, msg: dict[str, Any]) -> str:
         """One row: what it was taken as (the link saves its cursor after this returns)."""
@@ -49,11 +57,15 @@ class Intake:
         at = when.timestamp() if when else None
         if not self.ledger.inbound_add(guid, ROOM, f"imessage:{p.key}", "owner" if mine else p.key, len(text), created=at):
             return "seen"
+        auto = mine and self.claim is not None and self.claim(p, msg, at)     # texting's own send, seen: never his answer
+        self.ledger.inbound_set(guid, digest=digest(text), **({"sender": "auto", "state": "filed", "note": "texting's own send"} if auto else {}))
         files = [(Path(str(a.get("transfer_name") or a.get("filename") or "file")).name, str(a.get("mime_type") or ""),
                   int(a.get("total_bytes") or 0)) for a in msg.get("attachments") or [] if isinstance(a, dict)]
         for name, kind, size in files:            # what each is, never its bytes: nothing is fetched
             self.ledger.attachment(message_id=guid, room=ROOM, name=name, size=size, type=kind, state="not fetched")
-        self.capture(ROOM, guid, "owner" if mine else "person", text, files, when=when, who="" if mine else p.key)
+        self.capture(ROOM, guid, "auto" if auto else "owner" if mine else "person", text, files, when=when, who="" if mine else p.key)
+        if auto:
+            return "auto"
         if is_tapback(msg):
             self.ledger.inbound_set(guid, state="filed", note="tapback")
             return "tapback"
@@ -68,7 +80,8 @@ class Intake:
         return "them"
 
     def answered(self, p: Person, at: float | None) -> None:
-        """The owner texted the thread: every text of theirs made before his, in the open burst or a pending decision, is his."""
+        """The owner texted the thread: every text of theirs made before the owner's, in the open burst, a pending decision or a text
+        waiting to go (dry: one whose job file is not written yet), is the owner's; a waiting one is stopped by the sender (J43)."""
         def before(c: float | None) -> bool:
             return at is None or c is None or c <= at
         if (b := self.bursts.get(p.key)) is not None:
@@ -77,10 +90,15 @@ class Intake:
             b.texts = [x for x in b.texts if not before(x[1])]
             if not b.texts:
                 del self.bursts[p.key]
-        for r in (r for state in ("deciding", "decided", "release-ready") for r in self.ledger.texting_rows(p.key, state)):
+        for r in (r for state in ("deciding", "decided", "release-ready", "queued", "would-send") for r in self.ledger.texting_rows(p.key, state)):
             gs = str(r["inbound"]).split(",")
+            if r["state"] == "would-send" and r["handed"] is not None:
+                continue
             if all(before((self.ledger.inbound_get(g) or {}).get("created")) for g in gs):
-                self.ledger.texting_set(int(r["id"]), state="cancelled", reason="owner answered")
+                if r["state"] in ("queued", "would-send") and self.stop is not None:
+                    self.stop(r, "owner answered")
+                else:
+                    self.ledger.texting_set(int(r["id"]), state="cancelled", reason="owner answered")
                 for g in gs:
                     self.ledger.inbound_set(g, state="answered", note="the owner answered himself")
         if self.withdraw is not None:             # a card of theirs: withdrawn, and the card says the owner answered

@@ -220,16 +220,20 @@ def test_the_sheet_is_read_from_disk_at_decision_time(tmp_path, monkeypatch):
     assert (led.texting_last("alex") or {})["decision"] == "reply"
 
 
-def test_a_dry_decision_writes_its_row_and_one_line_of_the_dry_file_and_nothing_else_even_when_live(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", ["dry", "live"])
+def test_a_decision_says_the_mode_it_was_made_in_and_only_dry_writes_one_line_of_the_dry_file(tmp_path, monkeypatch, mode):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["haha yes", "last week"], reply_to="you moved",
                                                   statements=[{"n": 1, "text": "he moved", "source": "thread:g-own"}]))
-    w, led = setup(tmp_path, monkeypatch, mode="live")
+    w, led = setup(tmp_path, monkeypatch, mode=mode)
     asyncio.run(w.decide(deciding(led)))
     r = led.texting_last("alex") or {}
-    assert (r["state"], r["decision"], r["mode"], r["account"], r["tokens"], r["seconds"]) == ("decided", "reply", "dry", "a0", 960, 1.5)
+    assert (r["state"], r["decision"], r["mode"], r["account"], r["tokens"], r["seconds"]) == ("decided", "reply", mode, "a0", 960, 1.5)
     assert json.loads(r["parts"]) == ["haha yes", "last week"] and json.loads(r["statements"])[0]["source"] == "thread:g-own"
     assert (led.inbound_get("g-1") or {})["state"] == "decided"
     folder = tmp_path / "state" / "texting" / "dry"
+    if mode == "live":
+        assert not folder.exists()
+        return
     [f] = list(folder.iterdir())
     assert f.name == f"{datetime.now():%Y-%m-%d}.jsonl" and stat.S_IMODE(f.stat().st_mode) == 0o600
     assert stat.S_IMODE(folder.stat().st_mode) == 0o700
@@ -267,10 +271,14 @@ def test_the_loop_takes_each_deciding_row_once_including_those_a_stop_left(tmp_p
 
 
 @pytest.mark.parametrize("mode", ["dry", "live"])
-def test_the_status_line_says_a_live_install_still_decides_dry_and_names_the_last_text_in(tmp_path, mode):
+def test_the_status_lines_name_the_last_text_in_and_out_how_many_are_held_and_how_many_unseen(tmp_path, mode):
     s = status.collect(EXAMPLE_PRIVATE, tmp_path, [], Cooldowns(tmp_path / "c.json"), Ledger(tmp_path / "l.sqlite"), {},
                        units=set, timers=Timers({}))
     s["texting"] = {"mode": mode, "up": True, "since": s["at"] - 60, "last_in": s["at"] - 30}
     lines = [x for x in status.card(s) if "texting" in x]
-    assert words.TEXTING_IN.format(at=words.short_clock(s["at"] - 30)) in lines[0]
-    assert (words.TEXTING_DRY_LIVE in "".join(lines[1:])) == (mode == "live") and len(lines) == 1 + (mode == "live")
+    assert words.TEXTING_IN.format(at=words.short_clock(s["at"] - 30)) in lines[0] and len(lines) == 2
+    assert words.TEXTING_NONE_OUT.format(held=0, unseen=0) in lines[1]
+    s["texting"].update(last_out=s["at"] - 20, held=2, unseen=1)
+    lines = [x for x in status.card(s) if "texting" in x]
+    assert words.TEXTING_OUT.format(at=words.short_clock(s["at"] - 20), held=2, unseen=1) in lines[1]
+    assert not any(x.endswith("...") for x in lines)

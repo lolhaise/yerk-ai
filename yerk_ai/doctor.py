@@ -17,14 +17,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import addons, backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
+from . import addons, backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, texts, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, uncapped, write_private
 from .context import NONE, TOPICAL, attachments_dir, chars, layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
-from .texting import people as tpeople
+from .texting import people as tpeople, sender as tsender
 from .workers import systemctl
 
 DAY, LAST, GROWTH_MB = 86400.0, "doctor.json", 500      # [doctor] growth_mb in yerkd.toml over GROWTH_MB
@@ -263,8 +263,16 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend([] if mode == 0o600 else [f"{RED} secret {p.name}: " + (f"mode {mode:o}, not 600; `chmod 600 {p}`" if mode else
                                                                                    "missing; write it 0600 or fix its name in yerkd.toml or accounts.toml")])
         if (tx := dict(conf.get("texting") or {})) and (tmode := str(tx.get("mode") or "off")) != "off":   # texting/: on, so it must hold
-            found.extend(f"{RED} [texting] {k}: not a number above 0; texting stays off" for k in ("burst_quiet", "burst_cap", "catch_up_hours", "hold_hours")
+            found.extend(f"{RED} [texting] {k}: not a number above 0; texting stays off" for k in (
+                "burst_quiet", "burst_cap", "catch_up_hours", "hold_hours", "first_shot_window", "claim_seconds", "stale_minutes")
                          if k in tx and (isinstance(tx[k], bool) or not isinstance(tx[k], (int, float)) or tx[k] <= 0))
+            for k in (k for k in ("first_shot", "send_delay", "morning", "quiet") if k in tx):    # as texting/sender.py reads them
+                try:
+                    tsender.quiet_of(tx[k]) if k == "quiet" else tsender.pair(tx[k], (0.0, 0.0))
+                except ValueError as e:
+                    found.append(f"{RED} [texting] {k}: {e}; texting stays off")
+            found.extend([f"{RED} [texting] outbox: not a whole path on the Mac; live sends nothing"]
+                         if tmode == "live" and not texts.WHOLE.fullmatch(str(tx.get("outbox") or "")) else [])
             found.extend([f"{RED} [texting] mode: {tmode} is not off, dry or live"] if tmode not in ("dry", "live") else [])
             accts = load_accounts(private / "accounts.toml")                 # the check runs on an account's token alone (J28)
             found.extend([f"{RED} [texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint {accts[0].name}` makes one"]

@@ -8,6 +8,28 @@ version changes.
 
 ## 2026-11-13
 
+### texting-6 (#76)
+
+- Nothing changes until an install has a `[texting]` table.
+- In dry, each text that would go now waits its own time: a reply released by the owner's word goes 0 to 30 seconds after
+  it; one that may go on its own waits as the person's sheet says the owner answers them, counted from their text, or
+  2.5 to 4 minutes when the owner himself has just written in the thread; a text due in quiet hours to a person whose
+  sheet holds at night waits for the morning, 10 to 90 minutes after they end. At that time the thread is read again,
+  and the text is written as a job file under the state folder's `texting/dry/` only when every text it answers is still
+  there as it was and neither the owner nor the person has written since. Its card says "would have gone" with the time,
+  or "not sent: you answered first", "they wrote again" or "they took it back".
+- In live, the same text is handed to the Mac's own runner over ssh, once, parts of a reply in order, and never after
+  the owner's own text or a newer text of theirs. A text the Mac took and that never showed up in the thread is unseen,
+  shown in status and on its card, and never sent again. Texting's own sends are told apart from the owner's: they
+  answer nothing and withdraw no card.
+- A decision made in live says so in its row and the dry file is written in dry only; the status line that said a live
+  install still decides dry is gone. `yerk status` shows the last text out, how many are held and how many unseen, and
+  `yerk doctor` checks the new keys.
+- yerkd.toml `[texting]`: new keys `outbox`, `first_shot`, `first_shot_window`, `send_delay`, `quiet`, `morning`,
+  `claim_seconds`, `stale_minutes`, each with its default in docs/settings.md.
+- budgets.toml: `[code] lines` 31,718 to 32,167, with its dated note.
+- **Upgrading**: nothing to change. `outbox` (the Mac runner's folder, a whole path) is needed before `mode = "live"`.
+
 ### idle-copy (#75)
 
 - A room quiet for 25 minutes whose session holds 0.7 of its window or more is now compacted on a copy of the session in
