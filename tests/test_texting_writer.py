@@ -359,12 +359,19 @@ def test_a_link_previews_payload_is_named_nowhere_and_a_rows_file_mark_shows_no_
 
 
 PIC = bytes.fromhex("ffd8ff") + b" made-up picture"
+
+
+def shot(path: str = PATH) -> bytes:
+    """The fake's picture of the file at `path`, marked by its folder's made-up id."""
+    return PIC + b" " + path.split("/")[-2].encode()
+
+
 SSH = '''import json, sys
 kind, log = sys.argv[1], sys.argv[2]
 path = sys.stdin.buffer.read().decode()
 with open(log, "a") as f:
     f.write(json.dumps({"argv": sys.argv[3:], "stdin": path}) + "\\n")
-pic = bytes.fromhex("ffd8ff") + b" made-up picture"
+pic = bytes.fromhex("ffd8ff") + b" made-up picture " + path.split("/")[-2].encode()
 sys.stdout.buffer.write({"ok": pic, "big": pic + bytes(4 << 20), "gif": b"GIF89a made-up"}.get(kind, b""))
 sys.exit({"nolink": 255, "notpic": 5}.get(kind, 0))
 '''
@@ -382,7 +389,7 @@ def text(guid: str, *files: dict[str, Any], mine: bool = False, ago: float = 60.
 
 
 def looked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]], burst: tuple[str, ...], kind: str = "ok",
-           head: bool = True) -> tuple[str, list[str], list[dict[str, Any]], list[str], Ledger]:
+           head: bool = True) -> tuple[str, list[str], list[dict[str, Any]], list[str], writer.Writer]:
     """One decision on a thread of `rows` whose texts are `burst`, each of their files ledgered as the intake does: the call's
     stdin and argv, what ssh was handed, and the files' ledger states."""
     async def these(key: str, limit: int) -> list[dict[str, Any]]:
@@ -399,7 +406,7 @@ def looked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict[str,
     assert (led.texting_last("alex") or {})["state"] == "decided"
     f = tmp_path / "ssh.jsonl"
     return ((tmp_path / "stdin.txt").read_text(), calls(tmp_path)[-1]["argv"], [json.loads(x) for x in f.read_text().splitlines()]
-            if f.exists() else [], [r[0] for r in led.db.execute("SELECT state FROM attachments ORDER BY id")], led)
+            if f.exists() else [], [r[0] for r in led.db.execute("SELECT state FROM attachments ORDER BY id")], w)
 
 
 @pytest.mark.parametrize("case", ["no ssh head", "ssh cannot connect", "not a picture", "more than 4 MB back", "not a JPEG",
@@ -432,13 +439,71 @@ def test_a_path_that_is_not_a_messages_attachment_never_reaches_ssh_and_the_phot
 def test_nothing_of_a_picture_is_on_disk_and_no_log_ledger_row_or_dry_line_holds_its_path_or_name(tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["cute"], why="they sent a photo"))
     caplog.set_level(logging.DEBUG)
-    _, _, fetched, states, led = looked(tmp_path, monkeypatch, [text("g-1", photo())], ("g-1",))
+    _, _, fetched, states, w = looked(tmp_path, monkeypatch, [text("g-1", photo())], ("g-1",))
+    led = w.ledger
     assert [x["stdin"] for x in fetched] == ["/Users/owner/" + PATH[2:]] and states == ["seen"]
     kept = [p.read_bytes() for d in (tmp_path / "state", tmp_path / "private") for p in d.rglob("*") if p.is_file()]
     kept.append((tmp_path / "ledger.sqlite").read_bytes())
-    assert kept and not any(PIC in b or base64.b64encode(PIC) in b for b in kept)
+    assert kept and not any(shot() in b or base64.b64encode(shot()) in b for b in kept)
     tables = [t for (t,) in led.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
     rows = [str(r) for t in tables for r in led.db.execute(           # the intake's own name of a file it took, kept before this run
             "SELECT id, message_id, room, size, type, path, state, error FROM attachments" if t == "attachments" else f"SELECT * FROM {t}")]
     said = [r.getMessage() for r in caplog.records] + next((tmp_path / "state" / "texting" / "dry").iterdir()).read_text().splitlines()
     assert rows and said and not any(x in y for x in ("Messages/Attachments", "IMG_0001") for y in rows + said)
+
+
+STREAM = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json"]
+
+
+def test_a_photo_in_their_texts_is_shown_to_the_call_and_the_same_burst_with_none_is_todays_call(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["so cute"]))
+    stdin, argv, fetched, states, w = looked(tmp_path, monkeypatch, [text("g-1", photo())], ("g-1",))
+    assert [(x["argv"], x["stdin"]) for x in fetched] == [([writer.REMOTE], "/Users/owner/" + PATH[2:])] and states == ["seen"]
+    assert all(PATH[2:] not in a for a in argv) and argv == [*w.argv[1:(i := w.argv.index("--output-format"))], *STREAM, *w.argv[i + 2:]]
+    assert stdin.count("\n") == 1 and stdin.endswith("\n")
+    msg = json.loads(stdin)
+    assert (msg["type"], msg["message"]["role"]) == ("user", "user")
+    pack, pic = msg["message"]["content"]
+    assert pack["type"] == "text" and pack["text"].count("them: (a photo, shown below as photo 1)\n") == 2 and "unseen" not in pack["text"]
+    assert pic == {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(shot()).decode()}}
+    r = w.ledger.texting_last("alex") or {}
+    assert (r["decision"], json.loads(r["parts"]), r["account"]) == ("reply", ["so cute"], "a0")
+    plain, argv, fetched, states, w = looked(tmp_path / "plain", monkeypatch, [{**text("g-1"), "text": "hey"}], ("g-1",))
+    assert argv == w.argv[1:] and plain.startswith("Now: ") and fetched == [] and states == []
+
+
+def test_only_the_newest_four_photos_are_looked_at_and_shown_in_the_order_the_pack_numbers_them(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    p = [photo(original_path=f"/Users/owner/Library/Messages/Attachments/ab/12/F00D-000{k}/IMG_0001.HEIC") for k in range(1, 6)]
+    stdin, _, fetched, states, _ = looked(tmp_path, monkeypatch, [text("g-1", p[0], ago=90), text("g-2", p[1], p[2], ago=80),
+                                                                    text("g-3", p[3], p[4], ago=70)], ("g-1", "g-2", "g-3"))
+    pack, *pics = json.loads(stdin)["message"]["content"]
+    assert [base64.b64decode(x["source"]["data"]) for x in pics] == [shot(a["original_path"]) for a in p[1:]]
+    assert "g-1 " in pack["text"] and "them: (a photo, unseen)\n" in pack["text"] and len(fetched) == 4
+    assert "them: (a photo, shown below as photo 3) (a photo, shown below as photo 4)\n" in pack["text"]
+    assert states == ["not fetched", "seen", "seen", "seen", "seen"]
+
+
+def test_on_the_stream_form_a_quota_failure_hops_as_today_and_a_stream_with_no_result_is_no_clean_answer(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch, accounts=2)
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg0"))
+    d = w.call("a pack", set(), (), [PIC])
+    assert (d["decision"], d["account"]) == ("none", "a1") and w.cooldowns.until("a0", model="model-x") is not None
+    assert [(c["config_dir"], c["argv"][2]) for c in calls(tmp_path)] == [(str(tmp_path / "cfg0"), "stream-json"), (str(tmp_path / "cfg1"), "stream-json")]
+    monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")
+    monkeypatch.setenv("FAKE_CLAUDE_STREAM_NO_RESULT", "1")
+    d = w.call("a pack", set(), (), [PIC])
+    assert (d["decision"], d["reason"], d["account"]) == ("held", words.TEXTING_NO_CLEAN, "a1")
+
+
+def test_the_checks_call_is_todays_and_its_thread_names_the_photo_the_writer_saw_as_unseen(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["so cute"]))
+    _, _, _, states, w = looked(tmp_path, monkeypatch, [text("g-1", photo())], ("g-1",))
+    (tmp_path / "stdin.txt").unlink()
+    c = check.Check({}, w)
+    asyncio.run(c.check(w.ledger.texting_last("alex") or {}))
+    got = (tmp_path / "stdin.txt").read_text()
+    assert states == ["seen"] and calls(tmp_path)[-1]["argv"] == c.argv[1:] and c.argv[2:4] == ["--output-format", "json"]
+    assert got.startswith(words.TEXTING_CHECK_PACK.split("{")[0]) and "them: (a photo, unseen)\n" in got and "shown" not in got
+    assert base64.b64encode(shot()).decode()[:16] not in got and "stream-json" not in c.argv
