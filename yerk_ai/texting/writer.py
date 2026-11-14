@@ -8,6 +8,7 @@ line of <state>/texting/dry/YYYY-MM-DD.jsonl, never the day log, never a room. I
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -33,6 +34,11 @@ THREAD = 30                  # the thread rows a pack carries, every chat of the
 LATE = 300.0                 # seconds between a text's own time and its arrival that mark it late
 USAGE = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
 KINDS = (("image/", "a photo"), ("video/", "a video"), ("audio/", "a voice message"))
+PHOTOS = ("image/heic", "image/heif", "image/jpeg", "image/png")      # the photos in their texts that are looked at
+LOOKS, BIG, TAKE, FETCH = 4, 25 << 20, 4 << 20, 30.0     # photos a decision, the largest one, the bytes taken back, a fetch's seconds
+REMOTE = (r'''p=$(cat); case "$p" in "~/"*) p="$HOME/${p#\~/}";; esac; case "$p" in "$HOME/Library/Messages/Attachments/"*) ;; '''
+          r'''*) exit 3;; esac; case "$p" in *..*) exit 3;; esac; t=$(/usr/bin/mktemp -d) || exit 4; trap '/bin/rm -rf "$t"' EXIT; '''
+          r'''/usr/bin/sips -s format jpeg -s formatOptions 80 -Z 1568 "$p" --out "$t/p.jpg" >/dev/null 2>&1 || exit 5; /bin/cat "$t/p.jpg"''')
 SCHEMA: dict[str, Any] = {"type": "object", "required": ["decision", "parts", "statements", "why"], "properties": {
     "decision": {"enum": ["reply", "react", "none", "held"]},
     "parts": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
@@ -109,15 +115,61 @@ def kind(a: dict[str, Any]) -> str:
     return "a sticker" if a.get("is_sticker") else next((w for p, w in KINDS if t.startswith(p)), "a file")
 
 
-def line(r: dict[str, Any], late: set[str] | None = None, auto: set[str] | None = None) -> str:
+def line(r: dict[str, Any], late: set[str] | None = None, auto: set[str] | None = None,
+         shown: dict[tuple[str, int], int] | None = None) -> str:
     """One thread row: its guid (what a statement cites), its time, whose side (`auto` for texting's own claimed sends, else
-    `owner` or `them`), the text (never the mark a file leaves in it), and each file named by its kind as unseen."""
-    when = when_of(r)
-    return " ".join(x for x in (str(r.get("guid")), f"{when.astimezone():%m-%d %H:%M}" if when else "?",
+    `owner` or `them`), the text (never the mark a file leaves in it), and each file named by its kind: unseen, or the
+    number the call shows it by (`shown`, by the row's guid and the file's place in it)."""
+    when, g, seen = when_of(r), str(r.get("guid")), shown or {}
+    return " ".join(x for x in (g, f"{when.astimezone():%m-%d %H:%M}" if when else "?",
                                 ("auto" if r.get("guid") in (auto or set()) else "owner" if r.get("is_from_me") is True else "them") + ":",
-                                str(r.get("text") or "").replace("￼", "").strip(),
-                                "(a tapback)" if is_tapback(r) else "", *(f"({kind(a)}, unseen)" for a in attached(r)),
+                                str(r.get("text") or "").replace("￼", "").strip(), "(a tapback)" if is_tapback(r) else "",
+                                *(f"({kind(a)}, shown below as photo {seen[g, n]})" if (g, n) in seen else f"({kind(a)}, unseen)"
+                                  for n, a in enumerate(attached(r))),
                                 "(arrived late)" if r.get("guid") in (late or set()) else "") if x)
+
+
+async def fetch(head: list[str], a: dict[str, Any]) -> bytes | str:
+    """One photo, converted on the Mac by REMOTE with its path on ssh's stdin, never a command line: its JPEG, or why not in
+    the ledger's words. A file's name is its sender's choice, so its path is checked here first and reaches no log."""
+    p = str(a.get("original_path") or a.get("filename") or "")
+    if not p.startswith(("~/Library/Messages/Attachments/", "/Users/")) or "/Library/Messages/Attachments/" not in p \
+            or ".." in p or "\n" in p:
+        return "refused"
+    try:
+        pr = await asyncio.create_subprocess_exec(*head, REMOTE, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                                                  stderr=asyncio.subprocess.DEVNULL)
+    except OSError:
+        return "not fetched"
+    try:
+        async with asyncio.timeout(FETCH):
+            assert pr.stdin is not None and pr.stdout is not None
+            pr.stdin.write(p.encode())
+            pr.stdin.close()
+            try:
+                await pr.stdout.readexactly(TAKE + 1)
+                return "too big"
+            except asyncio.IncompleteReadError as e:
+                out = e.partial
+            ok = await pr.wait() == 0
+    except (TimeoutError, OSError):
+        return "not fetched"
+    finally:
+        if pr.returncode is None:
+            pr.kill()
+            await pr.wait()
+    return out if ok and out.startswith(b"\xff\xd8\xff") else "not fetched"
+
+
+def streamed(out: str) -> str:
+    """A stream's last `result` line, which carries what the one JSON object does; "" with none: no clean answer."""
+    for x in reversed(out.splitlines()):
+        try:
+            if json.loads(x).get("type") == "result":
+                return x
+        except (ValueError, AttributeError):
+            pass
+    return ""
 
 
 def bucket(now: datetime, owner_last: datetime | None) -> str:
@@ -132,8 +184,10 @@ class Writer:
     def __init__(self, conf: dict[str, Any], file: Path, state: Path, ledger: Ledger, report: str,
                  thread: Callable[[str, int], Awaitable[list[dict[str, Any]]]], recall: Callable[[str], str],
                  place: Callable[[datetime], str], accounts: list[Account], cooldowns: Cooldowns, failures: FailureTable,
-                 model: str = "", claude: str = "", clock: Callable[[], float] = time.time, tools: list[str] | None = None):
+                 model: str = "", claude: str = "", clock: Callable[[], float] = time.time, tools: list[str] | None = None,
+                 head: list[str] | None = None):
         self.file, self.state, self.ledger, self.thread, self.recall, self.place = file, state, ledger, thread, recall, place
+        self.head = list(head or [])           # ssh to the Mac, where a photo is converted: with none (the replay's), none is looked at
         self.accounts, self.cooldowns, self.failures, self.clock = accounts, cooldowns, failures, clock
         self.model, self.hours = str(conf.get("model") or model), float(conf.get("catch_up_hours", 6))
         self.mode = "live" if conf.get("mode") == "live" else "dry"      # what a decision says it was made in (J44)
@@ -202,6 +256,7 @@ class Writer:
         text = "\n".join(str(r.get("text") or "") for r in theirs)
         memory = await asyncio.to_thread(self.recall, "\n".join([text, *(str(r.get("text") or "") for r in rows[-3:] if r not in theirs)]))
         holds = [f"{r['decision']}: {r['reason']}" for r in self.ledger.texting_rows(key, "held")]
+        shown, pics = await self.look(theirs)
         tag = secrets.token_hex(4)
         try:
             base = (self.file.parent / "baseline.md").read_text()
@@ -210,11 +265,11 @@ class Writer:
         pack = "\n\n".join([words.TEXTING_PACK.format(now=f"{at:%A %Y-%m-%d %H:%M}", bucket=bucket(at, max(mine, default=None)),
                                                       owner=who.owner, first=p.first, tag=tag),
                             fence("baseline", base, tag), fence("sheet", sheet_text(who.sheets[key]), tag),
-                            fence("thread", "\n".join(line(r, auto=auto) for r in rows), tag),
-                            fence("their texts", "\n".join(line(r, late) for r in theirs), tag), fence("memory", memory, tag),
+                            fence("thread", "\n".join(line(r, auto=auto, shown=shown) for r in rows), tag),
+                            fence("their texts", "\n".join(line(r, late, shown=shown) for r in theirs), tag), fence("memory", memory, tag),
                             fence("place", await asyncio.to_thread(self.place, at), tag), fence("held", "\n".join(holds), tag)])
         t0 = time.monotonic()
-        d = await asyncio.to_thread(self.call, pack, {str(r.get("guid")) for r in rows}, who.sheets[key].open)
+        d = await asyncio.to_thread(self.call, pack, {str(r.get("guid")) for r in rows}, who.sheets[key].open, pics)
         d.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"decision": d["decision"], "parts": json.dumps(d["parts"]), "react": d["react"], "reply_to": d["reply_to"],
                   "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
@@ -230,8 +285,33 @@ class Writer:
         """The person's last THREAD rows, every chat merged by time: the thread a pack and a check are handed."""
         return sorted(await self.thread(key, THREAD), key=lambda r: w.timestamp() if (w := when_of(r)) else 0.0)[-THREAD:]
 
-    def call(self, pack: str, guids: set[str], open_: tuple[str, ...]) -> dict[str, Any]:
-        return self.hop(self.argv, pack, self.cwd, self.cap, self.model, lambda out: parse(out, guids, open_), held)
+    async def look(self, theirs: list[dict[str, Any]]) -> tuple[dict[tuple[str, int], int], list[bytes]]:
+        """The photos in their texts the call is shown, by number: the newest LOOKS that fit, each fetched once, its bytes
+        kept for the one call and never written; each one's ledger row `seen` or why not. None with no ssh head."""
+        cand = [(str(r.get("guid")), n, a) for r in theirs if r.get("is_from_me") is not True for n, a in enumerate(attached(r))
+                if a.get("mime_type") in PHOTOS and not a.get("missing") and not a.get("is_sticker")]
+        fit = [c for c in cand if int(c[2].get("total_bytes") or 0) <= BIG][-LOOKS:] if self.head else []
+        shown: dict[tuple[str, int], int] = {}
+        pics: list[bytes] = []
+        for g, n, a in cand:
+            got = await fetch(self.head, a) if (g, n, a) in fit else "too big" if int(a.get("total_bytes") or 0) > BIG else ""
+            if isinstance(got, bytes):
+                pics.append(got)
+                shown[g, n] = len(pics)
+            if got:
+                self.ledger.attachment_state(g, n, "seen" if isinstance(got, bytes) else got)
+        return shown, pics
+
+    def call(self, pack: str, guids: set[str], open_: tuple[str, ...], pics: list[bytes] | None = None) -> dict[str, Any]:
+        """Today's one JSON answer, or with photos the stream form: one line on stdin, the pack and then each photo in its
+        number's order, and the stream's last `result` line read as that answer, through the same hop."""
+        if not pics:
+            return self.hop(self.argv, pack, self.cwd, self.cap, self.model, lambda out: parse(out, guids, open_), held)
+        i = self.argv.index("--output-format")
+        argv = [*self.argv[:i], "--output-format", "stream-json", "--verbose", "--input-format", "stream-json", *self.argv[i + 2:]]
+        shows = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(b).decode()}} for b in pics]
+        stdin = json.dumps({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": pack}, *shows]}}) + "\n"
+        return self.hop(argv, stdin, self.cwd, self.cap, self.model, lambda out: parse(streamed(out), guids, open_), held)
 
     def hop(self, argv: list[str], stdin: str, cwd: Path, cap: float, model: str, read: Callable[[str], dict[str, Any]],
             hold: Callable[[str], dict[str, Any]], config: Path | None = None) -> dict[str, Any]:

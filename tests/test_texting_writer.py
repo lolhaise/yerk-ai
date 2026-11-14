@@ -3,9 +3,12 @@ goes through fake_claude.py, which records the argv and the stdin it was handed;
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import logging
 import os
 import stat
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -353,3 +356,89 @@ def test_a_link_previews_payload_is_named_nowhere_and_a_rows_file_mark_shows_no_
     for got in (pack, checked):
         assert "Payload" not in got and "a file" not in got and "￼" not in got
         assert "them: look https://example.com/a\n" in got and "them: (a photo, unseen)\n" in got
+
+
+PIC = bytes.fromhex("ffd8ff") + b" made-up picture"
+SSH = '''import json, sys
+kind, log = sys.argv[1], sys.argv[2]
+path = sys.stdin.buffer.read().decode()
+with open(log, "a") as f:
+    f.write(json.dumps({"argv": sys.argv[3:], "stdin": path}) + "\\n")
+pic = bytes.fromhex("ffd8ff") + b" made-up picture"
+sys.stdout.buffer.write({"ok": pic, "big": pic + bytes(4 << 20), "gif": b"GIF89a made-up"}.get(kind, b""))
+sys.exit({"nolink": 255, "notpic": 5}.get(kind, 0))
+'''
+
+
+def ssh(tmp: Path, kind: str = "ok") -> list[str]:
+    """The tests' ssh to the Mac, keeping its argv and stdin as a line of <tmp>/ssh.jsonl and answering as REMOTE would: a
+    JPEG (`ok`), more than a fetch takes (`big`), bytes that are not a JPEG (`gif`), exit 5 (`notpic`) or 255 (`nolink`)."""
+    (script := tmp / "fake_ssh.py").write_text(SSH)
+    return [sys.executable, str(script), kind, str(tmp / "ssh.jsonl")]
+
+
+def text(guid: str, *files: dict[str, Any], mine: bool = False, ago: float = 60.0) -> dict[str, Any]:
+    return {"guid": guid, "is_from_me": mine, "text": "￼", "created_at": stamp(ago), "attachments": list(files)}
+
+
+def looked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]], burst: tuple[str, ...], kind: str = "ok",
+           head: bool = True) -> tuple[str, list[str], list[dict[str, Any]], list[str], Ledger]:
+    """One decision on a thread of `rows` whose texts are `burst`, each of their files ledgered as the intake does: the call's
+    stdin and argv, what ssh was handed, and the files' ledger states."""
+    async def these(key: str, limit: int) -> list[dict[str, Any]]:
+        return [dict(r) for r in rows]
+    w, led = setup(tmp_path, monkeypatch)
+    w.thread, w.head = these, ssh(tmp_path, kind) if head else []
+    for r in (r for r in rows if r["guid"] in burst):
+        led.inbound_add(r["guid"], "texting", "imessage:alex", "alex", 1, created=time.time() - 60)
+        for a in r["attachments"]:
+            led.attachment(message_id=r["guid"], room="texting", name=Path(a["transfer_name"]).name, size=a["total_bytes"],
+                           type=a["mime_type"], state="not fetched")
+    led.texting_add(person="alex", handle=A1, inbound=",".join(burst), state="deciding", mode="dry")
+    asyncio.run(w.decide(led.texting_last("alex") or {}))
+    assert (led.texting_last("alex") or {})["state"] == "decided"
+    f = tmp_path / "ssh.jsonl"
+    return ((tmp_path / "stdin.txt").read_text(), calls(tmp_path)[-1]["argv"], [json.loads(x) for x in f.read_text().splitlines()]
+            if f.exists() else [], [r[0] for r in led.db.execute("SELECT state FROM attachments ORDER BY id")], led)
+
+
+@pytest.mark.parametrize("case", ["no ssh head", "ssh cannot connect", "not a picture", "more than 4 MB back", "not a JPEG",
+                                  "missing", "a sticker", "a video", "the owner's side", "an older row", "over the cap"])
+def test_what_is_not_looked_at_stays_unseen_and_the_decision_is_made_as_today(tmp_path, monkeypatch, case):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    kind = {"ssh cannot connect": "nolink", "not a picture": "notpic", "more than 4 MB back": "big", "not a JPEG": "gif"}.get(case, "ok")
+    one = {"missing": photo(missing=True), "a sticker": photo(is_sticker=True), "over the cap": photo(total_bytes=(25 << 20) + 1),
+           "a video": photo(mime_type="video/quicktime", transfer_name="IMG_0002.MOV")}.get(case, photo())
+    rows = [text("g-old", photo(), ago=3000), text("g-own", photo(), mine=True, ago=120), text("g-1", one)]
+    burst = {"the owner's side": ("g-own",), "an older row": ("g-1",)}.get(case, ("g-1",))
+    if case == "an older row":
+        rows[2] = {**rows[2], "attachments": [], "text": "hey"}
+    pack, argv, fetched, states, _ = looked(tmp_path, monkeypatch, rows, burst, kind, head=case != "no ssh head")
+    assert argv[argv.index("--output-format") + 1] == "json" and "--input-format" not in argv and pack.startswith("Now: ")
+    assert "shown below" not in pack and pack.count("unseen") >= 2
+    assert len(fetched) == (1 if kind != "ok" else 0)
+    assert states == [{"more than 4 MB back": "too big", "over the cap": "too big"}.get(case, "not fetched")] * (case != "an older row")
+    assert ("(a sticker, unseen)" if case == "a sticker" else "(a video, unseen)" if case == "a video" else "(a photo, unseen)") in pack
+
+
+@pytest.mark.parametrize("bad", ["/etc/passwd", "~/Library/Messages/Attachments/../../.ssh/id_x", "/Users/owner/Documents/IMG_0001.HEIC",
+                                 "Library/Messages/Attachments/ab/IMG_0001.HEIC", PATH.replace("/F00D", "\n/F00D"), ""])
+def test_a_path_that_is_not_a_messages_attachment_never_reaches_ssh_and_the_photo_stays_unseen(tmp_path, monkeypatch, bad):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    pack, argv, fetched, states, _ = looked(tmp_path, monkeypatch, [text("g-1", photo(original_path=bad, filename=bad or ""))], ("g-1",))
+    assert fetched == [] and states == ["refused"] and "(a photo, unseen)" in pack and "--input-format" not in argv
+
+
+def test_nothing_of_a_picture_is_on_disk_and_no_log_ledger_row_or_dry_line_holds_its_path_or_name(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["cute"], why="they sent a photo"))
+    caplog.set_level(logging.DEBUG)
+    _, _, fetched, states, led = looked(tmp_path, monkeypatch, [text("g-1", photo())], ("g-1",))
+    assert [x["stdin"] for x in fetched] == ["/Users/owner/" + PATH[2:]] and states == ["seen"]
+    kept = [p.read_bytes() for d in (tmp_path / "state", tmp_path / "private") for p in d.rglob("*") if p.is_file()]
+    kept.append((tmp_path / "ledger.sqlite").read_bytes())
+    assert kept and not any(PIC in b or base64.b64encode(PIC) in b for b in kept)
+    tables = [t for (t,) in led.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+    rows = [str(r) for t in tables for r in led.db.execute(           # the intake's own name of a file it took, kept before this run
+            "SELECT id, message_id, room, size, type, path, state, error FROM attachments" if t == "attachments" else f"SELECT * FROM {t}")]
+    said = [r.getMessage() for r in caplog.records] + next((tmp_path / "state" / "texting" / "dry").iterdir()).read_text().splitlines()
+    assert rows and said and not any(x in y for x in ("Messages/Attachments", "IMG_0001") for y in rows + said)

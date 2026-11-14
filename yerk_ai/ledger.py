@@ -700,6 +700,12 @@ class Ledger:
     def attachment(self, **row: Any) -> int:
         return self._insert("attachments", {"at": time.time(), **row})
 
+    def attachment_state(self, message_id: str, n: int, state: str) -> None:
+        """The state of a message's `n`th file (0 first, in the order it was ledgered): texting's `seen`, or why not."""
+        with self.lock:
+            self.db.execute("UPDATE attachments SET state = ? WHERE id = (SELECT id FROM attachments WHERE message_id = ? "
+                            "ORDER BY id LIMIT 1 OFFSET ?)", (state, message_id, n))
+
     def card_open(self, message_id: str, room: str, kind: str) -> None:
         self._insert("cards", {"message_id": message_id, "room": room, "kind": kind, "opened": time.time()})
 
