@@ -837,12 +837,12 @@ class Yerkd:
 
     def owner_servers(self) -> list[Any]:
         """The MCP tables of the owner's rooms, where an add-on's mac.json is looked for (page.addon_file); never a person's."""
-        return [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()]
+        return texts.owner_servers(self.room_confs)
 
     def imessage(self) -> dict[str, Any]:
         """[imessage] as the `text` tool reaches the Mac's bridge: yerkd.toml's own way, else the Mac and its bridge's socket
         an owner room's add-on names in its mac.json (texts.reach), as `texts` and the page reach that Mac."""
-        return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
+        return texts.way(self.conf, self.room_confs, self.state)
 
     def texting(self) -> list[Any]:
         """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer,
@@ -875,18 +875,28 @@ class Yerkd:
         out = "text-out" in self.gates.external                # [gates] off = ["text-out"]: no text goes, one left waiting included
         self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
                                   self.texting_show, out=out, window_s=self.gates.window_s, word=self.gates.word)
-        file, host = tpeople.path(self.private, conf), str(self.imessage().get("host") or "")
-        hands = thands.Live(file, str(conf.get("outbox") or ""), [*texts.SSH, host] if out and host and not host.startswith("-") else []) \
+        file = tpeople.path(self.private, conf)
+        hands = thands.Live(file, str(conf.get("outbox") or ""), texts.head(self.imessage()) if out else []) \
             if conf["mode"] == "live" else thands.Dry(file, self.state)          # the hands, chosen once: nothing shared
         try:
             send = tsender.Sender(conf, file, self.ledger, link.thread, hands, self.holds.edits, self.texting_post, self.texting_to,
-                                  status=link.more, out=out)
+                                  status=link.more, out=out, machine=self.to_machine,
+                                  day_file=self.state / "texting" / "daily.json")
         except ValueError as e:                               # `yerk doctor` names it
             log.error("texting is off: %s", e)
             self.holds = None
             return []
         took.withdraw, took.claim, took.stop = self.holds.withdraw, send.claim, send.cancel
         return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run(), self.holds.run(), send.run()]
+
+    def texting_told(self, room: str) -> str:
+        """The block in the `report` room's context every turn while [texting] is dry or live (J29): what texting is, that a
+        card is the code's and the owner's word on one is taken before the turn, and what is the room's to answer; "" anywhere else."""
+        conf = dict(self.conf.get("texting") or {})
+        if (mode := str(conf.get("mode") or "off")) not in ("dry", "live") or room != conf.get("report") or not self.owner(room) \
+                or self.room_confs[room].get("people"):
+            return ""
+        return words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID[mode])
 
     def texting_room(self, conf: dict[str, Any]) -> str:
         """The one room texting may show anything in (J25): live, `report`; dry, `dry_report`, none when it is empty. Only an
@@ -1787,7 +1797,7 @@ class Yerkd:
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
-                                      self.taste_for, self.place_for, self.rules_topic)
+                                      self.taste_for, self.place_for, self.rules_topic, self.texting_told)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)

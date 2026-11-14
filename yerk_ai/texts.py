@@ -16,9 +16,11 @@ import contextlib
 import json
 import re
 import shlex
+from pathlib import Path
 from typing import Any
 
 from . import words
+from .channels import page
 
 TOOL = "mcp__yerk__text"
 HELLO = 20.0                 # seconds the status waits: the ssh connect and the bridge's first answer
@@ -39,6 +41,22 @@ def reach(conf: dict[str, Any], mac: dict[str, Any]) -> dict[str, Any]:
     if transport(conf) or not WHOLE.fullmatch(sock := str(mac.get(SOCKET) or "").strip()) or not mac.get("ssh"):
         return conf
     return {**conf, "host": str(mac["ssh"]), "socket": sock}
+
+
+def owner_servers(rooms: dict[str, dict[str, Any]]) -> list[Any]:
+    """The MCP tables of the owner's rooms, where an add-on's mac.json is looked for (page.addon_file); never a person's."""
+    return [s for c in rooms.values() if str(c.get("privacy", "owner")) == "owner" for s in dict(c.get("mcp") or {}).values()]
+
+
+def way(conf: dict[str, Any], rooms: dict[str, dict[str, Any]], state: Path) -> dict[str, Any]:
+    """[imessage] as the daemon reaches the Mac (reach), for the `text` tool, texting's link and hands, and doctor."""
+    return reach(dict(conf.get("imessage") or {}), page.addon_file(owner_servers(rooms), state))
+
+
+def head(way: dict[str, Any]) -> list[str]:
+    """The live hands' command head, ssh to `way`'s host; [] with none, or one that begins with a dash: no text can go."""
+    host = str(way.get("host") or "")
+    return [*SSH, host] if host and not host.startswith("-") else []
 
 
 def transport(conf: dict[str, Any]) -> list[str]:

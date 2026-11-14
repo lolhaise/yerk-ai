@@ -1,6 +1,6 @@
 # Yerk AI
 
-Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Python program that does only what Claude Code does not do by itself: carry messages between a room and a session, build each room's context to a declared size, keep memory across sessions, and move work across the accounts you have. The agent loop, tools, skills, compaction and resume are Claude Code's own, used through its documented flags, settings and hooks.
+Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Python program doing only what Claude Code does not do by itself: carry messages between a room and a session, build each room's context to a declared size, keep memory across sessions, and move work across the accounts you have. The agent loop, tools, skills, compaction and resume are Claude Code's own, used through its documented flags, settings and hooks.
 
 ## What it is, and what it is not
 
@@ -34,7 +34,7 @@ In rooms.toml give `example-room` your channel, `channel = "discord:<channel id>
 
 ## The private folder
 
-Everything that is yours lives in one folder outside the repository, named by `--private` or `YERK_PRIVATE`; `examples/private/` is a fake one the tests use. What runs keeps its state in a second folder, `YERK_STATE` (default `~/.local/state/yerk`).
+Everything of yours lives in one folder outside the repository, named by `--private` or `YERK_PRIVATE`; `examples/private/` is a fake one the tests use. What runs keeps its state in a second folder, `YERK_STATE` (default `~/.local/state/yerk`).
 
 ```
 ~/yerk-private/                0700, never committed
@@ -68,7 +68,7 @@ What a room does beyond Claude Code's tools comes as add-ons: MCP servers in roo
 - [docs/STATUS.md](docs/STATUS.md): how it was built, stage by stage; not checked against today's code it is that size
 
 
-- [docs/GUIDE.md](docs/GUIDE.md): the long form: using it, moving or importing a chat, the service, backup, how a room runs, what you see, add-ons, voice notes, web reach, the harness, the ledgers
+- [docs/GUIDE.md](docs/GUIDE.md): the long form: using it, moving or importing a chat, the service, backup, how a room runs, what you see, add-ons, voice notes, texting, web reach, the harness, the ledgers
 
 - [CHANGELOG.md](CHANGELOG.md) says what each merge changes, [STYLE.md](STYLE.md) how every card and notice reads, and [NOTICE](NOTICE) where the lifted code comes from.
 

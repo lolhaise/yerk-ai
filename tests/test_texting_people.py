@@ -3,8 +3,10 @@ person only. Each person's sheet beside it (run 2), read by code and checked, an
 of this turn, each change one line of sheets.log. Every person and number here is made up."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -70,8 +72,8 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
         (priv / "yerkd.toml").write_text(table)
         return [x[2:] for x in doctor.run(priv, state, dry=True) if "[texting]" in x]
     assert said("") == [] and said('[texting]\nmode = "off"\nburst_cap = "soon"\n') == []
-    on = '[texting]\nmode = "dry"\nreport = "example-room"\n'
-    missing = said(on + 'burst_cap = "soon"\ndry_report = "nowhere"\n')
+    on, mac = '[texting]\nmode = "dry"\nreport = "example-room"\n', '\n[imessage]\nhost = "mac"\nsocket = "/Users/someone/bridge.sock"\n'
+    missing = said(on + 'burst_cap = "soon"\ndry_report = "nowhere"\n' + mac)
     assert missing[0] == "[texting] burst_cap: not a number above 0; texting stays off"
     assert missing[1].startswith("[texting] people: ") and missing[1].endswith("; texting stays off")
     assert missing[2:] == ["[texting] dry_report: nowhere is not an owner room in rooms.toml"]
@@ -79,8 +81,10 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     write(priv / "texting", LIST, 0o644)
     assert [x for x in said(on) if "0600" in x]
     os.chmod(priv / "texting" / "people.toml", 0o600)
-    assert said(on) == [] and said('[texting]\nmode = "dry"\n') == ["[texting] report: none is not an owner room in rooms.toml"]
-    assert said(on + 'quiet = ["23:30"]\nfirst_shot = [240, 150]\nclaim_seconds = 0\nmorning = [10, 90]\n') == [
+    assert said(on + mac) == [] and said('[texting]\nmode = "dry"\n' + mac) == ["[texting] report: none is not an owner room in rooms.toml"]
+    assert said(on) == ["[texting] no way to the Mac's bridge: texting stays off; [imessage] host and socket name it (else an owner "
+                        "room's add-on's mac.json)"]                             # the daemon turns texting off with one log line
+    assert said(on + 'quiet = ["23:30"]\nfirst_shot = [240, 150]\nclaim_seconds = 0\nmorning = [10, 90]\n' + mac) == [
         "[texting] claim_seconds: not a number above 0; texting stays off",
         "[texting] first_shot: [240, 150] is not two numbers, low then high; texting stays off",
         "[texting] quiet: ['23:30'] is not two HH:MM times; texting stays off"]
@@ -88,8 +92,37 @@ def test_doctor_names_what_keeps_texting_off(tmp_path):
     assert "[texting] outbox: not a whole path on the Mac; live sends nothing" in said(live)
     assert not [x for x in said(live + 'outbox = "/Users/someone/outbox"\n') if "outbox" in x]
     token.unlink()
-    assert said(on) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
+    assert said(on + mac) == [f"[texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint one` makes one"]
 
+
+def test_doctor_is_red_for_a_sender_whose_last_pass_is_older_than_a_minute_only_while_yerkd_runs(tmp_path, monkeypatch):
+    priv, state, now = tmp_path / "private", tmp_path / "state", 1_763_000_000.0
+    shutil.copytree(EXAMPLE_PRIVATE, priv)
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "example-room"\n')
+    (state / "texting").mkdir(parents=True)
+
+    def said(ago: float, up: bool) -> list[str]:
+        (state / "texting" / "status.json").write_text(json.dumps({"mode": "dry", "up": True, "pass": now - ago}))
+        monkeypatch.setattr(doctor.status, "alive", lambda s: up)
+        return [x[2:] for x in doctor.run(priv, state, dry=True, now=now) if "sender" in x]
+    assert said(50, True) == [] and said(120, False) == []
+    assert said(120, True) == [f"[texting] the sender stopped {datetime.fromtimestamp(now - 120):%H:%M}: no text is timed or "
+                               "sent; `systemctl --user restart yerkd` starts it again"]
+
+
+def test_doctor_is_red_when_live_would_give_the_hands_no_host_or_one_that_begins_with_a_dash_and_dry_is_not(tmp_path):
+    priv, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, priv)
+    state.mkdir()
+
+    def said(mode: str, host: str = "") -> list[str]:
+        mac = f'\n[imessage]\nhost = "{host}"\nsocket = "/Users/someone/bridge.sock"\n' if host else ""
+        (priv / "yerkd.toml").write_text(f'[texting]\nmode = "{mode}"\nreport = "example-room"\noutbox = "/Users/someone/outbox"\n{mac}')
+        return [x[2:] for x in doctor.run(priv, state, dry=True) if "no host" in x]
+    red = ["[texting] live with no host for the hands: no text can go; [imessage] host names the Mac (else ssh in an owner "
+           "room's add-on's mac.json), never one that begins with a dash"]
+    assert said("live") == red and said("live", "-oProxyCommand=x") == red
+    assert said("live", "mac") == [] and said("dry") == []
 
 A1, B1 = "+15550000101", "+15550000102"
 REPLY = f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\n# kept as written\n\n' \

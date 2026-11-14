@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -522,6 +523,57 @@ def test_a_from_me_row_outside_a_handed_jobs_window_is_the_owners_and_claims_not
         assert bool(led.texting_get(rid)["claimed"]) is (side == "auto")
 
 
+def test_a_send_seen_after_its_job_went_unseen_is_sent_late_and_auto_and_cancels_nothing_and_outside_every_window_is_his(tmp_path: Path) -> None:
+    for name, offset, side in (("inside", 20.0, "auto"), ("outside", 400.0, "owner")):
+        s, led, clock = make(tmp_path / name)
+        took, withdrawn = intake_for(s, led)
+        their(led, "t-0", WED - 60)
+        pending = waiting(led, "t-0", state="deciding")
+        rid = due(s, led, clock, "t-1")
+        handed = armed(s, led, rid)["handed"]
+        clock.t = handed + 300                                 # the bridge was away: the window closed with nothing seen
+        assert armed(s, led, rid)["state"] == "unseen"
+        rows(s).add("m-1", handed + offset, "on my way", mine=True)
+        assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == side
+        got, mine = led.texting_get(rid), led.inbound_get("m-1")["sender"]
+        assert (got["state"], got["reason"], mine) == (("sent", words.TEXTING_LATE.format(n=1, of=1), "auto") if side == "auto"
+                                                       else ("unseen", words.TEXTING_SENT["unseen"], "owner"))
+        assert led.texting_get(pending)["state"] == ("deciding" if side == "auto" else "cancelled")
+        assert withdrawn == ([] if side == "auto" else [pytest.approx(handed + offset, abs=1e-3)])
+    s, led, clock = make(tmp_path / "two")                     # part 2 was never handed: it stays dropped, and the reason says so
+    took, _ = intake_for(s, led)
+    rid = due(s, led, clock, "t-1", texts=("on my way", "ten min"))
+    handed = armed(s, led, rid)["handed"]
+    clock.t = handed + 300
+    armed(s, led, rid)
+    rows(s).add("m-1", handed + 20, "on my way", mine=True)
+    assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == "auto"
+    clock.t += 60
+    armed(s, led, rid)
+    assert (led.texting_get(rid)["reason"], calls(tmp_path / "two")) == (words.TEXTING_LATE.format(n=1, of=2), [f"yerk-{rid}-1"])
+
+
+def test_a_late_row_claims_a_queued_job_before_an_unseen_one_and_a_tapback_never_claims_a_text_job(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, _ = intake_for(s, led)
+    old, new = waiting(led, "t-1"), waiting(led, "t-2")
+    led.texting_set(old, state="unseen", handed=WED, reason=words.TEXTING_SENT["unseen"])
+    led.texting_set(new, handed=WED + 100)
+    clock.t = WED + 400                                         # both windows closed; each row's own time is inside both
+    for guid, tapback, side in (("m-tap", True, "tapback"), ("m-1", False, "auto"), ("m-2", False, "auto")):
+        rows(s).add(guid, WED + 95, "" if tapback else "on my way", mine=True, tapback=tapback)
+        assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == side
+    assert [(r["state"], r["claimed"]) for r in map(led.texting_get, (new, old))] == [("sent", "m-1"), ("sent", "m-2")]
+
+
+def test_dry_claims_nothing_not_even_a_job_a_live_run_left_handed(tmp_path: Path) -> None:
+    s, led, _ = make(tmp_path, mode="dry")
+    rid = waiting(led, "t-1")
+    led.texting_set(rid, handed=WED)
+    rows(s).add("m-1", WED + 5, "on my way", mine=True)
+    assert s.claim(load(s.file).people["alex"], rows(s).rows[-1], WED + 5) is False and led.texting_get(rid)["state"] == "queued"
+
+
 def test_a_stop_in_the_middle_of_a_hand_off_counts_as_handed_and_the_text_is_never_handed_again(tmp_path: Path) -> None:
     """J41: the mark is written before the hands run, so a daemon stopped between the write on the Mac and the mark can
     never write that job a second time."""
@@ -572,10 +624,85 @@ def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(
     for _ in range(4):
         clock.t += 60
         armed(s, led, lost)
-    assert told[-1] == {"last_out": None, "held": 1, "unseen": 1}
+    assert told[-1] == {"last_out": None, "held": 1, "unseen": 1, "pass": round(clock.t)}      # a pass a minute apart: each one told
+    n = len(told)
+    for _ in range(5):                                           # passes a second apart: the time is told at most every 15 s
+        clock.t += 1
+        armed(s, led, lost)
+    assert len(told) == n
     rid = due(s, led, clock, "t-2")
     handed = armed(s, led, rid)["handed"]
     rows(s).add("m-1", handed + 4, "on my way", mine=True)
     assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == "auto"
     armed(s, led, rid)
-    assert told[-1] == {"last_out": handed, "held": 1, "unseen": 1}
+    assert {**told[-1], "pass": 0} == {"last_out": handed, "held": 1, "unseen": 1, "pass": 0}
+
+
+def test_an_error_the_pass_does_not_expect_stops_the_sender_and_says_one_line_in_the_machine_room_with_no_text_or_person(
+        tmp_path: Path, monkeypatch: Any, caplog: Any) -> None:
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "texting").mkdir()
+    listed(private / "texting")
+    (private / "yerkd.toml").write_text('[texting]\nmode = "live"\nreport = "example-room"\noutbox = "/Users/someone/outbox"\n'
+                                        '\n[imessage]\nhost = "mac"\nsocket = "/Users/someone/bridge.sock"\n')
+    (state := tmp_path / "state").mkdir()
+    said: list[str] = []
+    monkeypatch.setattr(Yerkd, "to_machine", lambda self, text: said.append(text))
+    got = Yerkd(private, state).texting()
+    for c in got[:-1]:
+        c.close()
+    send, passes = got[-1].cr_frame.f_locals["self"], []
+    assert send.day_file == state / "texting" / "daily.json"   # the daily line's day, kept where the daemon says
+
+    async def boom() -> None:
+        passes.append(1)
+        raise KeyError("Alex: see you at six")
+    send.tick = boom
+
+    async def go() -> None:
+        with pytest.raises(asyncio.TimeoutError):            # stopped, never ended: a task that ends ends the daemon
+            await asyncio.wait_for(got[-1], 1.25)            # past the next pass's second: it never comes
+    with caplog.at_level(logging.ERROR, logger="yerk.texting"):
+        asyncio.run(go())
+    assert said == [words.TEXTING_SENDER_DOWN.format(error="KeyError")] and passes == [1]
+    assert not any(x in said[0].casefold() for x in ("alex", "see you", A1)) and "the sender stopped" in caplog.text
+
+
+def test_the_daily_line_counts_a_made_up_day_from_the_ledger_says_it_once_across_a_restart_skips_none_and_names_no_one(
+        tmp_path: Path, monkeypatch: Any) -> None:
+    s, led, clock = make(tmp_path)
+    said: list[str] = []
+    s.machine, s.day_file = said.append, tmp_path / "state" / "texting" / "daily.json"
+    for n, who in enumerate(("alex", "alex", "beta")):
+        their(led, f"t-{n}", WED + n, person=who)
+    their(led, "t-3", at(11, 12, 2, 0), person="beta")           # two in the morning: the day runs to 08:00, not to midnight
+    his(led, "m-0", WED + 10)                                    # the owner's texts: one before the run, one inside it, which starts it over
+    his(led, "m-1", WED + 32.5)
+    alex, beta = ("reply", "sent", "", "alex"), ("reply", "sent", "", "beta")
+    for n, (decision, state, reason, who) in enumerate((alex, alex, beta, alex) + (     # Beta's send between Alex's: a run is one person's
+            ("react", "cancelled", "owner answered", "beta"), ("reply", "cancelled", "owner answered", "beta"),
+            ("reply", "cancelled", "they wrote again", "beta"), ("reply", "cancelled", "a newer decision", "beta"),
+            ("none", "decided", "", "beta"), ("held", "held", "", "beta"), ("reply", "unseen", "", "beta"))):
+        with monkeypatch.context() as m:                         # a decision's own time is the ledger's clock
+            m.setattr(time, "time", lambda: WED + 20 + n)
+            rid = waiting(led, "t-2", decision=decision, state=state, word=decision == "held", person=who)
+        led.texting_set(rid, reason=reason, handed=WED + 30 + n if state in ("sent", "unseen") else None)
+    clock.t = at(11, 12, 9, 0)
+    s.daily()
+    line = words.TEXTING_DAY.format(mode="live", day="Thu Nov 12", got=4, kinds="1 held, 1 none, 1 react, 8 reply", held=1, sent=4,
+                                    out="sent", first=2, again=2, unseen=1, run=2)
+    assert said == [line]
+    again = sender.Sender({"mode": "live"}, s.file, led, rows(s), s.hands, clock=clock, machine=said.append, day_file=s.day_file)
+    again.daily()                                                 # a restart: that day is said no second time
+    clock.t = at(11, 13, 7, 59)
+    again.daily()
+    assert said == [line]
+    clock.t = at(11, 16, 8, 1)                                    # days on: none is skipped, a quiet one in a few words
+    again.daily()
+    assert said[1:] == [words.TEXTING_DAY_QUIET.format(mode="live", day=d) for d in ("Fri Nov 13", "Sat Nov 14", "Sun Nov 15", "Mon Nov 16")]
+    clock.t = at(12, 20, 9, 0)                                    # a month on: the last week's days, no more
+    again.daily()
+    assert said[5:] == [words.TEXTING_DAY_QUIET.format(mode="live", day=f"{d} Dec {n}")
+                        for d, n in zip("Mon Tue Wed Thu Fri Sat Sun".split(), range(14, 21))]
+    assert not any(x in y.casefold() for y in said for x in ("alex", "beta", "5550000", "see you", "on my way"))

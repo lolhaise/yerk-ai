@@ -273,7 +273,12 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                     found.append(f"{RED} [texting] {k}: {e}; texting stays off")
             found.extend([f"{RED} [texting] outbox: not a whole path on the Mac; live sends nothing"]
                          if tmode == "live" and not texts.WHOLE.fullmatch(str(tx.get("outbox") or "")) else [])
+            found.extend([f"{RED} [texting] live with no host for the hands: no text can go; [imessage] host names the Mac (else ssh "
+                          "in an owner room's add-on's mac.json), never one that begins with a dash"]
+                         if tmode == "live" and not texts.head(texts.way(conf, rs, state)) else [])
             found.extend([f"{RED} [texting] mode: {tmode} is not off, dry or live"] if tmode not in ("dry", "live") else [])
+            found.extend([f"{RED} [texting] no way to the Mac's bridge: texting stays off; [imessage] host and socket name it (else an "
+                          "owner room's add-on's mac.json)"] if not texts.transport(texts.way(conf, rs, state)) else [])
             accts = load_accounts(private / "accounts.toml")                 # the check runs on an account's token alone (J28)
             found.extend([f"{RED} [texting] {words.TEXTING_NO_TOKEN}; `yerk accounts mint {accts[0].name}` makes one"]
                          if accts and not any(token_info(a, now)["token"] != "none" for a in accts) else [])
@@ -287,6 +292,10 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                              or rs.get(str(tx.get(k) or ""), {}).get("people")))
             found.extend([f"{RED} [texting] live with text-out in [gates] off: no text goes, standing release included"]
                          if tmode == "live" and "text-out" in (dict(conf.get("gates") or {}).get("off") or []) else [])
+            with suppress(OSError, ValueError):                   # the sender's last pass, while yerkd runs (J50)
+                last = float(json.loads((state / "texting" / "status.json").read_text()).get("pass") or now)
+                found.extend([f"{RED} [texting] the sender stopped {datetime.fromtimestamp(last):%H:%M}: no text is timed or sent; "
+                              "`systemctl --user restart yerkd` starts it again"] if tmode in ("dry", "live") and now - last > 60 and status.alive(state) else [])
 
     def classes() -> None:
         for name in m.scope.files():

@@ -253,19 +253,19 @@ free_path = "this is the free path"
 asked_as = ["delete files outside", "free up disk space", "clean up my disk", "delete old backups", "empty the trash", "delete crash dumps"]
 
 [abilities.text-as-you]
-state = "described"
-what = "Texts people as the owner, in the owner's voice, with a preview and a veto: the owner sees each reply before it goes and can stop it."
+state = "built"
+what = "Answers some of the owner's iMessage threads in their name, for the people on the reply list only, sending a checked reply on its own where the owner turned standing release on for that person and putting anything else on a card for their word."
 how = [
-  "The phone's messaging app through a small signed app on the owner's own computer, which carries the texts both ways.",
-  "A texting agent per thread that writes in the owner's voice and asks the owner's main room first when it does not know a fact.",
-  "Preview and veto: a reply waits in the owner's room for a send, an edit or a no; plans, money and feelings always go to the owner.",
-  "Texts queue while the computer is away and none is ever lost.",
+  "One call decides a reply, a tapback, nothing or a hold; a second call that reaches only the thread, the person's sheet and the draft checks it, and the code holds anything it cannot confirm.",
+  "A card in the owner's main room for what must wait, answered send, skip or edit <text>; standing release is off for everyone until the owner turns it on for a person.",
+  "Health, money, location and the other always-held classes wait for the owner's word unless a person's sheet opens one; the reply list and the sheets are files in the private folder.",
+  "At the send time the thread is read again and the text goes only if the owner has not answered and they have not written again; dry writes what would have gone and sends nothing.",
 ]
 tier = "free"
-needs = "a desktop computer signed into the owner's messaging account, the small signed app on it, and an ssh path from the box"
+needs = "a Mac signed into the owner's Messages with the bridge app and the runner that sends from its outbox, an ssh path from the box ([imessage] host), the reply list and a sheet for each person"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8, and the text tool sends one text the owner asked for, previewed and sent on the owner's word; a texting agent that reads other people's texts and drafts the owner's replies to them is not built."
+why_not = "A photo in a thread is named to the writer by its kind and not looked at yet; the rest is built."
 asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "text messages for me"]
 layer = 8
 upgrade = "text"

@@ -487,10 +487,23 @@ TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"
 TEXTING_OUT, TEXTING_NONE_OUT = "texting out {at}, {held} held, {unseen} unseen", "texting none out, {held} held, {unseen} unseen"
+TEXTING_DAY = ("texting {mode}, the day to 8a {day}\n{got} in · {sent} {out} · {held} on a card · {unseen} unseen\ndecided: {kinds}\n"
+               "stopped: {first} you answered, {again} they wrote again\nlongest run to one person: {run}")   # J61: one post, a row a fact
+TEXTING_DAY_QUIET, TEXTING_SENT_AS = "texting {mode}, the day to 8a {day}: no text in, nothing decided", {"live": "sent", "dry": "would send"}
+TEXTING_STOPPED = "texting sender stopped {at}"           # its last pass older than a minute (texting/sender.py's `pass`)
+TEXTING_SENDER_DOWN = "texting: the sender stopped on an error ({error})\nno text is timed or sent until yerkd restarts"
 # the always-held classes: what is never said to a person unasked unless their sheet opens it (texting/people.py)
 TEXTING_CLASSES = ("health", "medication", "substances", "faith", "money", "job", "dating", "location")
 # the `texting` tool (daemon.tool_texting): the report room reads a person's sheet and log, and changes a sheet on the owner's words
 TEXTING_OFF, TEXTING_WHERE = "texting is off", "texting works only in {room}"
+TEXTING_TOLD = (   # the report room's own block, every turn while texting is dry or live (J29); no person, no thread
+    "[texting] This room is texting's own. Texting answers some of the owner's iMessage threads in their name, only for the people "
+    "on the reply list. It is {mode}.\nA card in this room is posted by the texting code, never by you; the owner's reply `send`, `skip` "
+    "or `edit <text>` to a card is taken by the code before your turn starts.\nAny other word of the owner's about a card, a person on the "
+    "reply list or texting itself is yours to answer: read the `texting` tool's `why`, `log` or `sheet` in that turn first.\n"
+    "Call a text sent only when its row says sent.")
+TEXTING_MODE_SAID = {"dry": "dry: replies are drafted and checked, and what would have gone is written down; nothing is sent",
+                     "live": "live: a reply goes from the owner's Mac when they release its card, or when it passes the check for a person with standing release on"}
 TEXTING_ONLY = "this tool works only in the owner's texting room"      # a person's room: no room named, on or off
 TEXTING_HELP = ("Texting as the owner. Read a person's sheet (op `sheet`), a day of their texts and decisions (`log`, `value` "
                 "YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or `close` a class, `knows` "
@@ -573,6 +586,7 @@ TEXTING_SENT = {"sent": "sent {at}", "unseen": "may not have gone, not sent agai
                 "owner answered": "not sent: you answered first", "they wrote again": "not sent: they wrote again",
                 "they took it back": "not sent: they took it back", "they changed it": "not sent: they changed it",
                 "a newer decision": "not sent: a newer decision took over"}
+TEXTING_LATE = "seen late, after it was settled unseen: {n} of {of} went"     # texting/sender.py's claim (J62)
 TEXTING_REFUSED = "refused: a handle not on the reply list, or no outbox"
 TEXTING_STALE = "not sent: a text to {first}, due {at}\nthe Mac was out of reach for {minutes} min"
 TEXTING_SWITCHED = "not sent: {n} text{s} left to send by live\ntexting is {mode} now, so they are dropped"
