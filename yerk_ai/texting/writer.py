@@ -123,7 +123,7 @@ def line(r: dict[str, Any], late: set[str] | None = None, auto: set[str] | None 
     when, g, seen = when_of(r), str(r.get("guid")), shown or {}
     return " ".join(x for x in (g, f"{when.astimezone():%m-%d %H:%M}" if when else "?",
                                 ("auto" if r.get("guid") in (auto or set()) else "owner" if r.get("is_from_me") is True else "them") + ":",
-                                str(r.get("text") or "").replace("￼", "").strip(), "(a tapback)" if is_tapback(r) else "",
+                                str(r.get("text") or "").replace("\ufffc", "").strip(), "(a tapback)" if is_tapback(r) else "",
                                 *(f"({kind(a)}, shown below as photo {seen[g, n]})" if (g, n) in seen else f"({kind(a)}, unseen)"
                                   for n, a in enumerate(attached(r))),
                                 "(arrived late)" if r.get("guid") in (late or set()) else "") if x)

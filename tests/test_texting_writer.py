@@ -322,7 +322,7 @@ def test_the_thread_asks_the_bridge_for_a_rows_files_so_a_photo_reaches_the_pack
     w, led = setup(tmp_path, monkeypatch)
     fb = FakeBridge(str(Path(d := tempfile.mkdtemp(prefix="yt")) / "b.sock"))     # a short path: a socket's has a limit
     fb.chat(1, A1)
-    g = fb.add(1, "￼", ago=60, attachments=[photo()])["guid"]
+    g = fb.add(1, "\ufffc", ago=60, attachments=[photo()])["guid"]
 
     async def go() -> None:
         await fb.start()
@@ -343,7 +343,7 @@ def test_the_thread_asks_the_bridge_for_a_rows_files_so_a_photo_reaches_the_pack
 
 def test_a_link_previews_payload_is_named_nowhere_and_a_rows_file_mark_shows_no_text(tmp_path, monkeypatch):
     rows = [{"guid": "g-1", "is_from_me": False, "text": "look https://example.com/a", "created_at": stamp(900), "attachments": [LINKED]},
-            {"guid": "g-2", "is_from_me": False, "text": "￼", "created_at": stamp(800), "attachments": [photo()]}]
+            {"guid": "g-2", "is_from_me": False, "text": "\ufffc", "created_at": stamp(800), "attachments": [photo()]}]
 
     async def two(key: str, limit: int) -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
@@ -354,7 +354,7 @@ def test_a_link_previews_payload_is_named_nowhere_and_a_rows_file_mark_shows_no_
     pack = (tmp_path / "stdin.txt").read_text()
     checked = check.inputs({"decision": "reply", "parts": '["ha"]', "inbound": "g-1,g-2", "statements": "[]"}, rows, Sheet(), "t4g")
     for got in (pack, checked):
-        assert "Payload" not in got and "a file" not in got and "￼" not in got
+        assert "Payload" not in got and "a file" not in got and "\ufffc" not in got
         assert "them: look https://example.com/a\n" in got and "them: (a photo, unseen)\n" in got
 
 
@@ -385,7 +385,7 @@ def ssh(tmp: Path, kind: str = "ok") -> list[str]:
 
 
 def text(guid: str, *files: dict[str, Any], mine: bool = False, ago: float = 60.0) -> dict[str, Any]:
-    return {"guid": guid, "is_from_me": mine, "text": "￼", "created_at": stamp(ago), "attachments": list(files)}
+    return {"guid": guid, "is_from_me": mine, "text": "\ufffc", "created_at": stamp(ago), "attachments": list(files)}
 
 
 def looked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]], burst: tuple[str, ...], kind: str = "ok",
