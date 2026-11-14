@@ -503,7 +503,7 @@ TEXTING_TOLD = (   # the report room's own block, every turn while texting is dr
     "reply list or texting itself is yours to answer: read the `texting` tool's `why`, `log` or `sheet` in that turn first.\n"
     "Call a text sent only when its row says sent.")
 TEXTING_MODE_SAID = {"dry": "dry: replies are drafted and checked, and what would have gone is written down; nothing is sent",
-                     "live": "live: a reply that passes the check, or that he releases, is sent from his Mac"}
+                     "live": "live: a reply goes from the owner's Mac when they release its card, or when it passes the check for a person with standing release on"}
 TEXTING_ONLY = "this tool works only in the owner's texting room"      # a person's room: no room named, on or off
 TEXTING_HELP = ("Texting as the owner. Read a person's sheet (op `sheet`), a day of their texts and decisions (`log`, `value` "
                 "YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or `close` a class, `knows` "
