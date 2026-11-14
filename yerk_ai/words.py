@@ -563,6 +563,7 @@ TEXTING_SENT = {"sent": "sent {at}", "unseen": "may not have gone, not sent agai
                 "owner answered": "not sent: you answered first", "they wrote again": "not sent: they wrote again",
                 "they took it back": "not sent: they took it back", "they changed it": "not sent: they changed it",
                 "a newer decision": "not sent: a newer decision took over"}
+TEXTING_LATE = "seen late, after it was settled unseen: {n} of {of} went"     # texting/sender.py's claim (J62)
 TEXTING_REFUSED = "refused: a handle not on the reply list, or no outbox"
 TEXTING_STALE = "not sent: a text to {first}, due {at}\nthe Mac was out of reach for {minutes} min"
 TEXTING_SWITCHED = "not sent: {n} text{s} left to send by live\ntexting is {mode} now, so they are dropped"

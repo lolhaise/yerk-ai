@@ -227,17 +227,20 @@ class Sender:
     def claim(self, p: Person, msg: dict[str, Any], at: float | None) -> bool:
         """A from-me row new on the link (the intake asks): True when it is texting's own send, claiming the oldest handed,
         unclaimed job of the thread whose window [handed - 10 s, handed + claim_seconds] holds the row's own time, a
-        tapback row only a tapback job and a text row only a text job. The last part claimed: `sent`; else the next part is
-        due a `burst_gap` draw from now (J40)."""
+        tapback row only a tapback job and a text row only a text job; with none, an `unseen` one the same way, seen late
+        (J62: the bridge was away while the Mac sent it). The last part claimed, or one seen late: `sent` (a part never
+        handed stays dropped); else the next part is due a `burst_gap` draw from now (J40)."""
         t = self.clock() if at is None else at
-        jobs = [r for r in self.ledger.texting_rows(p.key, "queued") if self.mode == "live" and r["handed"] is not None
-                and (r["decision"] == "react") == is_tapback(msg) and float(r["handed"]) - 10 <= t <= float(r["handed"]) + self.claim_s]
+        jobs = [r for state in ("queued", "unseen") for r in self.ledger.texting_rows(p.key, state) if self.mode == "live"
+                and r["handed"] is not None and (r["decision"] == "react") == is_tapback(msg)
+                and float(r["handed"]) - 10 <= t <= float(r["handed"]) + self.claim_s]
         if not jobs:
             return False
-        r = min(jobs, key=lambda r: float(r["handed"]))
+        r = min(jobs, key=lambda r: (r["state"] != "queued", float(r["handed"])))
         rid, got = int(r["id"]), ",".join([*gs_of(r, "claimed"), str(msg.get("guid") or "")])
-        if len(got.split(",")) >= parts(r):
-            self.ledger.texting_set(rid, claimed=got, state="sent", reason="")
+        if (n := len(got.split(","))) >= parts(r) or r["state"] == "unseen":
+            self.ledger.texting_set(rid, claimed=got, state="sent",
+                                    reason="" if r["state"] == "queued" else words.TEXTING_LATE.format(n=n, of=parts(r)))
             self.card(r, words.TEXTING_SENT["sent"].format(at=f"{datetime.fromtimestamp(t):%H:%M}"))
         else:
             sheet = (self.who.sheets.get(p.key) if self.who else None) or Sheet()

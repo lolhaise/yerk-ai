@@ -522,6 +522,49 @@ def test_a_from_me_row_outside_a_handed_jobs_window_is_the_owners_and_claims_not
         assert bool(led.texting_get(rid)["claimed"]) is (side == "auto")
 
 
+def test_a_send_seen_after_its_job_went_unseen_is_sent_late_and_auto_and_cancels_nothing_and_outside_every_window_is_his(tmp_path: Path) -> None:
+    for name, offset, side in (("inside", 20.0, "auto"), ("outside", 400.0, "owner")):
+        s, led, clock = make(tmp_path / name)
+        took, withdrawn = intake_for(s, led)
+        their(led, "t-0", WED - 60)
+        pending = waiting(led, "t-0", state="deciding")
+        rid = due(s, led, clock, "t-1")
+        handed = armed(s, led, rid)["handed"]
+        clock.t = handed + 300                                 # the bridge was away: the window closed with nothing seen
+        assert armed(s, led, rid)["state"] == "unseen"
+        rows(s).add("m-1", handed + offset, "on my way", mine=True)
+        assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == side
+        got, mine = led.texting_get(rid), led.inbound_get("m-1")["sender"]
+        assert (got["state"], got["reason"], mine) == (("sent", words.TEXTING_LATE.format(n=1, of=1), "auto") if side == "auto"
+                                                       else ("unseen", words.TEXTING_SENT["unseen"], "owner"))
+        assert led.texting_get(pending)["state"] == ("deciding" if side == "auto" else "cancelled")
+        assert withdrawn == ([] if side == "auto" else [pytest.approx(handed + offset, abs=1e-3)])
+    s, led, clock = make(tmp_path / "two")                     # part 2 was never handed: it stays dropped, and the reason says so
+    took, _ = intake_for(s, led)
+    rid = due(s, led, clock, "t-1", texts=("on my way", "ten min"))
+    handed = armed(s, led, rid)["handed"]
+    clock.t = handed + 300
+    armed(s, led, rid)
+    rows(s).add("m-1", handed + 20, "on my way", mine=True)
+    assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == "auto"
+    clock.t += 60
+    armed(s, led, rid)
+    assert (led.texting_get(rid)["reason"], calls(tmp_path / "two")) == (words.TEXTING_LATE.format(n=1, of=2), [f"yerk-{rid}-1"])
+
+
+def test_a_late_row_claims_a_queued_job_before_an_unseen_one_and_a_tapback_never_claims_a_text_job(tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, _ = intake_for(s, led)
+    old, new = waiting(led, "t-1"), waiting(led, "t-2")
+    led.texting_set(old, state="unseen", handed=WED, reason=words.TEXTING_SENT["unseen"])
+    led.texting_set(new, handed=WED + 100)
+    clock.t = WED + 400                                         # both windows closed; each row's own time is inside both
+    for guid, tapback, side in (("m-tap", True, "tapback"), ("m-1", False, "auto"), ("m-2", False, "auto")):
+        rows(s).add(guid, WED + 95, "" if tapback else "on my way", mine=True, tapback=tapback)
+        assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == side
+    assert [(r["state"], r["claimed"]) for r in map(led.texting_get, (new, old))] == [("sent", "m-1"), ("sent", "m-2")]
+
+
 def test_a_stop_in_the_middle_of_a_hand_off_counts_as_handed_and_the_text_is_never_handed_again(tmp_path: Path) -> None:
     """J41: the mark is written before the hands run, so a daemon stopped between the write on the Mac and the mark can
     never write that job a second time."""
