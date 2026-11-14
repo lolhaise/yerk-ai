@@ -715,6 +715,9 @@ SHOW_NO_FILE = "there is no file {name} in this room's folders"
 SHOW_TYPE = ("{name} is not opened: show takes only what a browser shows itself (a web page, a PDF, a picture, text, a video "
              "or a sound), never a file the PC would run; a document goes to a PDF with render first")
 SHOW_NO_PATH = "{name} is not opened: yerkd could not name it as Windows reads it (wslpath)"
+SHOW_NAME = ("{name} is not opened: its name or a folder's above it holds a character other than a to z, digits, spaces and "
+             ". _ - ( ), one Windows' opener could run as a command ($, a backtick, a quote, % or &); copy it to a plain name "
+             "in the work folder and show that")
 SHOW_SCREEN_NOT_HERE = "yerkd places a file on a named screen of a Windows PC (WSL) only"
 SHOW_NO_WINDOW = "no new window of the browser showed in 15 s, so it opened where the browser put it"
 SHOW_OPENED = "{name} is open on the owner's screen; a reload there shows its newest save"

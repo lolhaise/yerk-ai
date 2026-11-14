@@ -141,3 +141,33 @@ def test_the_windows_path_is_wslpath_s_or_none_and_the_tool_is_every_room_s(tmp_
     assert "mcp__yerk__show" in y.spec_for("example-room").settings["permissions"]["allow"]
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert list(tools["show"].inputSchema["properties"]) == ["path", "screen"]
+
+
+def test_a_name_windows_could_read_as_a_command_never_reaches_an_opener_or_the_pc(tmp_path, monkeypatch):
+    """PR 77's cold read: with no screen named, show handed the file to the box's opener, under WSL with wslu wslview, whose
+    PowerShell `Start "<path>"` runs a $( ) inside the quotes; wslpath -w passes $, a backtick, PowerShell's own curly
+    quote, %, & and ; unchanged, so a file the room names x$(calc).html would run a command on the PC outside the
+    sandbox. A path holding anything but letters, digits, spaces and . _ - ( ) is refused in words before any opener or
+    PowerShell is asked, its folders' names too; a plain name with spaces and brackets still opens."""
+    y, _, state = plain_daemon(tmp_path)
+    (wslview := tmp_path / "wslview").write_text(f"#!/bin/sh\nprintf 'Start \"%s\"\\n' \"$1\" >> \"{tmp_path}/ran\"\n")
+    wslview.chmod(0o700)                                                       # wslu's: the path inside PowerShell's double quotes
+    y.conf["page"] = {"open": [str(wslview)]}
+    for name in ("x$(calc).html", "a`b.html", "e\u201df.html", "g'h.html", "i%PATH%.html", "k&calc.html", "m;calc.html",
+                 "n|o.html", "p^q.pdf", "r!s!.png", "t\u02bau.html"):
+        f = deck(state, name)
+        for screen in ("", "right"):
+            args, handed = pc(tmp_path, monkeypatch, unc=UNC.replace("deck.html", name))
+            got = asyncio.run(y.tool_show("example-room", str(f), screen))
+            assert got == {"ok": False, "error": words.SHOW_NAME.format(name=name)}, (name, screen)
+            monkeypatch.setattr(pagemod, "wsl", lambda: False)                 # a box that is not WSL: its own path, the same rule
+            assert asyncio.run(y.tool_show("example-room", str(f), screen)) == got
+    (bad := state / "rooms" / "example-room" / "work" / "$(calc)").mkdir()
+    (f := bad / "deck.html").write_text("<h1>deck</h1>")
+    assert asyncio.run(y.tool_show("example-room", str(f))) == {"ok": False, "error": words.SHOW_NAME.format(name="deck.html")}
+    assert not (tmp_path / "ran").exists() and not args.exists() and not handed.exists()   # no opener, no PowerShell
+    plain = deck(state, "Deck (v2) final_1.html")
+    pc(tmp_path, monkeypatch, unc=UNC.replace("deck.html", plain.name))
+    assert asyncio.run(y.tool_show("example-room", str(plain))) == {"ok": True, "line": words.SHOW_OPENED.format(name=plain.name)}
+    assert (tmp_path / "ran").read_text() == f'Start "{UNC.replace("deck.html", plain.name)}"\n'
+    assert asyncio.run(y.tool_show("example-room", str(plain), "left"))["ok"] and args.exists()

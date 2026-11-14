@@ -125,6 +125,11 @@ SCREENS = ("left", "middle", "right", "primary")
 # a program, a shortcut, an Office file with its macros); a document goes through `render` to a PDF first
 SHOWN = frozenset((".html", ".htm", ".pdf", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".txt", ".json",
                    ".mp4", ".webm", ".mp3", ".wav", ".ogg"))
+# the whole path `show` hands the placing script or an opener (its Windows one under WSL), the room's own names in it: a to
+# z, digits, spaces and . _ - ( ) between its slashes, nothing a command reads as code; wslview, the box's opener under WSL
+# with wslu, puts it inside PowerShell's double quotes (`Start "<path>"`), where a $( ) or a backtick runs and a curly quote
+# ends them, and wslpath -w hands those, %, & and ; on unchanged (PR 77's cold read)
+PLAIN = re.compile(r"[\w .()/\\-]+", re.ASCII)
 POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 PLACE_SECONDS = 40        # the placing script's wall clock: PowerShell's start, the browser, its window (it waits 15 s for it)
 PAINT_SECONDS = 10        # how long a placed open waits for its tab to say it painted

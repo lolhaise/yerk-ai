@@ -591,6 +591,8 @@ class Yerkd:
             return {"ok": False, "error": str(e)}
         if not (target := await asyncio.to_thread(page.windows_path, p) if (here := page.wsl()) else str(p)):
             return {"ok": False, "error": words.SHOW_NO_PATH.format(name=p.name)}
+        if not page.PLAIN.fullmatch(target):  # a name the room chose, run as a command on the PC by wslview's PowerShell
+            return {"ok": False, "error": words.SHOW_NAME.format(name=p.name)}
         got = await asyncio.to_thread(page.place, target, screen, room, file=True) if screen and here else {
             "ok": False, "opened": False, "again": True, "why": words.SHOW_SCREEN_NOT_HERE}
         if got["ok"]:

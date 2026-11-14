@@ -27,10 +27,14 @@ version changes.
   work folder and the files sent to it, never a secret), and only in your own rooms.
 - Said in words, opened once at most: a screen that is not there, a browser yerkd opens no window of, a window that
   never showed, a locked screen.
+- A file whose name, or a folder's above it, holds anything but a to z, digits, spaces and . _ - ( ) is refused in
+  words, with the way (a copy under a plain name): the box's opener under WSL with wslu, wslview, puts the path inside
+  PowerShell's double quotes, where a `$( )` in a name the room chose would run as a command on your PC outside the
+  sandbox (the pull request's cold read).
 - The ability is `show` (`yerk explain show`). The hands plug-in's browser, asked to open a file (a file: address or
   a path), still refuses, and its words now name `show` (its branch need-2026-11-13-91); its tool entries do not change.
 - budgets.toml: `yerk_tools` 27,250 to 28,000 and the session start's total 130,773 to 131,523 for the tool's entry
-  (about 761 characters as sent), and `[code] lines` 32,167 to 32,249, each with its dated note.
+  (about 761 characters as sent), and `[code] lines` 32,167 to 32,259, each with its dated note.
 
 ### texting-6 (#76)
 

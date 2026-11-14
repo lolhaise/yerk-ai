@@ -1848,6 +1848,7 @@ how = [
   "A named screen (`screen`, else [page] screen), on a Windows PC under WSL: the file's Windows path, as `wslpath -w` names it, handed to Windows' own PowerShell in its environment, never on a command line, and opened in a new window of the default browser, found as that browser's new window, moved to the screen, maximized and raised without the focus, the display woken first, as page-mac says for the page.",
   "No screen named, or a box that is not a Windows PC: the box's own opener, where it puts it ([page] open, else wslview or Windows' url.dll under WSL, open on a Mac, xdg-open on a Linux desktop).",
   "Told in words, opened once at most: a screen that is not there, a browser yerkd opens no window of, a window that never showed, a locked screen, a type it does not open, a file outside the room's folders.",
+  "A plain path only: a to z, digits, spaces and . _ - ( ) in the file's name and its folders', since wslview, the box's opener under WSL with wslu, puts the path inside PowerShell's double quotes, where a $( ) in a name the room chose would run as a command on the PC; any other is refused in words, with the way (a copy under a plain name).",
   "Owner rooms only: a person's room puts nothing on the owner's screen.",
   "Named where a room looks first: the hands plug-in's browser, whose window is kept off the owner's screen, refuses an open of a file (a file: address or a path) as before, and its words name `show`.",
 ]

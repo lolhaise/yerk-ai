@@ -719,7 +719,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-13: need-2026-11-13-91 raised it by 82, a file of a room's own folders opened on the PC's screen for every room (need 91: asked during a timed exam to bring up the slide deck it built, a room had a browser tool that opens only http(s) addresses, a server in its shell the PC could not reach and a Windows command refused outside its sandbox), not folded to fit: daemon.py 36 (the `show` tool: the owner's rooms only, may_send's folders, the types a browser shows itself, the named screen as the page's, else the box's opener, its every end in words), channels/page.py 21 (SHOWN, windows_path, place's file flag and the placing script's match of the browser's new window by its process), words.py 15, mcp_server.py 10 (the tool and its lines in the header). 32,249: main 67a1145's 32,167 plus 82.
 
-- `lines = 32249`
+2026-11-13: need-2026-11-13-91's cold read raised it by 10, show's path held to a to z, digits, spaces and . _ - ( ) before the placing script or an opener gets it (wslview runs a $( ) of a room's file name as PowerShell on the owner's PC), not folded to fit: channels/page.py 5 (PLAIN and its note), words.py 3, daemon.py 2. 32,259: 32,249 plus 10.
+
+- `lines = 32259`
 
 ## Uncapped
 
