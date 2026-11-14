@@ -608,9 +608,11 @@ def test_the_daemon_gives_dry_hands_that_only_write_files_and_live_ones_ssh_to_a
         (state := tmp_path / f"state{n}").mkdir()
         got = Yerkd(private, state).texting()
         send = got[-1].cr_frame.f_locals["self"]             # the sender, from its own task
+        wrote = next(x for c in got if isinstance(x := c.cr_frame.f_locals.get("self"), writer.Writer))
         for c in got:
             c.close()
         assert type(send.hands) is kind and getattr(send.hands, "argv", None) == argv
+        assert wrote.head == ([] if host.startswith("-") else [*texts.SSH, "mac"])     # a photo is looked at over the same ssh, in dry too
 
 
 def test_status_is_told_the_last_text_out_how_many_are_held_and_how_many_unseen(tmp_path: Path) -> None:

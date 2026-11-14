@@ -66,7 +66,7 @@ message and a success result echoing the text. Variations:
   then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder, or a CLAUDE_CODE_OAUTH_TOKEN in
   FAKE_CLAUDE_FAIL_TOKENS (the check's calls share one folder), gets a usage-limit error result; with
   --output-format stream-json (a photo shown), two stream lines first and that answer as the last line, none with
-  FAKE_CLAUDE_STREAM_NO_RESULT
+  FAKE_CLAUDE_STREAM_NO_RESULT, one more line after it with FAKE_CLAUDE_STREAM_AFTER
 Records argv, the config folder, the working folder and the environment's names (never values) to FAKE_CLAUDE_RECORD.
 """
 import json
@@ -105,6 +105,7 @@ if "--json-schema" in argv:            # a one-shot answering in one JSON object
         print(json.dumps({"type": "system", "subtype": "init", "tools": ["StructuredOutput"]}))
         print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "StructuredOutput"}]}}))
         got = "" if os.environ.get("FAKE_CLAUDE_STREAM_NO_RESULT") else got
+        got += "\n" + json.dumps({"type": "system", "subtype": "after"}) if os.environ.get("FAKE_CLAUDE_STREAM_AFTER") else ""
     print(got)
     sys.exit(0)
 if argv[:1] == ["setup-token"]:

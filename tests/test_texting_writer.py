@@ -84,6 +84,9 @@ def test_the_call_offers_no_built_in_tool_and_only_the_report_rooms_worker_serve
     assert argv[argv.index("--allowedTools") + 1] == "mcp__yerk__recall,mcp__yerk__read_memory"
     assert argv[argv.index("--model") + 1] == "model-x" and argv[argv.index("--effort") + 1] == "high"
     assert argv[argv.index("--system-prompt-file") + 1] == str(writer.PROMPT)
+    assert argv == ["-p", "--output-format", "json", "--json-schema", argv[4], "--system-prompt-file", str(writer.PROMPT), "--tools", "",
+                    "--mcp-config", argv[10], "--strict-mcp-config", "--allowedTools", "mcp__yerk__recall,mcp__yerk__read_memory",
+                    "--setting-sources", "", "--no-session-persistence", "--model", "model-x", "--effort", "high"]     # flag for flag
     schema = json.loads(argv[argv.index("--json-schema") + 1])
     assert schema["properties"]["decision"]["enum"] == ["reply", "react", "none", "held"]     # no skip, whoever is in the thread
     servers = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text())["mcpServers"]
@@ -99,6 +102,7 @@ def test_the_pack_fences_each_part_and_names_the_owner_from_the_list_and_writer_
     asyncio.run(w.decide(deciding(led, ago=900)))       # written 15 minutes before it came in: late
     pack = (tmp_path / "stdin.txt").read_text()
     tag = pack.split("=== baseline ")[1].split(" ===")[0]
+    assert pack.startswith("Now: ") and pack.endswith(f"=== end held {tag} ===")     # the whole stdin: nothing before the pack or after it
     for part in ("baseline", "sheet", "thread", "their texts", "memory", "place", "held"):
         assert pack.count(f"=== {part} {tag} ===") == 1 and pack.count(f"=== end {part} {tag} ===") == 1
     assert "You write as Sam to Alex" in pack and "few words" in pack and 'reacts = ["love"]' in pack
@@ -372,14 +376,19 @@ path = sys.stdin.buffer.read().decode()
 with open(log, "a") as f:
     f.write(json.dumps({"argv": sys.argv[3:], "stdin": path}) + "\\n")
 pic = bytes.fromhex("ffd8ff") + b" made-up picture " + path.split("/")[-2].encode()
-sys.stdout.buffer.write({"ok": pic, "big": pic + bytes(4 << 20), "gif": b"GIF89a made-up"}.get(kind, b""))
-sys.exit({"nolink": 255, "notpic": 5}.get(kind, 0))
+sys.stdout.buffer.write({"ok": pic, "big": pic + bytes(4 << 20), "gif": b"GIF89a made-up", "cut": pic}.get(kind, b""))
+sys.stdout.buffer.flush()
+if kind == "hang":
+    import time
+    time.sleep(30)
+sys.exit({"nolink": 255, "notpic": 5, "cut": 255}.get(kind, 0))
 '''
 
 
 def ssh(tmp: Path, kind: str = "ok") -> list[str]:
     """The tests' ssh to the Mac, keeping its argv and stdin as a line of <tmp>/ssh.jsonl and answering as REMOTE would: a
-    JPEG (`ok`), more than a fetch takes (`big`), bytes that are not a JPEG (`gif`), exit 5 (`notpic`) or 255 (`nolink`)."""
+    JPEG (`ok`), more than a fetch takes (`big`), bytes that are not a JPEG (`gif`), exit 5 (`notpic`) or 255 (`nolink`), a
+    JPEG's bytes and then exit 255 (`cut`, the link dropped mid-photo), or nothing for 30 s (`hang`)."""
     (script := tmp / "fake_ssh.py").write_text(SSH)
     return [sys.executable, str(script), kind, str(tmp / "ssh.jsonl")]
 
@@ -410,17 +419,23 @@ def looked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict[str,
 
 
 @pytest.mark.parametrize("case", ["no ssh head", "ssh cannot connect", "not a picture", "more than 4 MB back", "not a JPEG",
-                                  "missing", "a sticker", "a video", "the owner's side", "an older row", "over the cap"])
+                                  "missing", "a sticker", "a video", "the owner's side", "an older row", "over the cap",
+                                  "the link drops mid-photo", "the Mac hangs", "a GIF"])
 def test_what_is_not_looked_at_stays_unseen_and_the_decision_is_made_as_today(tmp_path, monkeypatch, case):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
-    kind = {"ssh cannot connect": "nolink", "not a picture": "notpic", "more than 4 MB back": "big", "not a JPEG": "gif"}.get(case, "ok")
+    monkeypatch.setattr(writer, "FETCH", 0.5 if case == "the Mac hangs" else writer.FETCH)
+    kind = {"ssh cannot connect": "nolink", "not a picture": "notpic", "more than 4 MB back": "big", "not a JPEG": "gif",
+            "the link drops mid-photo": "cut", "the Mac hangs": "hang"}.get(case, "ok")
     one = {"missing": photo(missing=True), "a sticker": photo(is_sticker=True), "over the cap": photo(total_bytes=(25 << 20) + 1),
-           "a video": photo(mime_type="video/quicktime", transfer_name="IMG_0002.MOV")}.get(case, photo())
+           "a video": photo(mime_type="video/quicktime", transfer_name="IMG_0002.MOV"),
+           "a GIF": photo(mime_type="image/gif", transfer_name="IMG_0003.GIF")}.get(case, photo())
     rows = [text("g-old", photo(), ago=3000), text("g-own", photo(), mine=True, ago=120), text("g-1", one)]
     burst = {"the owner's side": ("g-own",), "an older row": ("g-1",)}.get(case, ("g-1",))
     if case == "an older row":
         rows[2] = {**rows[2], "attachments": [], "text": "hey"}
+    t0 = time.monotonic()
     pack, argv, fetched, states, _ = looked(tmp_path, monkeypatch, rows, burst, kind, head=case != "no ssh head")
+    assert time.monotonic() - t0 < 15        # a fetch that hangs is cut at its seconds and its ssh killed, never waited out
     assert argv[argv.index("--output-format") + 1] == "json" and "--input-format" not in argv and pack.startswith("Now: ")
     assert "shown below" not in pack and pack.count("unseen") >= 2
     assert len(fetched) == (1 if kind != "ok" else 0)
@@ -429,7 +444,8 @@ def test_what_is_not_looked_at_stays_unseen_and_the_decision_is_made_as_today(tm
 
 
 @pytest.mark.parametrize("bad", ["/etc/passwd", "~/Library/Messages/Attachments/../../.ssh/id_x", "/Users/owner/Documents/IMG_0001.HEIC",
-                                 "Library/Messages/Attachments/ab/IMG_0001.HEIC", PATH.replace("/F00D", "\n/F00D"), ""])
+                                 "Library/Messages/Attachments/ab/IMG_0001.HEIC", PATH.replace("/F00D", "\n/F00D"), "",
+                                 "/tmp" + PATH[1:]])
 def test_a_path_that_is_not_a_messages_attachment_never_reaches_ssh_and_the_photo_stays_unseen(tmp_path, monkeypatch, bad):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
     pack, argv, fetched, states, _ = looked(tmp_path, monkeypatch, [text("g-1", photo(original_path=bad, filename=bad or ""))], ("g-1",))
@@ -484,6 +500,14 @@ def test_only_the_newest_four_photos_are_looked_at_and_shown_in_the_order_the_pa
     assert states == ["not fetched", "seen", "seen", "seen", "seen"]
 
 
+def test_in_a_row_of_a_video_and_a_photo_the_photo_is_the_one_shown_and_the_one_whose_row_says_seen(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    clip = photo(mime_type="video/quicktime", transfer_name="IMG_0002.MOV")
+    stdin, _, fetched, states, _ = looked(tmp_path, monkeypatch, [text("g-1", clip, photo())], ("g-1",))
+    assert states == ["not fetched", "seen"] and len(fetched) == 1
+    assert "them: (a video, unseen) (a photo, shown below as photo 1)\n" in json.loads(stdin)["message"]["content"][0]["text"]
+
+
 def test_on_the_stream_form_a_quota_failure_hops_as_today_and_a_stream_with_no_result_is_no_clean_answer(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
     w, led = setup(tmp_path, monkeypatch, accounts=2)
@@ -492,6 +516,9 @@ def test_on_the_stream_form_a_quota_failure_hops_as_today_and_a_stream_with_no_r
     assert (d["decision"], d["account"]) == ("none", "a1") and w.cooldowns.until("a0", model="model-x") is not None
     assert [(c["config_dir"], c["argv"][2]) for c in calls(tmp_path)] == [(str(tmp_path / "cfg0"), "stream-json"), (str(tmp_path / "cfg1"), "stream-json")]
     monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")
+    monkeypatch.setenv("FAKE_CLAUDE_STREAM_AFTER", "1")          # a line after the answer: the last result line is read, not the last line
+    assert w.call("a pack", set(), (), [PIC])["decision"] == "none"
+    monkeypatch.delenv("FAKE_CLAUDE_STREAM_AFTER")
     monkeypatch.setenv("FAKE_CLAUDE_STREAM_NO_RESULT", "1")
     d = w.call("a pack", set(), (), [PIC])
     assert (d["decision"], d["reason"], d["account"]) == ("held", words.TEXTING_NO_CLEAN, "a1")
