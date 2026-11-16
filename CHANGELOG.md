@@ -27,7 +27,7 @@ version changes.
   the doctor reads it, never the name or the address, so it answers without the file it cannot read.
 - A `[gmail] name` with a line break in it goes on the From line as one line; before, the email failed to build. A
   name past ASCII reads in the preview as written, never in its wire encoding.
-- budgets.toml: `[code] lines` 32,636 to 32,683, with its dated note; docs/budgets.md and docs/settings.md (`[gmail]
+- budgets.toml: `[code] lines` 32,659 to 32,706, with its dated note; docs/budgets.md and docs/settings.md (`[gmail]
   name`'s description) are what `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes
   by five shorter phrasings with the same meaning.
 - The tests: 4 new, in tests/test_emails.py (with no name, the preview's from line marked before the word, the From
@@ -38,6 +38,31 @@ version changes.
   From line as it goes.
 - **Upgrading**: to put your name on each email, add `name = "<your name>"` under `[gmail]` in yerkd.toml, written as
   your own Gmail writes it, then restart yerkd, which reads yerkd.toml at its start. Restart yerkd for the new preview.
+
+### status-card-at-once (#?)
+
+- `/status` typed in a room now shows its card at once. It showed nothing for about 30 seconds (the owner's ask,
+  2026-11-16): every line of the card was ready at once but the meters, and the card waited for them. Each account read
+  more than a minute ago was asked with `claude -p /usage`, a whole Claude Code start, three at a time and up to 15 s
+  each: 18 s for four accounts on a quiet box, about 30 s on a busy one, with Discord showing it thinking and not one
+  line.
+- The first answer is the room's card from what is on hand, with no Claude Code started: each account's reading under a
+  minute old, else its stream's. While an account on it has no reading under a minute old, one more line under the tank,
+  `⏳ asking the meters now`, says they are being asked; they are then asked as before, and the same message is edited
+  once to exactly the card `/status` gave until now, without that line.
+- With every account read under a minute ago, the first answer is already that card: one message, no line, no edit and
+  nothing asked.
+- An account whose read fails or runs out of time shows what the card showed for it before. An edit Discord refuses, the
+  interaction's 15 minutes gone say, is one line in the daemon's log, and the first card stays.
+- `yerk status`, the `/status` HTTP answer, the deploy's proof and the other slash commands answer as before, and every
+  line the card had is the same. budgets.toml: `[code] lines` 32,636 to 32,659, with its dated note; docs/budgets.md is
+  what `yerk docs own` writes. No README or docs/GUIDE.md text describes `/status` in a room, so neither changes.
+- The tests: 4 new, in tests/test_slash.py (with the account's `/usage` call held on an event, the first answer is out
+  before it ends, carrying the line under the tank; let go, it edits that message once, to exactly the card status_now
+  with live gives, without the line; every reading fresh, one message, no edit and no call; an edit that raises
+  `discord.HTTPException` leaves nothing out of the handler, the first answer standing and one log line with no
+  traceback). Its `/status` card test now reads the two calls and the edit; the other slash commands' tests pass untouched.
+- **Upgrading**: nothing to do.
 
 ### need-2026-11-16-101 (#?)
 

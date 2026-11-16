@@ -962,6 +962,7 @@ ROOM_COMPACTED, ROOM_NEW = " · \N{BROOM} {n} today", "\N{BOOKS} new session"   
 ROOM_THINK, ROOM_FAST = "\N{GEAR}\N{VARIATION SELECTOR-16} Think: {effort}", " · Fast: on"
 ROOM_FAST_ONLY = "\N{GEAR}\N{VARIATION SELECTOR-16} Fast: on"       # a room whose thinking level nothing names
 TANK, ON_THIS, ASLEEP = "\N{FUEL PUMP} Tank", "\N{BLACK RIGHTWARDS ARROWHEAD} ", " · \N{SLEEPING SYMBOL} {until}"
+METERS_ASKED = "\N{HOURGLASS WITH FLOWING SAND} asking the meters now"   # under TANK while an account has no reading under a minute old
 BUSY, ALL_QUIET = "\N{HAMMER}", "\N{HAMMER} Quiet, nothing running"
 TURN_OF, HERE, AND_MORE = "{name}: turn {took}", "this room", "and {n} more"
 ROOM_SPEED = "\N{STOPWATCH} {day}: first line {first} · turn {turn}"           # SPEED's medians

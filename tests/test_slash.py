@@ -16,7 +16,7 @@ import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import words
+from yerk_ai import status, usage, words
 from yerk_ai.accounts import Account
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EFFORTS, EXAMPLE_PRIVATE, discord_id
@@ -70,6 +70,9 @@ class It:
 
     async def _defer(self, ephemeral=False, thinking=False):
         self.said.append(("defer", "", ephemeral))
+
+    async def edit_original_response(self, *, content=None):     # the first answer edited in place, ephemeral as it was
+        self.said.append(("edit", content, None))
 
 
 class Bot:
@@ -465,10 +468,11 @@ def test_status_is_the_phone_width_card(y, monkeypatch):
     monkeypatch.setattr(y, "status_now", lambda payload, *a: asked.append(payload) or real(payload, *a))
     dc, _, _ = wire(y)
     said = slash(dc, "status")
-    assert asked == [{"live": True}]                                       # the room's /status asks the meters now
+    assert asked == [{}, {"live": True}]                      # the room's /status: what is on hand, then the meters asked now
     lines = said[-1][1].splitlines()
-    assert said[-1][2] and lines[0] == words.ROOM_HEAD.format(parts="claude-fable-5-1 · ①")   # the room's card (status.room_card)
-    assert all(words.width(x) <= words.PHONE for x in lines)
+    assert [how for how, _, _ in said] == ["message", "edit"] and said[0][2]          # one ephemeral message, edited once
+    assert lines[0] == words.ROOM_HEAD.format(parts="claude-fable-5-1 · ①")   # the room's card (status.room_card)
+    assert all(words.width(x) <= words.PHONE for x in lines + said[0][1].splitlines())
 
 
 def test_status_in_a_room_is_that_rooms_card_and_another_room_gets_its_own_head(y, monkeypatch):
@@ -482,6 +486,85 @@ def test_status_in_a_room_is_that_rooms_card_and_another_room_gets_its_own_head(
     assert there[:3] == [words.ROOM_HEAD.format(parts="claude-opus-5-5 · ①"), words.ROOM_NEW, words.ROOM_THINK.format(effort="max")]
     assert here[3:] == there[4:] and not any(x.startswith(f"{words.PLAIN} ") for x in here + there)   # one tank, one daemon
     assert words.ALL_QUIET in here and "yerkd running" not in "\n".join(here)
+
+
+LIVE = {"five_hour": {"pct": 7.0, "resets": None}, "seven_day": {"pct": 1.0, "resets": None}}    # what the /usage call reads
+
+
+def held_status(y, monkeypatch, it=None):
+    """/status in the room while the account's /usage call (usage.read) waits on an event: the interaction, what it had
+    said when the call began, each status_now payload with its answer, and the accounts the call was made for."""
+    gate, got, reads, real = threading.Event(), [], [], y.status_now
+
+    async def spy(payload, *a):
+        got.append((payload, s := await real(payload, *a)))
+        return s
+
+    def read(account, cwd, timeout=None):
+        reads.append(account.name)
+        assert gate.wait(20)
+        return dict(LIVE)
+    monkeypatch.setattr(usage, "read", read)
+    monkeypatch.setattr(y, "status_now", spy)
+    dc, _, _ = wire(y)
+    it, seen = it or It("status"), []
+
+    async def run():
+        task = asyncio.ensure_future(dc.on_interaction(it))
+        while not reads and not task.done():
+            await asyncio.sleep(0.01)
+        seen.extend(it.said)                     # the call is held here: nothing said after this line can be in it
+        gate.set()
+        await task
+    asyncio.run(run())
+    return it, seen, got, reads
+
+
+def test_status_answers_at_once_from_what_is_on_hand_while_the_meters_are_asked(y, monkeypatch):
+    """(a) The first answer is out before the /usage call ends, none started for it: the card from what is on hand, with
+    one more line under the tank saying the meters are being asked."""
+    it, seen, got, reads = held_status(y, monkeypatch)
+    assert reads == ["one"] and [p for p, _ in got] == [{}, {"live": True}]
+    assert len(seen) == 1 and seen[0][0] == "message" and seen[0][2]              # sent, ephemeral, while the call was held
+    first = seen[0][1].splitlines()
+    at = first.index(words.METERS_ASKED)
+    assert first[at - 1] == words.TANK and first[:at] + first[at + 1:] == status.room_card(got[0][1], ROOM)
+    assert words.width(words.METERS_ASKED) <= words.PHONE and not words.METERS_ASKED.startswith(words.PLAIN)
+
+
+def test_the_meters_asked_now_edit_that_message_once_into_the_card_status_gave_until_now(y, monkeypatch):
+    """(b) Once the call ends, the same ephemeral message is edited once, to exactly the card /status answered with until
+    now (status.room_card of status_now with live), the line saying the meters are being asked gone."""
+    it, seen, got, _ = held_status(y, monkeypatch)
+    today = "\n".join(status.room_card(got[1][1], ROOM))
+    assert got[1][0] == {"live": True} and it.said == [seen[0], ("edit", today, None)]
+    assert words.METERS_ASKED not in today.splitlines() and "5h 7% · wk 1%" in today and "5h 7%" not in seen[0][1]
+
+
+def test_every_reading_under_a_minute_old_is_one_answer_no_edit_and_no_call(y, monkeypatch):
+    """(c) Every account read under a minute ago: the first answer is already the live card; one message, no line saying
+    the meters are being asked, no edit, no second status_now and no /usage call."""
+    (y.state / usage.FILE).write_text(json.dumps({"one": {**LIVE, "at": time.time(), "source": "live"}}))
+    it, _, got, reads = held_status(y, monkeypatch)
+    assert reads == [] and [p for p, _ in got] == [{}] and it.said == [("message", "\n".join(status.room_card(got[0][1], ROOM)), True)]
+    assert words.METERS_ASKED not in it.said[0][1] and "5h 7% · wk 1%" in it.said[0][1]
+    assert it.said[0][1] == "\n".join(status.room_card(asyncio.run(y.status_now({"live": True})), ROOM)) and reads == []
+
+
+def test_an_edit_discord_refuses_is_one_log_line_and_the_first_answer_stands(y, monkeypatch, caplog):
+    """(d) The edit refused (its token gone, or Discord's no): nothing leaves the handler, the first answer stands, and
+    the log has one line for it, no traceback."""
+    caplog.set_level(logging.INFO, logger="yerk.discord")
+    it = It("status")
+
+    async def refused(*, content=None):
+        it.said.append(("refused", content, None))
+        raise discord.HTTPException(NS(status=404, reason="Not Found"), {"code": 10015, "message": "Unknown Webhook"})
+    it.edit_original_response = refused
+    _, seen, _, _ = held_status(y, monkeypatch, it)                  # an exception out of the handler fails the test here
+    assert [how for how, _, _ in it.said] == ["message", "refused"] and it.said[0] == seen[0]
+    told = [r for r in caplog.records if r.name == "yerk.discord" and r.levelno >= logging.WARNING]
+    assert len(told) == 1 and told[0].exc_info is None and "Unknown Webhook" in told[0].getMessage()
 
 
 def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, tmp_path):
