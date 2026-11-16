@@ -22,10 +22,11 @@ from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
-from yerk_ai.texting import check, writer
+from yerk_ai.texting import check, holds, intake, writer
 from yerk_ai.texting.link import Link
-from yerk_ai.texting.people import Sheet
+from yerk_ai.texting.people import Sheet, load
 from test_observe import Timers
+from test_texting_holds import Card
 from test_texting_link import A1, FakeBridge, listed, stamp, until
 
 FAKE = Path(__file__).with_name("fake_claude.py")
@@ -265,6 +266,72 @@ def test_a_fault_after_the_call_is_never_a_second_call(tmp_path, monkeypatch):
         t.cancel()
     asyncio.run(go())
     assert len(calls(tmp_path)) == 1 and int(r["id"]) in w.busy
+
+
+def meanwhile(w: writer.Writer, led: Ledger, ans: dict[str, Any]) -> Any:
+    """A call during which the owner's own text reaches the intake (J96), answering `ans` once it has."""
+    def call(*_: Any, **__: Any) -> dict[str, Any]:
+        who = load(w.file)
+        intake.Intake({"mode": "dry"}, who, led, lambda *a, **k: True).take(
+            who.people["alex"], {"guid": "g-mine", "is_from_me": True, "text": "yes last week", "created_at": stamp(30), "chat_id": 1})
+        return ans
+    return call
+
+
+def after(tmp_path: Path, w: writer.Writer, led: Ledger) -> list[tuple[str, str, str]]:
+    """A pass of the check and of the holds: the cards posted (a call of the check would be in record.jsonl)."""
+    async def go() -> list[tuple[str, str, str]]:
+        task, card = asyncio.ensure_future(check.Check({}, w).run()), Card()
+        await asyncio.sleep(0.5)
+        task.cancel()
+        await holds.Holds({"mode": "dry"}, w.file, tmp_path / "state", led, "owner-room", lambda key: thread(key, 50), card.show).tick()
+        return card.posts
+    return asyncio.run(go())
+
+
+@pytest.mark.parametrize("decision", ["reply", "held", "none"])
+def test_his_own_text_filed_while_the_writers_call_runs_is_never_undone_and_nothing_is_checked_shown_or_timed(tmp_path, monkeypatch, decision):
+    w, led = setup(tmp_path, monkeypatch)
+    rid = int(deciding(led, ago=60)["id"])
+    d = writer.held("held: dating not open on their sheet") if decision == "held" else {
+        **writer.held(""), "decision": decision, "parts": ["haha yes"] if decision == "reply" else []}
+    w.call = meanwhile(w, led, {**d, "account": "a0", "seconds": 4.5, "tokens": 960})
+    asyncio.run(w.decide(led.texting_get(rid) or {}))
+    r, text = led.texting_get(rid) or {}, led.inbound_get("g-1") or {}
+    assert (r["state"], r["reason"], r["decision"], r["seconds"], r["tokens"]) == ("cancelled", "owner answered", decision, 4.5, 960)
+    assert (text["state"], text["note"]) == ("answered", "the owner answered himself")
+    [entry] = [json.loads(x) for f in (tmp_path / "state" / "texting" / "dry").glob("*.jsonl") for x in f.read_text().splitlines()]
+    assert entry["answered_first"] is True and entry["decision"] == decision
+    assert after(tmp_path, w, led) == [] and calls(tmp_path) == [] and led._select("SELECT * FROM approvals", ()) == []
+    assert (led.texting_get(rid) or {})["state"] == "cancelled" and led.texting_in("would-send") == []
+
+
+@pytest.mark.parametrize("stop", ["row", "text"])
+def test_each_read_again_after_the_call_alone_keeps_what_changed_while_it_ran(tmp_path, monkeypatch, stop):
+    w, led = setup(tmp_path, monkeypatch)
+    rid = int(deciding(led, ago=60)["id"])
+
+    def call(*_: Any) -> dict[str, Any]:
+        if stop == "row":
+            led.texting_set(rid, state="cancelled", reason="a newer decision")
+        else:
+            led.inbound_set("g-1", state="answered", note="the owner answered himself")
+        return {**writer.held(""), "decision": "none", "seconds": 1.0, "tokens": 5}
+    w.call = call
+    asyncio.run(w.decide(led.texting_get(rid) or {}))
+    r, text = led.texting_get(rid) or {}, led.inbound_get("g-1") or {}
+    assert "decided" not in (r["state"], text["state"]) and (r["decision"], r["tokens"]) == ("none", 5)
+
+
+@pytest.mark.parametrize("release", [True, False])
+def test_his_own_text_filed_while_the_checks_call_runs_gets_no_card_and_no_standing_release(tmp_path, monkeypatch, release):
+    w, led = setup(tmp_path, monkeypatch)
+    w.file.write_text(LIST + "release = true\n" * release)
+    rid = int(deciding(led, ago=60)["id"])
+    led.texting_set(rid, state="decided", decision="reply", parts=json.dumps(["haha yes"]), statements="[]", reason="")
+    w.hop = meanwhile(w, led, {"release": True, "failed": [], "statements": [], "unlisted": [], "why": "it fits", "reason": ""})
+    assert after(tmp_path, w, led) == [] and led._select("SELECT * FROM approvals", ()) == []
+    assert ((led.texting_get(rid) or {})["state"], led.texting_in("would-send")) == ("cancelled", [])
 
 
 def test_the_loop_takes_each_deciding_row_once_including_those_a_stop_left(tmp_path, monkeypatch):

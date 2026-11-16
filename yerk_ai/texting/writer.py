@@ -274,11 +274,14 @@ class Writer:
         fields = {"decision": d["decision"], "parts": json.dumps(d["parts"]), "react": d["react"], "reply_to": d["reply_to"],
                   "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
                   "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": self.mode}
-        self.ledger.texting_set(rid, state="decided", **fields)
-        for g in gs:
+        first = (self.ledger.texting_get(rid) or {}).get("state") != "deciding" or any(      # he answered while the call ran
+            (self.ledger.inbound_get(g) or {}).get("state") == "answered" for g in gs)        # (J96): never undone, the record only
+        self.ledger.texting_set(rid, **({k: v for k, v in fields.items() if k != "reason"} if first else {"state": "decided", **fields}))
+        for g in () if first else gs:
             self.ledger.inbound_set(g, state="decided")
         if self.mode == "dry":
-            dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"]})
+            dry(self.state, at, {"t": now, "id": rid, "person": key, "inbound": gs, **fields, "parts": d["parts"], "statements": d["statements"],
+                                 **({"answered_first": True} if first else {})})
         log.info("texting: %s decided %s (%s, %.0f s)", key, d["decision"], self.mode, d["seconds"])
 
     async def last(self, key: str) -> list[dict[str, Any]]:
