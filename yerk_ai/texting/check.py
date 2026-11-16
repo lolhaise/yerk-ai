@@ -20,7 +20,7 @@ from typing import Any
 
 from .. import words
 from .people import Sheet, load, sheet_text
-from .writer import Writer, answer, dry, fence, line
+from .writer import Writer, answer, dry, fence, line, taps
 
 log = logging.getLogger("yerk.texting")
 PROMPT = Path(__file__).with_name("check.md")
@@ -98,12 +98,12 @@ def draft(row: dict[str, Any], his: set[str], known: set[str]) -> str:
     return "\n".join(out)
 
 
-def inputs(row: dict[str, Any], rows: list[dict[str, Any]], s: Sheet, tag: str) -> str:
+def inputs(row: dict[str, Any], rows: list[dict[str, Any]], s: Sheet, tag: str, auto: set[str] | None = None) -> str:
     """The four inputs and nothing else, each fenced with this call's tag: the thread (each row marked as the writer's pack
     marks it), the sheet, their texts (the row's `inbound`) and the draft."""
     gs, his = set(str(row.get("inbound") or "").split(",")), {str(r.get("guid")) for r in rows if r.get("is_from_me") is True}
-    return "\n\n".join([words.TEXTING_CHECK_PACK.format(tag=tag), fence("thread", "\n".join(line(r) for r in rows), tag),
-                        fence("sheet", sheet_text(s), tag), fence("their texts", "\n".join(line(r) for r in rows if r.get("guid") in gs), tag),
+    return "\n\n".join([words.TEXTING_CHECK_PACK.format(tag=tag), fence("thread", "\n".join(line(r, auto=auto) for r in rows), tag),
+                        fence("sheet", sheet_text(s), tag), fence("their texts", "\n".join(line(r, auto=auto) for r in rows if r.get("guid") in gs), tag),
                         fence("draft", draft(row, his, keys(s)), tag)])
 
 
@@ -163,7 +163,7 @@ class Check:
             his, said = {str(r.get("guid")) for r in rows if r.get("is_from_me") is True}, {
                 int(x["n"]): str(x.get("text") or "") for x in json.loads(row["statements"] or "[]")}
             t0 = time.monotonic()
-            v = await asyncio.to_thread(self.w.hop, self.argv, inputs(row, rows, s, secrets.token_hex(4)), self.cwd, self.cap,
+            v = await asyncio.to_thread(self.w.hop, self.argv, inputs(row, rows, s, secrets.token_hex(4), taps(self.w.ledger, key)), self.cwd, self.cap,
                                         self.model, lambda out: read(out, said, his, keys(s)), hold, config=self.config)
             v.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"state": "release-ready"} if v["release"] else {"decision": "held", "reason": v["reason"]}

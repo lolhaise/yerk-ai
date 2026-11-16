@@ -124,12 +124,16 @@ def kind(a: dict[str, Any]) -> str:
 def line(r: dict[str, Any], late: set[str] | None = None, auto: set[str] | None = None,
          shown: dict[tuple[str, int], int] | None = None) -> str:
     """One thread row: its guid (what a statement cites), its time, whose side (`auto` for texting's own claimed sends, else
-    `owner` or `them`), the text (never the mark a file leaves in it), and each file named by its kind: unseen, or the
-    number the call shows it by (`shown`, by the row's guid and the file's place in it)."""
-    when, g, seen = when_of(r), str(r.get("guid")), shown or {}
+    `owner` or `them`), the text (never the mark a file leaves in it), its tapbacks, whose and which (`auto` for texting's
+    own, by row id: `taps`), and each file named by its kind: unseen, or the number the call shows it by (`shown`, by the
+    row's guid and the file's place in it)."""
+    when, g, seen, own = when_of(r), str(r.get("guid")), shown or {}, auto or set()
+    said = ", ".join(" ".join(str(x) for x in ("auto" if str(e.get("id")) in own else "owner" if e.get("is_from_me") is True else "them",
+                                                e.get("type"), e.get("emoji")) if x) for e in r.get("reactions") or [])
     return " ".join(x for x in (g, f"{when.astimezone():%m-%d %H:%M}" if when else "?",
-                                ("auto" if r.get("guid") in (auto or set()) else "owner" if r.get("is_from_me") is True else "them") + ":",
+                                ("auto" if r.get("guid") in own else "owner" if r.get("is_from_me") is True else "them") + ":",
                                 str(r.get("text") or "").replace("\ufffc", "").strip(), "(a tapback)" if is_tapback(r) else "",
+                                f"(tapbacks: {said})" if said else "",
                                 *(f"({kind(a)}, shown below as photo {seen[g, n]})" if (g, n) in seen else f"({kind(a)}, unseen)"
                                   for n, a in enumerate(attached(r))),
                                 "(arrived late)" if r.get("guid") in (late or set()) else "") if x)
@@ -257,7 +261,8 @@ class Writer:
         late = {g for g, r in got.items() if r.get("created") and r.get("received") and r["received"] - r["created"] > LATE}
         theirs = [r for r in rows if r.get("guid") in got]
         mine = [w for r in rows if r.get("is_from_me") is True and (w := when_of(r))]
-        auto = {g for r in rows if r.get("is_from_me") is True and (self.ledger.inbound_get(g := str(r.get("guid"))) or {}).get("sender") == "auto"}
+        auto = taps(self.ledger, key) | {g for r in rows if r.get("is_from_me") is True
+                                         and (self.ledger.inbound_get(g := str(r.get("guid"))) or {}).get("sender") == "auto"}
         at = datetime.fromtimestamp(now).astimezone()
         text = "\n".join(str(r.get("text") or "") for r in theirs)
         memory = await asyncio.to_thread(self.recall, "\n".join([text, *(str(r.get("text") or "") for r in rows[-3:] if r not in theirs)]))
@@ -272,7 +277,7 @@ class Writer:
                                                       owner=who.owner, first=p.first, tag=tag),
                             fence("baseline", base, tag), fence("sheet", sheet_text(who.sheets[key]), tag),
                             fence("thread", "\n".join(line(r, auto=auto, shown=shown) for r in rows), tag),
-                            fence("their texts", "\n".join(line(r, late, shown=shown) for r in theirs), tag), fence("memory", memory, tag),
+                            fence("their texts", "\n".join(line(r, late, auto, shown) for r in theirs), tag), fence("memory", memory, tag),
                             fence("place", await asyncio.to_thread(self.place, at), tag), fence("held", "\n".join(holds), tag)])
         t0 = time.monotonic()
         d = await asyncio.to_thread(self.call, pack, {str(r.get("guid")) for r in rows}, who.sheets[key].open, pics)
