@@ -57,7 +57,8 @@ class Intake:
         at = when.timestamp() if when else None
         if not self.ledger.inbound_add(guid, ROOM, f"imessage:{p.key}", "owner" if mine else p.key, len(text), created=at):
             return "seen"
-        auto = mine and self.claim is not None and self.claim(p, msg, at)     # texting's own send, seen: never his answer
+        # texting's own send, seen: never the owner's answer; a tapback taken away is never one
+        auto = mine and msg.get("is_reaction_add") is not False and self.claim is not None and self.claim(p, msg, at)
         self.ledger.inbound_set(guid, digest=digest(text), **({"sender": "auto", "state": "filed", "note": "texting's own send"} if auto else {}))
         files = [(Path(str(a.get("transfer_name") or a.get("filename") or "file")).name, str(a.get("mime_type") or ""),
                   int(a.get("total_bytes") or 0)) for a in attached(msg)]

@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from test_texting_link import A1, B1, listed
+from test_texting_link import A1, B1, FakeBridge, listed, until
 from test_texting_holds import Card
 from yerk_ai import texts, words
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -27,6 +28,7 @@ from yerk_ai.ledger import Ledger
 from yerk_ai.texting import hands, holds, intake, sender, writer
 from yerk_ai.texting.bridge import BridgeDown
 from yerk_ai.texting.intake import digest
+from yerk_ai.texting.link import Link
 from yerk_ai.texting.people import load
 
 LIST = (f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\nsheet = "people/alex.toml"\n\n'
@@ -607,6 +609,50 @@ def test_a_late_row_claims_a_queued_job_before_an_unseen_one_and_a_tapback_never
             row = rows(s).rows[-1]
         assert took.take(load(s.file).people["alex"], row) == side
     assert [(r["state"], r["claimed"]) for r in map(led.texting_get, (new, old))] == [("sent", "m-1"), ("sent", "m-2")]
+
+
+@pytest.fixture
+def sock():
+    d = tempfile.mkdtemp(prefix="yt")             # under TMPDIR, short: a socket path has a length limit
+    yield str(Path(d) / "b.sock")
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_live_texting_own_tapback_from_the_watch_claims_its_job_as_sent_and_auto_and_a_removal_or_a_text_claims_none(sock, tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, withdrawn = intake_for(s, led)
+    alex, fb = load(s.file).people["alex"], FakeBridge(sock)
+    fb.chat(1, A1)
+    six = fb.add(1, "see you at six", ago=60)
+    their(led, six["guid"], time.time() - 60)
+    their(led, "t-2", time.time() - 20)
+    job, pending = waiting(led, six["guid"], decision="react", react="like"), waiting(led, "t-2", state="deciding")
+    led.texting_set(job, handed=time.time() - 5)
+
+    async def go() -> dict[str, Any]:
+        await fb.start()
+        link = Link(load(s.file), tmp_path, took.take, unix=sock)
+        task = asyncio.create_task(link.start())
+        await until(lambda: link.connected)
+        fb.push(off := fb.tap(1, six, from_me=True, add=False))
+        await until(lambda: led.inbound_get(off["guid"]) is not None)
+        assert (led.texting_get(job)["state"], led.texting_get(job)["claimed"]) == ("queued", None)     # a removal claims nothing
+        fb.push(own := fb.tap(1, six, from_me=True))
+        await until(lambda: led.texting_get(job)["state"] == "sent")
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+        return own
+    own = asyncio.run(go())
+    assert led.texting_get(job)["claimed"] == str(own["id"]) and led.inbound_get(own["guid"])["sender"] == "auto"
+    assert led.texting_get(pending)["state"] == "deciding" and withdrawn == []
+    clock.t = time.time() + 400                                  # past its window: a claimed tapback is never unseen
+    asyncio.run(s.tick())
+    assert led.texting_get(job)["state"] == "sent"
+    again = waiting(led, "t-2", decision="react", react="like")   # a text row never claims a tapback job
+    led.texting_set(again, handed=time.time())
+    rows(s).add("m-1", time.time(), "on my way", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "owner" and led.texting_get(again)["claimed"] is None
 
 
 def test_dry_claims_nothing_not_even_a_job_a_live_run_left_handed(tmp_path: Path) -> None:
