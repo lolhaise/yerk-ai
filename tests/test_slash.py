@@ -551,6 +551,22 @@ def test_every_reading_under_a_minute_old_is_one_answer_no_edit_and_no_call(y, m
     assert it.said[0][1] == "\n".join(status.room_card(asyncio.run(y.status_now({"live": True})), ROOM)) and reads == []
 
 
+def test_the_first_answer_has_the_models_own_week_from_the_last_live_reading_and_the_edit_still_comes_once(y, monkeypatch):
+    """(e) Every account read live ten minutes ago, its stream's reading newer: the first answer has the model's own week
+    from that live reading on the account's line beside the stream's week, and the line saying the meters are being asked,
+    since that is no live reading under a minute old; the meters are asked and the message is edited once."""
+    now = time.time()
+    (y.state / "meters.json").write_text(json.dumps({"one": {"at": now - 120, "source": "stream",
+                                                             "seven_day": {"pct": 44.0, "resets": now + 4 * 86400}}}))
+    (y.state / usage.FILE).write_text(json.dumps({"one": {**LIVE, "model": {"name": "Fable", "pct": 83.0, "resets": now + 3 * 86400},
+                                                          "at": now - 600, "source": "live"}}))
+    it, seen, got, reads = held_status(y, monkeypatch)
+    first = seen[0][1].splitlines()
+    assert reads == ["one"] and [p for p, _ in got] == [{}, {"live": True}] and got[0][1]["accounts"][0]["meter"]["source"] == "stream"
+    assert first[first.index(words.TANK) + 1] == words.METERS_ASKED and f"{words.ON_THIS}① wk 44% · Fable ⚠️83%" in first
+    assert it.said == [seen[0], ("edit", "\n".join(status.room_card(got[1][1], ROOM)), None)]
+
+
 def test_an_edit_discord_refuses_is_one_log_line_and_the_first_answer_stands(y, monkeypatch, caplog):
     """(d) The edit refused (its token gone, or Discord's no): nothing leaves the handler, the first answer stands, and
     the log has one line for it, no traceback."""

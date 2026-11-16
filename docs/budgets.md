@@ -737,7 +737,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: texting-9a raised it by 25, an answer of the owner's is never undone by a call that was running and a tapback is seen, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 32731`
+2026-11-16: status-card-model-meter raised it by 12, the room's /status shows the model's own week from its first answer (the owner's ask, 2026-11-16, within the hour of status-card-at-once: the first answer showed the week alone and the model's own week only with the edit, about 15 s later, since no stream reads that meter), not folded to fit: status.py 7 (reading carries the model's week from the account's last live reading while that week runs, the reading's time beside it; collect hands it that reading on a card with no live ask; tank's age line takes the oldest reading on the line; the docstrings), usage.py 5 (last, the file read whole whatever its age, which readings reads through now; a line of the header). 32,743: 32,731 with need 102 and texting-9a in, plus 12.
+
+- `lines = 32743`
 
 ## Uncapped
 

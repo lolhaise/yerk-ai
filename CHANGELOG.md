@@ -8,6 +8,38 @@ version changes.
 
 ## 2026-11-16
 
+### status-card-model-meter (#86)
+
+- `/status` typed in a room now shows each account's model's own week from its first answer. Since status-card-at-once
+  the first answer showed `wk 44%` alone, and the model's own week came only with the edit about 15 seconds later; the
+  owner asked within the hour why the card did not show it (the owner's ask, 2026-11-16). No room's stream reads that
+  meter, only `claude -p /usage` does, and the first answer asks nothing.
+- A card built with no live ask (the room's first answer, `yerk status --json`, the `/status` HTTP answer without
+  `live`) now takes the model's own week from the account's last `/usage` reading, which `<state>/usage.json` keeps
+  whatever its age, when the account has no reading under a minute old: `wk 44% · Fable ⚠️83%`, the week and the
+  5-hour numbers still the stream's, the newer ones. Nothing is asked for it and no Claude Code is started. A model's
+  week whose reset has passed, or was never read, is not shown: its number is wrong. An account whose last call failed,
+  or that no stream has reported yet, shows what it showed before.
+- While that reading is under an hour old the card says nothing about its age: the live numbers are seconds away. At an
+  hour or more the account's own age line says so (`①: last reading 2 h 0 min ago`). Where the stream's reading earns
+  that line too it is still one line, saying the older of the two ages, so no number on the account's line is older
+  than the line says.
+- In the payload the carried entry has the time of the reading it came from beside it (`model.at`, never in a live
+  reading's), and the account's meter stays the stream's, so `/status` still reads it as not live: the line under the
+  tank saying the meters are being asked, and the one edit, still come.
+- The live card, `yerk status` in a terminal included, is the same byte for byte, and so is a card whose readings are
+  all under a minute old. STYLE.md's sentence about the room's `/status` card now names the hourglass that line opens
+  with. budgets.toml: `[code] lines` 32,731 to 32,743, with its dated note; docs/budgets.md is what `yerk docs own`
+  writes. No README or docs/GUIDE.md text describes `/status` in a room, so neither changes.
+- The tests: 6 new, in tests/test_room_card.py (from the files alone, a live reading kept ten minutes puts the model's
+  week beside the stream's newer week with no age line, and the payload marks it; kept two hours, the age line says so
+  once, and with the stream's reading old too one line with the older age; a kept week whose reset has passed or was
+  never read is not shown; no kept reading, a failed one or no stream reading leave the card as it was; a reading under
+  a minute old and the live card print what main printed) and tests/test_slash.py (`/status` with the account as in the
+  first: the first answer has the line under the tank and the model's week on the account's line, and the edit comes
+  once).
+- **Upgrading**: nothing to do.
+
 ### texting-9a (#87)
 
 - With `[texting]` on, a text the owner answers himself while its draft is being written is left alone. Until now the
