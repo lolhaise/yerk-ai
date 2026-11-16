@@ -4,6 +4,7 @@ about the room it was typed in, each account's usage left at two lines each, wha
 from __future__ import annotations
 
 import calendar
+import json
 import time
 from types import SimpleNamespace
 
@@ -11,11 +12,11 @@ import pytest
 from test_idle_compact import FAKE, ROOM, Chan, say, until, wait_idle
 from test_observe import Timers
 
-from yerk_ai import config, status, words
+from yerk_ai import config, status, usage, words
 from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
-from yerk_ai.ledger import COMPACTED_IN_TURN
+from yerk_ai.ledger import COMPACTED_IN_TURN, Ledger
 
 NOW = float(calendar.timegm((2026, 11, 11, 13, 45, 0)))      # a Wednesday, 1:45p in the zone the tests pin
 H, D = 3600.0, 86400.0
@@ -277,6 +278,81 @@ def test_a_reading_that_is_not_live_says_its_age_under_its_account():
     lines = card(s)
     i = lines.index("① wk 62% · Fable ⚠️100%")
     assert lines[i + 1:i + 3] == ["↻ wk Fri 11p · 💳 Dec 8", "①: last reading 2 h 0 min ago"]
+
+
+# /status's first answer, built with no live ask (status_now({}), collect's live False): account one's stream reading in
+# meters.json, and its last live reading in usage.json, kept there whatever its age; the stream's is the newer
+STREAM = {"at": NOW - 120, "source": "stream", "seven_day": {"pct": 44.0, "resets": at(16, 14)}}
+ON_MAIN = ["🧠", "📚 new session", "", "⛽ Tank", "① wk 44%", "↻ wk Mon 2p", "", "🔨 Quiet, nothing running",
+           "🔴 backup: none yet"]                         # main 61e3cf2's card for STREAM, byte for byte
+LIVE_ON_MAIN = [*ON_MAIN[:4], "① 5h 12% · wk 41% · Fable ⚠️83%", "↻ 5h 3:45p · wk Mon 2p · Fable Sat 9a", *ON_MAIN[6:]]   # for kept(0)
+
+
+def kept(age: float, model_resets: float | None = at(14, 9)) -> dict:
+    """Account one's last live reading `age` seconds old, as usage.readings keeps it: a week and a 5-hour window older than
+    the stream's, and the model's own week, which no stream reads."""
+    return {"five_hour": {"pct": 12.0, "resets": NOW + 2 * H}, "seven_day": {"pct": 41.0, "resets": at(16, 14)},
+            "model": {"name": "Fable", "pct": 83.0, "resets": model_resets}, "at": NOW - age, "source": "live"}
+
+
+def on_hand(tmp_path, last: dict | None, stream: dict | None = STREAM, live: bool = False) -> tuple[dict, list[str]]:
+    """The answer and the room's card from these files (no usage.json with `last` None, no stream reading with `stream`
+    None), asked nothing; with `live`, the live card, whose /usage call reads kept(0)'s meters."""
+    (tmp_path / "meters.json").write_text(json.dumps({"one": stream} if stream else {}))
+    (tmp_path / usage.FILE).unlink(missing_ok=True)
+    if last is not None:
+        (tmp_path / usage.FILE).write_text(json.dumps({"one": last}))
+    asked = {k: v for k, v in kept(0).items() if k not in ("at", "source")}
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, [Account("one", tmp_path / "cfg1")], Cooldowns(None), Ledger(tmp_path / "l.sqlite"),
+                       now=NOW, units=set, timers=Timers({}), live=live, read_one=lambda a: dict(asked))
+    return (s := json.loads(json.dumps(s))), card(s)
+
+
+def test_the_first_answer_has_the_models_own_week_from_the_last_live_reading_beside_the_streams_newer_numbers(tmp_path):
+    """(a) The first answer showed the week alone and the model's own week only with the edit: no stream reads that meter.
+    It comes now from the account's last live reading, ten minutes old here, the week and the 5-hour still the stream's,
+    and no age line while that reading is under an hour old. The payload (status_now, `yerk status --json`) marks the
+    entry with the time of the reading it came from, and the meter stays the stream's, so it never reads as live."""
+    s, lines = on_hand(tmp_path, kept(600))
+    assert lines[3:7] == ["⛽ Tank", "① wk 44% · Fable ⚠️83%", "↻ wk Mon 2p · Fable Sat 9a", ""]
+    assert not any("last reading" in x for x in lines)
+    m = status.document(EXAMPLE_PRIVATE, tmp_path, s, Ledger(tmp_path / "l.sqlite"), NOW)["accounts"][0]["meter"]
+    assert m == {**STREAM, "model": {**kept(600)["model"], "at": NOW - 600}} and m["source"] == "stream"
+
+
+def test_a_kept_model_week_an_hour_old_or_more_says_so_once_on_the_cards_own_age_line(tmp_path):
+    """(b) Kept two hours: the card's own age line says it, once. Where the stream's reading earns that line too, it is
+    still one line, and it says the older of the two ages, so no number on the account's line is older than it says."""
+    _, lines = on_hand(tmp_path, kept(2 * H))
+    assert lines[4:7] == ["① wk 44% · Fable ⚠️83%", "↻ wk Mon 2p · Fable Sat 9a", "①: last reading 2 h 0 min ago"]
+    assert sum("last reading" in x for x in lines) == 1
+    for stream_age, kept_age, said in ((3 * H, 2 * H, "3 h 0 min"), (2 * H, 3 * H, "3 h 0 min"), (2 * H, 600, "2 h 0 min")):
+        _, lines = on_hand(tmp_path, kept(kept_age), {**STREAM, "at": NOW - stream_age})
+        assert "① wk 44% · Fable ⚠️83%" in lines and [x for x in lines if "last reading" in x] == [f"①: last reading {said} ago"]
+
+
+def test_a_kept_model_week_whose_reset_has_passed_or_was_never_read_is_never_shown(tmp_path):
+    """(c) Its week is over, so its number is wrong: the card and the payload are as they were."""
+    for resets in (NOW - 60, None):
+        s, lines = on_hand(tmp_path, kept(600, resets))
+        assert lines == ON_MAIN and s["accounts"][0]["meter"] == STREAM
+
+
+def test_no_kept_reading_one_that_failed_or_no_stream_reading_leaves_the_card_as_it_was(tmp_path):
+    """(d) No live reading kept, or the last one an error (a failed call is kept as one, under a minute old or not): exactly
+    today's card. An account no stream has reported yet stays "no reading yet": the model's week rides on a stream's reading."""
+    assert on_hand(tmp_path, None)[1] == ON_MAIN
+    for age in (600, 30):
+        assert on_hand(tmp_path, {"error": "no answer in 15 s", "at": NOW - age, "source": "live"})[1] == ON_MAIN
+    assert on_hand(tmp_path, kept(600), None)[1][4] == "①: no reading yet"
+
+
+def test_a_live_reading_under_a_minute_old_and_the_live_card_are_what_main_prints(tmp_path):
+    """(f) A reading under a minute old is the account's whole meter, and the live card asks again whatever is kept: both
+    cards byte for byte main's."""
+    assert on_hand(tmp_path, kept(30))[1] == LIVE_ON_MAIN
+    s, lines = on_hand(tmp_path, kept(600), live=True)
+    assert lines == LIVE_ON_MAIN and s["accounts"][0]["meter"] == {**kept(0), "at": NOW}
 
 
 def test_a_five_hour_window_comes_first_and_has_its_next_line():

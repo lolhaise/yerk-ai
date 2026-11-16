@@ -6,7 +6,8 @@ call. Yerk AI reads only what Claude Code prints.
 
 A reading is kept FRESH seconds in <state>/usage.json, so a card asked twice in a minute starts no second Claude Code,
 and at most AT_ONCE run at a time (each holds about 350 MB for about 5 s, inside yerkd's unit). Anything that fails is
-{"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead."""
+{"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead. A card that asks
+nothing takes the model's own week, which no stream reads, from the last reading whatever its age (status.reading)."""
 from __future__ import annotations
 
 import contextlib
@@ -107,14 +108,10 @@ def readings(accounts: list[Account], state: Path, refresh: bool = True, now: fl
     """Each account's live reading ({"error": why} when its call failed), younger than FRESH: from the file, else
     (`refresh`) asked again, AT_ONCE at a time. An account with neither is left out."""
     now = time.time() if now is None else now
-    path = state / FILE
     # two cards at once: the second reads the first's answers. A read that does not ask (the deploy's proof, `--json`)
     # never waits on one that does: the file is only ever replaced whole (write_private)
     with _lock if refresh else contextlib.nullcontext():
-        try:
-            kept = {k: v for k, v in json.loads(path.read_text()).items() if isinstance(v, dict)}
-        except (OSError, ValueError, AttributeError):
-            kept = {}
+        kept = last(state)
         stale = [a for a in accounts if not 0 <= now - float(kept.get(a.name, {}).get("at") or 0) < FRESH]
         if refresh and stale:
             ask = read_one or (lambda a: read(a, state))
@@ -122,7 +119,15 @@ def readings(accounts: list[Account], state: Path, refresh: bool = True, now: fl
                 for a, r in zip(stale, pool.map(ask, stale)):
                     kept[a.name] = {**r, "at": now, "source": "live"}
             try:
-                write_private(path, json.dumps(kept))
+                write_private(state / FILE, json.dumps(kept))
             except OSError:
                 pass                                     # the card still shows them; the next one asks again
     return {a.name: kept[a.name] for a in accounts if 0 <= now - float(kept.get(a.name, {}).get("at") or -FRESH) < FRESH}
+
+
+def last(state: Path) -> dict[str, dict[str, Any]]:
+    """Each account's last live reading in <state>/usage.json whatever its age, the file read whole, asking nothing."""
+    try:
+        return {k: v for k, v in json.loads((state / FILE).read_text()).items() if isinstance(v, dict)}
+    except (OSError, ValueError, AttributeError):
+        return {}

@@ -733,7 +733,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: status-card-at-once raised it by 23, /status in a room shows its card at once and the meters asked now are edited into it (the owner's ask, 2026-11-16: about 30 s before any line of the card, every line but the meters ready at once and held for them), not folded to fit: channels/discord.py 22 (_command's /status from what is on hand, its line while an account has no reading under a minute old and the live call it hands back; _answer's one edit of the same message, a refused one a log line; the header and the two docstrings), words.py 1 (METERS_ASKED). 32,659: main 1d97e1d's 32,636 plus 23.
 
-- `lines = 32659`
+2026-11-16: status-card-model-meter raised it by 12, the room's /status shows the model's own week from its first answer (the owner's ask, 2026-11-16, within the hour of status-card-at-once: the first answer showed the week alone and the model's own week only with the edit, about 15 s later, since no stream reads that meter), not folded to fit: status.py 7 (reading carries the model's week from the account's last live reading while that week runs, the reading's time beside it; collect hands it that reading on a card with no live ask; tank's age line takes the oldest reading on the line; the docstrings), usage.py 5 (last, the file read whole whatever its age, which readings reads through now; a line of the header). 32,671: main 61e3cf2's 32,659 plus 12.
+
+- `lines = 32671`
 
 ## Uncapped
 

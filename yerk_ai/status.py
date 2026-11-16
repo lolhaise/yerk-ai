@@ -84,7 +84,7 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     """The /status answer. `rooms`: the daemon's live rooms (None: collected by `yerk status` with no
     daemon answering, so nothing about rooms or units). `live`: the card asks each account's meters now
     (usage.py; a reading under a minute old is used again), else only a reading still that young is used;
-    an account with neither shows the stream's reading."""
+    an account with neither shows the stream's reading, and with no live ask the model's own week from its last one (reading)."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "running": rooms is not None, "rooms": [], "units": []}
     conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
@@ -117,7 +117,8 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     except (OSError, subprocess.SubprocessError, ValueError):
         out["jobs"] = None                             # the timer list could not be read
     meters, fresh = Meters(state / "meters.json"), usage.readings(accounts, state, live, now, read_one)
-    out["accounts"] = [{"name": a.name, "meter": reading(meters.reading(a), fresh.get(a.name)),
+    last = {} if live else usage.last(state)          # asked nothing: the model's own week from the last live reading
+    out["accounts"] = [{"name": a.name, "meter": reading(meters.reading(a), fresh.get(a.name), last.get(a.name), now),
                         "rests_until": (cooldowns.show(a.name, now) or [{}])[0].get("until"),
                         "bill": next_bill(a.bill_day, now)} for a in accounts]
     out["live"] = live
@@ -166,11 +167,15 @@ def spend_line(sp: dict[str, Any], day: str) -> str:
     return t
 
 
-def reading(stream: dict[str, Any], live: dict[str, Any] | None) -> dict[str, Any]:
-    """The live reading when there is one, else the stream's, with why the live one failed (`--json`)."""
+def reading(stream: dict[str, Any], live: dict[str, Any] | None, last: dict[str, Any] | None, now: float) -> dict[str, Any]:
+    """The live reading when there is one, else the stream's, with why the live one failed (`--json`) and, where the stream
+    has a reading, the model's own week from `last` (the account's last live reading, any age) while that week runs, the
+    time of the reading it came from beside it (`at`: never in a live reading's), for the card's age line (tank)."""
     if live and "error" not in live:
         return live
-    return {**stream, **({"live_error": live["error"]} if live else {})}
+    model, at = dict((last or {}).get("model") or {}), (last or {}).get("at")
+    carry = model and at is not None and "error" not in stream and float(model.get("resets") or 0) > now
+    return {**stream, **({"live_error": live["error"]} if live else {}), **({"model": {**model, "at": at}} if carry else {})}
 
 
 def next_bill(day: int | None, now: float) -> float | None:
@@ -243,7 +248,8 @@ def tank(accounts: list[dict[str, Any]], now: float, live: bool = False) -> tupl
     """The numbers both cards print (account_lines, room_card): per account its tag, `green` when its week resets soonest
     (two accounts or more), its state mark, its meters in words (None: no reading yet), the resets its second line says
     (the model's own only when it is not the week's, within a minute), its bill, until when it rests, its weekly reset,
-    and the age of a reading not live where that is said (None: not said); then each window's `next` line, in words."""
+    and the age of the oldest reading not live on its line (the stream's, and a model's week kept from an earlier live one by
+    its `at`) where that is said (None: not said); then each window's `next` line, in words."""
     W = words
 
     def ahead(w: str) -> dict[str, float]:
@@ -255,6 +261,7 @@ def tank(accounts: list[dict[str, Any]], now: float, live: bool = False) -> tupl
         wins = [(label, m[w]) for w, label in (("five_hour", "5h"), ("seven_day", "wk"), ("model", "")) if w in m]
         pct = [round(float(x["pct"])) for _, x in wins]
         full = max((p for (label, _), p in zip(wins, pct) if label), default=0) >= 100
+        seen = [now - float(t) for t in (None if m.get("source") == "live" else m.get("at"), (m.get("model") or {}).get("at")) if t is not None]
         rows.append({"name": a["name"], "tag": W.tag(a["name"]), "green": a["name"] == soonest, "rest": rest, "week": week.get(a["name"]),
                      "mark": W.NOT_DONE if rest or full else W.WORKING if max(pct, default=0) >= 90 else W.PLAIN,
                      "meters": " · ".join(f"{label or x['name']} {W.WARN if p >= W.HOT else ''}{p}%"
@@ -262,7 +269,7 @@ def tank(accounts: list[dict[str, Any]], now: float, live: bool = False) -> tupl
                      "when": [f"{label or x['name']} {W.short_when(float(x['resets']), now)}" for label, x in wins if x.get("resets")
                               and float(x["resets"]) > now and (label or abs(float(x["resets"]) - week.get(a["name"], 0)) > 60)],
                      "bill": [W.BILL.format(day=W.short_day(a["bill"]))] if a.get("bill") else [],
-                     "old": W.ago(now - m["at"]) if m.get("source") != "live" and "at" in m and (live or now - m["at"] >= OLD) else None})
+                     "old": W.ago(max(seen)) if seen and (live or max(seen) >= OLD) else None})
     for label, due in (("wk", week), ("5h", five)):
         seq = sorted((r, n) for n, r in due.items())[:2] if len(accounts) > 1 else []
         if seq:
