@@ -92,8 +92,8 @@ def parse(out: str, guids: set[str], open_: tuple[str, ...] = ()) -> dict[str, A
     if not isinstance(ans, dict) or (decision := ans.get("decision")) not in ("reply", "react", "none", "held") \
             or decision == "reply" and not parts or decision == "react" and ans.get("react") not in ("love", "like"):
         return {**held(words.TEXTING_NO_CLEAN), **rec}
-    said: list[dict[str, Any]] = [{"n": int(s.get("n") or i + 1), "text": str(s.get("text") or ""), "source": str(s.get("source") or "").strip()}
-            for i, s in enumerate(ans.get("statements") or []) if isinstance(s, dict)]
+    said: list[dict[str, Any]] = [{"n": i, "text": str(s.get("text") or ""), "source": str(s.get("source") or "").strip()}   # by place (J109)
+            for i, s in enumerate((s for s in ans.get("statements") or [] if isinstance(s, dict)), 1)]
     bare = [s["text"] for s in said if not sourced(s["source"], guids)]
     shut = [c for c in ans.get("classes") or [] if c in words.TEXTING_CLASSES and c not in open_]
     question = " ".join(str(ans.get("question") or "").split()) or (words.TEXTING_NO_SOURCE.format(what=bare[0]) if bare else "")

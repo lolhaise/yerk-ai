@@ -10,7 +10,7 @@ from typing import Any
 
 from yerk_ai import words
 from yerk_ai.ledger import Ledger
-from yerk_ai.texting import check
+from yerk_ai.texting import check, writer
 from yerk_ai.texting.people import Sheet
 from test_texting_link import A1
 from test_texting_writer import SHEET, answer, calls, deciding, setup as writer_setup
@@ -105,6 +105,19 @@ def decided(led: Ledger, decision: str = "reply", parts: tuple[str, ...] = ("hah
     led.texting_add(person="alex", handle=A1, inbound="g-1", state="decided", decision=decision, parts=json.dumps(list(parts)),
                     statements=json.dumps(row.pop("statements", [])), reason="", mode="dry", **row)
     return led.texting_last("alex") or {}
+
+
+def test_the_statements_are_numbered_by_place_and_one_the_verdict_never_confirmed_holds_the_draft_by_its_words(tmp_path, monkeypatch):
+    """J109: the model's own numbers are never the key, so two statements it numbered 1 and 1 are two the check must confirm."""
+    said = [{"n": 1, "text": "he moved", "source": "thread:g-own"}, {"n": 1, "text": "he has a dog", "source": "thread:g-own"},
+            {"text": "he works nights", "source": "thread:g-own"}, {"n": 7, "text": "he drives", "source": "thread:g-own"}]
+    assert [s["n"] for s in writer.parse(answer(decision="reply", parts=["yes"], statements=said), {"g-own"})["statements"]] == [1, 2, 3, 4]
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict())                    # release, and an ok with a basis for number 1 alone
+    w, led = writer_setup(tmp_path, monkeypatch)
+    two = writer.parse(answer(decision="reply", parts=["yes"], statements=said[:2]), {"g-own"})["statements"]
+    asyncio.run(check.Check({}, w).check(decided(led, statements=two)))
+    r = led.texting_last("alex") or {}
+    assert (r["state"], r["decision"], r["reason"]) == ("decided", "held", words.TEXTING_CHECK_NO_BASIS.format(what="he has a dog") + "; all sourced")
 
 
 def test_the_check_call_offers_no_tool_no_mcp_server_and_no_settings_and_runs_in_an_empty_folder(tmp_path, monkeypatch):
