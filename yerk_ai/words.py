@@ -622,6 +622,12 @@ EMAIL_AWAY = "Gmail did not answer (the box offline, or Gmail down), so try agai
 EMAIL_LOGIN = "Gmail refused the login: the owner checks [gmail] user and the app password in its file"
 EMAIL_REFUSED = "Gmail refused the email (the sender, every address or the message itself)"
 EMAIL_MAYBE = "it may have gone out, and Gmail never confirmed it: tell the owner to check Sent Mail, and never send it again unasked"
+EMAIL_NAMELESS = "no name on it: yerkd.toml has no [gmail] name"           # the preview's from line, the bare address beside it
+EMAIL_NAME_MISSING = ("[gmail] name: none, so each email goes out under the bare address, not your name beside it as your own Gmail "
+                      "sends mail; set name = \"<your name>\" under [gmail] in yerkd.toml, then `systemctl --user restart yerkd`")
+EMAIL_NAMED_HERE = "the owner's name is set ([gmail] name in yerkd.toml), so each email goes out under it beside the address"
+EMAIL_NAMELESS_HERE = ("no name is set ([gmail] name in yerkd.toml), so each email goes out under the bare address; the owner sets "
+                       "it there and restarts yerkd, and `yerk doctor` says so each day until then")
 # the texts tool (inbox.py): the owner's recent texts, read live when the Mac answers, else from the last copy on the box
 TEXTS_OWNER_ROOMS = "the owner's texts are read in the owner's own rooms only"
 TEXTS_NO_SETUP = "no Mac is set up to read the owner's texts from ([imessage] host in yerkd.toml, or an owner room's mac add-on)"

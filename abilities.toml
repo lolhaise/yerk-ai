@@ -293,6 +293,19 @@ asked_as = ["my email", "my inbox", "send an email", "read my email", "search my
             "email them for me", "send an email for me", "email this to", "email it to", "send it by email", "attach it to an email",
             "email from my gmail"]
 
+# need-2026-11-16-102: a room asked why the emails it sent in the owner's name landed in people's spam found, in Sent Mail,
+# each one it sent under the bare address and the owner's own mail under the owner's name; the From line takes the name
+# only from [gmail] name, which was not set, and yerkd.toml is out of a room's reach, so the room could not check it.
+[abilities.email-name]
+state = "built"
+what = "An email in the owner's name goes out under the owner's name beside the address, \"Name <address>\", the way the owner's own Gmail sends mail: the name is [gmail] name in yerkd.toml, and with none set each email goes out under the bare address. The held email's preview shows its from line as it will go, marked \"no name on it\" when there is none; the send's answer names the From line it went under; `yerk doctor` names a missing [gmail] name each day with the line to add; and the Here line of this answer says whether the name is set on this install, never the name or the address, since yerkd.toml is out of a room's reach. The owner sets it, then restarts yerkd."
+tier = "free"
+needs = "the email ability, and [gmail] name in yerkd.toml for the name (yerkd restarted after it is set)"
+free_path = "this is the free path"
+asked_as = ["in spam", "to spam", "in people's spam", "in their spam", "in his spam", "in her spam", "spam folder", "junk folder",
+            "my name on the email", "my name on my emails", "my name on the emails", "name on the from line", "the from line",
+            "sender name"]
+
 [abilities.mail-watch]
 state = "described"
 what = "Wakes Yerk when an email that matters lands, by rules in the private folder, and stays quiet otherwise."

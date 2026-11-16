@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -474,6 +475,31 @@ def test_a_room_whose_job_fired_as_the_jobs_file_was_rewritten_hears_the_job_fir
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("why was it fired but did not start?", y.memory, TAB)] == ["job-fires"]
     assert not abilities.asked("the job fired at nine and its card settled quiet", y.memory, TAB)
+
+
+def test_a_room_asked_why_its_emails_land_in_spam_hears_the_email_name_way_and_whether_the_name_is_set_here(tmp_path, capsys):
+    """need-2026-11-16-102: a room asked why the emails it sent in the owner's name landed in people's spam found them all
+    under the bare address, since [gmail] name was not set, and could not check it: yerkd.toml is out of a room's reach.
+    Asked that way, a room gets email-name whole, with a Here line saying whether the name is set on this install, read
+    from yerkd.toml as the doctor reads it, never the name or the address, since any room may ask."""
+    y, owner = Yerkd(EXAMPLE_PRIVATE, tmp_path), "@".join(["owner", "example.test"])
+    (priv := tmp_path / "private").mkdir()
+    s, gmail = replace(y.memory, private=priv), f'[gmail]\nuser = "{owner}"\npassword_file = "secrets/gmail.password"\n'
+    (priv / "yerkd.toml").write_text(gmail)
+    found = abilities.asked("why do the emails you send in my name land in people's spam?", s, TAB)
+    assert [e["key"] for e in found] == ["email-name"] and hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert found[0]["text"].startswith(f"email-name, a Yerk AI ability ({words.ability('on')[1]}): An email in the owner's name goes "
+                                       "out under the owner's name beside the address")
+    assert found[0]["text"].endswith(f"Here: {words.EMAIL_NAMELESS_HERE}.") and owner not in found[0]["text"]
+    (priv / "yerkd.toml").write_text(gmail + 'name = "Example Owner"\n')
+    [e] = abilities.asked("would one I sent myself go to spam too?", s, TAB)
+    assert e["text"].endswith(f"Here: {words.EMAIL_NAMED_HERE}.") and "Example Owner" not in e["text"] and owner not in e["text"]
+    assert cli.main(["explain", "email-name", "--private", str(priv), "--state", str(tmp_path)]) == 0
+    assert f"Here: {words.EMAIL_NAMED_HERE}" in capsys.readouterr().out.splitlines()
+    for none in ("", "[gmail\n"):                         # no Gmail to send from, or a yerkd.toml that does not read: no Here
+        (priv / "yerkd.toml").write_text(none)
+        assert "Here:" not in abilities.asked("is my name on the emails you send?", s, TAB)[0]["text"]
+    assert [e["key"] for e in abilities.asked("send an email for me", s, TAB)] == ["email"]
 
 
 def test_a_room_asked_for_no_chat_box_on_its_page_hears_the_page_tool_s_switch(tmp_path):

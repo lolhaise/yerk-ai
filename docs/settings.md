@@ -144,7 +144,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 - `user`: the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)
 - `password_file`: a file holding its app password, never printed
-- `name`: the name an email goes out under (default none)
+- `name`: the name an email goes out under beside the address, as your own Gmail sends mail (default none: the bare address, which `yerk doctor` names each day)
 - `smtp_host`: the mail server the `email` tool sends through (default smtp.gmail.com)
 - `smtp_port`: that server's port (default 465)
 
