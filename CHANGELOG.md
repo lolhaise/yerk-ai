@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-16
 
-### texting-9a (#?)
+### texting-9a (#87)
 
 - With `[texting]` on, a text the owner answers himself while its draft is being written is left alone. Until now the
   writer's call coming back wrote its draft over his answer, so the draft was checked and timed as if he had said
