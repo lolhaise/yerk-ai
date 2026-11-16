@@ -243,6 +243,25 @@ def test_a_bare_send_or_skip_resolves_a_card_only_when_it_is_the_one_hold_open_a
     assert row(led, a)["state"] == "queued"
 
 
+def test_a_card_with_no_draft_only_asks_and_his_send_on_it_sends_nothing(tmp_path: Path) -> None:
+    """A hold with no draft (a plan: the owner's answer is the text) shows no draft line and offers edit and skip alone. Until
+    2026-11-16 it offered send too, and the owner's send queued a row with no text, which stopped the sender for everyone. Their send
+    on one, as a reply or bare, sends nothing and says so; their edit makes the draft, and that card sends."""
+    h, led, card = setup(tmp_path)
+    a = decided(led, parts=(), reason="dinner friday or saturday?")
+    asyncio.run(h.tick())
+    mid, lines = card.posts[0][1], card.posts[0][2].split("\n")
+    assert lines[0].endswith(" · held") and "draft:" not in lines and lines[-2:] == ["why: dinner friday or saturday?", "reply: edit <text> · skip"]
+    assert words.width(words.TEXTING_CARD_ASKS) <= words.PHONE and words.TEXTING_CARD_ASKS not in holds.restate(card.posts[0][2], "skipped")
+    for ref in (mid, None):
+        assert asyncio.run(h.word("owner-room", "owner", "send", ref)) is True and card.posts[-1][2] == words.TEXTING_NO_DRAFT
+    assert row(led, a)["state"] == "held" and ("text", "queued") not in gates_rows(led)
+    assert led._select("SELECT * FROM approvals WHERE released IS NOT NULL", ()) == []
+    assert asyncio.run(h.word("owner-room", "owner", "edit saturday works", mid)) is True
+    new = max(led.texting_rows("alex", "held"), key=lambda x: int(x["id"]))
+    assert json.loads(new["parts"]) == ["saturday works"] and (new["shown"] or "").split("\n")[-1] == words.TEXTING_CARD_WORDS
+
+
 def test_edit_makes_a_new_card_and_hold_from_his_words_shows_the_code_check_and_sends_nothing(tmp_path: Path) -> None:
     h, led, card = setup(tmp_path)
     a = decided(led)

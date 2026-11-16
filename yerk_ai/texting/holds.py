@@ -20,6 +20,7 @@ from .. import gates, texts, words
 from ..ledger import Ledger
 from .bridge import BridgeDown, BridgeError
 from .check import never, precheck
+from .hands import parts as sendable
 from .people import People, Person, load
 from .writer import dry
 
@@ -48,16 +49,16 @@ def quote(text: str) -> str:
 def card(first: str, at: str, quotes: list[str], row: dict[str, Any], why: str, dry_run: bool) -> str:
     """Who, when and held; their texts, one line each; the exact draft, a text a line (or the tapback); why; the words."""
     draft = ([words.TEXTING_CARD_TAPBACK.format(react=row["react"])] if row.get("decision") == "react"
-             else [words.TEXTING_CARD_DRAFT, *json.loads(row.get("parts") or "[]")])
+             else [words.TEXTING_CARD_DRAFT, *json.loads(row.get("parts") or "[]")] if sendable(row) else [])    # no draft: it only asks
     return "\n".join([words.TEXTING_CARD.format(mark=words.TEXTING_CARD_MARK["dry" if dry_run else "live"], first=first, at=at,
                                                 state=words.TEXTING_SHOWS["held"]),
-                      *quotes, *draft, words.TEXTING_CARD_WHY.format(why=why), words.TEXTING_CARD_WORDS])
+                      *quotes, *draft, words.TEXTING_CARD_WHY.format(why=why), words.TEXTING_CARD_WORDS if draft else words.TEXTING_CARD_ASKS])
 
 
 def restate(shown: str, state: str) -> str:
     """A card once answered: `state` in its first line in place of held, and the words line gone."""
     head, _, rest = shown.partition("\n")
-    return "\n".join([f"{head.rsplit(' · ', 1)[0]} · {state}", *(x for x in rest.split("\n") if x != words.TEXTING_CARD_WORDS)])
+    return "\n".join([f"{head.rsplit(' · ', 1)[0]} · {state}", *(x for x in rest.split("\n") if x not in (words.TEXTING_CARD_WORDS, words.TEXTING_CARD_ASKS))])
 
 
 def gs_of(row: dict[str, Any]) -> list[str]:
@@ -225,6 +226,8 @@ class Holds:
             line = ""
         elif word == "edit":
             line = await self.edit(who, p, r, rest) if rest else words.TEXTING_EDIT_EMPTY
+        elif not sendable(r):                                 # a card with no draft only asks: an empty job would stop the sender for everyone
+            line = words.TEXTING_NO_DRAFT
         elif self.mode == "live" and not self.out:
             line = words.TEXTING_OUT_OFF
         else:

@@ -586,7 +586,7 @@ REPLAY_WHEN, REPLAY_SENDER_COLUMNS = ("early", "middle", "late"), ("bursts", "he
 TEXTING_CARD, TEXTING_CARD_MARK = "{mark} {first} · {at} · {state}", {"live": "📱", "dry": "DRY"}
 TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK = "draft:", "draft: a {react} tapback"
 TEXTING_CARD_WHY, TEXTING_CARD_WORDS = "why: {why}", "reply: send · edit <text> · skip"
-TEXTING_CARD_OFF = "checked; release is off for {first}"
+TEXTING_CARD_OFF, TEXTING_CARD_ASKS = "checked; release is off for {first}", "reply: edit <text> · skip"     # ASKS: a card with no draft
 TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; {found}", "the code finds nothing"
 TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took over its card"
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
@@ -601,6 +601,7 @@ TEXTING_STALE = "not sent: a text to {first}, due {at}\nthe Mac was out of reach
 TEXTING_SWITCHED = "not sent: {n} text{s} left to send by live\ntexting is {mode} now, so they are dropped"
 TEXTING_GONE = "nothing sent: that card is {state}"
 TEXTING_MOVED = "nothing sent: that card no longer shows the text its hold was made for"
+TEXTING_NO_DRAFT = "nothing sent: that card has no draft; reply edit <text> to it, with your own words"
 TEXTING_EDIT_EMPTY, TEXTING_OUT_OFF = "nothing changed: edit needs your text after it", "nothing sent: text-out is off in [gates]"
 TEXTING_NO_CARD_ROOM = "texting: {room} is not an owner room without people, so no card, line or notice goes there"
 TEXTING_CHECK_PACK = ("Four inputs follow, each between \"=== <input> {tag} ===\" and \"=== end <input> {tag} ===\": the thread, "

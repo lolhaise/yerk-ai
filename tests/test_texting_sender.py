@@ -334,6 +334,20 @@ def test_a_whole_dry_pass_writes_the_jobs_live_would_hand_and_never_starts_a_pro
         assert got == hands.job(r, k, WED - 29) and got["queued"] == WED - 28
 
 
+def test_a_queued_row_with_no_text_is_dropped_and_never_stops_the_sender(tmp_path: Path) -> None:
+    """Seen live: the owner's send on a held card with no draft queued a row with no text, the hand-off raised on its first
+    part, and the sender stopped for everyone until a restart. Such a row is dropped with its own words, nothing is handed,
+    the machine room hears of no stop, and the next pass runs."""
+    said: list[str] = []
+    s, led, clock = make(tmp_path)
+    s.machine = said.append
+    rid = due(s, led, clock, "g-1", word=True, texts=())
+    asyncio.run(s.tick())
+    assert ((r := led.texting_get(rid) or {})["state"], r["reason"], r["handed"]) == ("dropped", words.TEXTING_NO_DRAFT, None)
+    asyncio.run(s.tick())
+    assert said == [] and calls(tmp_path) == []
+
+
 def test_a_job_handed_and_never_claimed_is_unseen_after_the_window_and_never_written_again(tmp_path: Path) -> None:
     s, led, clock = make(tmp_path)
     rid = due(s, led, clock, "t-1")
