@@ -727,7 +727,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-14: texting-7d raised it by 99, a photo in the texts answered is looked at and every file is named, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
-- `lines = 32607`
+2026-11-16: need-2026-11-16-100 raised it by 22, a finished job's card names its job and shows its one-line result for every room (need 100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", though four held a forecast's one line in their reports, and on a phone the report command is out of reach), not folded to fit: workers.py 10 (footer(), so the job leads the footer of a waiting, running and settled card; a quiet card's report line under "finished clean"; the job in the worker list and report), words.py 9 (wrap, the line in two phone lines at most, and WORKER_JOB), cli.py 2 (`yerk worker list|report` name the job), jobs.py 1 (the job's brief asks every run for its one-line result, a NO_REPLY run's too). 32,629: main 0c68022's 32,607 plus 22.
+
+- `lines = 32629`
 
 ## Uncapped
 

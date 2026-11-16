@@ -6,6 +6,44 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-16
+
+### need-2026-11-16-100 (#?)
+
+- A scheduled job's worker card now names its job and shows its one-line result. A room's six quiet job cards read
+  alike, `🟢 worker finished clean, nothing to add`, the time and "report saved", though four were runs of one job whose
+  reports each held a forecast's one line and two were another job's runs with nothing to say. On a phone, where
+  `yerk worker report` is out of reach, nobody could tell them apart; the job's brief tells its worker to write that one
+  line to REPORT.md because the card shows it, and the quiet card hid it.
+- The card's small line now starts with the job's name, as in `-# job <name>, done in 4 min`, while the worker waits for
+  an account, while it runs and once it settles. A long name is cut to phone width. A worker no job started reads as
+  before.
+- A worker whose last message is exactly NO_REPLY, and whose report's first line is a result, settles as `🟢 worker
+  finished clean` over that line. `🟢 worker finished clean, nothing to add` stays for a run whose report says NO_REPLY
+  too, or that left none. Either way no turn is asked of the room, as before, and the steps stay behind
+  `yerk worker report <id>`.
+- Every settled card's report line now takes up to two phone lines, broken at a word, instead of one: cut at 40 columns,
+  a forecast's line lost its number. A longer line ends in "...".
+- A job's brief now asks every run for its one-line result as REPORT.md's first line, a NO_REPLY run's too. It said to
+  write the same text as the last message, so a quiet run that followed it wrote the token itself and its card had
+  nothing to show. A job whose own message asks for something else there still gets what it asks for.
+- The worker tool's `list` and `report` answers carry the job, and `yerk worker list` and `yerk worker report` print it,
+  so a room asked which job a card was for reads it there, not in the ledger's table.
+- The ability is `job-cards` (`yerk explain job-cards`), found by a room asked whether its cards are the same worker
+  doing the same thing. budgets.toml: `[code] lines` 32,607 to 32,629, with its dated note; docs/budgets.md is what
+  `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes by four shorter phrasings in
+  its first section with the same meaning; docs/GUIDE.md, What you see, has the long form.
+- The tests: 3 new, in tests/test_workers.py (a job's card on fixed ends: the job in the footer waiting, running and
+  settled, a quiet result whole over two lines, the token and a missing report still nothing to add, a longer line and a
+  long name cut, no job on a plain worker's), tests/test_jobs.py (two jobs fired for real, both answering NO_REPLY:
+  each card names its job, one shows its report's line and one has nothing to add, no turn asked, the tool's list and
+  report and `yerk worker list|report` name the job, and the brief asks a quiet run for its line) and
+  tests/test_abilities.py (the ask that finds job-cards).
+  Two quiet-card tests in tests/test_workers.py now expect a real report line under "finished clean", and
+  tests/test_style.py holds a job's cards to the style rules.
+- **Upgrading**: nothing to change; a worker that ends after the deploy's restart settles this way. A card that already
+  settled keeps its text.
+
 ## 2026-11-14
 
 ### need-2026-11-14-97 (#?)

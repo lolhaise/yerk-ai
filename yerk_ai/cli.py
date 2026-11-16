@@ -124,7 +124,8 @@ def cmd_worker(a: argparse.Namespace) -> int:
         if not r["ok"]:
             print(r["error"], file=sys.stderr)
             return 2
-        print(json.dumps(r) if a.json else f"worker {r['id']} {r['state']}, account {r['account']}, model {r['model']}\n"
+        print(json.dumps(r) if a.json else f"worker {r['id']} {r['state']}" + (f", job {r['job']}" if r["job"] else "")
+              + f", account {r['account']}, model {r['model']}\n"
               f"report: {r['report']}\nfolder: {r['staging']}\nunit: {r['unit']}, {r['exit_detail'] or 'still running'}"
               f"\n\n{r['text']}")
         return 0
@@ -132,7 +133,8 @@ def cmd_worker(a: argparse.Namespace) -> int:
     if a.json:
         print(json.dumps(rows))
     for w in [] if a.json else rows:
-        print(f"{w['id']} {w['state']} in {w['room']} on {w['account']}, {w['elapsed']} of {w['cap_minutes']:g} min"
+        print(f"{w['id']} {w['state']}" + (f" for job {w['job']}" if w["job"] else "")
+              + f" in {w['room']} on {w['account']}, {w['elapsed']} of {w['cap_minutes']:g} min"
               + (f": {w['result']}" if w["result"] else "") + (f"; relay {w['relay']}" if w["relay"] else "")
               + (f" ({w['relay_note']})" if w["relay"] == "skipped" else ""))
     return 0

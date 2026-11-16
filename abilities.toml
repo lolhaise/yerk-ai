@@ -1427,6 +1427,21 @@ asked_as = ["worker that can drive the browser", "worker with the browser", "fil
             "worker can't open a web form", "run it outside the room", "give the worker hands", "worker with add-ons"]
 layer = 5
 
+# need-2026-11-16-100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", though four were
+# runs of one job whose reports each held a forecast's one line and two another job's with nothing, and the owner, on a
+# phone, asked whether they were the same worker doing the same thing. This name rides the census (abilities.abilities)
+# at 1,881 of its 2,100 recall cap, 1,870 at main.
+[abilities.job-cards]
+state = "built"
+what = "A scheduled job's worker card names its job and shows its one-line result: its small line starts with the job's name (waiting, running and settled), and a run whose last message is exactly NO_REPLY shows its REPORT.md's first line under \"finished clean\", whole over two phone lines, so the runs of one job and of another are told apart on a phone with no `yerk worker report`; \"finished clean, nothing to add\" stays for a run whose report says NO_REPLY too or that left none. A job's brief asks every run for that line, a NO_REPLY run's too. The worker tool's list and report, and `yerk worker list|report`, name the job too. A quiet run still asks its room for no turn."
+tier = "free"
+needs = "the workers and jobs abilities"
+free_path = "this is the free path"
+asked_as = ["same worker doing the same thing", "cards all look the same", "cards look the same", "identical cards",
+            "identical worker cards", "tell the cards apart", "which job was this card", "which job is this card",
+            "job's result on the card", "card names the job"]
+layer = 5
+
 [abilities.capture]
 state = "built"
 what = "Every message of every room filed in the day's log in the private memory tree as it lands: time, room, sender role, one line per attachment."

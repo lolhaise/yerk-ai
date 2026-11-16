@@ -114,7 +114,11 @@ def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_n
     cards += [workers.card_text(row, [(True, x) for _, x in items], settled("done", row)),
               workers.card_text(row, items, settled("done", row, has_report=False))]
     quiet = workers.card_text(row, items, {**settled("done", row), "result": words.NO_REPLY, "quiet": True})
-    for text in [*cards, quiet]:
+    job, line = {**row, "job": "price-watch"}, "Rain at the coast on Saturday: median 12 mm (5-95: 3 to 30)"
+    jobs = [workers.card_text(job, items), workers.card_text(job, items, {**settled("done", row), "result": line, "quiet": True})]
+    assert jobs[1].splitlines()[:4] == [f"{words.DONE} worker finished clean", "Rain at the coast on Saturday: median 12",
+                                        "mm (5-95: 3 to 30)", "-# job price-watch, done in 3 min"]     # need-2026-11-16-100
+    for text in [*cards, quiet, *jobs]:
         assert state_first(text) and not room_safe(text), (text, room_safe(text))
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
         assert "account" not in text and "a-model" not in text            # one account here: no account line

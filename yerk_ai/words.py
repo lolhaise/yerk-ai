@@ -76,6 +76,14 @@ def line(text: str, n: int = PHONE) -> str:
     return text.rstrip(" ,;:") + "..."
 
 
+def wrap(text: str, n: int = PHONE) -> list[str]:
+    """`text` in two lines of `n` phone columns at most, broken at a word, the second held by line(): a worker card's
+    one-line result, whole when it fits two (need 100 of 2026-11-16: cut at one, a forecast's line lost its number)."""
+    ws = str(text).split()
+    j = next((j for j in range(len(ws), 0, -1) if width(" ".join(ws[:j])) <= n), 1)   # the most words the first takes
+    return [x for x in (line(" ".join(ws[:j]), n), line(" ".join(ws[j:]), n)) if x]
+
+
 def named(template: str, name: str, cols: int = PHONE, **facts: Any) -> str:
     """`template` with its {name} at `cols` columns: a line too wide loses the end of the name, never
     the fact after it (a long room name keeps "busy 15 min, 12 waiting")."""
@@ -129,6 +137,7 @@ def why(cls: str | None, outcome: str) -> str:
 
 # workers
 WORKER, WORKER_HEAD = "worker {id}", "worker {state}"       # the id rides in the footer: the head stays short
+WORKER_JOB = "job {name}"           # a scheduled job's worker: its footer's first part, so each card names its job (need 100)
 OUTCOME = {"done": (DONE, "finished clean"), "partly": (WORKING, "finished, {ticked} of {rows} ticked"),
            "no report": (WORKING, "finished, no report"), "timed out": (NOT_DONE, "stopped: timed out at {cap}"),
            "stopped": (NOT_DONE, "stopped by the owner"), "died": (NOT_DONE, "died: {why}"),

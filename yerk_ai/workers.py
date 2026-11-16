@@ -34,8 +34,9 @@ daemon restarts.
   merged with another relay; two completions are two relays, in order), and in a room whose process
   is closed it resumes the room's own session, as any message does. The raw report never goes to
   the room. A last message of exactly NO_REPLY settles the card quiet, live or at a re-attach: the
-  done mark and "finished clean, nothing to add", no token, no rows, the footer as ever; and no
-  relay turn, whoever started it (the tool, `yerk worker start` in a script), the ledger saying why.
+  done mark and "finished clean" over the report's first line, or "finished clean, nothing to add" when
+  that line is the token too, no rows, the footer as ever; and no relay turn, whoever started it (the
+  tool, `yerk worker start` in a script), the ledger saying why. A job's worker names its job in its footer.
 - One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
   waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
   the account frees. A worker that moves account mid-run is not built.
@@ -445,33 +446,49 @@ def cut_off(end: dict[str, Any]) -> bool:
     return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM") and not for_memory(end)
 
 
+def footer(parts: Sequence[str]) -> list[str]:
+    """A card's small lines: its parts joined by commas, a part that would pass phone width starting a line."""
+    foot: list[str] = []
+    for x in (x for x in parts if x):
+        if foot and words.width(f"{foot[-1]}, {x}") <= words.PHONE:
+            foot[-1] += f", {x}"
+        else:
+            foot.append(x)
+    return [words.SUB + x for x in foot]
+
+
 def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
               accounts: int = 1, privacy: str = "owner", look: words.Look | None = None,
               now: float | None = None) -> str:
     """The worker's card, state first (STYLE.md). Running: its state and its rows, then the time so
-    far against the cap. Settled: the outcome in plain words, the report's first line, the rows as
-    they were, then how long it ran and "report saved" with the command that opens it; settled quiet
-    (end["quiet"]), the done mark, QUIET_WORKER and that footer alone. The account shows only when
-    the install has more than one; the path only under presentation.paths = owner, in an owner room."""
+    far against the cap. Settled: the outcome in plain words, the report's first line (two phone lines at most), the
+    rows as they were, then how long it ran and "report saved" with the command that opens it; settled quiet
+    (end["quiet"]), the done mark and no rows: "finished clean" over the report's first line, or QUIET_WORKER when that
+    line is the token itself or there is no report. A scheduled job's worker names its job first in the footer (need
+    100 of 2026-11-16: six quiet job cards read alike, whatever each found). The account shows only when the install
+    has more than one; the path only under presentation.paths = owner, in an owner room."""
     look = look or words.LOOK
     now = time.time() if now is None else now
     ticked = sum(1 for t, _ in items if t)
     started, cap = float(row["started"]), float(row["cap"])
-    who = words.WORKER.format(id=row["id"])
+    who, said = words.WORKER.format(id=row["id"]), ""
+    job = words.named(words.WORKER_JOB, str(row["job"])) if row.get("job") else ""
     if end is None and row.get("waiting"):               # in line for its account: no time against the cap yet
         lines = [words.line(f"{words.WORKING} {words.WORKER_HEAD.format(state=words.WAITING_ACCOUNT)}"),
                  words.line(f"{words.WAITING} " + words.IN_LINE.format(nth=words.nth(int(row.get("line") or 1)),
                                                                         name=row["account"]))]
         lines += [words.line(f"{words.WAITING} {text}") for _, text in items[-ROWS_SHOWN:]]
-        return "\n".join([*lines, words.SUB + who])
+        return "\n".join([*lines, *footer([job, who])])
     if end is None:
         mark, state = words.outcome("ticking" if items else "running", ticked=ticked, rows=len(items))
         when = (words.of_cap(now - started, cap) if look.times == "relative"
                 else f"started {words.clock(started, now)}, cap {words.span(cap)}")
     else:
         mark, state = settled_state(row, items, end)
+        said = str(end.get("result") or "") if end.get("has_report") else ""
         if end.get("quiet"):                             # its last message was exactly NO_REPLY: no token, no rows
-            mark, state, items = words.DONE, words.QUIET_WORKER, []
+            said = "" if said.strip() == words.NO_REPLY else said
+            mark, state, items = words.DONE, words.outcome("done")[1] if said else words.QUIET_WORKER, []
         ran = float(end["finished"]) - started
         when = ((f"done in {words.span(ran)}" if end["exit"] == "done" else f"ran {words.of_cap(ran, cap)}")
                 if look.times == "relative" else f"ended {words.clock(float(end['finished']), now)}, "
@@ -479,8 +496,7 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
     lines = [words.line(f"{mark} {words.WORKER_HEAD.format(state=state)}")]
     if end is not None and (note := oom_note(end)):
         lines.append(words.line(note))
-    if end is not None and end.get("result") and end.get("has_report") and not end.get("quiet"):
-        lines.append(words.line(str(end["result"])))
+    lines += words.wrap(said)
     current = next((i for i, (t, _) in enumerate(items) if not t), None)
     stuck = words.WORKING if end is None else words.NOT_DONE if mark == words.NOT_DONE else words.WAITING
     rows = [words.line(f"{words.DONE if t else stuck if i == current else words.WAITING} {text}") for i, (t, text) in enumerate(items)]
@@ -490,13 +506,7 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
     extra = [f"account {row['account']}"] if accounts > 1 or look.footer == "full" else []
     if end is not None and end["exit"] == "did not start":
         when = ""                                        # it never ran: no time to tell
-    foot: list[str] = []                                 # phone width: a part that does not fit starts a line
-    for x in (x for x in [*([who] if end is None else []), when, *extra] if x):
-        if foot and words.width(f"{foot[-1]}, {x}") <= words.PHONE:
-            foot[-1] += f", {x}"
-        else:
-            foot.append(x)
-    lines += [words.SUB + x for x in foot]
+    lines += footer([job, *([who] if end is None else []), when, *extra])
     if look.footer == "full" and row.get("model"):
         lines.append(words.SUB + f"model {row['model']}")
     if end is not None:
@@ -985,7 +995,7 @@ class Workers:
 def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
     """The newest workers, running or ended: what `worker list` and `yerk worker list` show."""
     now = time.time()
-    return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"],
+    return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"], "job": r.get("job") or "",
              "state": r["exit"] or (words.WAITING_ACCOUNT if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
              "cap_minutes": r["cap"] / 60, "result": r["result"], "report": r["report"],
              "relay": r["relay"], "relay_note": r["relay_note"]} for r in ledger.workers(limit=limit)]
@@ -999,7 +1009,7 @@ def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
         text = Path(row["report"]).read_text(errors="replace")
     except OSError:
         text = ""
-    return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"],
+    return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"], "job": row.get("job") or "",
             "first_line": first_line(Path(row["report"])), "text": text[:limit], "trimmed": len(text) > limit,
             "unit": row["unit"], "exit_detail": row["exit_detail"], "staging": row["staging"], "account": row["account"],
             "model": row["model"]}

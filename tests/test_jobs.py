@@ -530,6 +530,61 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     assert len(s.chan.replies) == 1                      # the one relay; the other three posted nothing
 
 
+def test_quiet_job_cards_name_their_job_and_show_the_reports_line_so_each_run_is_told_apart(setup, tmp_path, capsys):
+    """need-2026-11-16-100: a room's six quiet job cards read alike ("worker finished clean, nothing to add", the time,
+    "report saved"): four runs of a forecast job whose reports each held its one line, two of another job with nothing, all
+    answering NO_REPLY. The job brief says the card shows REPORT.md's line, yet a quiet card hid it and named no job, and
+    on a phone the report command is out of reach. Fired as jobs, each card now names its job, a quiet run with a line in
+    its report shows that line whole, and one with nothing says so as before; neither asks its room for a turn, and the
+    worker list and report name the job, in the tool's answer and `yerk worker list|report`. The job's brief asks every run
+    for that line, a NO_REPLY run's too, where it said to write the same text as the last message: the token itself."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    write_jobs(priv / "jobs.toml",
+               '[jobs.rain-odds]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+               'message = "FAKE report=\\"Rain at the coast on Saturday: median 12 mm (5-95: 3 to 30)\\" result=\\"NO_REPLY\\""\n\n'
+               '[jobs.calm-check]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+               'message = "FAKE report=\\"NO_REPLY\\" result=\\"NO_REPLY\\""\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        out = {}
+        for name in ("rain-odds", "calm-check"):
+            assert await asyncio.to_thread(jobs.run, name, priv, state, sd, handoff) == 0
+            out[name] = await ended(s.ledger, s.ledger.job_runs(job=name)[0]["worker"])
+            await asyncio.sleep(0.2)                     # the hook's ledger writes after the worker row
+        return out
+    rows = asyncio.run(go())
+    rain, calm = rows["rain-odds"]["id"], rows["calm-check"]["id"]
+    prompt = (Path(rows["calm-check"]["staging"]) / "PROMPT.md").read_text()   # a line on every run, a quiet one's too
+    assert f"one-line result (what it found or did) as the first line of REPORT.md in your folder, even when your last " \
+           f"message is {W.NO_REPLY}: the card shows it with the job's name." in prompt
+    card = {k.removeprefix("worker:"): t.splitlines() for k, t, _, _ in rec.settled}
+    assert card[rain][:3] == [f"{W.DONE} worker finished clean", "Rain at the coast on Saturday: median 12", "mm (5-95: 3 to 30)"]
+    assert card[rain][3].startswith("-# job rain-odds, done in ") and card[rain][-1] == f"-# report saved: `yerk worker report {rain}`"
+    assert card[calm][0] == f"{W.DONE} worker {W.QUIET_WORKER}" and card[calm][1].startswith("-# job calm-check, done in ")
+    assert all(W.width(x) <= W.PHONE and x != W.NO_REPLY for t in card.values() for x in t)
+    assert s.chan.replies == []                          # neither asked its room for a turn: silence, as before
+    capsys.readouterr()
+    for name, wid in (("rain-odds", rain), ("calm-check", calm)):
+        assert (rows[name]["job"], rows[name]["relay"], rows[name]["relay_note"]) == (name, "skipped", "the job answered NO_REPLY")
+        assert s.ledger.job_runs(job=name)[0]["delivery"] == "silent (NO_REPLY)"
+        assert asyncio.run(w.handle("r", {"action": "report", "id": wid}))["job"] == name          # the worker tool's report
+        assert cli.main(["worker", "report", wid, "--state", str(state)]) == 0
+        assert capsys.readouterr().out.startswith(f"worker {wid} done, job {name}, account ")
+    listed = asyncio.run(w.handle("r", {"action": "list"}))["workers"]                             # the worker tool's list
+    assert {x["id"]: x["job"] for x in listed} == {rain: "rain-odds", calm: "calm-check"}
+    assert cli.main(["worker", "list", "--state", str(state)]) == 0
+    out = capsys.readouterr().out
+    assert f"{rain} done for job rain-odds in r on " in out and f"{calm} done for job calm-check in r on " in out
+
+
 def test_a_job_workers_end_for_memory_reads_as_its_card_reads_it(setup, tmp_path):
     rec, told = Rec(), []
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": setup.room()}, {"r": rec})
