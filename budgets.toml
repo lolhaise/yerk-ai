@@ -1593,4 +1593,5 @@ secs = 60
 # reads, nameless and here; the preview's from line as it goes, marked when it has no name; the From line in the answer),
 # words.py 6 (the preview's mark, the doctor's line, the two Here lines), abilities.py 3 (email-name's Here line), doctor.py
 # 3 (the email name check), config.py 2 ([gmail] name's description). 32,706: main 61e3cf2's 32,659 plus 47.
-lines = 32706
+# 2026-11-16: texting-9a raised it by 25, an answer of the owner's is never undone by a call that was running and a tapback is seen, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+lines = 32731

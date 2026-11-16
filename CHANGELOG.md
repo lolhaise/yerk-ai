@@ -8,6 +8,38 @@ version changes.
 
 ## 2026-11-16
 
+### texting-9a (#87)
+
+- With `[texting]` on, a text the owner answers himself while its draft is being written is left alone. Until now the
+  writer's call coming back wrote its draft over his answer, so the draft was checked and timed as if he had said
+  nothing, and when it needed his word a card was shown for a text he had answered seconds before. The read of the
+  thread before a send still stopped it, so nothing wrong went. The decision is kept for the record (what it was, its
+  seconds and tokens), and in dry its line in the practice file says `answered_first`. A draft still being decided
+  whose texts he answered with nothing else having moved it is closed as answered by him: left as it was, the writer's
+  next pass would decide it again, one call a pass (no path reaches that today).
+- A tapback is seen. The Mac's bridge hands one over only when asked, and texting never asked, so none ever reached it.
+  The link now asks. A tapback of the owner's own stops a waiting text and takes its card back, as his own text does,
+  both when the watch hands it over and in the read of the thread before a send, where the bridge lists it on the row it
+  sits on; one taken away is filed and is nothing else; one of theirs is filed and opens no decision, as before.
+- A tapback texting sent is recognised as sent. Until now each one was marked "may not have gone, not sent again" three
+  minutes after it was handed, `yerk status` showed texting not done for a day and the morning line counted it, though
+  it went. A claimed tapback is kept by its row id, the one name the bridge's thread read gives it.
+- The writer and the check see each row's tapbacks on its thread line: whose (the owner's, theirs, or texting's own as
+  `auto`) and which. A thread with none is handed to both byte for byte as before.
+- budgets.toml: `[code] lines` 32,706 to 32,731, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md says a tapback of yours stops a text and takes its card back, as your own text does.
+- The tests: 10 new, in tests/test_texting_writer.py (his own text filed while the writer's call runs, for a reply, a
+  held and a none; the same while the check's call runs; one case for each read after the call, the row closed where only
+  its texts were answered; each kind of tapback
+  on the writer's and the check's thread line, and today's stdin for a thread with none), test_texting_link.py (the
+  ask on every chat at a first start and a reconnect), test_texting_intake.py (their tapback and its removal from the
+  watch) and test_texting_sender.py (his own tapback as his answer and its removal as nothing; theirs and texting's own
+  claimed one on the thread do not stop a text, and neither does one of his older than the texts answered; texting's own
+  tapback claimed as sent through the link). The stub
+  bridges now answer as the Mac's does: a thread read lists a tapback on the row it sits on and never as a row, and a
+  watch hands one over only when asked; three sender tests moved to that shape.
+- **Upgrading**: nothing to change.
+
 ### need-2026-11-16-102 (#?)
 
 - An email a room sends in your name now shows, before your word, the From line it goes out under, and says when your

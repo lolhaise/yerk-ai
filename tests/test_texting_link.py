@@ -24,6 +24,7 @@ AT = "@"                     # split in the source, so the repository scan never
 A1, A2, B1 = "+15550000101", f"alex.q{AT}example.com", "+15550000102"
 LIST = f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}", "{A2}"]\n\n' \
        f'[people.beta]\nfirst = "Beta"\nhandles = ["{B1}"]\n'
+EMOJI = {"like": "👍", "love": "❤️", "laugh": "😂"}
 
 
 def listed(tmp_path: Path) -> people.People:
@@ -81,9 +82,21 @@ class FakeBridge:
         self.rows.append(row)
         return row
 
+    def tap(self, cid: int, on: dict[str, Any], kind: str = "like", from_me: bool = False, ago: float = 0.0, add: bool = True) -> dict[str, Any]:
+        """A tapback on `on`, as the Mac's store keeps it (run9/probe/shapes.txt): a row of its own that a watch hands over only
+        when asked, and that a history lists as an entry of `reactions` on the row it sits on, by its row id and no guid."""
+        return self.add(cid, f"{'Liked' if add else 'Removed a like from'} “{on['text']}”", from_me, ago, is_reaction=True,
+                        is_reaction_add=add, reaction_type=kind, reaction_emoji=EMOJI[kind], reacted_to_guid=on["guid"])
+
+    def reactions(self, row: dict[str, Any]) -> list[dict[str, Any]]:
+        on = [t for t in self.rows if t.get("reacted_to_guid") == row["guid"]]
+        return [{"id": t["id"], "is_from_me": t["is_from_me"], "type": t["reaction_type"], "emoji": t["reaction_emoji"],
+                 "sender": t["chat_identifier"], "created_at": t["created_at"]} for t in on if t["is_reaction_add"] and not any(
+                 u["id"] > t["id"] and u["is_from_me"] == t["is_from_me"] and not u["is_reaction_add"] for u in on)]
+
     def push(self, row: dict[str, Any]) -> None:
         for n, (w, p) in enumerate(self.subs):
-            if p.get("chat_id") == row["chat_id"]:
+            if p.get("chat_id") == row["chat_id"] and (p.get("include_reactions") is True or not row.get("is_reaction")):
                 w.write((json.dumps({"jsonrpc": "2.0", "method": "message",
                                      "params": {"subscription": n + 1, "message": row}}) + "\n").encode())
 
@@ -96,9 +109,9 @@ class FakeBridge:
             after: list[dict[str, Any]] = []
             if m == "chats.list":
                 res: Any = {"chats": list(self.chats.values())}
-            elif m == "messages.history":             # a row's files only when asked for, as the Mac's bridge answers
-                mine = [x if p.get("attachments") else {k: v for k, v in x.items() if k != "attachments"}
-                        for x in self.rows if x["chat_id"] == p.get("chat_id")]
+            elif m == "messages.history":             # a row's files only when asked for, as the Mac's bridge answers; no tapback row
+                mine = [{**(x if p.get("attachments") else {k: v for k, v in x.items() if k != "attachments"}), "reactions": self.reactions(x)}
+                        for x in self.rows if x["chat_id"] == p.get("chat_id") and not x.get("is_reaction")]
                 res = {"messages": sorted(mine, key=lambda x: -x["id"])[:int(p.get("limit", 50))]}
             elif m == "watch.subscribe":
                 self.subs.append((w, p))
@@ -188,6 +201,41 @@ def test_link_starts_from_the_newest_row_and_a_restart_replays_from_its_cursor(s
         await until(lambda: len(took) == 2)
         assert took == ["new", "while down"]
         assert json.loads((tmp_path / "texting" / "status.json").read_text())["up"] is True
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+    asyncio.run(go())
+
+
+def test_the_link_asks_for_tapbacks_on_every_chat_at_a_first_start_and_a_reconnect_and_a_history_holds_none(sock, tmp_path):
+    async def go() -> None:
+        fb = FakeBridge(sock)
+        fb.chat(1, A1)
+        fb.chat(2, B1)
+        six = fb.add(1, "see you at six", ago=60)
+        fb.tap(1, six, ago=50)                                       # on the thread before the first start: never replayed
+        await fb.start()
+        notes: list[dict[str, Any]] = []
+        raw = Bridge(unix=sock, on_note=lambda m, p: notes.append(p["message"]))
+        await raw.open()
+        await raw.request("watch.subscribe", {"chat_id": 1, "attachments": True, "since_rowid": 0})     # not asked: no tapback
+        await until(lambda: notes)
+        await raw.close()
+        took: list[str] = []
+        link = Link(listed(tmp_path), tmp_path, lambda p, m: took.append(m["reaction_type"]) or "tapback", unix=sock)
+        task = asyncio.create_task(link.start())
+        await until(lambda: link.connected)
+        fb.push(fb.tap(1, six, "love"))
+        await until(lambda: took)
+        fb.tap(1, six, "laugh", from_me=True)                         # made while the link is away, handed at the reconnect
+        for w in fb.conns:
+            w.close()
+        await until(lambda: len(took) == 2)
+        assert took == ["love", "laugh"] and [n["text"] for n in notes] == ["see you at six"]
+        assert [x["params"].get("include_reactions") for x in fb.lines if x["method"] == "watch.subscribe"] == [None, True, True, True, True]
+        [row] = await link.thread("alex", 20)
+        assert row["guid"] == six["guid"] and [(e["type"], e["is_from_me"]) for e in row["reactions"]] == [
+            ("like", False), ("love", False), ("laugh", True)] and "guid" not in row["reactions"][0]
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         await fb.stop()

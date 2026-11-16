@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from test_texting_link import A1, B1, listed
+from test_texting_link import A1, B1, FakeBridge, listed, until
 from test_texting_holds import Card
 from yerk_ai import texts, words
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -27,6 +28,7 @@ from yerk_ai.ledger import Ledger
 from yerk_ai.texting import hands, holds, intake, sender, writer
 from yerk_ai.texting.bridge import BridgeDown
 from yerk_ai.texting.intake import digest
+from yerk_ai.texting.link import Link
 from yerk_ai.texting.people import load
 
 LIST = (f'[owner]\nname = "Sam"\n\n[people.alex]\nfirst = "Alex"\nhandles = ["{A1}"]\nsheet = "people/alex.toml"\n\n'
@@ -154,9 +156,18 @@ class Thread:
         self.rows: list[dict[str, Any]] = []
         self.down, self.reads = False, 0
 
-    def add(self, guid: str, t: float, text: str = "see you at six", mine: bool = False, tapback: bool = False) -> None:
-        self.rows.append({"guid": guid, "is_from_me": mine, "text": text, "is_reaction": tapback, "chat_identifier": A1,
+    def add(self, guid: str, t: float, text: str = "see you at six", mine: bool = False) -> None:
+        self.rows.append({"guid": guid, "is_from_me": mine, "text": text, "chat_identifier": A1, "reactions": [],
                           "created_at": datetime.fromtimestamp(t, timezone.utc).isoformat().replace("+00:00", "Z")})
+
+    def tap(self, n: int, t: float, on: str = "t-1", mine: bool = True, add: bool = True) -> dict[str, Any]:
+        """A tapback on row `on`, as the Mac's bridge has it (run9/probe/shapes.txt): in a history only an entry of that row's
+        `reactions`, by its row id `n` and no guid; returned, the watch's row for it, which carries both."""
+        at, row = datetime.fromtimestamp(t, timezone.utc).isoformat().replace("+00:00", "Z"), next((x for x in self.rows if x["guid"] == on), None)
+        if add and row is not None:
+            row["reactions"].append({"id": n, "is_from_me": mine, "type": "like", "emoji": "👍", "sender": A1, "created_at": at})
+        return {"id": n, "guid": f"tap-{n}", "is_from_me": mine, "text": "Liked “see you at six”", "chat_identifier": A1, "created_at": at,
+                "is_reaction": True, "is_reaction_add": add, "reaction_type": "like", "reaction_emoji": "👍", "reacted_to_guid": on}
 
     async def __call__(self, key: str, limit: int) -> list[dict[str, Any]]:
         self.reads += 1
@@ -347,8 +358,6 @@ def test_a_from_me_row_in_the_window_claims_the_oldest_text_job_as_auto_and_answ
     pending = waiting(led, "t-0", state="deciding")
     rid = due(s, led, clock, "t-1")
     handed = armed(s, led, rid)["handed"]
-    rows(s).add("m-tap", handed + 5, "", mine=True, tapback=True)
-    assert took.take(alex, rows(s).rows[-1]) == "tapback" and led.texting_get(rid)["claimed"] is None
     rows(s).add("m-1", handed + 20, "on my way", mine=True)
     assert took.take(alex, rows(s).rows[-1]) == "auto"
     assert (led.texting_get(rid)["state"], led.texting_get(rid)["claimed"]) == ("sent", "m-1")
@@ -357,6 +366,23 @@ def test_a_from_me_row_in_the_window_claims_the_oldest_text_job_as_auto_and_answ
     rows(s).add("m-2", handed + 400, "running late", mine=True)
     assert took.take(alex, rows(s).rows[-1]) == "owner" and led.inbound_get("m-2")["sender"] == "owner"
     assert led.texting_get(pending)["state"] == "cancelled" and withdrawn == [pytest.approx(handed + 400, abs=1e-3)]
+
+
+def test_a_tapback_of_his_own_from_the_watch_that_claims_nothing_is_his_answer_and_one_he_takes_away_is_nothing(tmp_path: Path) -> None:
+    s, led, _ = make(tmp_path)
+    took, withdrawn = intake_for(s, led)
+    took.stop, alex, rids = s.cancel, load(s.file).people["alex"], []
+    for n, state in enumerate(("deciding", "decided", "release-ready", "queued")):
+        their(led, f"t-{n}", WED - 60 + n)
+        rows(s).add(f"t-{n}", WED - 60 + n)
+        rids.append(waiting(led, f"t-{n}", state=state))
+    assert took.take(alex, rows(s).tap(9000, WED - 10, on="t-3", add=False)) == "tapback" and withdrawn == []
+    assert [led.texting_get(r)["state"] for r in rids] == ["deciding", "decided", "release-ready", "queued"]
+    assert took.take(alex, rows(s).tap(9001, WED - 5, on="t-3")) == "owner" and withdrawn == [pytest.approx(WED - 5, abs=1e-3)]
+    assert [(led.texting_get(r)["state"], led.texting_get(r)["reason"]) for r in rids] == [("cancelled", "owner answered")] * 4
+    assert [(led.inbound_get(f"t-{n}")["state"], led.inbound_get(f"t-{n}")["note"]) for n in range(4)] == [
+        ("answered", "the owner answered himself")] * 4
+    assert (led.inbound_get("tap-9000")["note"], led.inbound_get("tap-9001")["note"]) == ("a tapback taken away", "the owner's own tapback")
 
 
 def test_part_two_waits_for_part_one_to_be_seen_goes_a_burst_gap_later_and_never_after_an_unseen_part_one(tmp_path: Path) -> None:
@@ -502,14 +528,39 @@ def test_live_with_text_out_off_in_gates_drops_what_was_left_to_send_and_gives_t
 
 def test_at_fire_time_a_text_or_a_tapback_of_his_own_that_only_the_thread_holds_stops_the_text(tmp_path: Path) -> None:
     """The watch can miss a row (the link away, a replay still to come), so the thread read at fire time is the guard that
-    is left: his own text after theirs stops the text, and so does a tapback of his."""
-    for n, (said, tapback) in enumerate((("running late", False), ("", True))):
+    is left: the owner's own text after theirs stops the text, and so does a tapback of the owner's, an entry of a row's `reactions`."""
+    for n, tapback in enumerate((False, True)):
         s, led, clock = make(tmp_path / str(n))
         rid = due(s, led, clock, "t-1")
-        rows(s).add("m-1", WED - 2, said, mine=True, tapback=tapback)      # on the thread only: the intake never saw it
+        if tapback:                                                         # on the thread only: the intake never saw it
+            rows(s).tap(9001, WED - 2)
+        else:
+            rows(s).add("m-1", WED - 2, "running late", mine=True)
         r = armed(s, led, rid)
         assert (r["state"], r["reason"], r["handed"]) == ("cancelled", "owner answered", None)
         assert calls(tmp_path / str(n)) == [] and led.inbound_get("t-1")["state"] == "answered"
+
+
+def test_at_fire_time_a_tapback_of_theirs_or_texting_own_claimed_one_on_the_thread_does_not_stop_the_text(tmp_path: Path) -> None:
+    for n, mine in enumerate((False, True)):
+        s, led, clock = make(tmp_path / str(n))
+        rid = due(s, led, clock, "t-1")
+        tap = rows(s).tap(9001, WED - 2, mine=mine)
+        if mine:                                                            # texting's own, seen late: claimed by its row id
+            react = waiting(led, "t-0", state="unseen", decision="react", react="like")
+            led.texting_set(react, handed=WED - 5)
+            assert intake_for(s, led)[0].take(load(s.file).people["alex"], tap) == "auto" and led.texting_get(react)["claimed"] == "9001"
+        assert armed(s, led, rid)["handed"] is not None and calls(tmp_path / str(n)) == [f"yerk-{rid}-1"]
+
+
+def test_at_fire_time_a_tapback_of_his_own_older_than_the_texts_answered_does_not_stop_the_text(tmp_path: Path) -> None:
+    """A tapback of the owner's on an earlier row, made before the texts the job answers, is no answer to them: without the entry's
+    own time a thread the owner ever liked a text on would never get a reply again."""
+    s, led, clock = make(tmp_path)
+    rows(s).add("t-0", WED - 3600)
+    rows(s).tap(9001, WED - 3000, on="t-0")
+    rid = due(s, led, clock, "t-1")
+    assert armed(s, led, rid)["handed"] is not None and calls(tmp_path) == [f"yerk-{rid}-1"]
 
 
 def test_a_from_me_row_outside_a_handed_jobs_window_is_the_owners_and_claims_nothing(tmp_path: Path) -> None:
@@ -560,10 +611,58 @@ def test_a_late_row_claims_a_queued_job_before_an_unseen_one_and_a_tapback_never
     led.texting_set(old, state="unseen", handed=WED, reason=words.TEXTING_SENT["unseen"])
     led.texting_set(new, handed=WED + 100)
     clock.t = WED + 400                                         # both windows closed; each row's own time is inside both
-    for guid, tapback, side in (("m-tap", True, "tapback"), ("m-1", False, "auto"), ("m-2", False, "auto")):
-        rows(s).add(guid, WED + 95, "" if tapback else "on my way", mine=True, tapback=tapback)
-        assert took.take(load(s.file).people["alex"], rows(s).rows[-1]) == side
+    for guid, side in (("m-1", "auto"), ("m-tap", "owner"), ("m-2", "auto")):  # the tapback, with `old` open: the owner's own answer
+        if guid == "m-tap":
+            row = rows(s).tap(9001, WED + 95)
+        else:
+            rows(s).add(guid, WED + 95, "on my way", mine=True)
+            row = rows(s).rows[-1]
+        assert took.take(load(s.file).people["alex"], row) == side
     assert [(r["state"], r["claimed"]) for r in map(led.texting_get, (new, old))] == [("sent", "m-1"), ("sent", "m-2")]
+
+
+@pytest.fixture
+def sock():
+    d = tempfile.mkdtemp(prefix="yt")             # under TMPDIR, short: a socket path has a length limit
+    yield str(Path(d) / "b.sock")
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_live_texting_own_tapback_from_the_watch_claims_its_job_as_sent_and_auto_and_a_removal_or_a_text_claims_none(sock, tmp_path: Path) -> None:
+    s, led, clock = make(tmp_path)
+    took, withdrawn = intake_for(s, led)
+    alex, fb = load(s.file).people["alex"], FakeBridge(sock)
+    fb.chat(1, A1)
+    six = fb.add(1, "see you at six", ago=60)
+    their(led, six["guid"], time.time() - 60)
+    their(led, "t-2", time.time() - 20)
+    job, pending = waiting(led, six["guid"], decision="react", react="like"), waiting(led, "t-2", state="deciding")
+    led.texting_set(job, handed=time.time() - 5)
+
+    async def go() -> dict[str, Any]:
+        await fb.start()
+        link = Link(load(s.file), tmp_path, took.take, unix=sock)
+        task = asyncio.create_task(link.start())
+        await until(lambda: link.connected)
+        fb.push(off := fb.tap(1, six, from_me=True, add=False))
+        await until(lambda: led.inbound_get(off["guid"]) is not None)
+        assert (led.texting_get(job)["state"], led.texting_get(job)["claimed"]) == ("queued", None)     # a removal claims nothing
+        fb.push(own := fb.tap(1, six, from_me=True))
+        await until(lambda: led.texting_get(job)["state"] == "sent")
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+        return own
+    own = asyncio.run(go())
+    assert led.texting_get(job)["claimed"] == str(own["id"]) and led.inbound_get(own["guid"])["sender"] == "auto"
+    assert led.texting_get(pending)["state"] == "deciding" and withdrawn == []
+    clock.t = time.time() + 400                                  # past its window: a claimed tapback is never unseen
+    asyncio.run(s.tick())
+    assert led.texting_get(job)["state"] == "sent"
+    again = waiting(led, "t-2", decision="react", react="like")   # a text row never claims a tapback job
+    led.texting_set(again, handed=time.time())
+    rows(s).add("m-1", time.time(), "on my way", mine=True)
+    assert took.take(alex, rows(s).rows[-1]) == "owner" and led.texting_get(again)["claimed"] is None
 
 
 def test_dry_claims_nothing_not_even_a_job_a_live_run_left_handed(tmp_path: Path) -> None:
