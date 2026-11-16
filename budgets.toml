@@ -1586,4 +1586,5 @@ secs = 60
 # while an account has no reading under a minute old and the live call it hands back; _answer's one edit of the same
 # message, a refused one a log line; the header and the two docstrings), words.py 1 (METERS_ASKED). 32,659: main
 # 1d97e1d's 32,636 plus 23.
-lines = 32659
+# 2026-11-16: texting-9a raised it by 24, an answer of the owner's is never undone by a call that was running and a tapback is seen, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+lines = 32683

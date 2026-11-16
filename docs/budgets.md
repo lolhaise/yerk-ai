@@ -733,7 +733,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: status-card-at-once raised it by 23, /status in a room shows its card at once and the meters asked now are edited into it (the owner's ask, 2026-11-16: about 30 s before any line of the card, every line but the meters ready at once and held for them), not folded to fit: channels/discord.py 22 (_command's /status from what is on hand, its line while an account has no reading under a minute old and the live call it hands back; _answer's one edit of the same message, a refused one a log line; the header and the two docstrings), words.py 1 (METERS_ASKED). 32,659: main 1d97e1d's 32,636 plus 23.
 
-- `lines = 32659`
+2026-11-16: texting-9a raised it by 24, an answer of the owner's is never undone by a call that was running and a tapback is seen, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 32683`
 
 ## Uncapped
 
