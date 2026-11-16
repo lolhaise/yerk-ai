@@ -147,8 +147,7 @@ TEXTING = ("person", "handle", "inbound", "decision", "parts", "react", "reply_t
            "fire_at", "state", "reason", "approval_id", "card", "handed", "claimed", "account", "seconds", "tokens", "mode",
            "shown", "why")
 ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER"}   # in line for its account
-ADDED["texting"] = {"shown": "TEXT",       # a held text's card as it was last shown (texting/holds.py)
-                    "why": "TEXT"}         # the writer's whole reason, written once at the decision, never on a card (texting/writer.py)
+ADDED["texting"] = {"shown": "TEXT", "why": "TEXT"}   # a held card as last shown (texting/holds.py); the writer's whole reason, never on a card
 ADDED["inbound"] = {**ADDED["inbound"], "digest": "TEXT"}   # a text's words, hashed: the sender's recheck (texting/)
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note", "created", "digest")

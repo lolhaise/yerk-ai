@@ -8,6 +8,36 @@ version changes.
 
 ## 2026-11-16
 
+### texting-9b (#?)
+
+- With `[texting]` on, a card for a text that waits for you says why in a few words: `why: dating, your call`, two
+  classes `why: dating, money, your call`. Until now it printed the writer's whole reasoning, its question, the class
+  words and its why joined into a paragraph that mostly repeated what the card already shows. The code picks the line:
+  the class that waits, for a drafted reply whose every statement has a source; else the question that stands in for a
+  draft (no source, or a plan); else the statement with no source; else the writer's one line. The code's own check
+  holds with the same words, and a card made from your edit reads `why: your words; dating, your call` or `why: your
+  words; the code finds nothing`. A card the check's model call held, or one with release off, reads as before.
+- The writer's whole reasoning is kept in the ledger, in a new column of the texting row written once at the decision
+  and never again, and in the practice file's line in dry. The `texting` tool's `why` reads it back for the newest
+  decision, also after the text went or was skipped, where until now that answer was only the state the card closed
+  with. The writer is handed the whole reasoning of what already waits on you, as before; `log` is unchanged.
+- A remark that asks nothing is left alone even when it touches a class that waits, where until now it could make a
+  card: the writer's prompt now has it decide first, as if every class were open, whether you would answer at all. Its
+  last line says what the card shows and that its reasoning is never on it. What the model does with the two new
+  sentences is not proven by any test.
+- A statement's number is the code's, by its place. Two statements the writer numbered 1 and 1 are two the check must
+  confirm, where until now a verdict confirming number 1 once let the other go confirmed by nobody.
+- budgets.toml: `[code] lines` stays 32,743 (the change adds no line). docs/GUIDE.md says how a held card gives its why
+  and that the `texting` tool's `why` reads the reasoning back.
+- The tests: 9 new, in tests/test_texting_writer.py (the card's line for a drafted class hold, the other holds, a reply
+  and a none; a card the writer held, six lines, with its whole reason the same after a newer burst, a send, a skip and
+  an expiry; the held fence; a ledger made before the column; writer.md's two sentences), test_texting_people.py (the
+  tool's `why` after a send, `log` unchanged) and test_texting_check.py (statements numbered by place, and a verdict
+  that confirms only the first holds and names the second). The practice file's test reads `why`; the card, edit and
+  pre-check tests read the new words.
+- **Upgrading**: nothing to change. The ledger gains the column by itself at the next start; a row made before it has
+  no kept reason, and the tool's `why` and the writer read its `reason` as before.
+
 ### status-card-model-meter (#86)
 
 - `/status` typed in a room now shows each account's model's own week from its first answer. Since status-card-at-once
