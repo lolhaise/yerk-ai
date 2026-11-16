@@ -109,6 +109,12 @@ def fence(name: str, body: str, tag: str) -> str:
     return f"=== {name} {tag} ===\n{body.strip() or 'none'}\n=== end {name} {tag} ==="
 
 
+def taps(ledger: Ledger, person: str) -> set[str]:
+    """The row ids of texting's own tapbacks to `person`, as its claims keep them (sender.Sender.claim): a history names a
+    tapback by its row id alone, never its guid (J97)."""
+    return {x for r in ledger.texting_rows(person, "sent") if r["decision"] == "react" for x in str(r["claimed"] or "").split(",") if x}
+
+
 def kind(a: dict[str, Any]) -> str:
     """A file in plain words, by its type: a photo, a video, a voice message, a sticker, else a file."""
     t = str(a.get("mime_type") or "")

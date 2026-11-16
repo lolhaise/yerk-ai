@@ -29,7 +29,7 @@ from .bridge import BridgeDown, BridgeError, is_tapback, when_of
 from .hands import DOWN, MAYBE, REFUSED, job, parts
 from .intake import digest
 from .people import People, Person, Sheet, load
-from .writer import THREAD, bucket
+from .writer import THREAD, bucket, taps
 
 log = logging.getLogger("yerk.texting")
 WAITS = {"live": "queued", "dry": "would-send"}       # the state a text that may go waits in, by the mode
@@ -245,15 +245,18 @@ class Sender:
 
     def recheck(self, r: dict[str, Any], rows: list[dict[str, Any]]) -> str | None:
         """Why the text may not go on the thread as read just now, or None: a text it answers gone or changed, a row of the
-        owner's newer than the newest of them that is not texting's own claimed send (a tapback of his too), or a text of
-        theirs newer than it."""
+        owner's newer than the newest of them that is not texting's own claimed send (a tapback of the owner's too: an entry of a
+        row's `reactions`, by its row id), or a text of theirs newer than it; a tapback of theirs is none of these (J49)."""
         gs, newest, got = gs_of(r), self.newest(r), {str(x.get("guid")): x for x in rows}
         if any(g not in got for g in gs):
             return "they took it back"
         if any((d := (self.ledger.inbound_get(g) or {}).get("digest")) and digest(str(got[g].get("text") or "")) != d for g in gs):
             return "they changed it"
         newer = [x for x in rows if (w := when_of(x)) is not None and w.timestamp() > newest and str(x.get("guid")) not in gs]
-        if any(x.get("is_from_me") is True and (self.ledger.inbound_get(str(x.get("guid"))) or {}).get("sender") != "auto" for x in newer):
+        own = taps(self.ledger, str(r["person"]))
+        if any(x.get("is_from_me") is True and (self.ledger.inbound_get(str(x.get("guid"))) or {}).get("sender") != "auto" for x in newer) \
+                or any(e.get("is_from_me") is True and str(e.get("id")) not in own and (w := when_of(e)) is not None and w.timestamp() > newest
+                       for x in rows for e in x.get("reactions") or []):
             return "owner answered"
         return "they wrote again" if any(x.get("is_from_me") is not True and not is_tapback(x) for x in newer) else None
 
@@ -279,7 +282,8 @@ class Sender:
         unclaimed job of the thread whose window [handed - 10 s, handed + claim_seconds] holds the row's own time, a
         tapback row only a tapback job and a text row only a text job; with none, an `unseen` one the same way, seen late
         (J62: the bridge was away while the Mac sent it). The last part claimed, or one seen late: `sent` (a part never
-        handed stays dropped); else the next part is due a `burst_gap` draw from now (J40)."""
+        handed stays dropped); else the next part is due a `burst_gap` draw from now (J40). A tapback is kept by its row id,
+        the one name a history gives it (`taps`)."""
         t = self.clock() if at is None else at
         jobs = [r for state in ("queued", "unseen") for r in self.ledger.texting_rows(p.key, state) if self.mode == "live"
                 and r["handed"] is not None and (r["decision"] == "react") == is_tapback(msg)
@@ -287,7 +291,7 @@ class Sender:
         if not jobs:
             return False
         r = min(jobs, key=lambda r: (r["state"] != "queued", float(r["handed"])))
-        rid, got = int(r["id"]), ",".join([*gs_of(r, "claimed"), str(msg.get("guid") or "")])
+        rid, got = int(r["id"]), ",".join([*gs_of(r, "claimed"), str((msg.get("id") if is_tapback(msg) else msg.get("guid")) or "")])
         if (n := len(got.split(","))) >= parts(r) or r["state"] == "unseen":
             self.ledger.texting_set(rid, claimed=got, state="sent",
                                     reason="" if r["state"] == "queued" else words.TEXTING_LATE.format(n=n, of=parts(r)))
