@@ -321,6 +321,9 @@ def test_each_read_again_after_the_call_alone_keeps_what_changed_while_it_ran(tm
     asyncio.run(w.decide(led.texting_get(rid) or {}))
     r, text = led.texting_get(rid) or {}, led.inbound_get("g-1") or {}
     assert "decided" not in (r["state"], text["state"]) and (r["decision"], r["tokens"]) == ("none", 5)
+    # a row something else moved keeps its state and reason; one whose texts were answered with the row left deciding is closed,
+    # since the writer's next pass would decide a deciding row again, one call each pass
+    assert (r["state"], r["reason"]) == ("cancelled", "a newer decision" if stop == "row" else "owner answered")
 
 
 @pytest.mark.parametrize("release", [True, False])

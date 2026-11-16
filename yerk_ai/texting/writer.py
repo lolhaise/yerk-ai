@@ -285,9 +285,10 @@ class Writer:
         fields = {"decision": d["decision"], "parts": json.dumps(d["parts"]), "react": d["react"], "reply_to": d["reply_to"],
                   "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
                   "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": self.mode}
-        first = (self.ledger.texting_get(rid) or {}).get("state") != "deciding" or any(      # he answered while the call ran
-            (self.ledger.inbound_get(g) or {}).get("state") == "answered" for g in gs)        # (J96): never undone, the record only
-        self.ledger.texting_set(rid, **({k: v for k, v in fields.items() if k != "reason"} if first else {"state": "decided", **fields}))
+        was = (self.ledger.texting_get(rid) or {}).get("state")                             # the owner answered while the call ran (J96): never
+        first = was != "deciding" or any((self.ledger.inbound_get(g) or {}).get("state") == "answered" for g in gs)   # undone, the record only
+        shut = {"state": "cancelled", "reason": "owner answered"} if was == "deciding" else {}       # texts answered, the row unmoved: closed
+        self.ledger.texting_set(rid, **({**{k: v for k, v in fields.items() if k != "reason"}, **shut} if first else {"state": "decided", **fields}))
         for g in () if first else gs:
             self.ledger.inbound_set(g, state="decided")
         if self.mode == "dry":
