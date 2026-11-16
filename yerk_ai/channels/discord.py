@@ -35,7 +35,8 @@
   visible notice on any miss that names the limit (in exact bytes only where MB would read the same).
 - Slash commands (/model, /effort, /new, /stop, /status, /fast): on connect exactly this install's, on the
   guilds its rooms live in, never global; the owner's only, in a room only, each the daemon method
-  the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds.
+  the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds;
+  /status's from what is on hand, the meters asked now edited into it once they come.
   `[discord] commands = false` in yerkd.toml: none registered, none answered.
 """
 from __future__ import annotations
@@ -884,12 +885,19 @@ class DiscordChannel:
             picks = []
         await it.response.autocomplete([discord.app_commands.Choice(name=n[:100], value=v[:100]) for n, v in picks])
 
-    async def _command(self, name: str, room: str, args: dict[str, str]) -> str:
-        """Each command is the daemon method the room's tool or `yerk` command calls; no second path."""
+    async def _command(self, name: str, room: str, args: dict[str, str]) -> str | tuple[str, Callable[[], Awaitable[str]]]:
+        """Each command is the daemon method the room's tool or `yerk` command calls; no second path. /status: the room's own
+        card (not yerk status') from what is on hand; while an account on it has no reading under a minute old, a line
+        saying its meters are being asked, and the call that asks them now (usage.py), whose card _answer edits in."""
         d = self.daemon
         if name == "status":
-            return "\n".join(status.room_card(await d.status_now({"live": True}), room))   # the meters asked now (usage.py);
-                                                                                          # the room's own card, not yerk status'
+            card = status.room_card(s := await d.status_now({}), room)       # no Claude Code started
+            if all(a["meter"].get("source") == "live" and "error" not in a["meter"] for a in s["accounts"]):
+                return "\n".join(card)                                        # the live card already: nothing to ask
+            async def live() -> str:
+                return "\n".join(status.room_card(await d.status_now({"live": True}), room))
+            card.insert(card.index(words.TANK) + 1, words.METERS_ASKED)
+            return "\n".join(card), live
         if name in ("model", "effort", "fast"):
             r = await (d.model_command(room, args.get("model", ""), args.get("account", "")) if name == "model"
                        else d.fast_command(room, args.get("fast", "")) if name == "fast"
@@ -900,9 +908,11 @@ class DiscordChannel:
             return f"{words.DONE if r['ok'] else words.PLAIN} {r['line']}"
         return f"{words.NOT_DONE} {words.NOT_RUN}"
 
-    async def _answer(self, it: Any, call: Awaitable[str]) -> None:
+    async def _answer(self, it: Any, call: Awaitable[str | tuple[str, Callable[[], Awaitable[str]]]]) -> None:
         """Ephemeral, inside Discord's three seconds: a call still running after QUICK is deferred first
-        (Discord shows it thinking) and answered when it ends."""
+        (Discord shows it thinking) and answered when it ends. A call that hands back a second one (/status's meters)
+        has that one's answer edited into the same message once, as an ephemeral one is while its token lives (15 minutes);
+        an edit that fails is one log line, and the first answer stays."""
         task = asyncio.ensure_future(call)
         if (slow := not (await asyncio.wait({task}, timeout=QUICK))[0]):
             await it.response.defer(ephemeral=True, thinking=True)
@@ -911,7 +921,19 @@ class DiscordChannel:
         except Exception:
             log.exception("discord: a slash command failed")
             text = f"{words.NOT_DONE} {words.NOT_RUN}"
+        text, then = text if isinstance(text, tuple) else (text, None)
         await (it.followup.send if slow else it.response.send_message)(text[:MAX], ephemeral=True)
+        if then is None:
+            return
+        try:
+            text = await then()
+        except Exception:
+            log.exception("discord: a slash command failed")
+            text = f"{words.NOT_DONE} {words.NOT_RUN}"
+        try:                                            # after a defer the followup above filled the deferred message: the same one
+            await it.edit_original_response(content=text[:MAX])
+        except (discord.HTTPException, *LOST) as e:     # its token gone, or Discord refused the edit
+            log.warning("discord: a slash command's second answer was not edited in, its first stays: %s", e)
 
     async def recover(self, cid: int, room: Room) -> None:
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)

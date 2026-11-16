@@ -1580,4 +1580,10 @@ secs = 60
 # no lock), not folded to fit: jobs.py 7 (rewrite, each new text written beside the file and swapped in with one rename
 # through config.write_private, 0600, the file a symlink points at swapped and the link kept). 32,636: main 162bd36's
 # 32,629 plus 7.
-lines = 32636
+# 2026-11-16: status-card-at-once raised it by 23, /status in a room shows its card at once and the meters asked now are
+# edited into it (the owner's ask, 2026-11-16: about 30 s before any line of the card, every line but the meters ready at
+# once and held for them), not folded to fit: channels/discord.py 22 (_command's /status from what is on hand, its line
+# while an account has no reading under a minute old and the live call it hands back; _answer's one edit of the same
+# message, a refused one a log line; the header and the two docstrings), words.py 1 (METERS_ASKED). 32,659: main
+# 1d97e1d's 32,636 plus 23.
+lines = 32659

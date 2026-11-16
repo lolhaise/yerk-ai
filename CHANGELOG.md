@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-11-16
 
+### status-card-at-once (#?)
+
+- `/status` typed in a room now shows its card at once. It showed nothing for about 30 seconds (the owner's ask,
+  2026-11-16): every line of the card was ready at once but the meters, and the card waited for them. Each account read
+  more than a minute ago was asked with `claude -p /usage`, a whole Claude Code start, three at a time and up to 15 s
+  each: 18 s for four accounts on a quiet box, about 30 s on a busy one, with Discord showing it thinking and not one
+  line.
+- The first answer is the room's card from what is on hand, with no Claude Code started: each account's reading under a
+  minute old, else its stream's. While an account on it has no reading under a minute old, one more line under the tank,
+  `⏳ asking the meters now`, says they are being asked; they are then asked as before, and the same message is edited
+  once to exactly the card `/status` gave until now, without that line.
+- With every account read under a minute ago, the first answer is already that card: one message, no line, no edit and
+  nothing asked.
+- An account whose read fails or runs out of time shows what the card showed for it before. An edit Discord refuses, the
+  interaction's 15 minutes gone say, is one line in the daemon's log, and the first card stays.
+- `yerk status`, the `/status` HTTP answer, the deploy's proof and the other slash commands answer as before, and every
+  line the card had is the same. budgets.toml: `[code] lines` 32,636 to 32,659, with its dated note; docs/budgets.md is
+  what `yerk docs own` writes. No README or docs/GUIDE.md text describes `/status` in a room, so neither changes.
+- The tests: 4 new, in tests/test_slash.py (with the account's `/usage` call held on an event, the first answer is out
+  before it ends, carrying the line under the tank; let go, it edits that message once, to exactly the card status_now
+  with live gives, without the line; every reading fresh, one message, no edit and no call; an edit that raises
+  `discord.HTTPException` leaves nothing out of the handler, the first answer standing and one log line with no
+  traceback). Its `/status` card test now reads the two calls and the edit; the other slash commands' tests pass untouched.
+- **Upgrading**: nothing to do.
+
 ### need-2026-11-16-101 (#?)
 
 - A job fired in the same second the jobs file changes now starts. A one-shot's run ended and took itself out of the
