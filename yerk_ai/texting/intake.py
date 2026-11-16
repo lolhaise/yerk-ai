@@ -67,7 +67,7 @@ class Intake:
         if auto:
             return "auto"
         if is_tapback(msg):
-            self.ledger.inbound_set(guid, state="filed", note="tapback")
+            self.ledger.inbound_set(guid, state="filed", note="a tapback taken away" if msg.get("is_reaction_add") is False else "tapback")
             return "tapback"
         if mine:
             self.ledger.inbound_set(guid, state="filed", note="the owner's own text")

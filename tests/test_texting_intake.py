@@ -168,6 +168,30 @@ def test_a_restart_replays_from_the_cursor_with_no_row_twice(sock, tmp_path):
     asyncio.run(go())
 
 
+def test_a_tapback_of_theirs_from_the_watch_is_filed_opens_no_burst_and_the_cursor_passes_it_and_so_does_a_removal(sock, tmp_path):
+    async def go() -> None:
+        fb = FakeBridge(sock)
+        fb.chat(1, A1)
+        six = fb.add(1, "see you at six", from_me=True, ago=60)
+        await fb.start()
+        it, led, clock = intake(tmp_path)
+        link = Link(it.people, tmp_path, it.take, unix=sock)
+        task = asyncio.create_task(link.start())
+        await until(lambda: link.connected)
+        like, off = fb.tap(1, six), fb.tap(1, six, add=False)
+        fb.push(like)
+        fb.push(off)
+        await until(lambda: len(states(led)) == 2)
+        clock.t += 300
+        assert it.tick() == [] and it.bursts == {} and decisions(led) == [] and link.cursor == {"1": off["id"]}
+        assert [tuple(r) for r in led.db.execute("SELECT message_id, sender, state, note FROM inbound ORDER BY created")] == [
+            (like["guid"], "alex", "filed", "tapback"), (off["guid"], "alex", "filed", "a tapback taken away")]
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+    asyncio.run(go())
+
+
 def test_no_person_room_reads_a_texting_line(tmp_path):
     it, _, _ = intake(tmp_path)
     it.take(it.people.people["alex"], row("G-1", "a private text"))
