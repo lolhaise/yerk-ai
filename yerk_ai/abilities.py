@@ -12,11 +12,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import addons, github, words
+from . import addons, emails, github, words
 from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
 SELF = "abilities"                  # "what can you do": its answer is every ability's name by state
+FROM = "email-name"                 # its answer says whether [gmail] name is set here (emails.here), never the name
 HOW = {"built": "How it works:", "described": "How it would be built:"}     # its `how` lines
 
 
@@ -117,6 +118,8 @@ def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: An
         out.append(f"Here: {s.embeddings_model} at {s.embeddings_dim} dimensions, {s.embeddings_width} kept in memory, "
                    f"units {s.embeddings_units} ([memory] in yerkd.toml; yerk config get memory says what each "
                    "setting buys and costs)")
+    if name == FROM and (here := emails.here(getattr(s, "private", None))):
+        out.append(f"Here: {here}")
     if ab.get("key"):
         out.append(f"How to add the key: {ab['key']}")
     out.append(f"Free path: {ab['free_path']}")
@@ -134,10 +137,10 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     if name == SELF:
         return " ".join([f"{name}, a Yerk AI ability ({said}): {ab['what']}", *census(tab, s)])
     how = "; ".join(str(x).split(":", 1)[0] for x in ab.get("how", []))
-    up = built_part(ab, tab)
+    up, here = built_part(ab, tab), emails.here(getattr(s, "private", None)) if name == FROM else ""
     parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"{HOW[ab.get('state', 'built')]} {how}." if how else "",
              f"Needs: {ab['needs']}.", f"Cost: {ab.get('price') or 'nothing, it runs on the box'}.",
-             f"Free path: {ab['free_path']}.", f"Built part: {up}." if up else "",
+             f"Free path: {ab['free_path']}.", f"Here: {here}." if here else "", f"Built part: {up}." if up else "",
              f"Why it is not built: {ab['why_not']}" if ab.get("why_not") else ""]
     return " ".join(x for x in parts if x)
 

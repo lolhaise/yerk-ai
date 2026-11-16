@@ -303,6 +303,23 @@ def test_each_other_check_says_one_plain_line(tree, capsys, monkeypatch):
     assert re.fullmatch(rf"{words.WORKING} state folder: grew \d[\d.]* (KB|MB|bytes) in 1 day; `yerk retention --dry-run` says what the sweep would move", out[6]), out
 
 
+def test_an_install_that_emails_with_no_gmail_name_is_one_orange_line_with_the_line_to_add(tree, capsys):
+    """need-2026-11-16-102, the wall: with no [gmail] name every email went under the bare address, the owner's own mail
+    under the owner's name, and nothing said so. An install that emails with none set is one orange line naming the line
+    to add; one with a name, or with no Gmail to send from, says nothing of it."""
+    priv, state, *_ = tree
+    (pw := priv / "secrets" / "gmail.password").parent.mkdir()
+    pw.write_text("abcd efgh ijkl mnop\n")
+    pw.chmod(0o600)
+    gmail = f'[gmail]\nuser = "{"@".join(["owner", "example.test"])}"\npassword_file = "secrets/gmail.password"\n'
+    (priv / "yerkd.toml").write_text(gmail)
+    assert doctor.main(priv, state) == 1 and capsys.readouterr().out == f"{words.WORKING} {words.EMAIL_NAME_MISSING}\n"
+    assert 'set name = "<your name>" under [gmail] in yerkd.toml' in words.EMAIL_NAME_MISSING
+    for quiet in (gmail + 'name = "Example Owner"\n', gmail.replace('password_file = "secrets/gmail.password"\n', ""), ""):
+        (priv / "yerkd.toml").write_text(quiet)
+        assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN, quiet
+
+
 def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_can_run(tree):
     """`layout` is the private folder's check and `rule shape` the rule files'; both were once read as "shape"."""
     priv, state, *_ = tree

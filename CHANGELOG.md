@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-16
 
-### status-card-model-meter (#?)
+### status-card-model-meter (#86)
 
 - `/status` typed in a room now shows each account's model's own week from its first answer. Since status-card-at-once
   the first answer showed `wk 44%` alone, and the model's own week came only with the edit about 15 seconds later; the
@@ -29,7 +29,7 @@ version changes.
   tank saying the meters are being asked, and the one edit, still come.
 - The live card, `yerk status` in a terminal included, is the same byte for byte, and so is a card whose readings are
   all under a minute old. STYLE.md's sentence about the room's `/status` card now names the hourglass that line opens
-  with. budgets.toml: `[code] lines` 32,659 to 32,671, with its dated note; docs/budgets.md is what `yerk docs own`
+  with. budgets.toml: `[code] lines` 32,731 to 32,743, with its dated note; docs/budgets.md is what `yerk docs own`
   writes. No README or docs/GUIDE.md text describes `/status` in a room, so neither changes.
 - The tests: 6 new, in tests/test_room_card.py (from the files alone, a live reading kept ten minutes puts the model's
   week beside the stream's newer week with no age line, and the payload marks it; kept two hours, the age line says so
@@ -39,6 +39,69 @@ version changes.
   first: the first answer has the line under the tank and the model's week on the account's line, and the edit comes
   once).
 - **Upgrading**: nothing to do.
+
+### texting-9a (#87)
+
+- With `[texting]` on, a text the owner answers himself while its draft is being written is left alone. Until now the
+  writer's call coming back wrote its draft over his answer, so the draft was checked and timed as if he had said
+  nothing, and when it needed his word a card was shown for a text he had answered seconds before. The read of the
+  thread before a send still stopped it, so nothing wrong went. The decision is kept for the record (what it was, its
+  seconds and tokens), and in dry its line in the practice file says `answered_first`. A draft still being decided
+  whose texts he answered with nothing else having moved it is closed as answered by him: left as it was, the writer's
+  next pass would decide it again, one call a pass (no path reaches that today).
+- A tapback is seen. The Mac's bridge hands one over only when asked, and texting never asked, so none ever reached it.
+  The link now asks. A tapback of the owner's own stops a waiting text and takes its card back, as his own text does,
+  both when the watch hands it over and in the read of the thread before a send, where the bridge lists it on the row it
+  sits on; one taken away is filed and is nothing else; one of theirs is filed and opens no decision, as before.
+- A tapback texting sent is recognised as sent. Until now each one was marked "may not have gone, not sent again" three
+  minutes after it was handed, `yerk status` showed texting not done for a day and the morning line counted it, though
+  it went. A claimed tapback is kept by its row id, the one name the bridge's thread read gives it.
+- The writer and the check see each row's tapbacks on its thread line: whose (the owner's, theirs, or texting's own as
+  `auto`) and which. A thread with none is handed to both byte for byte as before.
+- budgets.toml: `[code] lines` 32,706 to 32,731, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md says a tapback of yours stops a text and takes its card back, as your own text does.
+- The tests: 10 new, in tests/test_texting_writer.py (his own text filed while the writer's call runs, for a reply, a
+  held and a none; the same while the check's call runs; one case for each read after the call, the row closed where only
+  its texts were answered; each kind of tapback
+  on the writer's and the check's thread line, and today's stdin for a thread with none), test_texting_link.py (the
+  ask on every chat at a first start and a reconnect), test_texting_intake.py (their tapback and its removal from the
+  watch) and test_texting_sender.py (his own tapback as his answer and its removal as nothing; theirs and texting's own
+  claimed one on the thread do not stop a text, and neither does one of his older than the texts answered; texting's own
+  tapback claimed as sent through the link). The stub
+  bridges now answer as the Mac's does: a thread read lists a tapback on the row it sits on and never as a row, and a
+  watch hands one over only when asked; three sender tests moved to that shape.
+- **Upgrading**: nothing to change.
+
+### need-2026-11-16-102 (#?)
+
+- An email a room sends in your name now shows, before your word, the From line it goes out under, and says when your
+  name is missing from it. A room asked why its emails landed in people's spam found, in your Sent Mail, each email it
+  had sent under the bare address and each one you sent yourself under your name beside it. The `email` tool takes the
+  name only from `[gmail] name` in yerkd.toml, which was not set; the held email's preview showed the bare address
+  either way, and yerkd.toml is out of a room's reach, so nothing said so.
+- The preview's from line is now the From line as it goes, `from: Example Owner <address>`; with no name set it reads
+  `from: <address> (no name on it: yerkd.toml has no [gmail] name)`. The send's answer names the From line it went
+  under, so the room can say so after it went too. No name is ever made up: with none set an email still goes under
+  the bare address.
+- `yerk doctor` says it each day while it lasts, one orange line with the line to add: `[gmail] name: none, so each
+  email goes out under the bare address, ...; set name = "<your name>" under [gmail] in yerkd.toml`, then the restart.
+  An install with a name set, or with no Gmail to send from, hears nothing of it.
+- A room asked why its emails land in spam, or whether your name is on them, is handed the new ability `email-name`
+  (`yerk explain email-name`) with a Here line saying whether the name is set on this install, read from yerkd.toml as
+  the doctor reads it, never the name or the address, so it answers without the file it cannot read.
+- A `[gmail] name` with a line break in it goes on the From line as one line; before, the email failed to build. A
+  name past ASCII reads in the preview as written, never in its wire encoding.
+- budgets.toml: `[code] lines` 32,659 to 32,706, with its dated note; docs/budgets.md and docs/settings.md (`[gmail]
+  name`'s description) are what `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes
+  by five shorter phrasings with the same meaning.
+- The tests: 4 new, in tests/test_emails.py (with no name, the preview's from line marked before the word, the From
+  line in the answer after it, the bare address sent and a blank name no name; a name with line breaks one line, never
+  a header of its own, and one past ASCII shown as written), tests/test_doctor.py (the orange line with the line to
+  add, quiet with a name or no Gmail to send from) and tests/test_abilities.py (the ask that finds email-name, its Here
+  line set and unset, never the name or the address, and `yerk explain email-name`); the held preview's test reads the
+  From line as it goes.
+- **Upgrading**: to put your name on each email, add `name = "<your name>"` under `[gmail]` in yerkd.toml, written as
+  your own Gmail writes it, then restart yerkd, which reads yerkd.toml at its start. Restart yerkd for the new preview.
 
 ### status-card-at-once (#?)
 

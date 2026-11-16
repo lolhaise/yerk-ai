@@ -102,11 +102,12 @@ class Link:
                     continue
                 self.chats[int(c["id"])] = p
             for cid in self.chats:
-                if str(cid) not in self.cursor:        # a first start: from the newest row, never a replay
+                if str(cid) not in self.cursor:        # a first start: from the newest row or tapback on one, never a replay
                     rows = (await b.request("messages.history", {"chat_id": cid, "limit": 20}) or {}).get("messages", [])
-                    self.cursor[str(cid)] = max([int(r.get("id") or 0) for r in rows] or [0])
+                    self.cursor[str(cid)] = max([int(x.get("id") or 0) for r in rows for x in (r, *(r.get("reactions") or []))] or [0])
                     self._save()
-                await b.request("watch.subscribe", {"chat_id": cid, "attachments": True, "since_rowid": self.cursor[str(cid)]})
+                await b.request("watch.subscribe", {"chat_id": cid, "attachments": True, "include_reactions": True,    # none unasked (J97)
+                                                    "since_rowid": self.cursor[str(cid)]})
         except BaseException:
             await b.close()
             raise
