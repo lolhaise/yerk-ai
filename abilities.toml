@@ -1587,6 +1587,18 @@ asked_as = ["job's thinking level", "job's effort", "job's model", "thinking lev
 layer = 5
 state = "built"
 
+# need-2026-11-16-101: a one-shot took itself out of the jobs file in the second a script started another job, and the
+# daemon's fire, reading the file with no lock while it was rewritten in place, found it cut and answered "no job".
+[abilities.job-fires]
+state = "built"
+what = "A job fired while the jobs file is being rewritten still starts: each change Yerk makes to the file (an add or a remove from the schedule tool or `yerk schedule`, a one-shot taking itself out after its run) is written beside it and swapped in with one rename, so the daemon's fire, the job's own runner and a sync each read the old file or the new one whole, never an empty or cut one in which every job looks missing and the fire answers \"no job\". It holds alike for a job its timer fires and one a script starts, so neither needs a retry for it. The file is kept 0600, as every private file, and a jobs file that is a symlink keeps its link; a hand edit is as whole as the editor writes it."
+tier = "free"
+needs = "the jobs ability"
+free_path = "this is the free path"
+asked_as = ["daemon said no job", "fire said no job", "answered no job", "fired but did not start", "fire but did not start",
+            "jobs file is being rewritten", "jobs file was being rewritten", "jobs file was rewritten", "every job looks missing"]
+layer = 5
+
 [abilities.room-settings]
 state = "built"
 what = "The owner changes a room's model, thinking level and account from the room in plain words (\"put this room on Opus at max thinking on account three\"): the settings tool takes a model from the install's list (an alias or its full id), a level (low, medium, high, xhigh, max, or default) and an account by its accounts.toml name or its digit (or default), answers with one line, and the next reply runs on them in the same conversation, never mid-turn. The account is tried first, the room's order behind it; when the session cannot move to it, a new one starts with a recap and the line says so. Owner rooms only; any other room is told only the owner's rooms can change this. The choice is the daemon's own file under the state folder, over rooms.toml, which is never written, and it survives a restart; `yerk config get room NAME` shows the model and level and where each comes from. On Discord the same is /model (an account, a model or both, suggested to the owner as they type) and /effort, beside /new (a fresh session, memory kept), /stop (the running turn ends now, for good) and /status (the card): the owner's only, seen by the owner alone."

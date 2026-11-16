@@ -729,7 +729,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: need-2026-11-16-100 raised it by 22, a finished job's card names its job and shows its one-line result for every room (need 100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", though four held a forecast's one line in their reports, and on a phone the report command is out of reach), not folded to fit: workers.py 10 (footer(), so the job leads the footer of a waiting, running and settled card; a quiet card's report line under "finished clean"; the job in the worker list and report), words.py 9 (wrap, the line in two phone lines at most, and WORKER_JOB), cli.py 2 (`yerk worker list|report` name the job), jobs.py 1 (the job's brief asks every run for its one-line result, a NO_REPLY run's too). 32,629: main 0c68022's 32,607 plus 22.
 
-- `lines = 32629`
+2026-11-16: need-2026-11-16-101 raised it by 7, a job fired while the jobs file is being rewritten still starts, for every room (need 101: a one-shot took itself out of the jobs file in the second a script started another job, whose runner found it, and the daemon's fire answered "no job": add and remove wrote the file in place and load reads it with no lock), not folded to fit: jobs.py 7 (rewrite, each new text written beside the file and swapped in with one rename through config.write_private, 0600, the file a symlink points at swapped and the link kept). 32,636: main 162bd36's 32,629 plus 7.
+
+- `lines = 32636`
 
 ## Uncapped
 

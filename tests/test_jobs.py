@@ -8,8 +8,11 @@ import asyncio
 import hashlib
 import io
 import json
+import os
+import stat
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
@@ -740,6 +743,87 @@ def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_t
     write_jobs(path, shot.format(n="late"))                        # never scheduled: refused as before
     p, _ = jobs.sync(path, sd, ENV)
     assert p.errors["late"].endswith("is in the past") and (p.unchanged, sd.ours()) == ([], [])
+
+
+def test_a_job_fired_in_the_instant_a_one_shot_takes_itself_out_of_the_jobs_file_still_starts(setup, tmp_path, monkeypatch):
+    """need-2026-11-16-101: a one-shot's run ended and took itself out of the jobs file in the second a script started
+    another job's service. That job's runner found it and ledgered its run, but the daemon's fire answered "no job": add
+    and remove wrote the file in place, and load, which fire calls, takes no lock, so it read the file empty or cut, every
+    job gone. Each new text is now swapped in whole: a fire that lands while the one-shot's run rewrites the file finds
+    its job in the file as it was and starts the worker, and the one-shot still leaves the file and its units go."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    path = write_jobs(priv / "jobs.toml", '[jobs.steady]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+                      'message = "FAKE report=\\"checked\\" result=\\"NO_REPLY\\""\n\n'
+                      '[jobs.once]\nkind = "script"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\ncommand = "true"\n')
+    jobs.sync(path, sd, ENV)
+    swap, fired = os.replace, []
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+
+        def mid_rewrite(src, dst):               # the one-shot's run takes it out of the file: steady fires in that instant
+            if Path(dst) == path.resolve() and not fired:
+                fired.append((jobs.run("steady", priv, state, sd, handoff), "[jobs.once]" in path.read_text()))
+            return swap(src, dst)
+        monkeypatch.setattr(os, "replace", mid_rewrite)
+        assert await asyncio.to_thread(jobs.run, "once", priv, state, sd, handoff) == 0
+        assert fired == [(0, True)]                       # it fired mid-rewrite, the file as it was until the swap
+        run, = s.ledger.job_runs(job="steady")
+        assert (run["exit"], run["result"], run["delivery"]) == (None, None, None) and run["worker"]   # started, not "no job"
+        return run, await ended(s.ledger, run["worker"])
+    run, worker = asyncio.run(go())
+    assert (worker["id"], worker["job"], worker["exit"]) == (run["worker"], "steady", "done")
+    assert "[jobs.once]" not in path.read_text() and "[jobs.steady]" in path.read_text() and sd.ours() == ["steady"]
+
+
+def test_each_rewrite_of_the_jobs_file_is_swapped_in_whole_so_a_read_at_any_instant_finds_every_job(tmp_path):
+    """need-2026-11-16-101: load, which the daemon's fire, a job's runner and a sync each call, takes no lock, and add and
+    remove wrote the file in place, so a read in the instant of a rewrite found it empty or cut. Each new text is now
+    written beside the file and swapped in with one rename: a read that had the file open still reads it whole, a reader
+    beside a hundred rewrites never misses a job, a rewrite that fails leaves the file as it was with no temp file beside
+    it, the file is 0600 as every private file, and a jobs file that is a symlink keeps its link."""
+    keep = '[jobs.steady]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "m"\n'
+    path = write_jobs(tmp_path / "private" / "jobs.toml", keep)
+    path.chmod(0o644)
+    shot = jobs.fields_for("script", "2099-01-02 09:00", "true", "r", "UTC")
+    for change in (lambda: jobs.add(path, "once", shot), lambda: jobs.remove(path, "once")):
+        before = path.read_text()
+        with open(path) as held:                         # a read that had the file open when the rewrite began
+            change()
+            assert held.read() == before                 # never emptied or cut under it
+    assert path.read_text() == keep and stat.S_IMODE(path.stat().st_mode) == 0o600
+    stop, ready, reads, missed = threading.Event(), threading.Event(), [0], []
+
+    def read():                                          # as the daemon's fire, a runner and a sync read it
+        while not stop.is_set():
+            reads[0] += 1
+            if "steady" not in jobs.load(path, now=0)[0]:
+                missed.append(reads[0])
+            ready.set()
+    reader = threading.Thread(target=read)
+    reader.start()
+    try:
+        assert ready.wait(10)
+        for _ in range(100):
+            jobs.add(path, "once", shot)
+            jobs.remove(path, "once")
+    finally:
+        stop.set()
+        reader.join()
+    assert (missed, path.read_text()) == ([], keep), f"{len(missed)} of {reads[0]} reads found no job"
+    with pytest.raises(UnicodeEncodeError):              # a rewrite that fails partway: the file as it was, no temp file
+        jobs.rewrite(path, keep + 'note = "\ud800"\n')
+    assert path.read_text() == keep and sorted(p.name for p in path.parent.iterdir()) == [".jobs.toml.lock", "jobs.toml"]
+    real = write_jobs(tmp_path / "kept" / "jobs.toml", keep)       # a symlinked jobs file: the file it points at is swapped
+    (link := tmp_path / "linked" / "jobs.toml").parent.mkdir()
+    link.symlink_to(real)
+    jobs.add(link, "once", shot)
+    assert link.is_symlink() and "[jobs.once]" in real.read_text() and link.read_text() == real.read_text()
 
 
 # notes: a reminder its room's own session tells

@@ -460,6 +460,22 @@ def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule
     assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
 
 
+def test_a_room_whose_job_fired_as_the_jobs_file_was_rewritten_hears_the_job_fires_way(tmp_path):
+    """need-2026-11-16-101: a job a script started answered "no job" from the daemon's fire in the second a one-shot took
+    itself out of the jobs file, and the room had its script try the start again. Asked that way, a room gets job-fires
+    whole: each change Yerk makes to the jobs file is swapped in whole, so a job fired in that instant starts, no retry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("the daemon said no job while the jobs file was being rewritten; should the script retry?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["job-fires"]
+    text = found[0]["text"]
+    assert text.startswith(f"job-fires, a Yerk AI ability ({words.ability('on')[1]}): A job fired while the jobs file is being "
+                           "rewritten still starts")
+    assert "written beside it and swapped in with one rename" in text and "so neither needs a retry for it" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("why was it fired but did not start?", y.memory, TAB)] == ["job-fires"]
+    assert not abilities.asked("the job fired at nine and its card settled quiet", y.memory, TAB)
+
+
 def test_a_room_asked_for_no_chat_box_on_its_page_hears_the_page_tool_s_switch(tmp_path):
     """need-2026-11-09-81: asked on the live page a second time for no chat box, a room found no switch for the chat in its
     page tool, only the close button in the owner's browser. Asked that way, or about the chat on the right, or to bring

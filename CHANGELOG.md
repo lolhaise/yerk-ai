@@ -8,6 +8,30 @@ version changes.
 
 ## 2026-11-16
 
+### need-2026-11-16-101 (#?)
+
+- A job fired in the same second the jobs file changes now starts. A one-shot's run ended and took itself out of the
+  file in the second a script started another job. That job's runner found it and ledgered its run, but the daemon's
+  fire answered "no job" and the run ended not run. The schedule tool's add and remove, `yerk schedule` and a one-shot
+  leaving after its run each wrote the file in place, and the fire, a job's runner and a sync read it with no lock, so a
+  read in that instant found the file empty or cut and every job gone.
+- Each new text of the jobs file is now written beside it and swapped in with one rename, so a read at any instant finds
+  the old file or the new one whole. It holds alike for a job its timer fires and one a script starts, so neither needs
+  a retry for it. A sync in that instant could take every job's timer down until the next sync; it reads the file whole
+  now too. A write that fails partway, on a full disk say, leaves the file as it was.
+- The file is written 0600, as every private file yerkd writes, and a jobs file that is a symlink keeps its link: the
+  file it points at is swapped. A hand edit is as whole as the editor writes it.
+- The ability is `job-fires` (`yerk explain job-fires`), found by a room told "no job" by a fire or asking why a job
+  fired but did not start. budgets.toml: `[code] lines` 32,629 to 32,636, with its dated note; docs/budgets.md is what
+  `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes by eight shorter phrasings with
+  the same meaning.
+- The tests: 3 new, in tests/test_jobs.py (a job fired at the instant a one-shot's run swaps its own removal into the
+  file finds its job and starts its worker, and the one-shot still leaves the file; a reader that had the file open
+  reads it whole through an add and a remove, a reader beside a hundred rewrites never misses a job, a rewrite that
+  fails leaves the file as it was and no temp file, the file is 0600 and a symlink keeps its link) and
+  tests/test_abilities.py (the ask that finds job-fires).
+- **Upgrading**: nothing to do. A jobs file that was not 0600 is at its next add or remove.
+
 ### need-2026-11-16-100 (#?)
 
 - A scheduled job's worker card now names its job and shows its one-line result. A room's six quiet job cards read
