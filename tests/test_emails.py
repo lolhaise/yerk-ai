@@ -115,7 +115,7 @@ def test_an_email_is_held_with_who_it_goes_to_its_subject_its_file_and_its_words
     y, room, ch, mail = setup(tmp_path)
     out = pre(y, mail)
     assert held(out) and out["hookSpecificOutput"]["permissionDecisionReason"].startswith("Held: an email in your name")
-    assert ch.notes == [f"{words.WORKING} held: an email in your name\nsay approve here to let it run once\n```\nfrom: {OWNER}\n"
+    assert ch.notes == [f"{words.WORKING} held: an email in your name\nsay approve here to let it run once\n```\nfrom: Example Owner <{OWNER}>\n"
                         f"to: {TO}\nsubject: Statement, case 0001\nattached: slip.pdf (2 KB)\n\nHello,\n\nMy statement is below.\n\n"
                         "Example Owner\n```"]                                     # as it reads and goes: no JSON, no path
     assert email(y, mail) == {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_RELEASED} and Gmail.log == []
@@ -123,6 +123,7 @@ def test_an_email_is_held_with_who_it_goes_to_its_subject_its_file_and_its_words
     assert pre(y, mail) == {}                                                     # the same call, released
     r = email(y, mail)
     assert r["ok"] and r["to"] == [TO] and r["files"] == ["slip.pdf"] and r["id"].endswith("@example.test>")
+    assert r["from"] == f"Example Owner <{OWNER}>"                               # the From line it went under, name and all
     assert Gmail.log[:2] == [("connect", "smtp.gmail.com", 465), ("login", OWNER, "abcdefghijklmnop")]
     msg = sent()[0]
     assert (msg["From"], msg["To"], msg["Subject"]) == (f"Example Owner <{OWNER}>", TO, "Statement, case 0001")
@@ -288,3 +289,33 @@ def test_a_link_swapped_on_between_the_check_and_the_read_never_attaches_a_file_
     monkeypatch.setattr(y, "may_send", lambda r, p: (may(r, p), flips["the file for a link"]())[0])
     assert pre(y, mail)["hookSpecificOutput"]["permissionDecisionReason"] == none                # the gate's own read, the same
     assert sent() == [] and len(ch.notes) == 3 and words.size(len(secret)) not in str(ch.notes) and secret not in str(y.ledger.rows(20, "gates")).encode()
+
+
+def test_an_email_with_no_gmail_name_says_so_on_its_from_line_before_the_word_and_in_the_answer_after_it(tmp_path):
+    """need 102 of 2026-11-16, the wall: every email a room sent in the owner's name went under the bare address, while the
+    owner's own mail carried the owner's name beside it, since [gmail] name was not set; the preview showed the bare address
+    either way, and yerkd.toml is out of a room's reach, so neither the owner nor the room saw it. The preview now shows the
+    From line as it goes, marked when it has no name, and the send's answer names the From line it went under."""
+    y, room, ch, mail = setup(tmp_path)
+    del y.conf["gmail"]["name"]
+    assert emails.nameless(y.conf["gmail"]) and held(pre(y, mail))
+    assert ch.notes[0].split("\n")[3] == f"from: {OWNER} ({words.EMAIL_NAMELESS})"          # seen before the word
+    word(y, room)
+    assert pre(y, mail) == {} and (r := email(y, mail))["ok"] and r["from"] == OWNER        # and named in the answer after it
+    assert sent()[0]["From"] == OWNER                                                       # no name is ever made up
+    for blank in ("", "  ", "\n"):                                                          # a blank name is no name
+        assert emails.sender({**y.conf["gmail"], "name": blank}) == OWNER and emails.nameless({**y.conf["gmail"], "name": blank})
+    assert not emails.nameless({"user": OWNER}) and not emails.nameless({**y.conf["gmail"], "name": "Example Owner"})
+
+
+def test_a_gmail_name_is_one_line_on_the_from_line_never_a_header_of_its_own_and_reads_as_written(tmp_path):
+    """A line break in [gmail] name ended the From header: the email failed to build, or a line after it read as a header.
+    A name past ASCII goes on the wire encoded, and the preview shows it as written, never that encoding."""
+    y, room, ch, mail = setup(tmp_path)
+    y.conf["gmail"]["name"] = f"Example\r\nBcc: {TO}\n  Owner"
+    msg = emails.message(y.conf["gmail"], emails.normal(mail), [])
+    assert msg["Bcc"] is None and msg["From"] == f'"Example Bcc: {TO} Owner" <{OWNER}>' and "\nBcc:" not in msg.as_string()
+    y.conf["gmail"]["name"] = "Zoë Example"                                      # a name past ASCII reads as written
+    assert held(pre(y, mail)) and ch.notes[-1].split("\n")[3] == f"from: Zoë Example <{OWNER}>"
+    msg = emails.message(y.conf["gmail"], emails.normal(mail), [])
+    assert msg["From"] == f"Zoë Example <{OWNER}>" and "From: =?utf-8?q?Zo=C3=AB?= Example" in msg.as_string()   # its wire form

@@ -733,9 +733,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: status-card-at-once raised it by 23, /status in a room shows its card at once and the meters asked now are edited into it (the owner's ask, 2026-11-16: about 30 s before any line of the card, every line but the meters ready at once and held for them), not folded to fit: channels/discord.py 22 (_command's /status from what is on hand, its line while an account has no reading under a minute old and the live call it hands back; _answer's one edit of the same message, a refused one a log line; the header and the two docstrings), words.py 1 (METERS_ASKED). 32,659: main 1d97e1d's 32,636 plus 23.
 
-2026-11-16: texting-9a raised it by 24, an answer of the owner's is never undone by a call that was running and a tapback is seen, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+2026-11-16: need-2026-11-16-102 raised it by 47, an email in the owner's name carries the owner's name on its From line and a check says when [gmail] name is missing, for every room (need 102: each email a room sent went under the bare address while the owner's own mail carried the owner's name, since [gmail] name was not set; the preview showed the bare address either way, and yerkd.toml is out of a room's reach), not folded to fit: emails.py 33 (name, sender as it reads, nameless and here; the preview's from line as it goes, marked when it has no name; the From line in the answer), words.py 6 (the preview's mark, the doctor's line, the two Here lines), abilities.py 3 (email-name's Here line), doctor.py 3 (the email name check), config.py 2 ([gmail] name's description). 32,706: main 61e3cf2's 32,659 plus 47.
 
-- `lines = 32683`
+2026-11-16: texting-9a raised it by 25, an answer of the owner's is never undone by a call that was running and a tapback is seen, of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+- `lines = 32731`
 
 ## Uncapped
 

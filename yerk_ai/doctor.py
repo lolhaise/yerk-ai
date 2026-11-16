@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import addons, backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, texts, words
+from . import addons, backup, deploy, docs, emails, files, hooks, jobs, memindex, memory, pictures, retention, status, texts, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, uncapped, write_private
@@ -472,10 +472,13 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     def lesson_shape() -> None:     # the whole store against the Claude docs' lesson shape and its pinned sentences, daily
         found.extend(f"{ORANGE} {x}" for x in lessons(private, state, m, now, dry))
 
+    def from_line() -> None:        # each email under the bare address, no name on its From line (need 102, 2026-11-16)
+        found.extend([f"{ORANGE} {words.EMAIL_NAME_MISSING}"] if emails.nameless(dict(conf.get("gmail") or {})) else [])
+
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
                         ("cites", cites), ("code", code), ("rule shape", ruleshape), ("lesson shape", lesson_shape), ("fit", fits),
-                        ("moved in", moved), ("backup", backed),
+                        ("moved in", moved), ("backup", backed), ("email name", from_line),
                         ("timers", timers)):
         try:
             check()
