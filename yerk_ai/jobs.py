@@ -779,7 +779,8 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
             f"{job.room}.\n"
             "- Your last message is what the room hears, told by the room's own session in its voice: write it for "
             f"the room. If there is nothing worth saying, make your last message exactly {NO_REPLY} and nothing else.\n"
-            "- Write that same text as the one line of REPORT.md in your folder; the card shows it.\n\n"
+            "- Write this run's one-line result (what it found or did) as the first line of REPORT.md in your folder, "
+            f"even when your last message is {NO_REPLY}: the card shows it with the job's name.\n\n"
             f"The job:\n\n{job.payload.strip()}\n")
 
 

@@ -387,7 +387,8 @@ def test_a_unit_that_ended_while_no_list_had_it_completes_from_its_exit_file(set
 def test_a_last_message_of_exactly_no_reply_settles_a_quiet_card_live_and_at_a_re_attach(setup):
     """A worker whose last message is exactly NO_REPLY, read as jobs.py's worker_done reads it (its last result event, else
     the report's first line), settles quiet when the daemon sees its exit file and when a restart finds it ended: the done
-    mark and QUIET_WORKER, never the token, no rows, the footer as ever. Any other last message settles as before."""
+    mark, never the token, no rows, the footer as ever; QUIET_WORKER when the report's first line is the token too, else
+    "finished clean" over that line (need-2026-11-16-100: a quiet card hid it). Any other last message settles as before."""
     s = setup
 
     def away(wid, report, last=None):                    # it ended while no daemon was up: its exit file, report and rows
@@ -414,10 +415,12 @@ def test_a_last_message_of_exactly_no_reply_settles_a_quiet_card_live_and_at_a_r
     cards = {k.removeprefix("worker:"): t for k, t, _, _ in s.chan.settled}
     assert cards[died].splitlines()[:2] == [f"{W.NOT_DONE} worker died: it ended with an error", W.NO_REPLY]
     for wid, result in ((live, W.NO_REPLY), ("qu1e70", W.NO_REPLY), ("qu1e71", "merge")):
-        head, *foot = cards[wid].splitlines()
-        assert head == f"{W.DONE} worker {W.QUIET_WORKER}" and len(foot) == 2 and foot[0].startswith("-# done in ")
-        assert foot[1] == f"-# report saved: `yerk worker report {wid}`" and all(W.width(x) <= W.PHONE for x in foot)
-        assert W.NO_REPLY not in cards[wid] and "look at the feed" not in cards[wid] and "merge" not in cards[wid]
+        head, *said, done, saved = cards[wid].splitlines()
+        assert [head, *said] == ([f"{W.DONE} worker {W.QUIET_WORKER}"] if result == W.NO_REPLY else
+                                 [f"{W.DONE} worker finished clean", "merge"])     # the report's own line, never the token
+        assert done.startswith("-# done in ") and saved == f"-# report saved: `yerk worker report {wid}`"
+        assert W.NO_REPLY not in cards[wid] and "look at the feed" not in cards[wid] and "job" not in cards[wid]
+        assert all(W.width(x) <= W.PHONE for x in cards[wid].splitlines())
         assert (s.ledger.worker_get(wid)["exit"], s.ledger.worker_get(wid)["result"]) == ("done", result)   # the row as ever
     assert cards["n0rma1"].splitlines()[:4] == [f"{W.WORKING} worker finished, 1 of 2 ticked", "merge",
                                                 f"{W.DONE} look at the feed", f"{W.WAITING} decide"]
@@ -444,6 +447,45 @@ def test_a_settled_card_reads_as_before_for_any_other_end_and_the_quiet_one_keep
     quiet = workers.card_text(row, items, end(result=W.NO_REPLY, quiet=True), accounts=2, look=W.Look(paths="owner"))
     assert quiet.splitlines() == [f"{W.DONE} worker finished clean, nothing to add", "-# done in 3 min, account one", saved,
                                   "-# /w/abc123/REPORT.md"]
+
+
+def test_a_jobs_worker_card_names_its_job_and_a_quiet_one_shows_its_one_line_result_whole():
+    """need-2026-11-16-100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", the time and
+    "report saved", though four were one job whose reports each held a forecast's one line and two another job's runs with
+    nothing: the card hid the report's line whenever the last message was NO_REPLY and never named the job, so on a phone
+    they could not be told apart. A job's worker now names its job first in the footer, waiting, running and settled; a
+    quiet end shows the report's first line under "finished clean", whole over two phone lines (cut at one, a forecast
+    loses its number), and keeps QUIET_WORKER when that line is the token too or there is no report. Every settled card's
+    line wraps alike, a longer one cut with "..."; a long name is cut to phone width; a worker no job started has no job."""
+    row = {"id": "abc123", "cap": 900.0, "started": 1000.0, "account": "one", "report": "/w/abc123/REPORT.md",
+           "tasks": "/w/abc123/TASKS.md", "room": "r", "job": "price-watch"}
+    items, saved = [(True, "look at the feed"), (False, "decide")], "-# report saved: `yerk worker report abc123`"
+    said = "Rain at the coast on Saturday: median 12 mm (5-95: 3 to 30)"         # 59 columns: two phone lines
+    whole = ["Rain at the coast on Saturday: median 12", "mm (5-95: 3 to 30)"]
+
+    def end(result=said, state="done", **more):
+        return {"exit": state, "finished": 1181.0, "result": result, "has_report": True,
+                "result_code": "exit-code" if state == "died" else "success", **more}
+
+    def card(r=row, e=None, **kw):
+        lines = workers.card_text(r, items, e, now=1185.0, **kw).splitlines()
+        assert all(W.width(x) <= W.PHONE for x in lines) and W.NO_REPLY not in lines, lines
+        return lines
+    assert card(e=end(quiet=True)) == [f"{W.DONE} worker finished clean", *whole, "-# job price-watch, done in 3 min", saved]
+    assert card(e=end(quiet=True), accounts=2)[3:5] == ["-# job price-watch, done in 3 min", "-# account one"]
+    for nothing in (end(W.NO_REPLY, quiet=True), end(quiet=True, has_report=False)):
+        assert card(e=nothing)[:2] == [f"{W.DONE} worker {W.QUIET_WORKER}", "-# job price-watch, done in 3 min"]
+    assert card(e=end(state="died")) == [f"{W.NOT_DONE} worker died: it ended with an error", *whole, f"{W.DONE} look at the feed",
+                                         f"{W.NOT_DONE} decide", "-# job price-watch, ran 3 min of 15", saved]
+    longer = card(e=end(f"{said}, then dry until the next front on Thursday", quiet=True))
+    assert longer[1] == whole[0] and longer[2].startswith(whole[1]) and longer[2].endswith("...") and len(longer) == 5
+    assert card()[-2:] == ["-# job price-watch, worker abc123", "-# 3 min of 15"]                    # running
+    assert card({**row, "waiting": 1, "line": 2})[-1] == "-# job price-watch, worker abc123"         # in line
+    named = card({**row, "job": "a-" * 29 + "zz"}, end(quiet=True))
+    assert named[3].startswith("-# job a-a-a-") and named[3].endswith("...") and named[4] == "-# done in 3 min"
+    plain = {k: v for k, v in row.items() if k != "job"}
+    assert card(plain, end(quiet=True)) == [f"{W.DONE} worker finished clean", *whole, "-# done in 3 min", saved]
+    assert card(plain)[-1] == "-# worker abc123, 3 min of 15" and card({**plain, "job": None})[-1] == card(plain)[-1]
 
 
 def settle(s, wid, exit):
@@ -544,7 +586,8 @@ def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_rel
         assert (row["exit"], row["relay"], row["relay_note"]) == ("done", "skipped", "the worker answered NO_REPLY"), wid
         assert s.ledger.inbound_get(f"relay-{wid}") is None, wid          # no turn was asked of the room's session
         card = next(t for k, t, _, _ in s.chan.settled if k == f"worker:{wid}")
-        assert card.splitlines()[0] == f"{W.DONE} worker {W.QUIET_WORKER}" and W.NO_REPLY not in card
+        head = [f"{W.DONE} worker {W.QUIET_WORKER}"] if wid == quiet["id"] else [f"{W.DONE} worker finished clean", "merge"]
+        assert card.splitlines()[:len(head)] == head and W.NO_REPLY not in card    # qu1e72's report says merge (unlisted)
     assert [inbound for _, inbound in s.chan.replies] == [[f"relay-{said}"], [f"relay-{died}"]]   # each told, in order
     assert [s.ledger.worker_get(x)["relay"] for x in (said, died)] == ["relayed", "relayed"]
     listed = {r["id"]: (r["relay"], r["relay_note"]) for r in workers.listing(s.ledger)}

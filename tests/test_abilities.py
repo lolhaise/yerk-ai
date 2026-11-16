@@ -426,6 +426,22 @@ def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_
     assert not abilities.asked("the worker finished and the report is saved", y.memory, TAB)
 
 
+def test_a_room_asked_whether_its_alike_job_cards_are_one_worker_hears_the_job_cards_way(tmp_path):
+    """need-2026-11-16-100: asked whether six alike quiet cards were the same worker doing the same thing, a room read each
+    id out of the ledger's workers table, since the cards named no job and hid each report's line. Asked that way, a room
+    gets job-cards whole: each card names its job, and a quiet run shows its one-line result under "finished clean"."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("are these all the same worker doing the same thing? the cards all look the same", y.memory, TAB)
+    assert [e["key"] for e in found] == ["job-cards"]
+    text = found[0]["text"]
+    assert text.startswith(f"job-cards, a Yerk AI ability ({words.ability('on')[1]}): A scheduled job's worker card names its job")
+    assert "shows its REPORT.md's first line under \"finished clean\", whole over two phone lines" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("which job was this card for?", y.memory, TAB)] == ["job-cards"]
+    assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
+    assert not abilities.asked("the cards are on the table, same as last week", y.memory, TAB)
+
+
 def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule_way(tmp_path):
     """need-2026-11-09-79: a room on max started a bot's research runs as standing agent jobs, and each job's worker took the
     room's level, since neither the schedule tool nor `yerk schedule add` had a thinking level or a model. Asked that way, a
