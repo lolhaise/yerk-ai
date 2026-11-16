@@ -553,6 +553,16 @@ def test_at_fire_time_a_tapback_of_theirs_or_texting_own_claimed_one_on_the_thre
         assert armed(s, led, rid)["handed"] is not None and calls(tmp_path / str(n)) == [f"yerk-{rid}-1"]
 
 
+def test_at_fire_time_a_tapback_of_his_own_older_than_the_texts_answered_does_not_stop_the_text(tmp_path: Path) -> None:
+    """A tapback of the owner's on an earlier row, made before the texts the job answers, is no answer to them: without the entry's
+    own time a thread the owner ever liked a text on would never get a reply again."""
+    s, led, clock = make(tmp_path)
+    rows(s).add("t-0", WED - 3600)
+    rows(s).tap(9001, WED - 3000, on="t-0")
+    rid = due(s, led, clock, "t-1")
+    assert armed(s, led, rid)["handed"] is not None and calls(tmp_path) == [f"yerk-{rid}-1"]
+
+
 def test_a_from_me_row_outside_a_handed_jobs_window_is_the_owners_and_claims_nothing(tmp_path: Path) -> None:
     for name, offset, side in (("early", -11.0, "owner"), ("late", 181.0, "owner"), ("inside", 179.0, "auto")):
         s, led, clock = make(tmp_path / name)
