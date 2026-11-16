@@ -8,33 +8,38 @@ version changes.
 
 ## 2026-11-16
 
-### texting-9b (#?)
+### texting-9b-cards (#90)
 
-- With `[texting]` on, a card for a text that waits for you says why in a few words: `why: dating, your call`, two
-  classes `why: dating, money, your call`. Until now it printed the writer's whole reasoning, its question, the class
-  words and its why joined into a paragraph that mostly repeated what the card already shows. The code picks the line:
-  the class that waits, for a drafted reply whose every statement has a source; else the question that stands in for a
-  draft (no source, or a plan); else the statement with no source; else the writer's one line. The code's own check
-  holds with the same words, and a card made from your edit reads `why: your words; dating, your call` or `why: your
-  words; the code finds nothing`. A card the check's model call held, or one with release off, reads as before.
+- With `[texting]` on, a card for a text that waits for you no longer shows the writer's reasoning. A card with a draft
+  says why in the code's own few words: `why: dating, your call` for a class that waits (two: `why: dating, money, your
+  call`), `why: no source for: …` when the draft says something about you that nothing backs, else `why: your call`.
+  Until now it printed the writer's question, the class words and its why joined into a paragraph that mostly repeated
+  what the card already shows. The code's own check holds with the same words, and a card made from your edit reads
+  `why: your words; dating, your call` or `why: your words; the code finds nothing`. A card the check's model call
+  held, or one with release off, reads as before.
+- A card with no draft (a plan: your answer is the text) gives the one question only you can answer, shows no empty
+  `draft:` line and offers `edit <text>` and `skip` alone. Until now it offered `send` too, and your send on one queued
+  a row with no text: the sender's hand-off raised on it and the sender stopped, for everyone, until yerkd was
+  restarted. Your send on such a card, as a reply or bare, sends nothing and says so, and a row with no text that
+  reaches the sender is dropped, never handed.
 - The writer's whole reasoning is kept in the ledger, in a new column of the texting row written once at the decision
   and never again, and in the practice file's line in dry. The `texting` tool's `why` reads it back for the newest
   decision, also after the text went or was skipped, where until now that answer was only the state the card closed
-  with. The writer is handed the whole reasoning of what already waits on you, as before; `log` is unchanged.
-- A remark that asks nothing is left alone even when it touches a class that waits, where until now it could make a
-  card: the writer's prompt now has it decide first, as if every class were open, whether you would answer at all. Its
-  last line says what the card shows and that its reasoning is never on it. What the model does with the two new
-  sentences is not proven by any test.
+  with; for a text the check held it gives the check's reason. The writer is handed the whole reasoning of what
+  already waits on you, as before; `log` is unchanged.
 - A statement's number is the code's, by its place. Two statements the writer numbered 1 and 1 are two the check must
   confirm, where until now a verdict confirming number 1 once let the other go confirmed by nobody.
-- budgets.toml: `[code] lines` stays 32,743 (the change adds no line). docs/GUIDE.md says how a held card gives its why
-  and that the `texting` tool's `why` reads the reasoning back.
-- The tests: 9 new, in tests/test_texting_writer.py (the card's line for a drafted class hold, the other holds, a reply
-  and a none; a card the writer held, six lines, with its whole reason the same after a newer burst, a send, a skip and
-  an expiry; the held fence; a ledger made before the column; writer.md's two sentences), test_texting_people.py (the
-  tool's `why` after a send, `log` unchanged) and test_texting_check.py (statements numbered by place, and a verdict
-  that confirms only the first holds and names the second). The practice file's test reads `why`; the card, edit and
-  pre-check tests read the new words.
+- budgets.toml: `[code] lines` 32,743 to 32,751, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md, Texts as you, says how a card gives its why, that a card with no draft takes no `send`, and that the
+  `texting` tool's `why` reads the reasoning back.
+- The tests: 10 new, in tests/test_texting_writer.py (the card's line for a drafted class hold; a card with a draft
+  carries only the code's words and one with none the question; a reply and a none; a card the writer held, six lines,
+  its whole reason the same after a newer burst, a send, a skip and an expiry; the held fence; a ledger made before the
+  column), test_texting_people.py (the tool's `why` after a send and for a text the check held, `log` unchanged),
+  test_texting_check.py (statements numbered by place, and a verdict that confirms only the first holds and names the
+  second), test_texting_holds.py (a card with no draft only asks, and your send on it sends nothing) and
+  test_texting_sender.py (a queued row with no text is dropped and the sender runs on). The practice file's test reads
+  `why`; the card, edit and pre-check tests read the new words.
 - **Upgrading**: nothing to change. The ledger gains the column by itself at the next start; a row made before it has
   no kept reason, and the tool's `why` and the writer read its `reason` as before.
 
