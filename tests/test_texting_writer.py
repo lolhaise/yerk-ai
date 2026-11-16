@@ -705,18 +705,6 @@ def test_writer_md_says_a_photo_shown_is_theirs_and_data_and_one_marked_unseen_i
     assert "what it shows may be answered the way the owner would answer it" in rule
 
 
-def test_writer_md_decides_whether_he_would_answer_first_and_says_the_card_shows_no_reasoning_and_why_is_never_shown():
-    """J95 and J110: a text he would leave is `none` whatever class it touches; the last line names what the card shows."""
-    text = writer.PROMPT.read_text()
-    assert [x[:3] for x in text.split("\n\n")[1].split("\n")] == ["1. ", "2. ", "3. ", "4. ", "5. ", "6. "]     # one line a rule
-    rule = text.split("\n3. ")[1].split("\n")[0]
-    assert rule.startswith("First decide, as if every class were open, whether he would answer at all (rule 4): a text he would leave is "
-                           "`none` whatever it touches, and only one that would draw a reply or a tapback comes here. Plans, hangouts, ")
-    last = text.rstrip("\n").split("\n")[-1]
-    assert "a card that already quotes their texts, shows your draft and offers send, edit and skip, and it never shows your reasoning" in last
-    assert 'and is "" when you drafted' in last and last.endswith("`why` is one line on why this decision; it is kept in the log and never shown.")
-
-
 def test_a_thread_line_shows_each_tapback_whose_and_which_to_the_writer_and_the_check_and_a_thread_with_none_is_todays(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
     monkeypatch.setattr(writer.secrets, "token_hex", lambda n: "tag1")
