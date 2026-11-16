@@ -995,7 +995,8 @@ class Yerkd:
                 at=at(r["t"]), who="the owner" if r.get("sender") == "owner" else p.first, chars=r.get("chars"), state=r["state"],
                 dry=" (dry)" if r.get("mode") == "dry" else "", reason=r.get("reason") or r.get("decision") or "no reason yet")
         if op == "why":
-            row = (r := self.ledger.texting_last(key)) and {**r, "reason": r["why"] or r["reason"]}    # the writer's, kept past a close
+            row = (r := self.ledger.texting_last(key)) and {      # the check's reason when it held it, else the writer's whole: both kept past a close
+                **r, "reason": json.loads(r["verdict"] or "{}").get("reason") or r["why"] or r["reason"]}
             return {"ok": True, "line": f"{at(row['t'], '%Y-%m-%d')} {said(row)}" if row else words.TEXTING_NO_WHY.format(first=p.first)}
         start = datetime.combine(on, datetime.min.time(), self.memory.tz)
         return {"ok": True, "day": str(on), "lines": [said(r) for r in self.ledger.texting_day(key, start.timestamp(),

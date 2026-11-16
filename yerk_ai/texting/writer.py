@@ -100,7 +100,8 @@ def parse(out: str, guids: set[str], open_: tuple[str, ...] = ()) -> dict[str, A
     decision = "held" if bare or shut else decision
     why, by = " ".join(str(ans.get("why") or "").split()), words.TEXTING_HELD_BY.format(classes=", ".join(shut)) if shut else ""
     whole = "; ".join(x for x in (question if decision == "held" else "", by, why) if x)         # the ledger's `why`, never on a card
-    reason = (by if parts and shut and not bare else question or by or why) if decision == "held" else whole   # the card's, the code's (J110)
+    code = words.TEXTING_NO_SOURCE.format(what=bare[0]) if bare else by or words.TEXTING_HELD_OWN     # a draft: the code's words alone (J110)
+    reason = (code if parts else question or by or why) if decision == "held" else whole           # no draft: his question stands in for it
     return {"decision": decision, "parts": parts, "react": str(ans.get("react") or "") if decision == "react" else "",
             "reply_to": str(ans.get("reply_to") or ""), "statements": said, "reason": reason, "why": whole, **rec}
 

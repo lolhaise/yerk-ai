@@ -358,3 +358,11 @@ def test_op_why_reads_the_writers_whole_reason_also_after_the_text_went_and_op_l
     y.ledger.texting_set(rid, state="sent", reason="sent 18:02")
     assert tool("owner-room", "why")["line"].endswith(" sent: say yes?; dating, your call; he answers this")
     assert tool("owner-room", "log")["lines"][-1].split(" ", 1)[1] == "sent: sent 18:02"
+    held = __import__("json").dumps({"release": False, "reason": "nothing they already know says: he moved"})   # the check held this one
+    rid = y.ledger.texting_add(person="alex", handle=A1, inbound="g2", state="held", decision="held", verdict=held, why="it fits",
+                               reason="nothing they already know says: he moved")
+    assert tool("owner-room", "why")["line"].endswith(" held: nothing they already know says: he moved")
+    y.ledger.texting_set(rid, state="expired", reason="expired, not sent")
+    assert tool("owner-room", "why")["line"].endswith(" expired: nothing they already know says: he moved")
+    y.ledger.texting_set(rid, verdict=__import__("json").dumps({"release": True, "reason": ""}))       # one it released: the writer's
+    assert tool("owner-room", "why")["line"].endswith(" expired: it fits")

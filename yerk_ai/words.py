@@ -528,7 +528,7 @@ TEXTING_NO_WHY = "nothing decided for {first} yet"
 TEXTING_LOG_IN, TEXTING_LOG = "{at} {who}: {chars} characters, {state}", "{at} {state}{dry}: {reason}"
 # the writer (texting/writer.py): a decision's reason when the code holds it, and the head of the pack it is handed
 TEXTING_NO_CLEAN, TEXTING_NO_SOURCE = "no clean answer", "no source for: {what}"
-TEXTING_HELD_BY, TEXTING_UNLISTED = "{classes}, your call", "not on the reply list"
+TEXTING_HELD_BY, TEXTING_HELD_OWN, TEXTING_UNLISTED = "{classes}, your call", "your call", "not on the reply list"
 TEXTING_TOO_OLD, TEXTING_NO_ACCOUNT = "older than {hours} h when the writer took it", "no account free until {at}"
 TEXTING_NO_TOKEN = "the check needs an account token, and no account has one"
 TEXTING_PACK = ("Now: {now}, pacing bucket {bucket}. You write as {owner} to {first}. "

@@ -141,16 +141,22 @@ def test_a_drafted_reply_on_a_shut_class_gives_the_card_the_class_words_alone_an
     assert (two["reason"], two["why"]) == ("dating, money, your call", "dating, money, your call; it fits")
 
 
-def test_with_no_source_or_a_plan_the_card_gives_the_question_else_the_no_source_words_else_the_writers_why():
+def test_a_card_with_a_draft_carries_only_the_codes_words_and_one_with_none_the_question_that_stands_in_for_it():
+    """J110, the owner's own words: no reasoning on a card. With a draft the why is the code's alone: what has no source, else
+    the class that waits, else `your call`; the writer's question and its why are never on it. With no draft its question is
+    the card (a plan's choices), else the class, else its one line, since nothing else says what it needs of the owner."""
     bare = [{"n": 1, "text": "he moved last week", "source": ""}]
     asked = writer.parse(answer(decision="reply", parts=["yeah"], statements=bare, classes=["dating"], question="did he move?"), set())
-    assert (asked["decision"], asked["reason"]) == ("held", "did he move?")
-    plain = writer.parse(answer(decision="reply", parts=["yeah"], statements=bare, classes=["dating"]), set())
+    assert (asked["decision"], asked["reason"]) == ("held", words.TEXTING_NO_SOURCE.format(what="he moved last week"))
+    assert asked["why"] == "did he move?; dating, your call; it fits"
+    plain = writer.parse(answer(decision="reply", parts=["yeah"], statements=bare), set())
     assert plain["reason"] == words.TEXTING_NO_SOURCE.format(what="he moved last week")
+    own = writer.parse(answer(decision="held", parts=["maybe"], question="send it or not?", why="he would want to say this one"), set())
+    assert (own["reason"], own["why"]) == ("your call", "send it or not?; he would want to say this one")
     plan = writer.parse(answer(decision="held", classes=["dating"], question="dinner friday or saturday?"), set())
     assert (plan["decision"], plan["parts"], plan["reason"]) == ("held", [], "dinner friday or saturday?")
-    own = writer.parse(answer(decision="held", parts=["maybe"], why="he would want to say this one"), set())
-    assert (own["reason"], own["why"]) == ("he would want to say this one", "he would want to say this one")
+    assert writer.parse(answer(decision="held", classes=["dating"], why="w"), set())["reason"] == "dating, your call"
+    assert writer.parse(answer(decision="held", why="he has to say"), set())["reason"] == "he has to say"
 
 
 def test_a_reply_and_a_none_keep_the_writers_why_as_their_reason_and_as_why():
