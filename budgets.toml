@@ -1580,4 +1580,11 @@ secs = 60
 # no lock), not folded to fit: jobs.py 7 (rewrite, each new text written beside the file and swapped in with one rename
 # through config.write_private, 0600, the file a symlink points at swapped and the link kept). 32,636: main 162bd36's
 # 32,629 plus 7.
-lines = 32636
+# 2026-11-16: need-2026-11-16-102 raised it by 47, an email in the owner's name carries the owner's name on its From line
+# and a check says when [gmail] name is missing, for every room (need 102: each email a room sent went under the
+# bare address while the owner's own mail carried the owner's name, since [gmail] name was not set; the preview showed the
+# bare address either way, and yerkd.toml is out of a room's reach), not folded to fit: emails.py 33 (name, sender as it
+# reads, nameless and here; the preview's from line as it goes, marked when it has no name; the From line in the answer),
+# words.py 6 (the preview's mark, the doctor's line, the two Here lines), abilities.py 3 (email-name's Here line), doctor.py
+# 3 (the email name check), config.py 2 ([gmail] name's description). 32,683: main 1d97e1d's 32,636 plus 47.
+lines = 32683

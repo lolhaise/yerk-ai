@@ -241,7 +241,9 @@ YERKD_WORDS = {
                "classes": "a chat id's class or room, \"shared\" or \"room:<a room's id>\" (default private)",
                "skip": "chat ids a server import leaves out"},
     "gmail": {"user": "the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)",
-              "password_file": "a file holding its app password, never printed", "name": "the name an email goes out under (default none)",
+              "password_file": "a file holding its app password, never printed",
+              "name": "the name an email goes out under beside the address, as your own Gmail sends mail (default none: the bare "
+                      "address, which `yerk doctor` names each day)",
               "smtp_host": "the mail server the `email` tool sends through (default smtp.gmail.com)", "smtp_port": "that server's port (default 465)"},
     "imessage": {"host": "the ssh host of the owner's Mac, the `text` tool's way to it (none, with socket: `ssh` and "
                          "`imessage_socket` in a mac.json beside an owner room's add-on's server, the hands plug-in's, else no room texts)",

@@ -1844,7 +1844,7 @@ class Yerkd:
             rule, what, call = hit
             key = gates.call_key(tool, mail[0] if mail else ti)    # an email with every field and its files' sha256, as the tool sends it
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
-                     else emails.preview(mail[0], mail[1], str(dict(self.conf.get("gmail") or {}).get("user") or "")) if mail
+                     else emails.preview(mail[0], mail[1], dict(self.conf.get("gmail") or {})) if mail
                      else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, gates.bound_to(tool, cwd), self.gates.window_s)
             if rel:

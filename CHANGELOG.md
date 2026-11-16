@@ -8,6 +8,37 @@ version changes.
 
 ## 2026-11-16
 
+### need-2026-11-16-102 (#?)
+
+- An email a room sends in your name now shows, before your word, the From line it goes out under, and says when your
+  name is missing from it. A room asked why its emails landed in people's spam found, in your Sent Mail, each email it
+  had sent under the bare address and each one you sent yourself under your name beside it. The `email` tool takes the
+  name only from `[gmail] name` in yerkd.toml, which was not set; the held email's preview showed the bare address
+  either way, and yerkd.toml is out of a room's reach, so nothing said so.
+- The preview's from line is now the From line as it goes, `from: Example Owner <address>`; with no name set it reads
+  `from: <address> (no name on it: yerkd.toml has no [gmail] name)`. The send's answer names the From line it went
+  under, so the room can say so after it went too. No name is ever made up: with none set an email still goes under
+  the bare address.
+- `yerk doctor` says it each day while it lasts, one orange line with the line to add: `[gmail] name: none, so each
+  email goes out under the bare address, ...; set name = "<your name>" under [gmail] in yerkd.toml`, then the restart.
+  An install with a name set, or with no Gmail to send from, hears nothing of it.
+- A room asked why its emails land in spam, or whether your name is on them, is handed the new ability `email-name`
+  (`yerk explain email-name`) with a Here line saying whether the name is set on this install, read from yerkd.toml as
+  the doctor reads it, never the name or the address, so it answers without the file it cannot read.
+- A `[gmail] name` with a line break in it goes on the From line as one line; before, the email failed to build. A
+  name past ASCII reads in the preview as written, never in its wire encoding.
+- budgets.toml: `[code] lines` 32,636 to 32,683, with its dated note; docs/budgets.md and docs/settings.md (`[gmail]
+  name`'s description) are what `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes
+  by five shorter phrasings with the same meaning.
+- The tests: 4 new, in tests/test_emails.py (with no name, the preview's from line marked before the word, the From
+  line in the answer after it, the bare address sent and a blank name no name; a name with line breaks one line, never
+  a header of its own, and one past ASCII shown as written), tests/test_doctor.py (the orange line with the line to
+  add, quiet with a name or no Gmail to send from) and tests/test_abilities.py (the ask that finds email-name, its Here
+  line set and unset, never the name or the address, and `yerk explain email-name`); the held preview's test reads the
+  From line as it goes.
+- **Upgrading**: to put your name on each email, add `name = "<your name>"` under `[gmail]` in yerkd.toml, written as
+  your own Gmail writes it, then restart yerkd, which reads yerkd.toml at its start. Restart yerkd for the new preview.
+
 ### need-2026-11-16-101 (#?)
 
 - A job fired in the same second the jobs file changes now starts. A one-shot's run ended and took itself out of the
