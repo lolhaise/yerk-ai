@@ -132,6 +132,92 @@ def test_a_statement_with_no_source_the_pack_holds_is_held_with_a_question():
     assert writer.parse(answer(decision="reply", parts=["x"], classes=["dating"]), guids, ("dating",))["decision"] == "reply"
 
 
+def test_a_drafted_reply_on_a_shut_class_gives_the_card_the_class_words_alone_and_keeps_the_whole_reason_as_why():
+    """J110: no line of the writer's on a card that has a draft; its question and its why are kept, never shown."""
+    d = writer.parse(answer(decision="reply", parts=["yeah for a bit now"], classes=["dating"], question="say yes?", why="he answers this"), set())
+    assert (d["decision"], d["parts"], d["reason"], d["why"]) == ("held", ["yeah for a bit now"], "dating, your call",
+                                                                  "say yes?; dating, your call; he answers this")
+    two = writer.parse(answer(decision="reply", parts=["x"], classes=["dating", "money"]), set())
+    assert (two["reason"], two["why"]) == ("dating, money, your call", "dating, money, your call; it fits")
+
+
+def test_with_no_source_or_a_plan_the_card_gives_the_question_else_the_no_source_words_else_the_writers_why():
+    bare = [{"n": 1, "text": "he moved last week", "source": ""}]
+    asked = writer.parse(answer(decision="reply", parts=["yeah"], statements=bare, classes=["dating"], question="did he move?"), set())
+    assert (asked["decision"], asked["reason"]) == ("held", "did he move?")
+    plain = writer.parse(answer(decision="reply", parts=["yeah"], statements=bare, classes=["dating"]), set())
+    assert plain["reason"] == words.TEXTING_NO_SOURCE.format(what="he moved last week")
+    plan = writer.parse(answer(decision="held", classes=["dating"], question="dinner friday or saturday?"), set())
+    assert (plan["decision"], plan["parts"], plan["reason"]) == ("held", [], "dinner friday or saturday?")
+    own = writer.parse(answer(decision="held", parts=["maybe"], why="he would want to say this one"), set())
+    assert (own["reason"], own["why"]) == ("he would want to say this one", "he would want to say this one")
+
+
+def test_a_reply_and_a_none_keep_the_writers_why_as_their_reason_and_as_why():
+    for decision, parts in (("reply", ["haha yes"]), ("none", [])):
+        d = writer.parse(answer(decision=decision, parts=parts, why="a closer, nothing asked"), set())
+        assert (d["decision"], d["reason"], d["why"]) == (decision, "a closer, nothing asked", "a closer, nothing asked")
+
+
+def test_a_card_the_writer_held_reads_in_six_lines_and_its_whole_reason_is_kept_through_every_close(tmp_path, monkeypatch):
+    """The card's why is the code's few words; the row's `why`, written once at the decision, is the same after a newer burst
+    takes its card, a send, a skip and an expiry (each writes its own words over `reason`)."""
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yeah for a bit now"], classes=["dating"], question="say yes?"))
+    w, led = setup(tmp_path, monkeypatch)
+    at, said = datetime.now().replace(hour=9, minute=17, second=0, microsecond=0).timestamp(), {"g-1": "are you seeing anyone", "g-2": "?"}
+    w.clock = lambda: at + 60
+
+    async def theirs(key: str) -> list[dict[str, Any]]:
+        return [{"guid": g, "is_from_me": False, "text": said.get(g, "ok")} for g in ("g-1", "g-2", "g-3", "g-4")]
+    card = Card()
+    h = holds.Holds({"mode": "live"}, w.file, tmp_path / "state", led, "owner-room", theirs, card.show)
+
+    def held(guid: str) -> int:
+        led.inbound_add(guid, "texting", "imessage:alex", "alex", 2, created=at)
+        rid = led.texting_add(person="alex", handle=A1, inbound=guid, state="deciding", mode="dry")
+        asyncio.run(w.decide(led.texting_get(rid) or {}))
+        asyncio.run(h.tick())
+        return rid
+    a = held("g-1")
+    assert card.posts[0][2].split("\n") == ["📱 Alex · 09:17 · held", "> are you seeing anyone", "draft:", "yeah for a bit now",
+                                            "why: dating, your call", "reply: send · edit <text> · skip"]
+    whole = "say yes?; dating, your call; it fits"
+    assert ((r := led.texting_get(a) or {})["reason"], r["why"]) == ("dating, your call", whole)
+    b = held("g-2")                                                         # a newer burst takes its card
+    assert asyncio.run(h.word("owner-room", "owner", "send", "100")) is True
+    c = held("g-3")
+    assert asyncio.run(h.word("owner-room", "owner", "skip", card.posts[-1][1])) is True
+    d = held("g-4")
+    led._update("approvals", "id", int((led.texting_get(d) or {})["approval_id"]), {"held": time.time() - 7 * 3600})
+    asyncio.run(h.tick())
+    rows = [led.texting_get(x) or {} for x in (a, b, c, d)]
+    assert [(x["state"], x["why"]) for x in rows] == [("superseded", whole), ("queued", whole), ("skipped", whole), ("expired", whole)]
+
+
+def test_the_held_fence_carries_the_whole_reason_of_a_row_that_waits_and_reason_for_one_with_no_why(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="none"))
+    w, led = setup(tmp_path, monkeypatch)
+    led.texting_add(person="alex", handle=A1, inbound="g-0", state="held", decision="held", reason="dating, your call",
+                    why="say yes?; dating, your call; he answers this")
+    led.texting_add(person="alex", handle=A1, inbound="g-9", state="held", decision="held", reason="a reason from before why")
+    asyncio.run(w.decide(deciding(led)))
+    pack = (tmp_path / "stdin.txt").read_text()
+    assert "===\nheld: say yes?; dating, your call; he answers this\nheld: a reason from before why\n=== end held " in pack
+
+
+def test_a_ledger_made_before_why_gains_the_column_when_opened_and_an_old_row_reads_back_with_why_empty(tmp_path):
+    import sqlite3
+
+    from yerk_ai import ledger
+    db = sqlite3.connect(tmp_path / "old.sqlite", isolation_level=None)
+    db.executescript(ledger.SCHEMA.split("CREATE TABLE IF NOT EXISTS message_links")[0].rstrip().rstrip(";"))
+    db.execute("INSERT INTO texting (person, state, reason) VALUES ('alex', 'held', 'an old reason')")
+    db.close()
+    led = Ledger(tmp_path / "old.sqlite")
+    assert {"shown", "why"} <= {c[1] for c in led.db.execute("PRAGMA table_info(texting)")}
+    assert ((r := led.texting_last("alex") or {})["reason"], r["shown"], r["why"]) == ("an old reason", None, None)
+
+
 def test_invalid_json_and_a_call_past_its_cap_are_held_with_no_clean_answer(tmp_path, monkeypatch):
     for out in ("not json", json.dumps({"type": "result", "result": "plain words"}), answer(decision="skip"), answer(decision="reply")):
         d = writer.parse(out, set())
@@ -239,7 +325,7 @@ def test_a_decision_says_the_mode_it_was_made_in_and_only_dry_writes_one_line_of
     asyncio.run(w.decide(deciding(led)))
     r = led.texting_last("alex") or {}
     assert (r["state"], r["decision"], r["mode"], r["account"], r["tokens"], r["seconds"]) == ("decided", "reply", mode, "a0", 960, 1.5)
-    assert json.loads(r["parts"]) == ["haha yes", "last week"] and json.loads(r["statements"])[0]["source"] == "thread:g-own"
+    assert json.loads(r["parts"]) == ["haha yes", "last week"] and json.loads(r["statements"])[0]["source"] == "thread:g-own" and r["why"] == "it fits"
     assert (led.inbound_get("g-1") or {})["state"] == "decided"
     folder = tmp_path / "state" / "texting" / "dry"
     if mode == "live":
@@ -249,7 +335,7 @@ def test_a_decision_says_the_mode_it_was_made_in_and_only_dry_writes_one_line_of
     assert f.name == f"{datetime.now():%Y-%m-%d}.jsonl" and stat.S_IMODE(f.stat().st_mode) == 0o600
     assert stat.S_IMODE(folder.stat().st_mode) == 0o700
     [line] = [json.loads(x) for x in f.read_text().splitlines()]
-    assert (line["id"], line["decision"], line["mode"], line["parts"]) == (r["id"], "reply", "dry", ["haha yes", "last week"])
+    assert (line["id"], line["decision"], line["mode"], line["parts"], line["why"]) == (r["id"], "reply", "dry", ["haha yes", "last week"], "it fits")
     assert sorted(p.name for p in (tmp_path / "state" / "texting").iterdir()) == ["dry", "writer-cwd", "writer-mcp.json"]
 
 
@@ -293,7 +379,7 @@ def after(tmp_path: Path, w: writer.Writer, led: Ledger) -> list[tuple[str, str,
 def test_his_own_text_filed_while_the_writers_call_runs_is_never_undone_and_nothing_is_checked_shown_or_timed(tmp_path, monkeypatch, decision):
     w, led = setup(tmp_path, monkeypatch)
     rid = int(deciding(led, ago=60)["id"])
-    d = writer.held("held: dating not open on their sheet") if decision == "held" else {
+    d = writer.held("dating, your call") if decision == "held" else {
         **writer.held(""), "decision": decision, "parts": ["haha yes"] if decision == "reply" else []}
     w.call = meanwhile(w, led, {**d, "account": "a0", "seconds": 4.5, "tokens": 960})
     asyncio.run(w.decide(led.texting_get(rid) or {}))

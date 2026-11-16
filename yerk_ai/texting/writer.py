@@ -98,11 +98,11 @@ def parse(out: str, guids: set[str], open_: tuple[str, ...] = ()) -> dict[str, A
     shut = [c for c in ans.get("classes") or [] if c in words.TEXTING_CLASSES and c not in open_]
     question = " ".join(str(ans.get("question") or "").split()) or (words.TEXTING_NO_SOURCE.format(what=bare[0]) if bare else "")
     decision = "held" if bare or shut else decision
-    why = " ".join(str(ans.get("why") or "").split())
-    reason = "; ".join(x for x in (question if decision == "held" else "",
-                                   words.TEXTING_HELD_BY.format(classes=", ".join(shut)) if shut else "", why) if x)
+    why, by = " ".join(str(ans.get("why") or "").split()), words.TEXTING_HELD_BY.format(classes=", ".join(shut)) if shut else ""
+    whole = "; ".join(x for x in (question if decision == "held" else "", by, why) if x)         # the ledger's `why`, never on a card
+    reason = (by if parts and shut and not bare else question or by or why) if decision == "held" else whole   # the card's, the code's (J110)
     return {"decision": decision, "parts": parts, "react": str(ans.get("react") or "") if decision == "react" else "",
-            "reply_to": str(ans.get("reply_to") or ""), "statements": said, "reason": reason, **rec}
+            "reply_to": str(ans.get("reply_to") or ""), "statements": said, "reason": reason, "why": whole, **rec}
 
 
 def fence(name: str, body: str, tag: str) -> str:
@@ -266,7 +266,7 @@ class Writer:
         at = datetime.fromtimestamp(now).astimezone()
         text = "\n".join(str(r.get("text") or "") for r in theirs)
         memory = await asyncio.to_thread(self.recall, "\n".join([text, *(str(r.get("text") or "") for r in rows[-3:] if r not in theirs)]))
-        holds = [f"{r['decision']}: {r['reason']}" for r in self.ledger.texting_rows(key, "held")]
+        holds = [f"{r['decision']}: {r['why'] or r['reason']}" for r in self.ledger.texting_rows(key, "held")]
         shown, pics = await self.look(theirs)
         tag = secrets.token_hex(4)
         try:
@@ -283,7 +283,7 @@ class Writer:
         d = await asyncio.to_thread(self.call, pack, {str(r.get("guid")) for r in rows}, who.sheets[key].open, pics)
         d.setdefault("seconds", round(time.monotonic() - t0, 2))
         fields = {"decision": d["decision"], "parts": json.dumps(d["parts"]), "react": d["react"], "reply_to": d["reply_to"],
-                  "statements": json.dumps(d["statements"]), "reason": d["reason"], "account": d.get("account", ""),
+                  "statements": json.dumps(d["statements"]), "reason": d["reason"], "why": d.get("why", d["reason"]), "account": d.get("account", ""),
                   "seconds": d["seconds"], "tokens": d.get("tokens", 0), "mode": self.mode}
         was = (self.ledger.texting_get(rid) or {}).get("state")                             # the owner answered while the call ran (J96): never
         first = was != "deciding" or any((self.ledger.inbound_get(g) or {}).get("state") == "answered" for g in gs)   # undone, the record only

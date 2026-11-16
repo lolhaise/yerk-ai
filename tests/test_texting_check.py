@@ -168,7 +168,7 @@ def test_a_draft_that_says_assistant_is_held_with_no_model_call_and_a_dating_wor
     r = led.texting_last("alex") or {}
     assert r["reason"] == words.TEXTING_CHECK_SAYS.format(word="Robo") and calls(tmp_path) == []
     asyncio.run(c.check(decided(led, parts=("she has a girlfriend now",))))
-    assert (led.texting_last("alex") or {})["reason"] == words.TEXTING_HELD_BY.format(classes="dating") and calls(tmp_path) == []
+    assert (led.texting_last("alex") or {})["reason"] == "dating, your call" and calls(tmp_path) == []      # its card: why: dating, your call
     (tmp_path / "private" / "texting" / "people" / "alex.toml").write_text('open = ["dating"]\n' + SHEET.split("\n", 1)[1])
     asyncio.run(c.check(decided(led, parts=("she has a girlfriend now",))))            # opened on disk: the model's to test
     assert len(calls(tmp_path)) == 1 and (led.texting_last("alex") or {})["state"] == "release-ready"

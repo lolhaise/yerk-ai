@@ -63,7 +63,7 @@ def setup(tmp_path: Path, mode: str = "live", release: bool = False, out: bool =
 
 
 def decided(led: Ledger, person: str = "alex", guid: str = "g-1", decision: str = "held", state: str = "decided",
-            parts: tuple[str, ...] = ("yes, last week",), reason: str = "held: dating not open on their sheet", ago: float = 60) -> int:
+            parts: tuple[str, ...] = ("yes, last week",), reason: str = "dating, your call", ago: float = 60) -> int:
     led.inbound_add(guid, "texting", f"imessage:{person}", person, len(SAID[guid]), created=time.time() - ago)
     return led.texting_add(person=person, handle=A1 if person == "alex" else B1, inbound=guid, decision=decision, parts=json.dumps(list(parts)),
                            react="", reply_to="", statements="[]", state=state, reason=reason if decision == "held" else "", mode="dry")
@@ -130,9 +130,9 @@ def test_a_card_line_or_notice_goes_only_to_an_owner_room_without_people_and_a_p
 
 def test_the_card_reads_in_one_look_on_a_phone() -> None:
     r = {"decision": "reply", "parts": json.dumps(["yes, last week", "come by"]), "react": ""}
-    text = holds.card("Alex", "09:17", [holds.quote("x" * 400), holds.quote("two\nlines")], r, "held: dating not open on their sheet", False)
+    text = holds.card("Alex", "09:17", [holds.quote("x" * 400), holds.quote("two\nlines")], r, "dating, your call", False)
     assert text.split("\n") == ["📱 Alex · 09:17 · held", "> " + "x" * 297 + "...", "> two lines", "draft:", "yes, last week", "come by",
-                                "why: held: dating not open on their sheet", "reply: send · edit <text> · skip"]
+                                "why: dating, your call", "reply: send · edit <text> · skip"]
     tap = holds.card("Alex", "09:17", ["> ok"], {"decision": "react", "react": "love", "parts": "[]"}, "it passed the check", True)
     assert tap.split("\n")[0] == "DRY Alex · 09:17 · held" and "draft: a love tapback" in tap
     for line in (text.split("\n")[0], tap.split("\n")[0], words.TEXTING_CARD_WORDS, words.TEXTING_CARD_DRAFT,
@@ -153,7 +153,7 @@ def test_a_held_decision_and_a_release_ready_one_with_release_off_get_one_card_a
     asyncio.run(h.tick())                                                     # a second pass posts nothing more
     assert [(room, mid) for room, mid, _ in card.posts] == [("owner-room", "100"), ("owner-room", "101")] and card.edits == []
     assert card.posts[0][2].split("\n")[1:] == ["> wait you moved??", "draft:", "yes, last week",
-                                                "why: held: dating not open on their sheet", "reply: send · edit <text> · skip"]
+                                                "why: dating, your call", "reply: send · edit <text> · skip"]
     assert "why: checked; release is off for Beta" in card.posts[1][2]
     holds_ = led._select("SELECT * FROM approvals ORDER BY id", ())
     assert [(x["room"], x["rule"], x["what"], x["call"]) for x in holds_] == [
@@ -253,13 +253,17 @@ def test_edit_makes_a_new_card_and_hold_from_his_words_shows_the_code_check_and_
     new = led.texting_last("alex") or {}
     assert row(led, a)["state"] == "superseded" and new["state"] == "held" and json.loads(new["parts"]) == ["yes, and her name is Beta, they are dating"]
     assert card.posts[-1][1] == new["card"] != "100" and card.posts[-1][2].split("\n")[1:4] == ["> wait you moved??", "draft:", json.loads(new["parts"])[0]]
-    assert "why: your words; the code finds held: dating not open on their sheet" in card.posts[-1][2]
+    assert "why: your words; dating, your call" in card.posts[-1][2]
     assert card.edits[-1][1] == "100" and card.edits[-1][2].split("\n")[0].endswith(" · replaced by your edit")
     assert [x["state"] for x in led._select("SELECT state FROM texting", ())].count("queued") == 0 and json.loads(new["verdict"])["by"] == "owner"
     assert asyncio.run(h.word("owner-room", "owner", "send", "100")) is True          # the old card: says so, sends nothing
     assert card.posts[-1][2] == "nothing sent: that card is replaced by your edit"
     assert asyncio.run(h.word("owner-room", "owner", "send", new["card"])) is True
     assert row(led, int(new["id"]))["state"] == "queued"
+    c = decided(led, guid="g-9")
+    asyncio.run(h.tick())
+    assert asyncio.run(h.word("owner-room", "owner", "edit see you then", row(led, c)["card"])) is True     # words the code finds nothing in
+    assert card.posts[-1][2].split("\n")[-2] == "why: your words; the code finds nothing"
 
 
 def test_his_own_text_withdraws_the_card_edits_it_and_posts_nothing_new(tmp_path: Path) -> None:
