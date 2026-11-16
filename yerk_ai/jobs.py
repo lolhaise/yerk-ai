@@ -53,7 +53,7 @@ from typing import Any, Callable, Collection, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
-from .config import EFFORTS, REPO, toml_value
+from .config import EFFORTS, REPO, toml_value, write_private
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
@@ -317,7 +317,7 @@ def in_text(epoch: float | None, now: float) -> str:
     return f"in {took(d)}" if d >= 0 else f"{took(-d)} ago"
 
 
-# the file: append a job, remove a job, under a lock
+# the file: append a job, remove a job, under a lock, each new text swapped in whole
 @contextmanager
 def locked(path: Path) -> Iterator[None]:
     lock = path.with_name(f".{path.name}.lock")
@@ -327,6 +327,13 @@ def locked(path: Path) -> Iterator[None]:
             yield
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def rewrite(path: Path, text: str) -> None:
+    """The file's new text written beside it and swapped in with one rename (write_private, 0600). `load` takes no lock, so a
+    read at any instant (the daemon's fire, a runner, a sync) finds the old file or the new one whole; written in place, it was
+    empty or cut for an instant and every job looked gone. Through a symlink, the file it points at is swapped, the link kept."""
+    write_private(path.resolve(), text)
 
 
 def block(name: str, fields: dict[str, Any]) -> str:
@@ -360,7 +367,7 @@ def add(path: Path, name: str, fields: dict[str, Any], now: float | None = None)
             raise JobError(f"a job named {name!r} is already in the file; remove it first, or pick another name")
         if text and not text.endswith("\n"):
             text += "\n"
-        path.write_text(text + ("\n" if text.strip() else "") + block(name, fields))
+        rewrite(path, text + ("\n" if text.strip() else "") + block(name, fields))
     return job
 
 
@@ -370,7 +377,7 @@ def remove(path: Path, name: str) -> bool:
         text = path.read_text() if path.is_file() else ""
         if (span := _span(text, name)) is None:
             return False
-        path.write_text(text[:span[0]] + text[span[1]:])
+        rewrite(path, text[:span[0]] + text[span[1]:])
     return True
 
 
