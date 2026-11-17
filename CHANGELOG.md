@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-17
 
-### needs-risky-paths-wait (#?)
+### needs-risky-paths-wait (#96)
 
 - A need whose change touches risky code now waits for a deeper check before it merges. Until now every need the needs
   pipeline carried merged on its one cold read, a change to how a text goes out in the owner's name the same as a word on
