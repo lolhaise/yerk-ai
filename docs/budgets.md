@@ -743,7 +743,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: status-meters-kept-fresh raised it by 52, the room's /status is current from its first answer (the owner's ask, 2026-11-16 evening: the first answer said "last reading 8 h 13 min ago" for an account no turn had run on since the morning, its week 57% where the live meter said 59%), not folded to fit: usage.py 29 (EVERY; keep, one step of the daemon's keeper: the oldest due account read once through nice, filed under the lock unless a newer reading came meanwhile, a failed read never over a good one; read's nice; the header and the docstrings), daemon.py 17 (keep_meters, a step in a thread every 30 s, a failed step one warning for each distinct message; its place in run_discord; the import), status.py 6 (reading: the kept reading whole where it is newer than the stream's, as source "kept" with its own at; the docstrings). 32,803: 32,751 plus 52.
 
-- `lines = 32803`
+2026-11-17: status-failed-read-keeps-reading raised it by 13, one /usage call that fails never brings the stale /status card back (status-meters-kept-fresh's judge read, 2026-11-17: a card's failed live ask was filed over the account's good kept reading, so the keeper left the account for 15 minutes and the cards showed the stream's reading, hours old), not folded to fit: usage.py 11 (readings holds a failed ask over a good kept reading in memory, under the lock, the file keeping that reading; keep files a good reading over an error whatever its time; the header and the docstrings), status.py 2 (collect hands the kept readings to a live card too; reading says why the ask failed beside a kept reading; the docstrings). 32,816: 32,803 plus 13.
+
+- `lines = 32816`
 
 ## Uncapped
 

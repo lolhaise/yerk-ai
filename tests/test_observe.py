@@ -439,6 +439,91 @@ def test_kept_fresh_h_the_background_read_starts_claude_code_through_nice_and_th
     assert usage.last(tmp_path)["five"]["seven_day"]["pct"] == 72.0
 
 
+# failed-read: a card's live ask that fails never replaces a good kept reading in usage.json (the failure is held in memory
+# FRESH long instead), and the keeper files a good reading over an error; a fake reader and a pinned clock, no Claude Code
+FAILED = {"error": "no answer in 15 s"}
+
+
+def test_failed_read_a_a_failed_ask_leaves_the_good_kept_reading_in_the_file_and_hands_back_the_failure(tmp_path):
+    """failed-read (a) A good reading kept 10 minutes ago and the card's live ask for that account fails: usage.json keeps
+    that reading exactly as it was (numbers, time, source), and the card is handed the failure, so it knows its ask
+    failed. The other account's good answer is filed as always."""
+    accounts = five_accounts(tmp_path)[:2]                                     # five, one
+    kept_at(tmp_path, {"five": 10, "one": 10})
+    good = usage.last(tmp_path)["five"]
+    got = usage.readings(accounts, tmp_path, True, NOW, lambda a: dict(FAILED) if a.name == "five" else TANK[a.name])
+    assert got == {"five": {**FAILED, "at": NOW, "source": "live"}, "one": {**TANK["one"], "at": NOW, "source": "live"}}
+    assert usage.last(tmp_path) == {"five": good, "one": got["one"]} and good["at"] == NOW - 600
+
+
+def test_failed_read_b_the_failed_ask_counts_as_the_try_for_fresh_and_is_asked_again_after(tmp_path):
+    """failed-read (b) A second card inside FRESH starts no second Claude Code for the account whose ask failed and gets the
+    same failure back (held in memory, the file still the good reading); another state folder's account of that name is
+    its own; once FRESH has passed it is asked again."""
+    accounts, asked = five_accounts(tmp_path)[:1], []                         # five
+    kept_at(tmp_path, {"five": 10})
+    good = usage.last(tmp_path)
+
+    def fails(a):
+        asked.append(a.name)
+        return dict(FAILED)
+    first = usage.readings(accounts, tmp_path, True, NOW, fails)
+    assert usage.readings(accounts, tmp_path, True, NOW + usage.FRESH - 1, fails) == first and asked == ["five"]
+    assert usage.last(tmp_path) == good and usage.FRESH == 60.0
+    (tmp_path / "other").mkdir()
+    usage.readings(accounts, tmp_path / "other", True, NOW + 1, fails)
+    assert asked == ["five", "five"]
+    again = usage.readings(accounts, tmp_path, True, NOW + usage.FRESH, fails)
+    assert again == {"five": {**FAILED, "at": NOW + usage.FRESH, "source": "live"}} and asked == ["five"] * 3
+    assert usage.last(tmp_path) == good
+
+
+def test_failed_read_c_an_account_kept_as_an_error_or_not_kept_takes_the_failure_in_the_file_as_before(tmp_path):
+    """failed-read (c) An account whose kept entry is itself an error, and one with none: the failed ask is filed in
+    usage.json as it always was, with the time of the ask, and counts as the try from there for FRESH."""
+    accounts, asked = five_accounts(tmp_path)[:2], []                         # five, one
+    (tmp_path / usage.FILE).write_text(json.dumps({"five": {"error": "unreadable (ValueError)", "at": NOW - 600, "source": "live"}}))
+    got = usage.readings(accounts, tmp_path, True, NOW, lambda a: asked.append(a.name) or dict(FAILED))
+    assert got == usage.last(tmp_path) == {n: {**FAILED, "at": NOW, "source": "live"} for n in ("five", "one")}
+    assert usage.readings(accounts, tmp_path, True, NOW + 30, lambda a: asked.append(a.name) or dict(FAILED)) == got
+    assert asked == ["five", "one"]
+
+
+def test_failed_read_d_after_a_failed_ask_the_keeper_reads_the_account_once_its_good_reading_is_every_old(tmp_path):
+    """failed-read (d) After (a), the good reading kept 10 minutes before the failed ask: the keeper's step once that reading
+    is EVERY old reads the account and files the answer (the card's error, under EVERY old, held it back before). A good
+    reading the keeper files inside the failure's minute is the next card's, nothing asked."""
+    accounts, asked = five_accounts(tmp_path)[:1], []                         # five
+    kept_at(tmp_path, {"five": 10})
+    usage.readings(accounts, tmp_path, True, NOW, lambda a: dict(FAILED))
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + usage.EVERY - 600, read_one=lambda a: asked.append(a.name) or TANK["two"])
+    assert asked == ["five"] and usage.last(tmp_path)["five"] == {**TANK["two"], "at": NOW + usage.EVERY - 600, "source": "live"}
+    kept_at(tmp_path, {"five": 15})
+    usage.readings(accounts, tmp_path, True, NOW + 2 * usage.FRESH, lambda a: dict(FAILED))   # the first failure past FRESH: asked
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + 2 * usage.FRESH + 5, read_one=lambda a: TANK["two"])
+    filed = usage.readings(accounts, tmp_path, True, NOW + 2 * usage.FRESH + 10, lambda a: asked.append(a.name) or dict(FAILED))
+    assert filed == {"five": {**TANK["two"], "at": NOW + 2 * usage.FRESH + 5, "source": "live"}} and asked == ["five"]
+
+
+def test_failed_read_e_a_good_background_read_replaces_an_error_a_card_filed_meanwhile_and_never_a_good_one(tmp_path):
+    """failed-read (e) The account kept only as an error, and while the keeper's read is in flight a card's live ask fails
+    and files its own error: the keeper's good reading is filed over it with the time it ended. A good reading a card
+    filed meanwhile still stays."""
+    accounts, t = five_accounts(tmp_path)[:1], [NOW]                          # five
+
+    def step(card):
+        def in_flight(a):
+            usage.readings(accounts, tmp_path, True, NOW + 3, lambda a: dict(card))     # the card's own ask, the lock free
+            t[0] = NOW + 9
+            return TANK["five"]
+        t[0] = NOW
+        (tmp_path / usage.FILE).write_text(json.dumps({"five": {"error": "unreadable (ValueError)", "at": NOW - 1200, "source": "live"}}))
+        usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=in_flight)
+        return usage.last(tmp_path)["five"]
+    assert step(FAILED) == {**TANK["five"], "at": NOW + 9, "source": "live"}
+    assert step(TANK["two"]) == {**TANK["two"], "at": NOW + 3, "source": "live"}
+
+
 def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():
     def pinned(rooms):
         s = {"at": NOW, "running": True, "units": [], "workers": [], "jobs": [], "accounts": [], "stalls": [],

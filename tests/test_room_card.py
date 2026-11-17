@@ -288,6 +288,9 @@ ON_MAIN = ["🧠", "📚 new session", "", "⛽ Tank", "① wk 44%", "↻ wk Mon
 LIVE_ON_MAIN = [*ON_MAIN[:4], "① 5h 12% · wk 41% · Fable ⚠️83%", "↻ 5h 3:45p · wk Mon 2p · Fable Sat 9a", *ON_MAIN[6:]]   # for kept(0)
 
 
+FAILED = {"error": "no answer in 15 s"}                 # a /usage call that timed out
+
+
 def kept(age: float, model_resets: float | None = at(14, 9)) -> dict:
     """Account one's last live reading `age` seconds old, as usage.readings keeps it: a week and a 5-hour window older than
     the stream's, and the model's own week, which no stream reads."""
@@ -295,16 +298,16 @@ def kept(age: float, model_resets: float | None = at(14, 9)) -> dict:
             "model": {"name": "Fable", "pct": 83.0, "resets": model_resets}, "at": NOW - age, "source": "live"}
 
 
-def on_hand(tmp_path, last: dict | None, stream: dict | None = STREAM, live: bool = False) -> tuple[dict, list[str]]:
+def on_hand(tmp_path, last: dict | None, stream: dict | None = STREAM, live: bool = False, fails: bool = False) -> tuple[dict, list[str]]:
     """The answer and the room's card from these files (no usage.json with `last` None, no stream reading with `stream`
-    None), asked nothing; with `live`, the live card, whose /usage call reads kept(0)'s meters."""
+    None), asked nothing; with `live`, the live card, whose /usage call reads kept(0)'s meters (`fails`: it fails)."""
     (tmp_path / "meters.json").write_text(json.dumps({"one": stream} if stream else {}))
     (tmp_path / usage.FILE).unlink(missing_ok=True)
     if last is not None:
         (tmp_path / usage.FILE).write_text(json.dumps({"one": last}))
     asked = {k: v for k, v in kept(0).items() if k not in ("at", "source")}
     s = status.collect(EXAMPLE_PRIVATE, tmp_path, [Account("one", tmp_path / "cfg1")], Cooldowns(None), Ledger(tmp_path / "l.sqlite"),
-                       now=NOW, units=set, timers=Timers({}), live=live, read_one=lambda a: dict(asked))
+                       now=NOW, units=set, timers=Timers({}), live=live, read_one=lambda a: dict(FAILED if fails else asked))
     return (s := json.loads(json.dumps(s))), card(s)
 
 
@@ -401,6 +404,54 @@ def test_kept_fresh_j_a_live_reading_under_a_minute_old_on_every_account_is_the_
     s = status.collect(EXAMPLE_PRIVATE, tmp_path, accounts, Cooldowns(None), Ledger(tmp_path / "l.sqlite"), now=NOW, units=set,
                        timers=Timers({}), read_one=lambda a: pytest.fail("asked"))
     assert card(json.loads(json.dumps(s))) == TWO_LIVE_ON_MAIN
+
+
+# failed-read: the live card where an account's /usage call failed shows the newest reading it holds (the kept one where
+# newer than the stream's, else the stream's with the kept model's own week), its age said once, and why the call failed
+TWO_LIVE_LINES_ON_MAIN = ["- ① 5h 12% · wk 41% · Fable ⚠️83%", "- ↻ 5h 3:45p · wk Mon 2p · Fable Sat 9a",   # main c07ebc85's
+                          "- 🟢② 5h 12% · wk 7% · Fable ⚠️83%", "- ↻ 5h 3:45p · wk Fri 2a · Fable Sat 9a",
+                          "- wk next: 🟢② Fri 2a · then ① Mon 2p", "- 5h next: ① 3:45p · then ② 3:45p", "- next turn tries ① first"]
+
+
+def test_failed_read_f_a_failed_ask_shows_the_kept_reading_ten_minutes_old_not_the_streams_eight_hours(tmp_path):
+    """failed-read (f) The live card, the account's /usage call timed out, its reading kept 10 minutes ago and its stream's
+    8 hours old: main showed the stream's week with "last reading 8 h 0 min ago". Now the account's line carries the kept
+    5-hour, week and model, and one age line says 10 min, on the room card and on `yerk status`'s; the payload's meter
+    is "kept" with its own time and why the call failed, and usage.json still holds that reading."""
+    s, lines = on_hand(tmp_path, kept(600), {**STREAM, "at": NOW - 8 * H}, live=True, fails=True)
+    assert lines[4:7] == [LIVE_ON_MAIN[4], LIVE_ON_MAIN[5], "①: last reading 10 min ago"]
+    assert [x for x in lines if "last reading" in x] == ["①: last reading 10 min ago"] and not any("44%" in x for x in lines)
+    assert status.account_lines(s["accounts"], NOW, True) == [f"- {x}" for x in lines[4:7]]
+    m = s["accounts"][0]["meter"]
+    assert m == {**kept(600), "source": "kept", "live_error": FAILED["error"]} and m["at"] == NOW - 600
+    assert usage.last(tmp_path) == {"one": kept(600)}
+
+
+def test_failed_read_g_a_failed_ask_with_the_kept_reading_older_shows_the_streams_numbers_and_the_kept_models_week(tmp_path):
+    """failed-read (g) The same with the kept reading (10 minutes) older than the stream's (2 minutes): the stream's week,
+    the kept model's own week beside it while that week runs, and one age line with the older age, 10 min. Main showed
+    the stream's week alone with "last reading 2 min ago". The payload's meter is the stream's with the model entry and
+    why the call failed."""
+    s, lines = on_hand(tmp_path, kept(600), live=True, fails=True)
+    assert lines[4:7] == [ON_HAND_MAIN[4], ON_HAND_MAIN[5], "①: last reading 10 min ago"]
+    assert sum("last reading" in x for x in lines) == 1
+    assert s["accounts"][0]["meter"] == {**STREAM, "live_error": FAILED["error"], "model": {**kept(600)["model"], "at": NOW - 600}}
+
+
+def test_failed_read_h_a_live_card_whose_every_ask_succeeds_is_the_card_main_prints(tmp_path):
+    """failed-read (h) Two accounts, each with a reading kept 10 and 20 minutes ago and a stream's 8 hours and 2 minutes
+    old, every /usage call answering: the room card and `yerk status`'s lines are byte for byte main c07ebc85's (captured
+    from it on this input) and each meter is its live reading as read, no age line, though the kept ones are now handed in."""
+    accounts = [Account("one", tmp_path / "cfg1"), Account("two", tmp_path / "cfg2")]
+    asked = {k: v for k, v in kept(0).items() if k not in ("at", "source")}
+    answer = {"one": asked, "two": {**asked, "seven_day": {"pct": 7.0, "resets": at(13, 2)}}}
+    (tmp_path / "meters.json").write_text(json.dumps({"one": {**STREAM, "at": NOW - 8 * H}, "two": STREAM}))
+    (tmp_path / usage.FILE).write_text(json.dumps({"one": kept(600), "two": {**kept(1200), "seven_day": {"pct": 7.0, "resets": at(13, 2)}}}))
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, accounts, Cooldowns(None), Ledger(tmp_path / "l.sqlite"), now=NOW, units=set,
+                       timers=Timers({}), live=True, read_one=lambda a: dict(answer[a.name]))
+    s = json.loads(json.dumps(s))
+    assert card(s) == TWO_LIVE_ON_MAIN and status.account_lines(s["accounts"], NOW, True) == TWO_LIVE_LINES_ON_MAIN
+    assert [a["meter"] for a in s["accounts"]] == [{**answer[n], "at": NOW, "source": "live"} for n in ("one", "two")]
 
 
 def test_a_five_hour_window_comes_first_and_has_its_next_line():
