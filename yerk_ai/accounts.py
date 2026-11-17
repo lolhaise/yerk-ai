@@ -258,7 +258,7 @@ class Cooldowns:
         return sorted(rows, key=lambda r: -r["until"])
 
     def _save(self) -> None:
-        if self.path:                         # a temp file of its own: a room's thread and the usage look write at once
+        if self.path:                         # a temp file of its own: a room's thread and the meters' keeper write at once
             write_private(self.path, json.dumps(self.data))
             self.mtime = self.path.stat().st_mtime_ns
 
