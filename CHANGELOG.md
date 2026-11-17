@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-17
 
-### status-failed-read-keeps-reading (#?)
+### status-failed-read-keeps-reading (#93)
 
 - One `/usage` call that fails no longer brings the stale `/status` card back. Since status-meters-kept-fresh yerkd keeps
   each account's live reading under 15 minutes old, but a card's live ask that failed (no answer in 15 s, output it could
