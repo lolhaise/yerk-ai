@@ -264,6 +264,8 @@ class Sender:
         """The next part, once (J41; dry: every part, as files): `handed` is written before the hands run, so a stop in between
         never hands twice; only an ssh that could not connect, which wrote nothing, gives it back to the next pass."""
         rid, newest, done = int(r["id"]), self.newest(r), len(gs_of(r, "claimed"))
+        if not parts(r):                                  # no text and no tapback: never a job (an empty one raised here and stopped the sender)
+            return self.end(r, "dropped", words.TEXTING_NO_DRAFT)
         self.ledger.texting_set(rid, handed=now)
         for part in range(done + 1, (parts(r) if self.mode == "dry" else done + 1) + 1):
             got = await self.hands.hand(f"yerk-{rid}-{part}", job(r, part, newest))

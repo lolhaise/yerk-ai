@@ -10,7 +10,7 @@ from typing import Any
 
 from yerk_ai import words
 from yerk_ai.ledger import Ledger
-from yerk_ai.texting import check
+from yerk_ai.texting import check, writer
 from yerk_ai.texting.people import Sheet
 from test_texting_link import A1
 from test_texting_writer import SHEET, answer, calls, deciding, setup as writer_setup
@@ -107,6 +107,19 @@ def decided(led: Ledger, decision: str = "reply", parts: tuple[str, ...] = ("hah
     return led.texting_last("alex") or {}
 
 
+def test_the_statements_are_numbered_by_place_and_one_the_verdict_never_confirmed_holds_the_draft_by_its_words(tmp_path, monkeypatch):
+    """J109: the model's own numbers are never the key, so two statements it numbered 1 and 1 are two the check must confirm."""
+    said = [{"n": 1, "text": "he moved", "source": "thread:g-own"}, {"n": 1, "text": "he has a dog", "source": "thread:g-own"},
+            {"text": "he works nights", "source": "thread:g-own"}, {"n": 7, "text": "he drives", "source": "thread:g-own"}]
+    assert [s["n"] for s in writer.parse(answer(decision="reply", parts=["yes"], statements=said), {"g-own"})["statements"]] == [1, 2, 3, 4]
+    monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict())                    # release, and an ok with a basis for number 1 alone
+    w, led = writer_setup(tmp_path, monkeypatch)
+    two = writer.parse(answer(decision="reply", parts=["yes"], statements=said[:2]), {"g-own"})["statements"]
+    asyncio.run(check.Check({}, w).check(decided(led, statements=two)))
+    r = led.texting_last("alex") or {}
+    assert (r["state"], r["decision"], r["reason"]) == ("decided", "held", words.TEXTING_CHECK_NO_BASIS.format(what="he has a dog") + "; all sourced")
+
+
 def test_the_check_call_offers_no_tool_no_mcp_server_and_no_settings_and_runs_in_an_empty_folder(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_JSON", verdict(statements=[]))
     w, led = writer_setup(tmp_path, monkeypatch)
@@ -168,7 +181,7 @@ def test_a_draft_that_says_assistant_is_held_with_no_model_call_and_a_dating_wor
     r = led.texting_last("alex") or {}
     assert r["reason"] == words.TEXTING_CHECK_SAYS.format(word="Robo") and calls(tmp_path) == []
     asyncio.run(c.check(decided(led, parts=("she has a girlfriend now",))))
-    assert (led.texting_last("alex") or {})["reason"] == words.TEXTING_HELD_BY.format(classes="dating") and calls(tmp_path) == []
+    assert (led.texting_last("alex") or {})["reason"] == "dating, your call" and calls(tmp_path) == []      # its card: why: dating, your call
     (tmp_path / "private" / "texting" / "people" / "alex.toml").write_text('open = ["dating"]\n' + SHEET.split("\n", 1)[1])
     asyncio.run(c.check(decided(led, parts=("she has a girlfriend now",))))            # opened on disk: the model's to test
     assert len(calls(tmp_path)) == 1 and (led.texting_last("alex") or {})["state"] == "release-ready"

@@ -528,7 +528,7 @@ TEXTING_NO_WHY = "nothing decided for {first} yet"
 TEXTING_LOG_IN, TEXTING_LOG = "{at} {who}: {chars} characters, {state}", "{at} {state}{dry}: {reason}"
 # the writer (texting/writer.py): a decision's reason when the code holds it, and the head of the pack it is handed
 TEXTING_NO_CLEAN, TEXTING_NO_SOURCE = "no clean answer", "no source for: {what}"
-TEXTING_HELD_BY, TEXTING_UNLISTED = "held: {classes} not open on their sheet", "not on the reply list"
+TEXTING_HELD_BY, TEXTING_HELD_OWN, TEXTING_UNLISTED = "{classes}, your call", "your call", "not on the reply list"
 TEXTING_TOO_OLD, TEXTING_NO_ACCOUNT = "older than {hours} h when the writer took it", "no account free until {at}"
 TEXTING_NO_TOKEN = "the check needs an account token, and no account has one"
 TEXTING_PACK = ("Now: {now}, pacing bucket {bucket}. You write as {owner} to {first}. "
@@ -586,8 +586,8 @@ REPLAY_WHEN, REPLAY_SENDER_COLUMNS = ("early", "middle", "late"), ("bursts", "he
 TEXTING_CARD, TEXTING_CARD_MARK = "{mark} {first} · {at} · {state}", {"live": "📱", "dry": "DRY"}
 TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK = "draft:", "draft: a {react} tapback"
 TEXTING_CARD_WHY, TEXTING_CARD_WORDS = "why: {why}", "reply: send · edit <text> · skip"
-TEXTING_CARD_OFF = "checked; release is off for {first}"
-TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; the code finds {found}", "nothing"
+TEXTING_CARD_OFF, TEXTING_CARD_ASKS = "checked; release is off for {first}", "reply: edit <text> · skip"     # ASKS: a card with no draft
+TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; {found}", "the code finds nothing"
 TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took over its card"
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
                  "withdrawn": "answered by you {at}", "superseded": "replaced by your edit", "cancelled": "answered by you"}
@@ -601,6 +601,7 @@ TEXTING_STALE = "not sent: a text to {first}, due {at}\nthe Mac was out of reach
 TEXTING_SWITCHED = "not sent: {n} text{s} left to send by live\ntexting is {mode} now, so they are dropped"
 TEXTING_GONE = "nothing sent: that card is {state}"
 TEXTING_MOVED = "nothing sent: that card no longer shows the text its hold was made for"
+TEXTING_NO_DRAFT = "nothing sent: that card has no draft; reply edit <text> to it, with your own words"
 TEXTING_EDIT_EMPTY, TEXTING_OUT_OFF = "nothing changed: edit needs your text after it", "nothing sent: text-out is off in [gates]"
 TEXTING_NO_CARD_ROOM = "texting: {room} is not an owner room without people, so no card, line or notice goes there"
 TEXTING_CHECK_PACK = ("Four inputs follow, each between \"=== <input> {tag} ===\" and \"=== end <input> {tag} ===\": the thread, "
