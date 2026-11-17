@@ -196,6 +196,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `contexts`: how many CI checks a head gets before they count as all in (default 7)
 - `repo`: the GitHub OWNER/NAME of the pipeline's PRs (default: from the daemon tree's origin)
 - `pr_check`: the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)
+- `sensitive`: what a need's change may not touch and still merge on the cold read alone: a path, a folder/ or plugin:NAME; one touched holds the need for a deeper check, a person merges (default pipeline.SENSITIVE, replaced whole; [] none, the pipeline's road as before)
 
 ### [curate]
 

@@ -17,6 +17,12 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
   `fix first: why` is a fix worker (it counts toward the cap) and the checks again; `unsure: why` is held. A fix worker:
   `fixed: sha` is PR again with its new head; `cannot: why` is held. A read or a fix cut off by a stop nobody asked for
   (workers.cut_off, a box shutdown) is no verdict: PR again, a fix's count as it was; one that died for memory is not, so with no verdict it is held with that.
+- The deeper check (2026-11-17: review matched to risk, the tier set by the change and never by who built it): before a
+  `merge` merges or lands anything, a change on the [needs] sensitive list (SENSITIVE unless it says otherwise; [] is the road
+  above exactly) is held, its why NEED_DEEPER naming what it touches and the row's `deeper` its head, paths and plug-ins, so a
+  later step finds the needs that wait (`waits`: the paths its head changes against its merge base with origin/main, read by
+  git in the daemon's own tree; a change git cannot read waits too). The list is the running daemon's, never the PR's, and
+  this file is on it. A person releases one as any held need: merges it and runs `yerk needs done`, and the deploy follows.
 - A plug-in branch (need 36 of 2026-11-02, needs.plugins): the cold read and a fix worker are handed the need's branch in
   a plug-in's own repository at its head then (`heads`); the merge checks each lands as a fast-forward before GitHub's and
   lands it after (needs.land), in the checkout the rooms run; one that cannot land holds the need, said with why.
@@ -32,8 +38,10 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import subprocess
 import sys
+import textwrap
 import time
 import uuid
 from pathlib import Path
@@ -47,6 +55,17 @@ EVERY, NO_PR, READ_CAP = 120.0, 20 * 60.0, 30.0       # the watch's tick; no PR 
 LIVE_POLL, LIVE_CAP = 5.0, 20 * 60.0                  # a need's line to a room in a turn: looked at every 5 s, posted at 20 min at the latest
 UNIT = "yerk-deploy-"
 RED = ("failure", "error")
+# [needs] sensitive's default, each beside what going wrong there means: a path, a folder/ (every file below it) or
+# plugin:NAME (a branch in that plug-in); this file holds it, so it is on it. A change touching one waits for a deeper check.
+SENSITIVE = (
+    "yerk_ai/texting/",                                               # a text goes out in the owner's name, never approved
+    "yerk_ai/emails.py",                                              # the same for an email
+    "yerk_ai/gates.py", "yerk_ai/hooks.py", "yerk_ai/deletes.py",     # an action outside the box (money, a message, a post, a delete for good) runs with no hold
+    "yerk_ai/accounts.py", "yerk_ai/git_askpass.py", "yerk_ai/github.py",   # a login or a token used where it should not be, or every room on a dead account
+    "yerk_ai/deploy.py", "yerk_ai/pipeline.py", "yerk_ai/needs.py", "yerk_ai/workers.py",   # Yerk changes or ships itself wrongly, or a worker leaves its sandbox
+    ".github/", "pyproject.toml", "uv.lock", "units/",                # what checks a change, what code is pulled in, what runs on the box
+    "plugin:hands")                                                   # it drives the owner's own browser
+BASE, SHA = "origin/main", re.compile(r"[0-9a-f]{7,64}")   # what a change is read against; a head git may be handed
 
 
 class Units:
@@ -80,6 +99,14 @@ def drop_local(repo: str | Path, branch: str) -> str:
             needs.git(lines[0].removeprefix("worktree "), "checkout", "--quiet", "--detach")
     p = needs.git(repo, "branch", "-d", branch)
     return words.line(p.stderr or "git refused", 200) if p.returncode else ""
+
+
+def deeper_why(w: dict[str, Any]) -> str:
+    """The why of a need that waits for the deeper check (Pipeline.waits) in lines of phone width (STYLE.md): the fixed words,
+    then the first three things it touches and how many more, or what git said when it could not read the change."""
+    text = words.NEED_DEEPER_UNREAD.format(why=w["unread"]) if "unread" in w else words.NEED_DEEPER.format(what=words.few(
+        [words.line(p) for p in w["paths"]] + [words.NEED_DEEPER_PLUGIN.format(name=k) for k in w["plugins"]]))
+    return "\n".join(textwrap.wrap(text, words.PHONE, break_long_words=False, break_on_hyphens=False))
 
 
 class Pipeline:
@@ -156,9 +183,10 @@ class Pipeline:
                     lambda x: x.get("state") == "building" and not x.get("worker")):
                 log.info("needs: need %s of %s was claimed and its builder never started, so it is queued again", r["n"], r["day"])
 
-    async def stop(self, r: dict[str, Any], state: str, why: str) -> None:
-        """Held (a person decides) or stuck, with why; the next queued need starts."""
-        await self.set(r, {"state": state, "why": why, "worker": ""})
+    async def stop(self, r: dict[str, Any], state: str, why: str, deeper: dict[str, Any] | None = None) -> None:
+        """Held (a person decides) or stuck, with why; the next queued need starts. `deeper` is the row's own field of a need
+        that waits for the deeper check (`waits`), so a program finds those; any other stop clears one an earlier hold left."""
+        await self.set(r, {"state": state, "why": why, "worker": "", **({"deeper": deeper or {}} if deeper or r.get("deeper") else {})})
         await self.say((words.NEED_HELD if state == "held" else words.NEED_STUCK).format(
             n=needs.called(self.y.state, r), ability=words.line(str(r["ability"]), 80), why=why))
         await self.next()
@@ -257,6 +285,23 @@ class Pipeline:
         """Each plug-in branch the need carries landed (needs.land), or only checked; each why, else ""."""
         return "; ".join([w for k, p in dict(r.get("plugins") or {}).items() if (w := await asyncio.to_thread(needs.land, k, p, dry))])
 
+    def waits(self, r: dict[str, Any]) -> dict[str, Any]:
+        """What of the list in force the need's change touches, {} when nothing: [needs] sensitive, else SENSITIVE, the running
+        daemon's and never the PR's tree, so a change cannot loosen the list that judges it ([] is none, and nothing is read).
+        Every need is judged alike, whoever built it, on the head its cold read read and the merge's sha guard holds: the paths
+        it changes against its merge base with origin/main, read by git in the daemon's own tree with no fetch (a rename is
+        both its paths), and each branch it carries in a listed plug-in. A change git cannot read waits, never taken as safe."""
+        listed = s if isinstance(s := self.conf().get("sensitive", SENSITIVE), (list, tuple)) else SENSITIVE
+        if not (entries := [str(e).strip().removeprefix("./").strip("/") for e in listed]):
+            return {}
+        head, plugs = str(r.get("head") or ""), [k for k in dict(r.get("plugins") or {}) if f"plugin:{k}" in entries]
+        p = needs.git(self.tree, "diff", "--name-only", "--no-renames", "-z", f"{BASE}...{head}", "--") if SHA.fullmatch(head) else None
+        if p is None or p.returncode:                    # git's own words, each sha as its short form, so they wrap at phone width
+            why = re.sub(r"[0-9a-f]{40,64}", lambda m: m[0][:7], words.no_paths(p.stderr)) if p is not None else "its PR's head is no commit"
+            return {"head": head, "paths": [], "plugins": plugs, "unread": words.line(why.removeprefix("fatal: "), 120) or "git gave no reason"}
+        paths = [x for x in p.stdout.split("\0") if x and any(x == e or x.startswith(f"{e}/") for e in entries if e)]
+        return {"head": head, "paths": paths, "plugins": plugs} if paths or plugs else {}
+
     async def worker(self, r: dict[str, Any], role: str, brief: str, tasks: list[str]) -> dict[str, Any]:
         return dict(await self.y.workers.start(self.room(), brief, account=self.account(), cap_minutes=READ_CAP, tasks=tasks,
                                                more={"need": {"day": r["day"], "n": r["n"], "role": role}}))
@@ -319,6 +364,8 @@ class Pipeline:
         repo = await asyncio.to_thread(github.slug, REPO, str(self.conf().get("repo") or "")) if tok else ""
         if not (tok and repo):
             return await self.stop(r, "held", "the cold read said merge; no GitHub token, so a person merges")
+        if (wait := await asyncio.to_thread(self.waits, r)):   # it touches the [needs] sensitive list: nothing merged or landed
+            return await self.stop(r, "held", deeper_why(wait), wait)
         if (why := await self.lands(r, dry=True)):          # a plug-in that cannot land: nothing merged, a person decides
             return await self.stop(r, "held", f"the cold read said merge; {why}")
         m = await asyncio.to_thread(github.merge, repo, int(r["pr"]), str(r["head"]), tok)

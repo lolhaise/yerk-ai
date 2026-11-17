@@ -8,6 +8,47 @@ version changes.
 
 ## 2026-11-17
 
+### needs-risky-paths-wait (#?)
+
+- A need whose change touches risky code now waits for a deeper check before it merges. Until now every need the needs
+  pipeline carried merged on its one cold read, a change to how a text goes out in the owner's name the same as a word on
+  a card. Review is now matched to risk, and the change sets the tier, never who or what built it: the rule the Claude
+  Code team keeps for agent-written changes, which the owner asked for on 2026-11-17, in its first, strict step. Decision
+  40 stands for everything not on the list: such a need travels exactly as before.
+- When a need's cold read says `merge`, before anything is merged or landed, the pipeline reads the paths the pull
+  request's head changes against its merge base with `origin/main`, with git in the daemon's own tree and no network (a
+  rename counts as both its paths). One on the list, or a branch the need carries in a listed plug-in, holds the need. Its
+  line in the machine room opens "the cold read said merge; it waits for a deeper check" and names the first three things
+  it touches with how many more, on lines of phone width; `yerk needs list` shows the same why on its one line. A change
+  git cannot read is held the same way, with git's own words: an unreadable change is never taken as a safe one.
+- The need's row in `<state>/needs.json` carries the hold in a field of its own, `deeper`: the head it judged, the paths
+  and the plug-ins it touches (and `unread`, git's words, when git could not read it), so a later step can find the needs
+  that wait and release them. Any other stop of that need clears it, so a held need with one is one that waits.
+- The list, `SENSITIVE` in yerk_ai/pipeline.py, each entry beside what going wrong there means: `yerk_ai/texting/`,
+  `yerk_ai/emails.py`, `yerk_ai/gates.py`, `yerk_ai/hooks.py`, `yerk_ai/deletes.py`, `yerk_ai/accounts.py`,
+  `yerk_ai/git_askpass.py`, `yerk_ai/github.py`, `yerk_ai/deploy.py`, `yerk_ai/pipeline.py`, `yerk_ai/needs.py`,
+  `yerk_ai/workers.py`, `.github/`, `pyproject.toml`, `uv.lock`, `units/` and `plugin:hands`. A folder entry takes every
+  file below it and never a longer name that only starts the same. The list in force is the running daemon's, its own
+  code and the install's yerkd.toml, never the pull request's tree, and the file that holds the default is on it, so a
+  change cannot loosen the list that judges it. Every need is judged on the head its cold read read, so a fix worker's
+  later commit on a listed path stops it too.
+- A person releases a need that waits as any held need: merges its pull request and runs `yerk needs done DAY N PR`, and
+  the deploy and live follow, that road unchanged.
+- budgets.toml: `[code] lines` 32,816 to 32,875, with its dated note; docs/budgets.md and docs/settings.md are what `yerk
+  docs own` writes. docs/GUIDE.md has a new section, Needs that wait for a deeper check, and the pipeline's header says
+  the step.
+- The tests: 14 new in tests/test_needs_pipeline.py, each named for the risk it pins: a listed path held with nothing
+  merged, landed or deployed and the field on the row; a change off the list merged exactly as on main; `[]` merging as on
+  main and reading nothing; a list in yerkd.toml replacing the default (two cases); a change git cannot read held, a head
+  the tree lacks and a tree with no origin/main; a branch in the hands plug-in held; a folder taking a file below it and
+  no entry taking a longer name; release by `yerk needs done` to deploy and live; a pull request that loosens the list in
+  its own tree judged by the running one; seven paths named as three and how many more at phone width; a fix worker's
+  later commit on a listed path; any other stop clearing the field. The file's other tests run with `[needs] sensitive =
+  []`, decision 40's road exactly, since their heads are no commits git could read.
+- **Upgrading**: nothing to change for the default. `[needs] sensitive` in yerkd.toml replaces the list whole and `[]`
+  turns the wait off (yerkd.toml.example writes the default out); yerkd reads it at its start. A need that waits stays
+  held until a person merges it and runs `yerk needs done`.
+
 ### status-failed-read-keeps-reading (#93)
 
 - One `/usage` call that fails no longer brings the stale `/status` card back. Since status-meters-kept-fresh yerkd keeps

@@ -745,7 +745,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-17: status-failed-read-keeps-reading raised it by 13, one /usage call that fails never brings the stale /status card back (status-meters-kept-fresh's judge read, 2026-11-17: a card's failed live ask was filed over the account's good kept reading, so the keeper left the account for 15 minutes and the cards showed the stream's reading, hours old), not folded to fit: usage.py 11 (readings holds a failed ask over a good kept reading in memory, under the lock, the file keeping that reading; keep files a good reading over an error whatever its time; the header and the docstrings), status.py 2 (collect hands the kept readings to a live card too; reading says why the ask failed beside a kept reading; the docstrings). 32,816: 32,803 plus 13.
 
-- `lines = 32816`
+2026-11-17: needs-risky-paths-wait raised it by 59, a need whose change touches a listed path waits for a deeper check before it merges (the owner's ask, 2026-11-17: review effort matched to risk, the tier set by the change and never by who built it, starting strict), not folded to fit: pipeline.py 47 (SENSITIVE, the default list, each entry beside what going wrong there means; waits, the paths a head changes against its merge base with origin/main read by git in the daemon's own tree, a change git cannot read waiting too; deeper_why, the why at phone width; the stop in merge before anything is merged or landed; stop's own field, cleared by any other stop; the header's step and the docstrings), words.py 8 (few, NEED_DEEPER and its two), config.py 3 ([needs] sensitive's description), needs.py 1 (a held why's lines as one line in `yerk needs list`). 32,875: main 834acb5's 32,816 plus 59.
+
+- `lines = 32875`
 
 ## Uncapped
 
