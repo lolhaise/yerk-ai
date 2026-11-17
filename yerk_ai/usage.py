@@ -9,11 +9,15 @@ and at most AT_ONCE run at a time (each holds about 350 MB for about 5 s, inside
 {"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead. Between cards
 the daemon reads again, one account at a time and through nice, each account whose kept reading is EVERY old (keep),
 so a card that asks nothing shows that reading where it is newer than the stream's, else the stream's with the model's
-own week, which no stream reads, from the last reading whatever its age (status.reading)."""
+own week, which no stream reads, from the last reading whatever its age (status.reading).
+
+A rate limit's rest ends when its usage comes back early (back): a live reading taken after it began, the card's or
+the keeper's, with no meter binding its model full ends it, so the next pick takes the account again."""
 from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 import subprocess
 import threading
@@ -24,7 +28,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from .accounts import TOKEN_ENV, Account, account_env
+from .accounts import TOKEN_ENV, Account, Cooldowns, account_env
 from .config import write_private
 from .engine import claude_bin
 
@@ -33,6 +37,7 @@ FRESH = 60.0            # a reading younger than this is used again
 TIMEOUT = 15.0          # one call, Claude Code's own start included (about 5 s on a busy box)
 AT_ONCE = 3
 EVERY = 900.0           # a kept reading this old is read again in the background (keep), one account at a time
+RATE = "rate_limit"     # the one kind of rest a meter can show over (a billing or login rest is no usage)
 ARGV = ["-p", "/usage", "--output-format", "json", "--no-session-persistence", "--setting-sources", "",
         "--strict-mcp-config", "--tools", ""]
 # Claude Code 2.1.304: "Current session: 30% used · resets Oct 23, 5:10pm (America/Toronto)", then
@@ -40,6 +45,7 @@ ARGV = ["-p", "/usage", "--output-format", "json", "--no-session-persistence", "
 LINE = re.compile(r"^\s*Current (session|week \(([^)]*)\))\s*:\s*(\d+(?:\.\d+)?)%\s*used(?:\s*·\s*resets\s+(.+?))?\s*$")
 WHEN = re.compile(r"^(?:([A-Za-z]{3}) (\d{1,2}), )?(\d{1,2})(?::(\d{2}))?\s*([ap]m)(?:\s*\(([^)]+)\))?$", re.I)
 _lock = threading.Lock()
+log = logging.getLogger("yerk.usage")
 
 
 def reset_at(text: str, now: float) -> float | None:
@@ -130,11 +136,12 @@ def readings(accounts: list[Account], state: Path, refresh: bool = True, now: fl
 
 
 def keep(accounts: list[Account], state: Path, tried: dict[str, float], clock: Callable[[], float] = time.time,
-         read_one: Callable[[Account], dict[str, Any]] | None = None) -> None:
+         read_one: Callable[[Account], dict[str, Any]] | None = None, cooldowns: Cooldowns | None = None) -> None:
     """One step of the daemon's keeper (Yerkd.keep_meters): of the accounts whose kept reading is EVERY old (none kept:
     the oldest) and not tried here within EVERY (`tried`, the keeper's own, in memory), the oldest is read once through
     nice and filed as `readings` files one, unless a newer one came meanwhile (a card's live ask). A failed read never
-    replaces a good reading: it only counts as the try. One account a step, so never two background reads at once."""
+    replaces a good reading: it only counts as the try. One account a step, so never two background reads at once.
+    A rate limit's rest that a filed reading shows over ends (back), the reading taken when the read began."""
     now = clock()
     kept = last(state)
     due = [a for a in accounts if not 0 <= now - float(kept.get(a.name, {}).get("at") or 0) < EVERY
@@ -152,6 +159,29 @@ def keep(accounts: list[Account], state: Path, tried: dict[str, float], clock: C
             return
         kept[a.name] = {**r, "at": ended, "source": "live"}
         write_private(state / FILE, json.dumps(kept))
+    if cooldowns is not None:
+        back(cooldowns, {a.name: {**r, "at": now, "source": "live"}})
+
+
+def full(reading: dict[str, Any], model: str = "") -> bool:
+    """Is a meter that binds `model` at 100% in a reading: the session, the week, and the model's own week when it is
+    `model`'s ('Fable' binds claude-fable-5-2), whichever model's it is when none is named."""
+    own = reading.get("model") or {}
+    mine = not model or (str(own.get("name") or "").split() or [""])[0].lower() in re.split(r"[^a-z]+", model.lower())
+    return any(float(w["pct"]) >= 100 for w in (reading.get("five_hour"), reading.get("seven_day"), own if mine else None) if w)
+
+
+def back(cooldowns: Cooldowns, got: dict[str, dict[str, Any]]) -> list[tuple[str, str]]:
+    """End each rate-limit rest whose usage came back before its end: its account's live reading in `got`, taken after the
+    rest began, has no meter binding the rest's model full. Returns (account, kind) for each rest ended."""
+    out: list[tuple[str, str]] = []
+    for name, r in got.items():
+        if "error" not in r and r.get("source") == "live" and (at := float(r.get("at") or 0)):
+            out += [(name, k) for k in cooldowns.lift(name, lambda kind, v: kind.partition(":")[0] == RATE and float(v.get("at") or at) < at
+                                                       and not full(r, kind.partition(":")[2]), now=at)]
+    for name, kind in out:
+        log.info("account %s: its %s rest ended early, its usage is back", name, kind)
+    return out
 
 
 def last(state: Path) -> dict[str, dict[str, Any]]:

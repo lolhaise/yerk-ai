@@ -85,7 +85,8 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     daemon answering, so nothing about rooms or units). `live`: the card asks each account's meters now
     (usage.py; a reading under a minute old is used again), else only a reading still that young is used;
     an account with neither shows, with no live ask, its last live reading where newer than the stream's, else the stream's
-    with the model's own week from that last one (reading)."""
+    with the model's own week from that last one (reading).
+    A rate limit's rest that a reading asked here shows over ends first (usage.back), so the card never says it."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "running": rooms is not None, "rooms": [], "units": []}
     conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
@@ -93,6 +94,8 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     if rooms is not None:
         out["units"].append(use("yerkd", [r for r in [stat(os.getpid(), proc)] if r]))   # its own, not its children
     compacted = ledger.compactions(midnight(now)) if rooms else {}   # each room's today, the ledger's: a restart keeps them
+    meters, fresh = Meters(state / "meters.json"), usage.readings(accounts, state, live, now, read_one)
+    usage.back(cooldowns, fresh)                       # a rest its reading shows over ends before a room's head picks
     for name, room in (rooms or {}).items():
         with room.lock:
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
@@ -117,7 +120,6 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
                               if r.get("next") and 0 <= r["next"] - now <= SOON), key=lambda j: j["next"])
     except (OSError, subprocess.SubprocessError, ValueError):
         out["jobs"] = None                             # the timer list could not be read
-    meters, fresh = Meters(state / "meters.json"), usage.readings(accounts, state, live, now, read_one)
     last = {} if live else usage.last(state)          # asked nothing: the last live reading, or the model's own week from it
     out["accounts"] = [{"name": a.name, "meter": reading(meters.reading(a), fresh.get(a.name), last.get(a.name), now),
                         "rests_until": (cooldowns.show(a.name, now) or [{}])[0].get("until"),

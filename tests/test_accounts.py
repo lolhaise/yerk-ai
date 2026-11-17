@@ -139,6 +139,25 @@ def test_a_rest_keyed_to_a_model_blocks_that_model_alone_and_ends_at_the_reset_i
     assert Cooldowns(tmp_path / "cool.json").until("one", now=1) is None and pick(A, c, now=1, model="fable") == A[0]
 
 
+def test_a_rest_lifted_before_its_end_keeps_that_end_and_a_failure_before_it_stays_to_its_own(tmp_path):
+    """usage.back lifts a rate limit's rest its usage shows over: the rest ends then, its end kept as `was`, its repeats
+    kept, every other rest standing. The same rest failing again before that end proves the reading wrong: the new rest
+    stays to its end, lift passes it by, and a reply on the account (clear) trusts the readings again."""
+    c = Cooldowns(tmp_path / "cool.json")
+    c.fail("one", "rate_limit", lambda r: 30, now=0, model="fable", until=5000)
+    c.fail("one", "billing", lambda r: 600, now=0)
+    rate = lambda kind, rest: kind.startswith("rate_limit")                # noqa: E731
+    assert c.lift("one", rate, now=100) == ["rate_limit:fable"] and pick(A, c, now=101, model="fable") == A[1]   # billing stands
+    assert [r["kind"] for r in c.show("one", now=101)] == ["billing"] and c.lift("one", rate, now=101) == []
+    assert Cooldowns(tmp_path / "cool.json").data["one"]["rate_limit:fable"] == {"until": 100, "repeats": 1, "at": 0, "was": 5000}
+    assert c.fail("one", "rate_limit", lambda r: 30, now=200, model="fable", until=5000) == 5000    # before 5000: wrong
+    assert c.lift("one", rate, now=300) == [] and c.until("one", now=700, model="fable") == 5000
+    assert c.show("one", now=300)[0] == {"kind": "rate_limit:fable", "until": 5000, "repeats": 2, "stays": True}
+    c.clear("one", model="fable")
+    c.fail("one", "rate_limit", lambda r: 30, now=400, model="fable", until=5000)
+    assert c.lift("one", rate, now=500) == ["rate_limit:fable"] and c.until("one", now=501) is None
+
+
 def test_login_state_window():
     now = 10 * DAY_MS
     assert login_state(None, True, now)[0] == "dead"

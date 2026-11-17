@@ -179,9 +179,9 @@ def account_env(account: Account, base: Mapping[str, str] | None = None) -> dict
 
 
 class Cooldowns:
-    """Resting accounts, per account and failure kind, with doubling backoff, in one JSON file
-    in the state folder: {account: {kind or kind:model: {until, repeats}}}. A restart keeps them, a hand edit
-    (`yerk accounts cool`) is seen at the next pick, and a delivered reply clears the account."""
+    """Resting accounts, per account and failure kind, with doubling backoff, in one JSON file in the state folder:
+    {account: {kind or kind:model: {until, repeats, at}}}. A restart keeps them, a hand edit (`yerk accounts cool`) is seen
+    at the next pick, a delivered reply clears the account, and a rate limit's rest ends on a reading of its usage back (lift)."""
 
     def __init__(self, path: Path | None = None):
         self.path = path
@@ -211,15 +211,27 @@ class Cooldowns:
     def fail(self, name: str, kind: str, seconds: Callable[[int], float], now: float | None = None, model: str = "",
              until: float | None = None) -> float:
         """Rest `name` for seconds(repeats of this kind so far), or until `until` when the failure named when its limit
-        resets; a `model` keys the rest to that model alone (kind:model, a weekly meter being per model). Returns the end."""
+        resets; a `model` keys the rest to that model alone (kind:model, a weekly meter being per model). A failure before
+        the end a reading took away (lift's `was`) proves the meters blind to this limit: its rest stays to its end. Returns the end."""
         self._refresh()
         now = time.time() if now is None else now
         kinds, key = self.data.setdefault(name, {}), f"{kind}:{model}" if model else kind
-        repeats = int(kinds.get(key, {}).get("repeats", 0))
+        old = kinds.get(key, {})
+        repeats = int(old.get("repeats", 0))
         until = until if until and until > now else now + seconds(repeats)
-        kinds[key] = {"until": until, "repeats": repeats + 1, "at": now}
+        kinds[key] = {"until": until, "repeats": repeats + 1, "at": now, **({"stays": 1} if float(old.get("was") or 0) > now else {})}
         self._save()
         return until
+
+    def lift(self, name: str, over: Callable[[str, dict[str, Any]], bool], now: float) -> list[str]:
+        """End at `now` each rest of `name` that over(kind, rest) says is over before its end (usage.back: a live reading shows
+        its usage back), its end kept as `was` and its repeats kept; one that stays (fail) is left. Returns the kinds ended."""
+        self._refresh()
+        kinds = self.data.get(name, {})
+        if ended := [k for k, v in kinds.items() if float(v.get("until") or 0) > now and not v.get("stays") and over(k, v)]:
+            kinds.update({k: {**kinds[k], "until": now, "was": kinds[k]["until"]} for k in ended})
+            self._save()
+        return ended
 
     def set(self, name: str, kind: str, until: float) -> None:
         """A rest set by hand; the repeat count is kept."""
@@ -238,18 +250,16 @@ class Cooldowns:
             self._save()
 
     def show(self, name: str, now: float | None = None) -> list[dict[str, Any]]:
-        """The account's active rests, longest first."""
+        """The account's active rests, longest first, each marked when no reading may end it (`stays`, fail)."""
         self._refresh()
         now = time.time() if now is None else now
-        rows = [{"kind": k, "until": v["until"], "repeats": v.get("repeats", 0)}
+        rows = [{"kind": k, "until": v["until"], "repeats": v.get("repeats", 0), "stays": bool(v.get("stays"))}
                 for k, v in self.data.get(name, {}).items() if v.get("until", 0) > now]
         return sorted(rows, key=lambda r: -r["until"])
 
     def _save(self) -> None:
-        if self.path:
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.data))
-            os.replace(tmp, self.path)
+        if self.path:                         # a temp file of its own: a room's thread and the usage look write at once
+            write_private(self.path, json.dumps(self.data))
             self.mtime = self.path.stat().st_mtime_ns
 
 

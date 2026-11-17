@@ -743,7 +743,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: status-meters-kept-fresh raised it by 52, the room's /status is current from its first answer (the owner's ask, 2026-11-16 evening: the first answer said "last reading 8 h 13 min ago" for an account no turn had run on since the morning, its week 57% where the live meter said 59%), not folded to fit: usage.py 29 (EVERY; keep, one step of the daemon's keeper: the oldest due account read once through nice, filed under the lock unless a newer reading came meanwhile, a failed read never over a good one; read's nice; the header and the docstrings), daemon.py 17 (keep_meters, a step in a thread every 30 s, a failed step one warning for each distinct message; its place in run_discord; the import), status.py 6 (reading: the kept reading whole where it is newer than the stream's, as source "kept" with its own at; the docstrings). 32,803: 32,751 plus 52.
 
-- `lines = 32803`
+2026-11-17: need-2026-11-17-104 raised it by 42, an account's rest ends when its usage comes back early, for every room (need 104, 11:45: a rate limit had rested an account on Fable until the reset it named, days off; its usage came back early, the Fable week at 0% with the same reset, and the rest stood, so the picker skipped the account and put a worker on a busy one, where it waited), not folded to fit: usage.py 30 (full, the meters that bind a rest's model; back, a live reading taken after a rest began with none of them full ends it, a log line each; keep hands it each reading it files; RATE and the logger; the header), accounts.py 10 (Cooldowns.lift, the rest ended and its end kept; fail, the rest after a wrong early end stays to its end; show marks it; _save through config.write_private, a temp file of each writer's own, since a room's thread and the keeper write at once), status.py 2 (the card's own reading ends a rest before a line is drawn), daemon.py 0 (the keeper is handed the rests). 32,845: main c07ebc8's 32,803 plus 42.
+
+- `lines = 32845`
 
 ## Uncapped
 
