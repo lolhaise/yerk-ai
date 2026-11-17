@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-16
 
-### status-meters-kept-fresh (#?)
+### status-meters-kept-fresh (#91)
 
 - `/status` typed in a room is now current from its first answer. Since status-card-at-once that answer is built from
   what is on hand, and an account no room's turn had run on since the morning showed its stream's reading, 8 h 13 min
