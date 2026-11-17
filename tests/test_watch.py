@@ -92,7 +92,7 @@ def test_a_watched_channel_is_read_as_the_rooms_own_and_never_written_to(tmp_pat
         return None
     monkeypatch.setattr(dmod.discord, "Client", lambda **kw: bot)
     monkeypatch.setattr(DiscordChannel, "start", at_once)
-    for name in ("serve_http", "reap"):
+    for name in ("serve_http", "reap", "keep_meters"):
         monkeypatch.setattr(d, name, at_once)
     monkeypatch.setattr(d.beat, "tick", at_once)
     monkeypatch.setattr(d.workers, "begin", lambda loop: None)

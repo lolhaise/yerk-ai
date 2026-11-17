@@ -363,6 +363,82 @@ def test_a_status_read_that_does_not_ask_never_waits_on_a_card_that_does(tmp_pat
     assert usage.readings(accounts, tmp_path, False, NOW) == {"five": {**TANK["five"], "at": NOW, "source": "live"}}
 
 
+# kept-fresh: the daemon's keeper (Yerkd.keep_meters) runs usage.keep every 30 s, so a card that asks nothing has a live
+# reading at most usage.EVERY old to show; on a fake reader and a pinned clock, no Claude Code started
+def kept_at(tmp_path, minutes):
+    """usage.json with each named account's TANK reading kept that many minutes before NOW, as `readings` files one."""
+    (tmp_path / usage.FILE).write_text(json.dumps({n: {**TANK[n], "at": NOW - m * 60, "source": "live"} for n, m in minutes.items()}))
+
+
+def test_kept_fresh_e_each_step_reads_the_oldest_reading_past_every_and_only_that_one(tmp_path):
+    """kept-fresh (e) Four accounts kept 5, 20, 1 and 16 minutes ago: a step reads the 20-minute one only and files it as
+    `readings` would, the next the 16-minute one, the next nothing; never two in one step."""
+    accounts, asked, tried = five_accounts(tmp_path)[:4], [], {}                 # five, one, four, two
+    kept_at(tmp_path, {"five": 5, "one": 20, "four": 1, "two": 16})
+    for _ in range(3):
+        usage.keep(accounts, tmp_path, tried, clock=lambda: NOW, read_one=lambda a: asked.append(a.name) or TANK[a.name])
+    filed = usage.last(tmp_path)
+    assert asked == ["one", "two"] and usage.EVERY == 900.0 and filed["one"] == {**TANK["one"], "at": NOW, "source": "live"}
+    assert {n: r["at"] for n, r in filed.items()} == {"five": NOW - 300, "one": NOW, "four": NOW - 60, "two": NOW}
+
+
+def test_kept_fresh_f_a_failed_read_leaves_a_good_reading_and_waits_every_and_no_reading_takes_the_error(tmp_path):
+    """kept-fresh (f) An account with no entry is read first and takes the failure as `readings` would. One with a good
+    reading 20 minutes old keeps it as it was when its read fails, and is not tried again until EVERY has passed."""
+    accounts, asked, tried, t = five_accounts(tmp_path)[:2], [], {}, [NOW]       # five, one
+    kept_at(tmp_path, {"five": 20})
+    good, failed = usage.last(tmp_path)["five"], {"error": "no answer in 15 s"}
+
+    def step():
+        usage.keep(accounts, tmp_path, tried, clock=lambda: t[0], read_one=lambda a: asked.append(a.name) or dict(failed))
+    step()
+    assert asked == ["one"] and usage.last(tmp_path) == {"five": good, "one": {**failed, "at": NOW, "source": "live"}}
+    step()
+    assert asked == ["one", "five"] and usage.last(tmp_path)["five"] == good
+    t[0] = NOW + usage.EVERY - 1
+    step()
+    assert asked == ["one", "five"] and usage.last(tmp_path)["five"] == good             # tried, and in memory only
+    t[0] = NOW + usage.EVERY
+    step()
+    assert asked == ["one", "five", "five"] and usage.last(tmp_path)["five"] == good
+
+
+def test_kept_fresh_g_a_reading_a_card_filed_while_a_background_read_ran_is_never_overwritten_by_it(tmp_path):
+    """kept-fresh (g) A card's live ask files a reading while the background read is in flight: that newer reading stays.
+    With none filed meanwhile, the background read is filed with the time it ended."""
+    accounts, t = five_accounts(tmp_path)[:1], [NOW]                              # five
+    card, old = {**TANK["five"], "seven_day": {"pct": 2.0, "resets": NOW + 38 * H}}, TANK["five"]
+
+    def in_flight(a):
+        usage.readings(accounts, tmp_path, True, NOW + 3, lambda a: card)        # the card's own ask, the lock free
+        t[0] = NOW + 9
+        return old
+    kept_at(tmp_path, {"five": 20})
+    usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=in_flight)
+    assert usage.last(tmp_path)["five"] == {**card, "at": NOW + 3, "source": "live"}
+
+    def slow(a):
+        t[0] = NOW + 9
+        return old
+    t[0] = NOW
+    kept_at(tmp_path, {"five": 20})
+    usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=slow)
+    assert usage.last(tmp_path)["five"] == {**old, "at": NOW + 9, "source": "live"}
+
+
+def test_kept_fresh_h_the_background_read_starts_claude_code_through_nice_and_the_cards_ask_does_not(tmp_path, monkeypatch):
+    """kept-fresh (h) The keeper's read is `nice -n 19` then Claude Code's own argv, so it never competes with a room's turn;
+    the card's live ask (readings) is Claude Code's argv as it was. subprocess.run is faked: nothing starts."""
+    accounts, argvs = five_accounts(tmp_path)[:1], []
+    accounts[0].config_dir.mkdir(parents=True)
+    out = json.dumps({"result": "Current session: 30% used · resets 5:10pm\nCurrent week (all models): 72% used · resets 5:10pm\n"})
+    monkeypatch.setattr(usage.subprocess, "run", lambda argv, **kw: argvs.append(argv) or SimpleNamespace(stdout=out))
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW)
+    usage.readings(accounts, tmp_path, True, NOW + usage.FRESH)
+    assert argvs == [["nice", "-n", "19", usage.claude_bin(), *usage.ARGV], [usage.claude_bin(), *usage.ARGV]]
+    assert usage.last(tmp_path)["five"]["seven_day"]["pct"] == 72.0
+
+
 def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():
     def pinned(rooms):
         s = {"at": NOW, "running": True, "units": [], "workers": [], "jobs": [], "accounts": [], "stalls": [],

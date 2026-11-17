@@ -140,8 +140,8 @@ def starts(tmp_path):
 def run_discord(tmp_path, monkeypatch, discord_table):
     """Yerkd.run_discord as yerkd runs it, on a copy of the example layer whose room is in channel ROOM_CH and
     a yerkd.toml with this [discord] table; the client is a Bot (room channel in guild 1), and the gateway
-    connection, the HTTP server, the reaper, the beat and the workers' pump return at once. The daemon and
-    the adapter it built."""
+    connection, the HTTP server, the reaper, the beat, the meters' keeper and the workers' pump return at once.
+    The daemon and the adapter it built."""
     priv = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, priv)
     rooms = priv / "rooms.toml"
@@ -162,6 +162,7 @@ def run_discord(tmp_path, monkeypatch, discord_table):
     monkeypatch.setattr(DiscordChannel, "start", start)
     monkeypatch.setattr(d, "serve_http", at_once)
     monkeypatch.setattr(d, "reap", at_once)
+    monkeypatch.setattr(d, "keep_meters", at_once)
     monkeypatch.setattr(d.beat, "tick", at_once)
     monkeypatch.setattr(d.workers, "begin", lambda loop: None)
     asyncio.run(d.run_discord())
@@ -564,6 +565,23 @@ def test_the_first_answer_has_the_models_own_week_from_the_last_live_reading_and
     first = seen[0][1].splitlines()
     assert reads == ["one"] and [p for p, _ in got] == [{}, {"live": True}] and got[0][1]["accounts"][0]["meter"]["source"] == "stream"
     assert first[first.index(words.TANK) + 1] == words.METERS_ASKED and f"{words.ON_THIS}① wk 44% · Fable ⚠️83%" in first
+    assert it.said == [seen[0], ("edit", "\n".join(status.room_card(got[1][1], ROOM)), None)]
+
+
+def test_kept_fresh_d_the_first_answer_has_the_kept_readings_week_and_model_and_the_edit_still_comes_once(y, monkeypatch):
+    """kept-fresh (d) Every account as the owner found it: its stream's reading 8 hours old (57%), its live reading kept 10
+    minutes ago by the daemon's keeper (59%). The first answer shows the kept week and model on the account's line, no age
+    line, and still says the meters are being asked, since that reading is over a minute old; the edit comes once."""
+    now = time.time()
+    (y.state / "meters.json").write_text(json.dumps({"one": {"at": now - 8 * 3600, "source": "stream",
+                                                             "seven_day": {"pct": 57.0, "resets": now + 4 * 86400}}}))
+    (y.state / usage.FILE).write_text(json.dumps({"one": {"seven_day": {"pct": 59.0, "resets": now + 4 * 86400}, "at": now - 600,
+                                                          "model": {"name": "Fable", "pct": 83.0, "resets": now + 3 * 86400}, "source": "live"}}))
+    it, seen, got, reads = held_status(y, monkeypatch)
+    first = seen[0][1].splitlines()
+    assert first[first.index(words.TANK) + 1] == words.METERS_ASKED and f"{words.ON_THIS}① wk 59% · Fable ⚠️83%" in first
+    assert not any("57%" in x or "last reading" in x for x in first)
+    assert reads == ["one"] and [p for p, _ in got] == [{}, {"live": True}] and got[0][1]["accounts"][0]["meter"]["source"] == "kept"
     assert it.said == [seen[0], ("edit", "\n".join(status.room_card(got[1][1], ROOM)), None)]
 
 

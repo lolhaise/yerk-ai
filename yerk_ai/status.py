@@ -84,7 +84,8 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     """The /status answer. `rooms`: the daemon's live rooms (None: collected by `yerk status` with no
     daemon answering, so nothing about rooms or units). `live`: the card asks each account's meters now
     (usage.py; a reading under a minute old is used again), else only a reading still that young is used;
-    an account with neither shows the stream's reading, and with no live ask the model's own week from its last one (reading)."""
+    an account with neither shows, with no live ask, its last live reading where newer than the stream's, else the stream's
+    with the model's own week from that last one (reading)."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "running": rooms is not None, "rooms": [], "units": []}
     conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
@@ -117,7 +118,7 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     except (OSError, subprocess.SubprocessError, ValueError):
         out["jobs"] = None                             # the timer list could not be read
     meters, fresh = Meters(state / "meters.json"), usage.readings(accounts, state, live, now, read_one)
-    last = {} if live else usage.last(state)          # asked nothing: the model's own week from the last live reading
+    last = {} if live else usage.last(state)          # asked nothing: the last live reading, or the model's own week from it
     out["accounts"] = [{"name": a.name, "meter": reading(meters.reading(a), fresh.get(a.name), last.get(a.name), now),
                         "rests_until": (cooldowns.show(a.name, now) or [{}])[0].get("until"),
                         "bill": next_bill(a.bill_day, now)} for a in accounts]
@@ -168,11 +169,16 @@ def spend_line(sp: dict[str, Any], day: str) -> str:
 
 
 def reading(stream: dict[str, Any], live: dict[str, Any] | None, last: dict[str, Any] | None, now: float) -> dict[str, Any]:
-    """The live reading when there is one, else the stream's, with why the live one failed (`--json`) and, where the stream
-    has a reading, the model's own week from `last` (the account's last live reading, any age) while that week runs, the
-    time of the reading it came from beside it (`at`: never in a live reading's), for the card's age line (tank)."""
+    """The live reading when there is one; else `last` (the account's last live reading, any age; the daemon's keeper
+    reads it every usage.EVERY) where it has no error and is newer than the stream's, or the stream has none: whole but
+    for a window whose reset has passed, as source "kept" with its own `at`, never read as live, its age said (tank);
+    else the stream's, with why the live one failed (`--json`) and, where the stream has a reading, the model's own week
+    from `last` while that week runs, the time of the reading it came from beside it (`at`: never in a live reading's)."""
     if live and "error" not in live:
         return live
+    if last and "error" not in last and last.get("at") is not None and ("error" in stream or float(last["at"]) > float(stream.get("at") or 0)):
+        return {**{w: x for w, x in last.items() if w in ("five_hour", "seven_day", "model")
+                   and (x.get("resets") is None or float(x["resets"]) > now)}, "at": last["at"], "source": "kept"}
     model, at = dict((last or {}).get("model") or {}), (last or {}).get("at")
     carry = model and at is not None and "error" not in stream and float(model.get("resets") or 0) > now
     return {**stream, **({"live_error": live["error"]} if live else {}), **({"model": {**model, "at": at}} if carry else {})}
@@ -248,8 +254,8 @@ def tank(accounts: list[dict[str, Any]], now: float, live: bool = False) -> tupl
     """The numbers both cards print (account_lines, room_card): per account its tag, `green` when its week resets soonest
     (two accounts or more), its state mark, its meters in words (None: no reading yet), the resets its second line says
     (the model's own only when it is not the week's, within a minute), its bill, until when it rests, its weekly reset,
-    and the age of the oldest reading not live on its line (the stream's, and a model's week kept from an earlier live one by
-    its `at`) where that is said (None: not said); then each window's `next` line, in words."""
+    and the age of the oldest reading not live on its line (the stream's or the kept one's, and a model's week kept from an
+    earlier live one, each by its `at`) where that is said (None: not said); then each window's `next` line, in words."""
     W = words
 
     def ahead(w: str) -> dict[str, float]:

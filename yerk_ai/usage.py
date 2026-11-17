@@ -6,8 +6,10 @@ call. Yerk AI reads only what Claude Code prints.
 
 A reading is kept FRESH seconds in <state>/usage.json, so a card asked twice in a minute starts no second Claude Code,
 and at most AT_ONCE run at a time (each holds about 350 MB for about 5 s, inside yerkd's unit). Anything that fails is
-{"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead. A card that asks
-nothing takes the model's own week, which no stream reads, from the last reading whatever its age (status.reading)."""
+{"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead. Between cards
+the daemon reads again, one account at a time and through nice, each account whose kept reading is EVERY old (keep),
+so a card that asks nothing shows that reading where it is newer than the stream's, else the stream's with the model's
+own week, which no stream reads, from the last reading whatever its age (status.reading)."""
 from __future__ import annotations
 
 import contextlib
@@ -30,6 +32,7 @@ FILE = "usage.json"
 FRESH = 60.0            # a reading younger than this is used again
 TIMEOUT = 15.0          # one call, Claude Code's own start included (about 5 s on a busy box)
 AT_ONCE = 3
+EVERY = 900.0           # a kept reading this old is read again in the background (keep), one account at a time
 ARGV = ["-p", "/usage", "--output-format", "json", "--no-session-persistence", "--setting-sources", "",
         "--strict-mcp-config", "--tools", ""]
 # Claude Code 2.1.304: "Current session: 30% used · resets Oct 23, 5:10pm (America/Toronto)", then
@@ -85,14 +88,15 @@ def parse(text: str, now: float) -> dict[str, Any]:
     return out
 
 
-def read(account: Account, cwd: Path, timeout: float = TIMEOUT) -> dict[str, Any]:
-    """One account's meters from `claude -p /usage` on its config folder's own login, or {"error": why}."""
+def read(account: Account, cwd: Path, timeout: float = TIMEOUT, nice: bool = False) -> dict[str, Any]:
+    """One account's meters from `claude -p /usage` on its config folder's own login, or {"error": why}; with `nice`
+    (the background read, keep) through `nice -n 19`, so it never competes with a room's turn."""
     if not account.config_dir.is_dir():
         return {"error": "no config folder"}                 # Claude Code would make one; it has no login to read
     env = {k: v for k, v in account_env(account).items() if k != TOKEN_ENV}
-    now = time.time()
+    now, argv = time.time(), ["nice", "-n", "19", claude_bin(), *ARGV] if nice else [claude_bin(), *ARGV]
     try:
-        p = subprocess.run([claude_bin(), *ARGV], env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(argv, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
         meters = parse(str(json.loads(p.stdout or "{}").get("result") or ""), now)
     except subprocess.TimeoutExpired:
         return {"error": f"no answer in {timeout:g} s"}
@@ -123,6 +127,31 @@ def readings(accounts: list[Account], state: Path, refresh: bool = True, now: fl
             except OSError:
                 pass                                     # the card still shows them; the next one asks again
     return {a.name: kept[a.name] for a in accounts if 0 <= now - float(kept.get(a.name, {}).get("at") or -FRESH) < FRESH}
+
+
+def keep(accounts: list[Account], state: Path, tried: dict[str, float], clock: Callable[[], float] = time.time,
+         read_one: Callable[[Account], dict[str, Any]] | None = None) -> None:
+    """One step of the daemon's keeper (Yerkd.keep_meters): of the accounts whose kept reading is EVERY old (none kept:
+    the oldest) and not tried here within EVERY (`tried`, the keeper's own, in memory), the oldest is read once through
+    nice and filed as `readings` files one, unless a newer one came meanwhile (a card's live ask). A failed read never
+    replaces a good reading: it only counts as the try. One account a step, so never two background reads at once."""
+    now = clock()
+    kept = last(state)
+    due = [a for a in accounts if not 0 <= now - float(kept.get(a.name, {}).get("at") or 0) < EVERY
+           and not 0 <= now - tried.get(a.name, -EVERY) < EVERY]
+    if not due:
+        return
+    a = min(due, key=lambda a: float(kept.get(a.name, {}).get("at") or 0))
+    tried[a.name] = now
+    r = (read_one or (lambda a: read(a, state, nice=True)))(a)
+    ended = clock()
+    with _lock:                                          # a card's live ask files under it too: its newer reading stays
+        kept = last(state)
+        had = kept.get(a.name)
+        if had and (float(had.get("at") or 0) > now or "error" in r and "error" not in had):
+            return
+        kept[a.name] = {**r, "at": ended, "source": "live"}
+        write_private(state / FILE, json.dumps(kept))
 
 
 def last(state: Path) -> dict[str, dict[str, Any]]:

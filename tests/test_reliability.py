@@ -5,6 +5,7 @@ it can, a ready after a lost gateway session catches the channel up, a ledger ne
 names the version and the commit, as text and as one JSON document."""
 import asyncio
 import json
+import logging
 import os
 import signal
 import sqlite3
@@ -15,7 +16,7 @@ import pytest
 import yerk_ai.channels.discord as dmod
 from test_discord import HOOK, OWNER, ROOM_CH, Client, Msg, Room, run
 from test_room import Chan, env, send, wait_idle  # noqa: F401  (env: the room fixture)
-from yerk_ai import __version__, cli, words
+from yerk_ai import __version__, cli, usage, words
 from yerk_ai.accounts import Account
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -73,6 +74,49 @@ def test_sigterm_ends_the_daemon_clean_telling_systemd_and_a_task_that_raises_st
     with pytest.raises(OSError):
         asyncio.run(raised())
     assert closed == [True]                            # no stop ran for an error
+
+
+def test_kept_fresh_i_the_meters_keeper_says_each_failing_step_once_runs_the_next_and_ends_with_the_daemon(tmp_path, monkeypatch, caplog):
+    """kept-fresh (i) The daemon's keeper (Yerkd.keep_meters) on a fake step, one a tick: a step that raises is one warning
+    for each distinct message and the next step still runs; SIGTERM ends it with the daemon's other tasks; with no account
+    it never steps."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    steps: list[list[str]] = []
+
+    def step(accounts, state, tried):
+        steps.append([a.name for a in accounts])
+        if len(steps) <= 3:
+            raise OSError("usage.json could not be written" if len(steps) < 3 else "No space left on device")
+    monkeypatch.setattr(usage, "keep", step)
+    monkeypatch.setattr("yerk_ai.daemon.notify", lambda *a: None)
+    caplog.set_level(logging.WARNING, logger="yerk.daemon")
+
+    async def close():
+        pass
+
+    async def five():
+        while len(steps) < 5:
+            await asyncio.sleep(0.01)
+
+    async def stopped():
+        tasks = [asyncio.create_task(y.keep_meters(0.01)), asyncio.create_task(asyncio.Event().wait())]
+        await asyncio.wait_for(five(), 10)
+        asyncio.get_running_loop().call_later(0.05, os.kill, os.getpid(), signal.SIGTERM)
+        await y.until_stopped(tasks, close)
+        return tasks
+    tasks = asyncio.run(stopped())
+    told = [r.getMessage() for r in caplog.records if r.name == "yerk.daemon" and r.levelno == logging.WARNING]
+    assert steps[:5] == [["one"]] * 5 and len(told) == 2 and all(t.cancelled() for t in tasks)
+    assert "OSError: usage.json could not be written" in told[0] and "OSError: No space left on device" in told[1]
+    y.accounts, steps[:] = [], []
+
+    async def idle():
+        task = asyncio.create_task(y.keep_meters(0.01))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(idle())
+    assert steps == []
 
 
 def test_a_turn_that_crashes_is_said_in_the_room_and_its_rows_are_closed(env, monkeypatch):
