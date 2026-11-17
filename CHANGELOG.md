@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-17
 
-### verify-recipe (#?)
+### verify-recipe (#95)
 
 - A change can now be proven on the running daemon before its last commit, offline and in about 10 seconds, and not only
   on its tests. No test had ever seen the daemon do its own work: both harnesses that run `Yerkd.run_discord`
