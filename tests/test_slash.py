@@ -140,8 +140,8 @@ def starts(tmp_path):
 def run_discord(tmp_path, monkeypatch, discord_table):
     """Yerkd.run_discord as yerkd runs it, on a copy of the example layer whose room is in channel ROOM_CH and
     a yerkd.toml with this [discord] table; the client is a Bot (room channel in guild 1), and the gateway
-    connection, the HTTP server, the reaper, the beat, the meters' keeper and the workers' pump return at once.
-    The daemon and the adapter it built."""
+    connection, the HTTP server, the reaper, the beat, the meters' keeper and the workers' pump return at once,
+    the keeper marking that it started (`keeper_started`). The daemon and the adapter it built."""
     priv = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, priv)
     rooms = priv / "rooms.toml"
@@ -158,11 +158,14 @@ def run_discord(tmp_path, monkeypatch, discord_table):
 
     async def at_once(*a, **kw):
         return None
+
+    async def keeper(*a, **kw):
+        d.keeper_started = True
     monkeypatch.setattr(dmod.discord, "Client", lambda **kw: Bot({ROOM_CH: 1}))
     monkeypatch.setattr(DiscordChannel, "start", start)
     monkeypatch.setattr(d, "serve_http", at_once)
     monkeypatch.setattr(d, "reap", at_once)
-    monkeypatch.setattr(d, "keep_meters", at_once)
+    monkeypatch.setattr(d, "keep_meters", keeper)
     monkeypatch.setattr(d.beat, "tick", at_once)
     monkeypatch.setattr(d.workers, "begin", lambda loop: None)
     asyncio.run(d.run_discord())
@@ -492,9 +495,10 @@ def test_status_in_a_room_is_that_rooms_card_and_another_room_gets_its_own_head(
 LIVE = {"five_hour": {"pct": 7.0, "resets": None}, "seven_day": {"pct": 1.0, "resets": None}}    # what the /usage call reads
 
 
-def held_status(y, monkeypatch, it=None):
-    """/status in the room while the account's /usage call (usage.read) waits on an event: the interaction, what it had
-    said when the call began, each status_now payload with its answer, and the accounts the call was made for."""
+def held_status(y, monkeypatch, it=None, answer=LIVE):
+    """/status in the room while the account's /usage call (usage.read) waits on an event, then reads `answer`: the
+    interaction, what it had said when the call began, each status_now payload with its answer, and the accounts the
+    call was made for."""
     gate, got, reads, real = threading.Event(), [], [], y.status_now
 
     async def spy(payload, *a):
@@ -504,7 +508,7 @@ def held_status(y, monkeypatch, it=None):
     def read(account, cwd, timeout=None):
         reads.append(account.name)
         assert gate.wait(20)
-        return dict(LIVE)
+        return dict(answer)
     monkeypatch.setattr(usage, "read", read)
     monkeypatch.setattr(y, "status_now", spy)
     dc, _, _ = wire(y)
@@ -583,6 +587,28 @@ def test_kept_fresh_d_the_first_answer_has_the_kept_readings_week_and_model_and_
     assert not any("57%" in x or "last reading" in x for x in first)
     assert reads == ["one"] and [p for p, _ in got] == [{}, {"live": True}] and got[0][1]["accounts"][0]["meter"]["source"] == "kept"
     assert it.said == [seen[0], ("edit", "\n".join(status.room_card(got[1][1], ROOM)), None)]
+
+
+def test_failed_read_i_a_failed_ask_edits_in_the_kept_reading_not_the_streams_older_one_once(y, monkeypatch):
+    """failed-read (i) The stream's reading 8 hours old (57%), the live reading kept 10 minutes ago (59%), and the meters'
+    /usage call times out: the first answer shows the kept reading and says the meters are being asked; the edit, once,
+    still carries the kept week and model with one age line, 10 min, never the stream's 57% (main edited in the stream's
+    week with "last reading 8 h 0 min ago"), and usage.json keeps that reading."""
+    now = time.time()
+    (y.state / "meters.json").write_text(json.dumps({"one": {"at": now - 8 * 3600, "source": "stream",
+                                                             "seven_day": {"pct": 57.0, "resets": now + 4 * 86400}}}))
+    good = {"seven_day": {"pct": 59.0, "resets": now + 4 * 86400}, "model": {"name": "Fable", "pct": 83.0, "resets": now + 3 * 86400},
+            "at": now - 600, "source": "live"}
+    (y.state / usage.FILE).write_text(json.dumps({"one": good}))
+    it, seen, got, reads = held_status(y, monkeypatch, answer={"error": "no answer in 15 s"})
+    first, edit = seen[0][1].splitlines(), it.said[-1][1].splitlines()
+    assert first[first.index(words.TANK) + 1] == words.METERS_ASKED and f"{words.ON_THIS}① wk 59% · Fable ⚠️83%" in first
+    assert reads == ["one"] and [p for p, _ in got] == [{}, {"live": True}]
+    assert it.said == [seen[0], ("edit", "\n".join(status.room_card(got[1][1], ROOM)), None)]
+    assert f"{words.ON_THIS}① wk 59% · Fable ⚠️83%" in edit and not any("57%" in x for x in edit)
+    assert [x for x in edit if "last reading" in x] == ["①: last reading 10 min ago"] and words.METERS_ASKED not in edit
+    assert got[1][1]["accounts"][0]["meter"]["live_error"] == "no answer in 15 s"
+    assert json.loads((y.state / usage.FILE).read_text()) == {"one": good}
 
 
 def test_an_edit_discord_refuses_is_one_log_line_and_the_first_answer_stands(y, monkeypatch, caplog):
