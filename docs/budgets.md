@@ -741,7 +741,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-16: texting-9b-cards raised it by 8, a held card says why in the code's few words and never the writer's reasoning, the writer's whole reason is kept in the ledger, and a card with no draft only asks (the owner's send on one queued a row with no text that stopped the sender for everyone until a restart), of text-as-you (the owner's ask, 2026-11-12; on the cards, 2026-11-16), not folded to fit: texting/holds.py 3 (a card with no draft, and the owner's send on it), texting/sender.py 2 (a row with no text is dropped, never handed), texting/writer.py 1 (the card's line with a draft), daemon.py 1 (the tool's why gives the check's reason for a text the check held), words.py 1 (the refusal's line). 32,751: 32,743 plus 8.
 
-- `lines = 32751`
+2026-11-16: status-meters-kept-fresh raised it by 52, the room's /status is current from its first answer (the owner's ask, 2026-11-16 evening: the first answer said "last reading 8 h 13 min ago" for an account no turn had run on since the morning, its week 57% where the live meter said 59%), not folded to fit: usage.py 29 (EVERY; keep, one step of the daemon's keeper: the oldest due account read once through nice, filed under the lock unless a newer reading came meanwhile, a failed read never over a good one; read's nice; the header and the docstrings), daemon.py 17 (keep_meters, a step in a thread every 30 s, a failed step one warning for each distinct message; its place in run_discord; the import), status.py 6 (reading: the kept reading whole where it is newer than the stream's, as source "kept" with its own at; the docstrings). 32,803: 32,751 plus 52.
+
+- `lines = 32803`
 
 ## Uncapped
 

@@ -322,13 +322,13 @@ def test_the_first_answer_has_the_models_own_week_from_the_last_live_reading_bes
 
 def test_a_kept_model_week_an_hour_old_or_more_says_so_once_on_the_cards_own_age_line(tmp_path):
     """(b) Kept two hours: the card's own age line says it, once. Where the stream's reading earns that line too, it is
-    still one line, and it says the older of the two ages, so no number on the account's line is older than it says."""
+    still one line, and it says the older of the two ages, so no number on the account's line is older than it says. (A
+    kept reading newer than the stream's is the meter whole: kept-fresh (a) and (c) below.)"""
     _, lines = on_hand(tmp_path, kept(2 * H))
     assert lines[4:7] == ["① wk 44% · Fable ⚠️83%", "↻ wk Mon 2p · Fable Sat 9a", "①: last reading 2 h 0 min ago"]
     assert sum("last reading" in x for x in lines) == 1
-    for stream_age, kept_age, said in ((3 * H, 2 * H, "3 h 0 min"), (2 * H, 3 * H, "3 h 0 min"), (2 * H, 600, "2 h 0 min")):
-        _, lines = on_hand(tmp_path, kept(kept_age), {**STREAM, "at": NOW - stream_age})
-        assert "① wk 44% · Fable ⚠️83%" in lines and [x for x in lines if "last reading" in x] == [f"①: last reading {said} ago"]
+    _, lines = on_hand(tmp_path, kept(3 * H), {**STREAM, "at": NOW - 2 * H})
+    assert "① wk 44% · Fable ⚠️83%" in lines and [x for x in lines if "last reading" in x] == ["①: last reading 3 h 0 min ago"]
 
 
 def test_a_kept_model_week_whose_reset_has_passed_or_was_never_read_is_never_shown(tmp_path):
@@ -340,11 +340,11 @@ def test_a_kept_model_week_whose_reset_has_passed_or_was_never_read_is_never_sho
 
 def test_no_kept_reading_one_that_failed_or_no_stream_reading_leaves_the_card_as_it_was(tmp_path):
     """(d) No live reading kept, or the last one an error (a failed call is kept as one, under a minute old or not): exactly
-    today's card. An account no stream has reported yet stays "no reading yet": the model's week rides on a stream's reading."""
+    today's card. An account no stream has reported yet shows its kept live reading whole (kept-fresh), else "no reading yet"."""
     assert on_hand(tmp_path, None)[1] == ON_MAIN
     for age in (600, 30):
         assert on_hand(tmp_path, {"error": "no answer in 15 s", "at": NOW - age, "source": "live"})[1] == ON_MAIN
-    assert on_hand(tmp_path, kept(600), None)[1][4] == "①: no reading yet"
+    assert on_hand(tmp_path, kept(600), None)[1] == LIVE_ON_MAIN and on_hand(tmp_path, None, None)[1][4] == "①: no reading yet"
 
 
 def test_a_live_reading_under_a_minute_old_and_the_live_card_are_what_main_prints(tmp_path):
@@ -353,6 +353,54 @@ def test_a_live_reading_under_a_minute_old_and_the_live_card_are_what_main_print
     assert on_hand(tmp_path, kept(30))[1] == LIVE_ON_MAIN
     s, lines = on_hand(tmp_path, kept(600), live=True)
     assert lines == LIVE_ON_MAIN and s["accounts"][0]["meter"] == {**kept(0), "at": NOW}
+
+
+# kept-fresh: the daemon reads each account's meters again once its kept reading is usage.EVERY old (usage.keep), so a card
+# that asks nothing shows that reading whole where it is newer than the stream's, as source "kept" with its own time
+ON_HAND_MAIN = [*ON_MAIN[:4], "① wk 44% · Fable ⚠️83%", "↻ wk Mon 2p · Fable Sat 9a", *ON_MAIN[6:]]   # main 714fa2b's, kept(600)
+TWO_LIVE_ON_MAIN = [*LIVE_ON_MAIN[:6], "🟢② 5h 12% · wk 7% · Fable ⚠️83%", "↻ 5h 3:45p · wk Fri 2a · Fable Sat 9a",
+                    "wk next: 🟢② Fri 2a · then ① Mon 2p", "5h next: ① 3:45p · then ② 3:45p", *ON_MAIN[6:]]   # main 714fa2b's
+
+
+def test_kept_fresh_a_kept_reading_newer_than_the_streams_is_the_first_answers_meter_whole_and_says_no_age(tmp_path):
+    """kept-fresh (a) The stream's reading 8 hours old (no turn on the account since the morning) and the kept live reading
+    10 minutes old: the first answer showed the stream's week with "last reading 8 h ago" under it. Now it shows the kept
+    reading's 5-hour, week and model, as the live card does, and no age line; the payload (`yerk status --json`) marks it
+    "kept" with its own time, so it never reads as live."""
+    s, lines = on_hand(tmp_path, kept(600), {**STREAM, "at": NOW - 8 * H})
+    assert lines == LIVE_ON_MAIN and not any("last reading" in x for x in lines)
+    m = status.document(EXAMPLE_PRIVATE, tmp_path, s, Ledger(tmp_path / "l.sqlite"), NOW)["accounts"][0]["meter"]
+    assert m == {**kept(600), "source": "kept"} and m["at"] == NOW - 600
+
+
+def test_kept_fresh_b_a_stream_reading_newer_than_the_kept_one_is_todays_card_byte_for_byte(tmp_path):
+    """kept-fresh (b) The stream's reading 2 minutes old, the kept one 10: the week is the stream's, the model's own week the
+    kept one's, no age line, the payload the stream's with that model entry: main's card and main's meter."""
+    s, lines = on_hand(tmp_path, kept(600))
+    assert lines == ON_HAND_MAIN and s["accounts"][0]["meter"] == {**STREAM, "model": {**kept(600)["model"], "at": NOW - 600}}
+
+
+def test_kept_fresh_c_a_kept_reading_two_hours_old_and_newer_says_its_age_once_and_a_passed_window_is_left_out(tmp_path):
+    """kept-fresh (c) Kept two hours ago (the account could not be read since) and newer than the stream's: its numbers,
+    and the age line says 2 hours, once. A window of it whose reset has passed is left out: its number is over."""
+    _, lines = on_hand(tmp_path, kept(2 * H), {**STREAM, "at": NOW - 3 * H})
+    assert lines[4:7] == [LIVE_ON_MAIN[4], LIVE_ON_MAIN[5], "①: last reading 2 h 0 min ago"]
+    assert sum("last reading" in x for x in lines) == 1
+    over = {**kept(2 * H), "five_hour": {"pct": 12.0, "resets": NOW - 60}}
+    s, lines = on_hand(tmp_path, over, {**STREAM, "at": NOW - 3 * H})
+    assert lines[4:7] == ["① wk 41% · Fable ⚠️83%", "↻ wk Mon 2p · Fable Sat 9a", "①: last reading 2 h 0 min ago"]
+    assert "five_hour" not in s["accounts"][0]["meter"]
+
+
+def test_kept_fresh_j_a_live_reading_under_a_minute_old_on_every_account_is_the_card_main_prints(tmp_path):
+    """kept-fresh (j) Two accounts, each read live under a minute ago, one stream's reading 8 hours old and one 2 minutes:
+    the card that asks nothing is the live card, byte for byte main's, and nothing is asked."""
+    accounts = [Account("one", tmp_path / "cfg1"), Account("two", tmp_path / "cfg2")]
+    (tmp_path / "meters.json").write_text(json.dumps({"one": {**STREAM, "at": NOW - 8 * H}, "two": STREAM}))
+    (tmp_path / usage.FILE).write_text(json.dumps({"one": kept(30), "two": {**kept(50), "seven_day": {"pct": 7.0, "resets": at(13, 2)}}}))
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, accounts, Cooldowns(None), Ledger(tmp_path / "l.sqlite"), now=NOW, units=set,
+                       timers=Timers({}), read_one=lambda a: pytest.fail("asked"))
+    assert card(json.loads(json.dumps(s))) == TWO_LIVE_ON_MAIN
 
 
 def test_a_five_hour_window_comes_first_and_has_its_next_line():

@@ -30,7 +30,7 @@ from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory,
-               mentions, needs, pictures, pipeline, render, shape, status, taste, texts, transcribe, voice_note, watch, workers)
+               mentions, needs, pictures, pipeline, render, shape, status, taste, texts, transcribe, usage, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
@@ -2052,6 +2052,23 @@ class Yerkd:
             except Exception:
                 log.exception("workers: the reconcile pass failed")
 
+    async def keep_meters(self, every: float = 30.0) -> None:
+        """Each account's live reading kept under usage.EVERY old for /status's first answer: one step of usage.keep (one
+        account read at most, through nice) in a thread, then `every` seconds' sleep, forever; none with no account. A step
+        that raises is a warning, once for each distinct message, and the next step runs: a keeper that died unseen would
+        bring the stale card back."""
+        tried: dict[str, float] = {}
+        said: set[str] = set()
+        while True:
+            if self.accounts:
+                try:
+                    await asyncio.to_thread(usage.keep, self.accounts, self.state, tried)
+                except Exception as e:
+                    if (why := f"{type(e).__name__}: {e}") not in said:
+                        said.add(why)
+                        log.warning("usage: a step of the meters' keeper failed, the next runs in %g s: %s", every, why)
+            await asyncio.sleep(every)
+
     async def refresh_inbox(self, every: float) -> None:
         """The light check behind the `texts` tool: every `every` seconds, read the owner's newest texts off the Mac if it
         answers and copy them to the box, its own short wakes included, so a room asked while the Mac sleeps answers from a
@@ -2111,7 +2128,7 @@ class Yerkd:
         poll = float(dict(self.conf.get("imessage") or {}).get("poll_seconds", inbox.POLL))
         checks = [self.refresh_inbox(poll)] if poll > 0 else []      # [imessage] poll_seconds = 0: the texts copy is off
         tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                                                   self.beat.tick(self.listening), self.pipeline.watch(), *checks,
+                                                   self.beat.tick(self.listening), self.keep_meters(), self.pipeline.watch(), *checks,
                                                    *self.texting(), dc.start())]
         await self.until_stopped(tasks, dc.close)
 

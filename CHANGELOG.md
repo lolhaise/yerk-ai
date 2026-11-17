@@ -8,6 +8,53 @@ version changes.
 
 ## 2026-11-16
 
+### status-meters-kept-fresh (#91)
+
+- `/status` typed in a room is now current from its first answer. Since status-card-at-once that answer is built from
+  what is on hand, and an account no room's turn had run on since the morning showed its stream's reading, 8 h 13 min
+  old, with `last reading 8 h 13 min ago` under it, its week 57% where the live meter said 59% (the owner's ask, that
+  evening). A card that asks nothing can only be as fresh as what yerkd holds, so yerkd now keeps each account's live
+  reading fresh, and the card uses the newest reading it holds.
+- yerkd reads each account's meters again in the background. Every 30 seconds it takes the account whose kept `/usage`
+  reading is oldest among those 15 minutes old or more and not tried in the last 15 minutes, and runs `claude -p /usage`
+  on it once, through `nice -n 19` so it never competes with a room's turn; the result goes into `<state>/usage.json` as
+  the card's live ask files one. One account a step, so never two background reads at once. One read, measured on the
+  box that evening: 8.6 s and 10.5 s of wall time, about 7 to 9 CPU-seconds and about 350 MB at its peak, so each account
+  once every 15 minutes is about 3.6% of one core for four accounts. After a start every reading is older than that, so
+  the first steps read the accounts one after another, 30 seconds apart.
+- A background read that fails leaves a good kept reading as it was and is tried again 15 minutes later (the try is kept
+  in memory, not in the file); an account with no good reading kept takes the failure as the card's own ask would. A
+  reading a card's live ask files while a background read runs stays: the background read's older result never
+  overwrites it. A step that raises is one warning in yerkd's log for each distinct message, and the next step runs.
+- A card built with no live ask (the room's first answer, `yerk status --json`, the `/status` HTTP answer without
+  `live`) shows an account's last live reading whole (its 5-hour, its week and the model's own week, a window whose reset
+  has passed left out) where it is newer than the stream's reading or the stream has none; else, as before, the stream's
+  numbers with the model's own week from that reading. In the payload that meter has `source` `kept` and its own `at`, so
+  a program tells it from a live reading (`live`) and from the stream's (`stream`); `/status` still reads it as not live,
+  so the line under the tank saying the meters are being asked, and the one edit, still come while no reading is under a
+  minute old.
+- The account's age line counts the kept reading's own time as it counts the stream's, so it shows only when what the
+  line shows is an hour old or more: with the background reads running, only when an account could not be read for an
+  hour.
+- The live card, `yerk status` in a terminal included, is the same byte for byte, and so is the first answer for an
+  account whose stream reading is newer than its kept one. budgets.toml: `[code] lines` 32,751 to 32,803, with its dated
+  note; docs/budgets.md is what `yerk docs own` writes. docs/GUIDE.md, where `yerk status --json` is described, says
+  what the background reads do and what `kept` means.
+- The tests: 10 new, in tests/test_room_card.py (stream 8 hours old and kept 10 minutes: the kept reading whole and no age
+  line, and the payload marks it; stream 2 minutes and kept 10: main's card byte for byte; kept 2 hours and newer: its
+  numbers and one age line, a passed window left out; every reading under a minute old on two accounts: main's card byte
+  for byte), tests/test_slash.py (`/status` with the account as the owner found it: the kept week and model in the first
+  answer, the line under the tank, the edit once), tests/test_observe.py (a step reads only the oldest past 15 minutes,
+  then the next, then none; a failed read leaves a good reading and waits 15 minutes, an account with none takes the
+  error; a card's reading filed meanwhile stays; the background argv starts with `nice -n 19` and the card's does not)
+  and tests/test_reliability.py (the keeper says each failing step's message once, runs the next, ends with the daemon's
+  tasks and never steps with no account). Two tests of status-card-model-meter change where the kept reading is the
+  newer: the age line's test keeps only its case with the stream's reading the newer (its two others are the new tests'
+  shapes), and an account no stream has reported shows its kept reading whole, "no reading yet" only with none kept. The
+  two harnesses that run `run_discord` (tests/test_slash.py, tests/test_watch.py) hold the keeper as they hold the reaper.
+- **Upgrading**: nothing to change. After the restart yerkd reads every account once, 30 seconds apart, then each about
+  every 15 minutes.
+
 ### texting-9b-cards (#90)
 
 - With `[texting]` on, a card for a text that waits for you no longer shows the writer's reasoning. A card with a draft
