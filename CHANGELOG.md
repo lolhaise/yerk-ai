@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-17
 
-### watch-test-waits-on-events (#?)
+### watch-test-waits-on-events (#94)
 
 - tests/test_watch.py's proof that a watched channel is read as the room's own and never written to no longer fails now
   and then on a loaded box. On the box's own checks it was the first failure in 10 of 647 commits, on 3.12, 3.13 and
@@ -19,15 +19,16 @@ version changes.
   which the room sets when it has written the first line to Claude Code's stdin, maybe before the process read it. Under
   load the fake started late, so both lines were in the pipe at its first read: Python's buffered stdin took both, and
   SLOW's 1.5 s `select` on the descriptor never saw the second, so the fake answered them apart after waiting 1.5 s. The
-  room had done its part each time: the ledger had the second message folded into the running turn, written 0.05 s after
-  the first, and both answers were posted in the room's own channel only.
+  room had done its part each time: the ledger had the second message folded into the running turn, written 0.05 to
+  0.07 s after the first, and both answers were posted in the room's own channel only.
 - The fake (tests/fake_claude.py) has a new line marker, HOLD_OPEN: the turn stays open until another line comes, however
   late, read through stdin's own buffer, with no clock. The test's first message uses it, so the fold waits on the second
-  line itself. No sleep, no retry, no longer timeout. Every assertion stays as it was; the three that name the first
-  message's text say HOLD_OPEN where they said SLOW. SLOW is unchanged for the tests that use its 1.5 s, some of which
-  prove that a message coming after it is not folded.
+  line itself. No sleep, no retry, no longer timeout. Every assertion stays as it was: the message itself, the wait for
+  its answer and the fold assertion say HOLD_OPEN where they said SLOW, and nothing else changed. SLOW is unchanged for
+  the tests that use its 1.5 s, some of which prove that a message coming after it is not folded.
 - The proof: 300 runs on each of 3.12, 3.13 and 3.14 under the same load, all green, and tests/test_watch.py whole green
-  on each.
+  on each. Then, with twelve copies at once, 200 more on each Python, all green, while main's test beside them failed
+  131 times in 600 runs, every time on the fold line.
 - **Upgrading**: nothing to change. No line of yerk_ai/ changed, so budgets.toml is as it was.
 
 ## 2026-11-16
