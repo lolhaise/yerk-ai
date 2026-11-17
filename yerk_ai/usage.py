@@ -6,7 +6,8 @@ call. Yerk AI reads only what Claude Code prints.
 
 A reading is kept FRESH seconds in <state>/usage.json, so a card asked twice in a minute starts no second Claude Code,
 and at most AT_ONCE run at a time (each holds about 350 MB for about 5 s, inside yerkd's unit). Anything that fails is
-{"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead. Between cards
+{"error": why}, kept as long (in memory where the file holds a good reading, which it keeps), and the card shows the
+newest reading it holds instead: the kept one or the stream's (meters.py), with its age. Between cards
 the daemon reads again, one account at a time and through nice, each account whose kept reading is EVERY old (keep),
 so a card that asks nothing shows that reading where it is newer than the stream's, else the stream's with the model's
 own week, which no stream reads, from the last reading whatever its age (status.reading).
@@ -46,6 +47,7 @@ LINE = re.compile(r"^\s*Current (session|week \(([^)]*)\))\s*:\s*(\d+(?:\.\d+)?)
 WHEN = re.compile(r"^(?:([A-Za-z]{3}) (\d{1,2}), )?(\d{1,2})(?::(\d{2}))?\s*([ap]m)(?:\s*\(([^)]+)\))?$", re.I)
 _lock = threading.Lock()
 log = logging.getLogger("yerk.usage")
+_failed: dict[tuple[str, str], dict[str, Any]] = {}   # (state folder, account): a failed ask over a good kept reading, under _lock
 
 
 def reset_at(text: str, now: float) -> float | None:
@@ -116,31 +118,40 @@ def read(account: Account, cwd: Path, timeout: float = TIMEOUT, nice: bool = Fal
 def readings(accounts: list[Account], state: Path, refresh: bool = True, now: float | None = None,
              read_one: Callable[[Account], dict[str, Any]] | None = None) -> dict[str, dict[str, Any]]:
     """Each account's live reading ({"error": why} when its call failed), younger than FRESH: from the file, else
-    (`refresh`) asked again, AT_ONCE at a time. An account with neither is left out."""
+    (`refresh`) asked again, AT_ONCE at a time. An account with neither is left out. A failed call never replaces a good
+    reading in the file: it is held in memory (_failed) instead, where it counts as the try while it is the newer."""
     now = time.time() if now is None else now
     # two cards at once: the second reads the first's answers. A read that does not ask (the deploy's proof, `--json`)
     # never waits on one that does: the file is only ever replaced whole (write_private)
     with _lock if refresh else contextlib.nullcontext():
         kept = last(state)
-        stale = [a for a in accounts if not 0 <= now - float(kept.get(a.name, {}).get("at") or 0) < FRESH]
+        seen = {**kept, **{a.name: f for a in accounts if refresh and (f := _failed.get((str(state), a.name)))
+                           and float(f["at"]) > float(kept.get(a.name, {}).get("at") or 0)}}
+        stale = [a for a in accounts if not 0 <= now - float(seen.get(a.name, {}).get("at") or 0) < FRESH]
         if refresh and stale:
             ask = read_one or (lambda a: read(a, state))
             with ThreadPoolExecutor(max_workers=min(AT_ONCE, len(stale))) as pool:
                 for a, r in zip(stale, pool.map(ask, stale)):
-                    kept[a.name] = {**r, "at": now, "source": "live"}
+                    seen[a.name] = {**r, "at": now, "source": "live"}
+                    if "error" in r and a.name in kept and "error" not in kept[a.name]:
+                        _failed[(str(state), a.name)] = seen[a.name]     # the file keeps its good reading
+                    else:
+                        kept[a.name] = seen[a.name]
+                        _failed.pop((str(state), a.name), None)
             try:
                 write_private(state / FILE, json.dumps(kept))
             except OSError:
                 pass                                     # the card still shows them; the next one asks again
-    return {a.name: kept[a.name] for a in accounts if 0 <= now - float(kept.get(a.name, {}).get("at") or -FRESH) < FRESH}
+    return {a.name: seen[a.name] for a in accounts if 0 <= now - float(seen.get(a.name, {}).get("at") or -FRESH) < FRESH}
 
 
 def keep(accounts: list[Account], state: Path, tried: dict[str, float], clock: Callable[[], float] = time.time,
          read_one: Callable[[Account], dict[str, Any]] | None = None, cooldowns: Cooldowns | None = None) -> None:
     """One step of the daemon's keeper (Yerkd.keep_meters): of the accounts whose kept reading is EVERY old (none kept:
     the oldest) and not tried here within EVERY (`tried`, the keeper's own, in memory), the oldest is read once through
-    nice and filed as `readings` files one, unless a newer one came meanwhile (a card's live ask). A failed read never
-    replaces a good reading: it only counts as the try. One account a step, so never two background reads at once.
+    nice and filed as `readings` files one, unless a newer one came meanwhile (a card's live ask) that is good or this
+    read failed too: a good reading replaces an error whatever its time. A failed read never replaces a good reading: it
+    only counts as the try. One account a step, so never two background reads at once.
     A rate limit's rest that a filed reading shows over ends (back), the reading taken when the read began."""
     now = clock()
     kept = last(state)
@@ -155,7 +166,7 @@ def keep(accounts: list[Account], state: Path, tried: dict[str, float], clock: C
     with _lock:                                          # a card's live ask files under it too: its newer reading stays
         kept = last(state)
         had = kept.get(a.name)
-        if had and (float(had.get("at") or 0) > now or "error" in r and "error" not in had):
+        if had and ("error" in r or "error" not in had) and (float(had.get("at") or 0) > now or "error" in r and "error" not in had):
             return
         kept[a.name] = {**r, "at": ended, "source": "live"}
         write_private(state / FILE, json.dumps(kept))
