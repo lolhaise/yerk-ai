@@ -44,7 +44,8 @@ version changes.
   worker and reads the ledger and the state files), and that a report pastes the run's own lines as its evidence.
 - Each of these, on a scratch copy of the tree, fails the run and names the step: keep_meters, reap, beat.tick or
   serve_http taken out of run_discord's list; `workers.begin` taken out of run_discord; `register()` taken out of the
-  gateway's ready. tests/test_verify_daemon.py runs it once in the suite. tests/fake_worker_claude.py hands `claude -p
+  gateway's ready. A long-lived task that returns or raises by itself ends the daemon, and the run names that task in a
+  line of its own (the keeper returning at its start: `Yerkd.keep_meters`). tests/test_verify_daemon.py runs it once in the suite. tests/fake_worker_claude.py hands `claude -p
   /usage` to fake_claude.py, as it hands a room's process, so one YERK_CLAUDE serves the whole daemon. docs/GUIDE.md says
   how a contributor checks a change. No line of yerk_ai/ changes.
 - **Upgrading**: nothing to change.

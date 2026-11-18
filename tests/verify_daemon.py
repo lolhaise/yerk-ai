@@ -284,8 +284,12 @@ class Run:
         async def until_stopped(self, tasks, close):             # watched only: the daemon's own stop path runs
             run.box.update(d=self, tasks=list(tasks), loop=asyncio.get_running_loop(),
                            pump=[t for t in self.workers.tasks if not t.done()])
+            names = [t.get_coro().cr_code.co_qualname for t in tasks]
             run.up.set()
-            return await real_until(self, tasks, close)
+            try:
+                return await real_until(self, tasks, close)
+            finally:                                             # when its wait ended, and which tasks had ended by then
+                run.box.update(returned=time.monotonic(), done_then=[n for n, t in zip(names, tasks) if t.done()])
 
         def tick(self):                                          # who asked the pipeline's round: its watch, or the connect
             run.ticks.append(sys._getframe(1).f_code.co_qualname)
@@ -653,6 +657,9 @@ class Run:
         if not self.up.is_set():
             return
         took = self.stopped_at - getattr(self, "stop_sent", self.stopped_at)
+        if self.box.get("returned", self.stopped_at) < getattr(self, "stop_sent", float("inf")):
+            self.say(False, "a long-lived task ended by itself, which ends the daemon",       # until_stopped: the first to end
+                     f"{', '.join(self.box.get('done_then') or ['none seen'])} returned or raised before any stop was sent")
         tasks = self.box["tasks"] + self.box["pump"]
         left = [t.get_coro().cr_code.co_qualname for t in tasks if not t.done()]
         said = self.read_notify()
