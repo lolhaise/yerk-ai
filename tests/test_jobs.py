@@ -1276,6 +1276,30 @@ def test_a_hand_edited_jobs_add_on_its_room_has_not_is_named_at_the_sync_and_nev
     assert p.errors == {} and sorted(sd.ours()) == ["good", "odd"]
 
 
+def test_a_rooms_file_that_refuses_to_load_never_ends_a_sync_and_the_jobs_add_ons_wait_for_the_fire(tmp_path):
+    """Found by the judge's breaks. A rooms file the reader refuses stops a start with SystemExit, and a sync also runs
+    inside the running daemon (the schedule tool's add and remove), where that exit would end the daemon. The add-ons'
+    check is skipped instead and left to the fire."""
+    priv = tmp_path / "private"
+    priv.mkdir()
+    (priv / "rooms.toml").write_text('[defaults]\nbogus = 1\n\n[rooms.r]\nchannel = "discord:1"\n')
+    path = write_jobs(priv / "jobs.toml", '[jobs.inbox]\nkind = "agent"\nschedule = "Mon 09:00"\ntz = "UTC"\nroom = "r"\n'
+                      'addons = ["mailbox"]\nmessage = "look"\n')
+    sd = FakeSystemd(tmp_path / "units")
+    p, _ = jobs.sync(path, sd, Env(ENV.python, ENV.repo, priv, ENV.state))
+    assert p.errors == {} and sd.ours() == ["inbox"]
+
+
+def test_a_jobs_add_on_name_that_is_not_an_add_ons_shape_is_refused_by_its_own_table():
+    """Found by the judge's breaks. A name with a space or a dot, or an empty one, is refused when the job is read, before
+    any room is asked: where the rooms file cannot be read nothing else would refuse it until the fire."""
+    base = {"kind": "agent", "schedule": "Mon 10:00", "tz": "UTC", "room": "r", "message": "look"}
+    for bad in ("not a tool", "mcp__mailbox.search", ""):
+        with pytest.raises(JobError) as e:
+            make_job("x", {**base, "addons": [bad]})
+        assert str(e.value).startswith("`addons` must be a list of the room's add-on tools or servers")
+
+
 def test_a_job_naming_no_add_on_in_a_room_giving_every_worker_one_starts_a_worker_that_has_it(setup, tmp_path):
     """The case itself, seen live: a booked agent job named no add-on (none could), its brief needed the room's mail
     tool, and its worker started without one. Its room's worker_addons now reach the job's worker with nothing named."""
