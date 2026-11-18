@@ -225,6 +225,28 @@ def test_a_rooms_copy_holds_the_restart_until_copy_seconds_and_a_copy_ended_past
     assert deploy.quiet(state, lambda _s: None, 60, NOW, blind_ok=True, copy=300, over=over) == dead and over == []
 
 
+def test_a_copy_in_any_room_holds_the_restart_and_each_copy_the_restart_goes_over_gets_its_own_line(tmp_path):
+    """Found by the judge's breaks: every copy test had one room, so a check that read the first row alone passed them all.
+    Here the copy is the second room's: it holds the restart under its own name, and past the bound each room whose copy
+    the restart goes over is a card line of its own."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "yerkd.json").write_text(json.dumps({"pid": os.getpid(), "port": 1}))
+    f, over = Fake(tmp_path), []
+    f.commit = ""
+
+    def two(first, second):
+        def ask(state):
+            s = Fake.ask(f, state)
+            return {**s, "rooms": [{**s["rooms"][0], "copy": first}, {**s["rooms"][0], "room": "quiet-room", "copy": second}]}
+        return ask
+    assert deploy.quiet(state, two(None, 30.0), 60, NOW, copy=300, over=over) == (False, f"{words.PLAIN} quiet-room compacts a copy, 30 s in")
+    assert over == []
+    assert deploy.quiet(state, two(400.0, 420.0), 60, NOW, copy=300, over=over) == (True, "")
+    assert over == [f"{words.NOT_DONE} example-room's copy dropped, {words.span(400.0)} in",
+                    f"{words.NOT_DONE} quiet-room's copy dropped, {words.span(420.0)} in"]
+
+
 def test_a_deploy_waits_for_a_copy_then_restarts_as_today_and_one_past_copy_seconds_or_at_0_is_named_on_the_card(tmp_path, capsys):
     """The default copy_seconds, 300: a copy 30 s in holds the restart to the cap, the card naming the room and its time;
     taken (or dropped) the deploy goes and its card is today's to the line. A copy past the bound, or any copy with the
