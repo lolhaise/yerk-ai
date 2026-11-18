@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-18
 
-### precompact-midturn (#?)
+### precompact-midturn (#97)
 
 - A room can now start its compaction copy in the middle of a long turn, not only as a turn ends. Until now a room learned
   its session's size only when a turn ended, so a turn that started under the copy's band (`precompact_within` of the
