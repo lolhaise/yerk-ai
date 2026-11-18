@@ -243,6 +243,7 @@ class Room:
         self.shortening = self.early = False      # a compaction holds the room; a message waiting on it has its card up
         self.precompact_within = precompact       # _ended's copy compaction, a share of the window; 0 is off
         self.fork: RoomProcess | None = None      # the copy being compacted off to the side (_precompact), at most one
+        self.forked: float | None = None          # ... when it started (_fork_off), while `fork` is set; /status's `copy`
         self.runs = 0                             # bumped by anything that changes or replaces the live session: a copy
                                                   # taken before a bump is stale (Claude Code's own prefix_changed rule)
         self.copy_tail, self.copy_room = copy     # [session] copy_tail (chars) and copy_room (tokens under the line)
@@ -390,6 +391,7 @@ class Room:
                                      failures=self.failures,                                                       # credits
                                      log=self.log_dir / f"{self.name}.jsonl" if self.log_dir else None,
                                      meters=self.meters.seen if self.meters else None)
+        self.forked = time.time()
         n = self.context if at is None else at
         log.info("room %s: %s at %d of its %d tokens, %d under Claude Code's line, compacting a copy", self.name, why,
                  n, self.window, self.window - RESERVE - n)
@@ -418,7 +420,7 @@ class Room:
                                          (why or f"its compaction failed ({t.outcome if t else 'no turn'})", not ok)) if hit), "")
             why = why or self._stale(rp)
             if self.fork is rp:
-                self.fork = None
+                self.fork = self.forked = None
                 if why:
                     self.tail, self.overtook, self.midturn_of = [], 0, ""
             if not why and t is not None:
@@ -504,7 +506,7 @@ class Room:
         starts is no change: it runs on the live session and the copy goes on (_precompact)."""
         self.runs += 1
         if (rp := self.fork) is not None:
-            self.fork, self.dropped = None, why
+            self.fork, self.forked, self.dropped = None, None, why
             threading.Thread(target=rp.end_now, name=f"precompact-end-{self.name}", daemon=True).start()
         if (ready := self.ready) is not None:
             self.ready = None

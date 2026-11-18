@@ -751,7 +751,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: precompact-midturn raised it by 63, the compaction copy started in the middle of a long turn, behind a room's precompact_midturn and off by default (a room learns its size only as a turn ends, so a turn that grows across the copy's whole band in one go ends in the held compaction and a message then waits about two minutes: the 96 hours measured, 7 of 1,189 turns grew over 100,000), not folded to fit: room.py 52 (_midturn and its trigger in _on_event, its resets in _turn, TAIL_RAN and the mid-turn exchange kept whole in _tail, its mark in _said, the drop in _end, _fork_off's `at`, MIDTURN, the module docstring's sentence), engine.py 6 (Turn.reached, from a main-thread message_start and the assistant events, never the row's `context`), config.py 3 (its words), daemon.py 2 (the key handed to the room, a bad value said once). 32,980: main 03eeb13's 32,917 plus 63.
 
-- `lines = 32980`
+2026-11-18: deploy-waits-for-copy raised it by 18, a deploy waits for a room's copy that is compacting instead of dropping it, up to [deploy] copy_seconds (2026-11-18 14:19:25: a deploy at quiet_seconds 60 restarted the daemon 62 s into a busy room's copy, the 39 copies of the 8 days before 90 to 171 s, and the room ran past 820,000 through three turns until the next copy), not folded to fit: deploy.py 11 (quiet's copy check, its card line for a copy past the bound and its docstring; copy_seconds read beside quiet_seconds; settle hands both on and puts the line on the card; the header's step), status.py 3 (the row's `copy`, read under the room's lock), room.py 2 (Room.forked, set in _fork_off), words.py 1 (COPYING and COPY_DROPPED), config.py 1 (copy_seconds's words). 32,998: main c957024's 32,980 plus 18.
+
+- `lines = 32998`
 
 ## Uncapped
 

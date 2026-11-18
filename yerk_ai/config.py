@@ -318,6 +318,7 @@ YERKD_WORDS = {
                "tree": "the daemon's checkout (default: the unit's working folder)",
                "tests": "the fast tests run before a restart (default test_scrub, test_budget, test_card and test_style)",
                "quiet_seconds": "how long every room must have had no message either way, a person's or its own, before the restart (default 240)",
+               "copy_seconds": "how long the restart waits for a room's copy that is compacting, which a restart drops (default 300; 0 never waits)",
                "cap_minutes": "the longest a deploy waits for that quiet (default 60)", "proof_seconds": "how long the proof may take (default 60)"},
     "retention": {"logs": "days the daemon's logs keep", "assembled": "days the rooms' assembled.jsonl keep",
                   "transcripts": "days Claude Code's transcripts keep", "ledger": "days of the ledger's timing rows",

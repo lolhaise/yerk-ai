@@ -101,7 +101,10 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
             held = (getattr(room, "context", 0), getattr(room, "window", 0), compacted.get(name, 0),
                     getattr(room, "fresh_next", None) is None)
+            ready, fork = getattr(room, "ready", None), getattr(room, "fork", None)     # its copy in flight, compacting or held
+            copy = ready[2] if ready is not None else getattr(room, "forked", None) if fork is not None else None
         out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
+                             "copy": None if copy is None else round(max(now - copy, 0.0), 1),   # its seconds so far (deploy waits)
                              "since": min((m.received for m in msgs), default=None) if busy else None,
                              "account": config.pinned(state, name, [a.name for a in accounts]),   # the one it is put on
                              "fast": fast_shown(state, name, room), "head": head(state, name, room, rp, held, accounts, cooldowns, listed, now)})

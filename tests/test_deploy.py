@@ -182,6 +182,95 @@ def test_the_quiet_window_counts_the_rooms_own_post_as_it_counts_a_persons_messa
     assert deploy.quiet(state, ask, 240, NOW + 235) == (True, "")             # both older than the window: quiet
 
 
+def copying(f, *ages):
+    """The Fake's /status with its room's `copy`, the next of `ages` at each ask and the last one kept: seconds into a copy
+    in flight, None once it is taken or dropped, "no key" for a row from a yerkd older than the key."""
+    left = list(ages)
+
+    def ask(state):
+        age = left.pop(0) if len(left) > 1 else left[0]
+        s = Fake.ask(f, state)
+        return {**s, "rooms": [r if age == "no key" else {**r, "copy": age} for r in s["rooms"]]}
+    return ask
+
+
+TODAY = [f"{words.PLAIN} fast tests skipped", f"{words.DONE} yerkd up", f"{words.DONE} channel connected",
+         f"{words.DONE} status answers"]                 # a deploy's card under its first line, to the running line
+
+
+def test_a_rooms_copy_holds_the_restart_until_copy_seconds_and_a_copy_ended_past_it_or_unsaid_holds_nothing(tmp_path):
+    """Seen live: a deploy restarted the daemon 62 s into a busy room's copy (quiet_seconds 60, the
+    copies of the 8 days before 90 to 171 s) and the room ran past 820,000 through three turns until the next copy. A copy
+    holds the restart under `copy` seconds, its room and its time the reason; one taken or dropped (null), one past the
+    bound, the bound at 0 and a row with no `copy` (a yerkd older than the key) hold nothing, and quiet, a copy still in
+    flight is a card line. A yerkd that does not answer holds a rollback no more than before: it cannot say a copy."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "yerkd.json").write_text(json.dumps({"pid": os.getpid(), "port": 1}))
+    f, over = Fake(tmp_path), []
+    f.commit = ""
+    assert deploy.quiet(state, copying(f, 30.0), 60, NOW, copy=300, over=over) == (False, f"{words.PLAIN} example-room compacts a copy, 30 s in")
+    assert deploy.quiet(state, copying(f, 299.6), 60, NOW, copy=300, over=over) == (False, f"{words.PLAIN} example-room compacts a copy, 5 min in")
+    for ended in (None, "no key"):
+        assert deploy.quiet(state, copying(f, ended), 60, NOW, copy=300, over=over) == (True, "") and over == []
+    assert deploy.quiet(state, copying(f, 300.0), 60, NOW, copy=300, over=over) == (True, "")
+    assert over == [f"{words.NOT_DONE} example-room's copy dropped, 5 min in"]
+    over.clear()
+    assert deploy.quiet(state, copying(f, 30.0), 60, NOW, copy=0, over=over) == (True, "")    # 0: a copy never holds it
+    assert over == [f"{words.NOT_DONE} example-room's copy dropped, 30 s in"]
+    over.clear()
+    f.busy = True                                         # the turn check first, as before
+    assert deploy.quiet(state, copying(f, 30.0), 60, NOW, copy=300, over=over) == (False, f"{words.PLAIN} example-room has a turn")
+    dead = (True, f"{words.PLAIN} {words.NOT_ANSWERING_WHY}")
+    assert deploy.quiet(state, lambda _s: None, 60, NOW, blind_ok=True, copy=300, over=over) == dead and over == []
+
+
+def test_a_deploy_waits_for_a_copy_then_restarts_as_today_and_one_past_copy_seconds_or_at_0_is_named_on_the_card(tmp_path, capsys):
+    """The default copy_seconds, 300: a copy 30 s in holds the restart to the cap, the card naming the room and its time;
+    taken (or dropped) the deploy goes and its card is today's to the line. A copy past the bound, or any copy with the
+    bound at 0, is restarted over and the card says so in one line, the room and how long the copy had been going."""
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    f.ask = copying(f, 30.0)
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert capsys.readouterr().out.splitlines()[:3] == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} never quiet in {words.span(0.3)}",
+                                                        f"{words.PLAIN} example-room compacts a copy, 30 s in"]
+    assert f.restarts == [] and where(tree) == ("main", ids[0]) and [r[3] for r in rows(state)] == ["gave up"]
+    f.ask = copying(f, 30.0, 35.0, None)                  # the deploy's first ask, a wait, then taken
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == [f"{words.DONE} deployed {ids[1][:7]}", *TODAY, f"{words.DONE} running {ids[1][:7]}",
+                   f"{words.DONE} rooms served: 1 of 1", f"{words.PLAIN} no turn cut"] and f.restarts == [ids[1]]
+    for conf, age, said in (({}, 400.0, "7 min"), ({"copy_seconds": 0}, 30.0, "30 s")):
+        (sub := tmp_path / f"at-{age:.0f}").mkdir()
+        tree, ids = repo(sub)
+        priv, state = layer(sub, tree, **conf)
+        f = Fake(tree)
+        f.ask = copying(f, age, age, None)                # gone after the restart, as the restart drops it
+        assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+        out = capsys.readouterr().out.splitlines()
+        assert out[-2:] == [f"{words.PLAIN} no turn cut", f"{words.NOT_DONE} example-room's copy dropped, {said} in"]
+        assert f.restarts == [ids[1]] and rows(state) == [("deploy", ids[0], ids[1], "proven", 0)]
+
+
+def test_a_rollback_after_a_failed_proof_is_held_by_no_copy_a_dead_daemon_cannot_say(tmp_path, capsys):
+    """The planted commit never answers /status: its proof fails and the rollback goes at once, as before, though the
+    daemon before it had a copy in flight (past the bound, restarted over: the card names it once, in the deploy's lines)."""
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    before = copying(f, 400.0)
+    f.ask = lambda st: None if f.commit == ids[2] else before(st)
+    assert deploy.run(priv, state, ids[2], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert f.restarts == [ids[2], ids[0]] and deploy.head(tree) == ids[0]
+    assert rows(state) == [("deploy", ids[0], ids[2], "proof failed", 0), ("rollback", ids[2], ids[0], "proven", 0)]
+    back = out.index(f"{words.DONE} rolled back to {ids[0][:7]}")
+    assert out[:back].count(f"{words.NOT_DONE} example-room's copy dropped, 7 min in") == 1
+    assert not [x for x in out[back:] if "copy" in x]
+
+
 def test_it_refuses_what_does_not_fast_forward_and_a_tree_with_changes(tmp_path, capsys):
     tree, ids = repo(tmp_path)
     priv, state = layer(tmp_path, tree)
