@@ -5,7 +5,8 @@ The brief's FAKE line says what to do, e.g. `FAKE ticks=3 gap=0.2 sleep=0 report
 wait `sleep` seconds, tick the TASKS.md rows one by one `gap` seconds apart, write REPORT.md (its
 first line `report`, then `pad` filler characters), print a result event and exit with `exit`.
 It records its argv and its environment's names (never values) to fake-record.json in its folder.
-Started in stream-json input mode (a room's process, for the relay turn) it is fake_claude.py.
+Started in stream-json input mode (a room's process, for the relay turn), or as `claude -p /usage` (the meters' read),
+it is fake_claude.py, so one YERK_CLAUDE serves a whole daemon (tests/verify_daemon.py).
 """
 import json
 import os
@@ -15,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-if "--input-format" in sys.argv:
+if "--input-format" in sys.argv or sys.argv[1:3] == ["-p", "/usage"]:
     here = Path(__file__).with_name("fake_claude.py")
     os.execv(sys.executable, [sys.executable, str(here), *sys.argv[1:]])
 
