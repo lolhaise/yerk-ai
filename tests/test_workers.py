@@ -1177,8 +1177,8 @@ def test_a_worker_started_naming_no_add_on_gets_the_ones_its_room_gives_every_wo
     assert not (Path(bare["staging"]) / "mcp.json").exists() and "the room's own" not in (Path(bare["staging"]) / "PROMPT.md").read_text()
 
 
-@pytest.mark.parametrize(("default", "warned"), [("mcp__abacus__erase", False), ("web", True)])
-def test_a_default_the_room_cannot_give_is_skipped_and_the_worker_starts_but_named_it_refuses_the_start(setup, caplog, default,
+@pytest.mark.parametrize(("defaults", "warned"), [(["mcp__abacus__erase"], False), (["web", "mcp__web__web_fetch"], True)])
+def test_a_default_the_room_cannot_give_is_skipped_and_the_worker_starts_but_named_it_refuses_the_start(setup, caplog, defaults,
                                                                                                          warned):
     """A default is never a refusal: one the room's allow has not is skipped, one whose server's table passes a credential
     skipped with one warning, and the worker starts with the rest. The same add-on named by the start is refused whole."""
@@ -1186,17 +1186,17 @@ def test_a_default_the_room_cannot_give_is_skipped_and_the_worker_starts_but_nam
 
     async def go():
         w = s.make({"r": Busy()})
-        w.room_confs["r"] = {**COUNTING, "worker_addons": [default, "mcp__abacus__sum"]}
+        w.room_confs["r"] = {**COUNTING, "worker_addons": [*defaults, "mcp__abacus__sum"]}
         w.begin(asyncio.get_running_loop())
         out = await w.start("r", 'FAKE report="x"', account="one")
         await ended(s.ledger, out["id"])
-        return out, await w.start("r", 'FAKE report="x"', account="one", addons=[default])
+        return out, await w.start("r", 'FAKE report="x"', account="one", addons=defaults[:1])
     with caplog.at_level("WARNING", logger="yerk.workers"):
         out, named = asyncio.run(go())
     assert out["ok"] and out["addons"] == ["mcp__abacus__sum"]
     assert list(json.loads((Path(out["staging"]) / "mcp.json").read_text())["mcpServers"]) == ["abacus"]   # no key handed over
     said = [r.getMessage() for r in caplog.records if "worker_addons" in r.getMessage()]
-    assert len(said) == warned and all("passes a credential" in x for x in said)
+    assert len(said) == warned and all("passes a credential" in x for x in said)       # one warning for the server, not one a tool
     assert named["ok"] is False and ("passes a credential" if warned else "no add-on tool 'mcp__abacus__erase'") in named["error"]
 
 
@@ -1205,7 +1205,8 @@ def test_the_rooms_add_ons_and_the_ones_a_start_names_are_one_list_with_no_repea
 
     async def go():
         w = s.make({"r": Busy()})
-        w.room_confs["r"] = {**COUNTING, "worker_addons": ["abacus", "mcp__abacus__sum"]}
+        w.room_confs["r"] = {**COUNTING, "allow": [*COUNTING["allow"], "mcp__slate__note"], "worker_addons": ["abacus", "mcp__abacus__sum", "slate"],
+                             "mcp": {**COUNTING["mcp"], "slate": {"type": "stdio", "command": "slate"}}}
         w.begin(asyncio.get_running_loop())
         out = await w.start("r", 'FAKE report="x"', account="one", addons=["mcp__abacus__sum"])
         await ended(s.ledger, out["id"])
@@ -1213,6 +1214,6 @@ def test_the_rooms_add_ons_and_the_ones_a_start_names_are_one_list_with_no_repea
     out = asyncio.run(go())
     folder = Path(out["staging"])
     assert json.loads((folder / "worker.json").read_text())["addon_tools"] == out["addons"] == [
-        "mcp__abacus__sum", "mcp__abacus__chart"]
-    assert list(json.loads((folder / "mcp.json").read_text())["mcpServers"]) == ["abacus"]
-    assert "- You have the room's own mcp__abacus__sum, mcp__abacus__chart too." in (folder / "PROMPT.md").read_text()
+        "mcp__abacus__sum", "mcp__abacus__chart", "mcp__slate__note"]
+    assert list(json.loads((folder / "mcp.json").read_text())["mcpServers"]) == ["abacus", "slate"]
+    assert "- You have the room's own mcp__abacus__sum, mcp__abacus__chart, mcp__slate__note too." in (folder / "PROMPT.md").read_text()
