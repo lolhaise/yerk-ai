@@ -749,7 +749,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-17: needs-risky-paths-wait raised it by 59, a need whose change touches a listed path waits for a deeper check before it merges (the owner's ask, 2026-11-17: review effort matched to risk, the tier set by the change and never by who built it, starting strict), not folded to fit: pipeline.py 47 (SENSITIVE, the default list, each entry beside what going wrong there means; waits, the paths a head changes against its merge base with origin/main read by git in the daemon's own tree, a change git cannot read waiting too; deeper_why, the why at phone width; the stop in merge before anything is merged or landed; stop's own field, cleared by any other stop; the header's step and the docstrings), words.py 8 (few, NEED_DEEPER and its two), config.py 3 ([needs] sensitive's description), needs.py 1 (a held why's lines as one line in `yerk needs list`). 32,917: main 0244973's 32,858 plus 59.
 
-- `lines = 32917`
+2026-11-18: precompact-midturn raised it by 63, the compaction copy started in the middle of a long turn, behind a room's precompact_midturn and off by default (a room learns its size only as a turn ends, so a turn that grows across the copy's whole band in one go ends in the held compaction and a message then waits about two minutes: the 96 hours measured, 7 of 1,189 turns grew over 100,000), not folded to fit: room.py 52 (_midturn and its trigger in _on_event, its resets in _turn, TAIL_RAN and the mid-turn exchange kept whole in _tail, its mark in _said, the drop in _end, _fork_off's `at`, MIDTURN, the module docstring's sentence), engine.py 6 (Turn.reached, from a main-thread message_start and the assistant events, never the row's `context`), config.py 3 (its words), daemon.py 2 (the key handed to the room, a bad value said once). 32,980: main 03eeb13's 32,917 plus 63.
+
+- `lines = 32980`
 
 ## Uncapped
 
