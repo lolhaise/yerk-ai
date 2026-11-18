@@ -19,6 +19,7 @@ open_loops = "memory/open-loops.md"
 # people = [USER_ID]         # Discord user ids answered in this room besides the owner (sender "person"); unset: the owner only.
 #                             # Needs a privacy other than owner: an owner room reads the owner's whole memory
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
+# worker_addons = ["mcp__example-addon__read"]   # the room's own add-on tools every worker started from it gets (it needs them in allow and mcp); [] none
 
 [rooms.example-quiet]
 channel = "discord:CHANNEL_ID"

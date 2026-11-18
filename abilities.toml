@@ -1455,7 +1455,7 @@ layer = 5
 # (EROFS), and it read each page by a plain GET from its shell; filed 2026-11-18.
 [abilities.worker-web]
 state = "built"
-what = "A worker given the web plug-in (the worker tool's `addons`) reads pages, searches and saves pictures as its room does: the plug-in, told it runs in a worker, keeps its state in the worker's own folder, since the worker's unit sees Yerk's state folder read-only, where every web_fetch failed on the free rungs' shared rate window."
+what = "A worker given the web plug-in (the worker tool's `addons`, or its room's `worker_addons`) reads pages, searches and saves pictures as its room does: the plug-in, told it runs in a worker, keeps its state in the worker's own folder, since the worker's unit sees Yerk's state folder read-only, where every web_fetch failed on the free rungs' shared rate window."
 how = [
   "Where it writes: web/ in the worker's own folder holds its rate window, site memory, call logs, meters and its stealth browser's profile; Yerk's state folder stays read-only to the worker, whose shell shares the plug-in's mounts, so a worker writes nothing a room's process reads.",
   "The caps: each free read counts the one window every room's process books with the worker's own, 30 a minute and 6 a host, so a worker's reads keep to the caps with the rooms'; the rooms do not count a worker's window, which its shell could write. You.com's 100 searches a day count the same way.",
@@ -1464,7 +1464,7 @@ how = [
   "Files: a page's PDF or Word file and a picture save in the room's work folder, which the worker's unit has, as in the room.",
 ]
 tier = "free"
-needs = "the web plug-in in the room's own rooms.toml table and allow list, given to the worker by its server's name (web-ladder in rooms.toml.example)"
+needs = "the web plug-in in the room's own rooms.toml table and allow list, given to the worker by its server's name in a start's `addons` or the room's `worker_addons` (web-ladder in rooms.toml.example)"
 price = "none: a worker has no key, so it reads only from the machine"
 free_path = "this is the free path"
 asked_as = ["web_fetch in a worker", "web fetch in a worker", "worker can't fetch", "worker cannot fetch", "web_fetch fails in a worker",

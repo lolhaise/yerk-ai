@@ -2,8 +2,8 @@
 # Paths are relative to the private folder.
 
 # [defaults]: the one tool set every owner room carries, declared once, so the rooms share one way of doing things. It holds
-# allow and mcp.<name> tables only (each room keeps its own sandbox); any other key stops the start. A room's own allow, or
-# its own mcp.<name> table, replaces that default whole, and allow_remove = [...] in a room drops named tools from the allow
+# allow, worker_addons and mcp.<name> tables only (each room keeps its own sandbox); any other key stops the start. A room's
+# own allow, worker_addons or mcp.<name> table replaces that default whole, and allow_remove = [...] in a room drops named tools from the allow
 # it inherits. A room whose privacy is not owner inherits nothing. {room} in a server's args and env is the room's name.
 # `yerk doctor` names an owner room that misses a default tool or carries its own copy of one. The set below is one
 # install's: the web plug-in and hands, a second assistant's reach on the machine over MCP (owner rooms only).
@@ -11,6 +11,7 @@
 # the private folder's secrets/, each optional; with none it reads pages from this machine and searches keyless engines.
 # [defaults]
 # allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_image"]
+# worker_addons = ["mcp__example-addon__read"]   # the add-on tools every worker started from an owner room gets too (a tool, or a server's name for its tools allow names); skipped when allow has it not or its table passes a credential
 # [defaults.mcp.web-ladder]
 # type = "stdio"
 # command = "node"
@@ -54,6 +55,7 @@ open_loops = "memory/open-loops.md"
 # card = "count"              # a room with people: its holding line and a step count, never a step; unset or "steps": an owner room's card, one row per step
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 # allow_remove = ["mcp__hands__mail"]   # tools this room does without, out of the allow it inherits from [defaults]
+# worker_addons = []         # the room's own add-on tools every worker started from it gets; replaces [defaults]' whole, [] for none
 
 [rooms.example-quiet]
 channel = "discord:CHANNEL_ID"
