@@ -8,6 +8,48 @@ version changes.
 
 ## 2026-11-17
 
+### verify-recipe (#95)
+
+- A change can now be proven on the running daemon before its last commit, offline and in about 10 seconds, and not only
+  on its tests. No test had ever seen the daemon do its own work: both harnesses that run `Yerkd.run_discord`
+  (tests/test_slash.py, tests/test_watch.py) swap the HTTP server, the reaper, the beat, the meters' keeper and the
+  workers' pump for functions that return at once. With `self.keep_meters()` taken out of run_discord's task list, every
+  test of the five files that cover status-meters-kept-fresh still passed and the box's checks were green on a tree whose
+  keeper would never have run; the only proof that it runs was taken by hand on the live daemon after the deploy.
+- `tests/verify_daemon.py` runs yerkd's own `main()` on a scratch copy of the example layer and a scratch state folder,
+  both in a new temporary folder it removes at the end, with every long-lived task `run_discord` starts running as on an
+  install and only the outside world replaced: Claude Code by tests/fake_worker_claude.py and tests/fake_claude.py,
+  Discord's client by an in-process gateway built on the tests' own (`Chan`, `Msg`, `Bot`, `It`), systemd by the worker
+  tests' `Units` and a notify socket of the run's own, stand-ins on PATH for systemctl, systemd-run and ssh (the Mac,
+  answering with no texts), and no network (a connect past loopback is refused and counted). It refuses to start on the
+  live install's state folder or private layer, takes a port the kernel hands out free, and points HOME, YERK_STATE and
+  YERK_PRIVATE into its scratch folder while it runs.
+- It drives the daemon from outside and prints one line a check, state first: `/status` over the HTTP port with its
+  rooms; a message in a room answered there, with its inbound and turn rows; the slash `/status` answered once, then
+  edited once; the gateway ready with the slash commands registered; the keeper's reading for each account in
+  usage.json; READY=1 and WATCHDOG=1 on the notify socket; the pipeline's watch asking its own round; the inbox check's
+  copy; a worker started through `/control` the way `yerk worker start` asks, ending with its card settled and its exit
+  record, and its result waiting for the room to go quiet until the pump relays it; the reaper closing a room's idle
+  process; the stop by SIGTERM through the daemon's own path (STOPPING=1, every task ended, `main()` returning 0); no
+  thread or process of the run left; nothing reaching the network or changing systemd. The tasks come from the list
+  `run_discord` hands its stop wait: one it starts that the run has no check for fails the run by name, so a task added
+  later is never left unseen. A failed line names its step and what it saw: the HTTP answer, the file's content, the last
+  lines of the daemon's journal. Every wait has a deadline. Periods shortened for the run are named in its output: the
+  keeper's and the pipeline watch's `every` (their parameters' defaults), `workers.PUMP_EVERY`, `usage.FRESH` (a reading
+  a second old is a kept one, as one a minute old is on an install), `--idle-minutes 0.03`, `[workers] idle_seconds` and
+  `[imessage] poll_seconds` in the scratch yerkd.toml.
+- `.claude/skills/verify/SKILL.md` is the recorded recipe: at the repo root it replaces Claude Code's bundled `/verify`,
+  and other agents in the repo follow it. It says how to run the checks, how to drive the one feature a change touches
+  against the same scratch daemon (`--drive FILE`, whose `drive(run)` sends a message, calls a slash command, starts a
+  worker and reads the ledger and the state files), and that a report pastes the run's own lines as its evidence.
+- Each of these, on a scratch copy of the tree, fails the run and names the step: keep_meters, reap, beat.tick or
+  serve_http taken out of run_discord's list; `workers.begin` taken out of run_discord; `register()` taken out of the
+  gateway's ready. A long-lived task that returns or raises by itself ends the daemon, and the run names that task in a
+  line of its own (the keeper returning at its start: `Yerkd.keep_meters`). tests/test_verify_daemon.py runs it once in the suite. tests/fake_worker_claude.py hands `claude -p
+  /usage` to fake_claude.py, as it hands a room's process, so one YERK_CLAUDE serves the whole daemon. docs/GUIDE.md says
+  how a contributor checks a change. No line of yerk_ai/ changes.
+- **Upgrading**: nothing to change.
+
 ### watch-test-waits-on-events (#94)
 
 - tests/test_watch.py's proof that a watched channel is read as the room's own and never written to no longer fails now
