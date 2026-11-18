@@ -2,7 +2,9 @@
 rows, the morning diff. /proc and systemd are faked where it matters; the stall is a real event loop held
 for 3 s in a test daemon on a temp state folder with no channel adapter attached. Layer 7, run 1."""
 import asyncio
+import contextlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -19,7 +21,7 @@ from zoneinfo import ZoneInfo
 from starlette.testclient import TestClient
 
 from yerk_ai import __version__, beat, cli, context, jobs, mcp_server, morning, status, usage, words
-from yerk_ai.accounts import Account, Cooldowns, load_accounts
+from yerk_ai.accounts import Account, Cooldowns, load_accounts, pick
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
@@ -437,6 +439,203 @@ def test_kept_fresh_h_the_background_read_starts_claude_code_through_nice_and_th
     usage.readings(accounts, tmp_path, True, NOW + usage.FRESH)
     assert argvs == [["nice", "-n", "19", usage.claude_bin(), *usage.ARGV], [usage.claude_bin(), *usage.ARGV]]
     assert usage.last(tmp_path)["five"]["seven_day"]["pct"] == 72.0
+
+
+FABLE, OPUS = "claude-fable-5-2", "claude-opus-5-5"
+
+
+def seen(reading, at):
+    """A live reading as usage.readings hands one back, taken at `at`."""
+    return {**reading, "at": at, "source": "live"}
+
+
+def test_a_rate_limits_rest_ends_when_a_live_reading_shows_its_usage_back_and_the_next_pick_takes_the_account(tmp_path):
+    """Need 104 of 2026-11-17: a rate limit rested an account on Fable until the reset it named, days off; its usage came
+    back early (Fable 0%, the week near empty, the same reset) and the rest stood, so the picker skipped the account and
+    put a worker on a busy one, where it waited. A live reading taken after a rest began with no meter binding the rest's
+    model full ends that rest, the keeper's as it files it, so the next pick takes the account; a reading from before the
+    rest, or one still full, ends nothing, and a billing rest is never a meter's to end."""
+    accounts, asked, tried = five_accounts(tmp_path), [], {}               # tried five, one, four, two, three
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    for name in ("five", "one"):                                           # the reset the limit named: the Fable week's
+        cool.fail(name, "rate_limit", lambda r: 60, now=NOW - 4 * H, model=FABLE, until=NOW + 80 * H)
+    cool.fail("two", "billing", lambda r: 3 * H, now=NOW - H)
+    assert pick(accounts, cool, NOW, model=FABLE).name == "four"           # the wall: both skipped
+    early = seen(live(2, 3 * H, 5, 80 * H, 0), NOW - 5 * H)               # read before the limit hit: it proves nothing
+    full = seen(live(9, 3 * H, 60, 80 * H, 100), NOW - H)                 # read since, the Fable week still full
+    assert usage.back(cool, {"five": early, "one": full}) == [] and usage.back(cool, {"five": full}) == []
+    assert pick(accounts, cool, NOW, model=FABLE).name == "four" and cool.until("five", NOW, FABLE) == NOW + 80 * H
+    got = {"five": live(2, 3 * H, 5, 80 * H, 0), "one": live(9, 3 * H, 60, 80 * H, 100), "four": live(3, H, 3, H, 3),
+           "two": live(1, H, 1, H, 1), "three": live(1, H, 1, H, 1)}
+    for _ in range(5):                                                     # the keeper's steps, one account each
+        usage.keep(accounts, tmp_path, tried, clock=lambda: NOW, read_one=lambda a: asked.append(a.name) or got[a.name], cooldowns=cool)
+    assert asked == ["five", "one", "four", "two", "three"] and cool.until("one", NOW, FABLE) == NOW + 80 * H
+    assert pick(accounts, cool, NOW, model=FABLE).name == "five" and cool.show("two", NOW)[0]["kind"] == "billing"
+    again = Cooldowns(tmp_path / "cooldowns.json")                         # a restart: still ended, its repeats kept
+    assert again.until("five", NOW, FABLE) is None and again.data["five"][f"rate_limit:{FABLE}"]["repeats"] == 1
+
+
+def test_only_a_rate_limits_rest_ends_and_only_on_the_meters_that_bind_its_model(tmp_path):
+    """The session and the week bind every model, a model's own week only its model ('Fable' binds claude-fable-5-2, not
+    Opus); a rest keyed to no model waits for every meter. A billing, login or hand rest is no usage and stays, and a
+    failed reading ends nothing."""
+    assert usage.full(live(10, H, 50, H, 100), OPUS) is False and usage.full(live(10, H, 50, H, 100), FABLE) is True
+    assert usage.full(live(10, H, 50, H, 100)) is True and usage.full(live(10, H, 100, H, 0), OPUS) is True
+    assert usage.full({"five_hour": {"pct": 4}, "model": {"name": "Sonnet only", "pct": 100}}, "claude-sonnet-4-5") is True
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    for name, kind, model in (("one", "rate_limit", FABLE), ("one", "rate_limit", OPUS), ("two", "rate_limit", ""),
+                              ("three", "billing", ""), ("four", "auth", "")):
+        cool.fail(name, kind, lambda r: 3 * H, now=NOW - H, model=model, until=NOW + 50 * H if kind == "rate_limit" else None)
+    cool.set("five", "manual", NOW + 50 * H)
+    every = ("one", "two", "three", "four", "five")
+    assert usage.back(cool, {n: {"error": "no answer in 15 s", "at": NOW, "source": "live"} for n in every}) == []
+    fable_full = {n: seen(live(10, 2 * H, 50, 50 * H, 100), NOW) for n in every}
+    assert usage.back(cool, fable_full) == [("one", f"rate_limit:{OPUS}")]          # Fable's own week never held Opus
+    assert usage.back(cool, {n: seen(live(100, 2 * H, 50, 50 * H, 0), NOW) for n in every}) == []   # the session full
+    assert usage.back(cool, {n: seen(live(10, 2 * H, 50, 50 * H, 0), NOW) for n in every}) == [("one", f"rate_limit:{FABLE}"),
+                                                                                              ("two", "rate_limit")]
+    assert [n for n in every if cool.show(n, NOW)] == ["three", "four", "five"]
+
+
+def test_a_limit_no_meter_shows_is_ended_once_then_its_next_rest_stays_to_its_end(tmp_path):
+    """A limit no /usage meter shows (every meter reads under 100%): the reading ends its rest, the next turn hits the
+    limit again before the end that reading took away, and that rest stays to its own end whatever a reading says, so no
+    turn after it hops on the same wall every time the keeper reads. A reply on the account (Cooldowns.clear) trusts the
+    meters again."""
+    accounts, back = five_accounts(tmp_path)[:1], live(3, 2 * H, 10, 50 * H, 10)        # five
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    cool.fail("five", "rate_limit", lambda r: 60, now=NOW - H, model=FABLE, until=NOW + 50 * H)
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW, read_one=lambda a: back, cooldowns=cool)
+    assert cool.until("five", NOW, FABLE) is None
+    cool.fail("five", "rate_limit", lambda r: 60, now=NOW + 120, model=FABLE, until=NOW + 50 * H)   # the next turn: limited
+    assert [(r["kind"], r["stays"]) for r in cool.show("five", NOW + 120)] == [(f"rate_limit:{FABLE}", True)]
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + usage.EVERY, read_one=lambda a: back, cooldowns=cool)
+    assert usage.back(cool, {"five": seen(back, NOW + 2 * usage.EVERY)}) == []
+    assert cool.until("five", NOW + 2 * usage.EVERY, FABLE) == NOW + 50 * H
+    cool.clear("five", model=FABLE)                                        # a reply on Fable there
+    cool.fail("five", "rate_limit", lambda r: 60, now=NOW + 3 * usage.EVERY, model=FABLE, until=NOW + 50 * H)
+    assert usage.back(cool, {"five": seen(back, NOW + 4 * usage.EVERY)}) == [("five", f"rate_limit:{FABLE}")]
+
+
+def test_the_cards_own_reading_ends_a_rest_its_usage_shows_over_before_it_draws_the_account(tmp_path):
+    """/status read an account at Fable 0% and the week 4% while the rest list still had it resting till its reset; the
+    card's own live reading now ends that rest first, so the account's line is no longer red with the rest's end and the
+    next turn tries it first. An account still full keeps its rest and its line."""
+    accounts = five_accounts(tmp_path)
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    for name in ("five", "one"):                                           # TANK: five reads Fable 2%, one Fable 100%
+        cool.fail(name, "rate_limit", lambda r: 60, now=NOW - 4 * H, model=FABLE, until=NOW + 10 * H)
+    s = status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"), now=NOW,
+                       units=set, timers=Timers({}), live=True, read_one=lambda a: TANK[a.name])
+    lines = status.card(json.loads(json.dumps(s)), NOW)
+    assert [(a["name"], a["rests_until"]) for a in s["accounts"][:2]] == [("five", None), ("one", NOW + 10 * H)]
+    assert lines[1] == "- ⑤ 5h 7% · wk 1% · Fable 2%" and "- next turn tries ⑤ first" in lines
+    assert f"- ↻ resting until {words.short_when(NOW + 10 * H, NOW)} · 💳 {words.short_day(status.next_bill(8, NOW))}" in lines
+
+
+def test_the_daemons_keeper_ends_a_rest_its_reading_shows_over_and_a_worker_then_starts_on_that_account(tmp_path, monkeypatch, caplog):
+    """The daemon's keeper (Yerkd.keep_meters) reads each account with Claude Code's /usage at least every usage.EVERY;
+    a reading it files ends a rate limit's rest that it shows over, says so in one log line, and the next worker's pick
+    takes that account, where it was put on another before and waited there."""
+    asked = []
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    monkeypatch.setattr(usage, "read", lambda a, cwd, timeout=usage.TIMEOUT, nice=False: asked.append(a.name) or live(4, 2 * H, 6, 50 * H, 0))
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)                                   # accounts one, then two
+    y.cooldowns.fail("one", "rate_limit", lambda r: 60, now=time.time() - H, model=FABLE, until=time.time() + 50 * H)
+    assert y.workers._account("", FABLE).name == "two"
+
+    async def steps():
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(y.keep_meters(every=0.02), 0.5)
+    asyncio.run(steps())
+    assert asked == ["one", "two"] and y.cooldowns.until("one", model=FABLE) is None    # each once: then fresh for EVERY
+    assert y.workers._account("", FABLE).name == "one"
+    assert f"account one: its rate_limit:{FABLE} rest ended early, its usage is back" in caplog.messages
+
+
+# failed-read: a card's live ask that fails never replaces a good kept reading in usage.json (the failure is held in memory
+# FRESH long instead), and the keeper files a good reading over an error; a fake reader and a pinned clock, no Claude Code
+FAILED = {"error": "no answer in 15 s"}
+
+
+def test_failed_read_a_a_failed_ask_leaves_the_good_kept_reading_in_the_file_and_hands_back_the_failure(tmp_path):
+    """failed-read (a) A good reading kept 10 minutes ago and the card's live ask for that account fails: usage.json keeps
+    that reading exactly as it was (numbers, time, source), and the card is handed the failure, so it knows its ask
+    failed. The other account's good answer is filed as always."""
+    accounts = five_accounts(tmp_path)[:2]                                     # five, one
+    kept_at(tmp_path, {"five": 10, "one": 10})
+    good = usage.last(tmp_path)["five"]
+    got = usage.readings(accounts, tmp_path, True, NOW, lambda a: dict(FAILED) if a.name == "five" else TANK[a.name])
+    assert got == {"five": {**FAILED, "at": NOW, "source": "live"}, "one": {**TANK["one"], "at": NOW, "source": "live"}}
+    assert usage.last(tmp_path) == {"five": good, "one": got["one"]} and good["at"] == NOW - 600
+
+
+def test_failed_read_b_the_failed_ask_counts_as_the_try_for_fresh_and_is_asked_again_after(tmp_path):
+    """failed-read (b) A second card inside FRESH starts no second Claude Code for the account whose ask failed and gets the
+    same failure back (held in memory, the file still the good reading); another state folder's account of that name is
+    its own; once FRESH has passed it is asked again."""
+    accounts, asked = five_accounts(tmp_path)[:1], []                         # five
+    kept_at(tmp_path, {"five": 10})
+    good = usage.last(tmp_path)
+
+    def fails(a):
+        asked.append(a.name)
+        return dict(FAILED)
+    first = usage.readings(accounts, tmp_path, True, NOW, fails)
+    assert usage.readings(accounts, tmp_path, True, NOW + usage.FRESH - 1, fails) == first and asked == ["five"]
+    assert usage.last(tmp_path) == good and usage.FRESH == 60.0
+    (tmp_path / "other").mkdir()
+    usage.readings(accounts, tmp_path / "other", True, NOW + 1, fails)
+    assert asked == ["five", "five"]
+    again = usage.readings(accounts, tmp_path, True, NOW + usage.FRESH, fails)
+    assert again == {"five": {**FAILED, "at": NOW + usage.FRESH, "source": "live"}} and asked == ["five"] * 3
+    assert usage.last(tmp_path) == good
+
+
+def test_failed_read_c_an_account_kept_as_an_error_or_not_kept_takes_the_failure_in_the_file_as_before(tmp_path):
+    """failed-read (c) An account whose kept entry is itself an error, and one with none: the failed ask is filed in
+    usage.json as it always was, with the time of the ask, and counts as the try from there for FRESH."""
+    accounts, asked = five_accounts(tmp_path)[:2], []                         # five, one
+    (tmp_path / usage.FILE).write_text(json.dumps({"five": {"error": "unreadable (ValueError)", "at": NOW - 600, "source": "live"}}))
+    got = usage.readings(accounts, tmp_path, True, NOW, lambda a: asked.append(a.name) or dict(FAILED))
+    assert got == usage.last(tmp_path) == {n: {**FAILED, "at": NOW, "source": "live"} for n in ("five", "one")}
+    assert usage.readings(accounts, tmp_path, True, NOW + 30, lambda a: asked.append(a.name) or dict(FAILED)) == got
+    assert asked == ["five", "one"]
+
+
+def test_failed_read_d_after_a_failed_ask_the_keeper_reads_the_account_once_its_good_reading_is_every_old(tmp_path):
+    """failed-read (d) After (a), the good reading kept 10 minutes before the failed ask: the keeper's step once that reading
+    is EVERY old reads the account and files the answer (the card's error, under EVERY old, held it back before). A good
+    reading the keeper files inside the failure's minute is the next card's, nothing asked."""
+    accounts, asked = five_accounts(tmp_path)[:1], []                         # five
+    kept_at(tmp_path, {"five": 10})
+    usage.readings(accounts, tmp_path, True, NOW, lambda a: dict(FAILED))
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + usage.EVERY - 600, read_one=lambda a: asked.append(a.name) or TANK["two"])
+    assert asked == ["five"] and usage.last(tmp_path)["five"] == {**TANK["two"], "at": NOW + usage.EVERY - 600, "source": "live"}
+    kept_at(tmp_path, {"five": 15})
+    usage.readings(accounts, tmp_path, True, NOW + 2 * usage.FRESH, lambda a: dict(FAILED))   # the first failure past FRESH: asked
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + 2 * usage.FRESH + 5, read_one=lambda a: TANK["two"])
+    filed = usage.readings(accounts, tmp_path, True, NOW + 2 * usage.FRESH + 10, lambda a: asked.append(a.name) or dict(FAILED))
+    assert filed == {"five": {**TANK["two"], "at": NOW + 2 * usage.FRESH + 5, "source": "live"}} and asked == ["five"]
+
+
+def test_failed_read_e_a_good_background_read_replaces_an_error_a_card_filed_meanwhile_and_never_a_good_one(tmp_path):
+    """failed-read (e) The account kept only as an error, and while the keeper's read is in flight a card's live ask fails
+    and files its own error: the keeper's good reading is filed over it with the time it ended. A good reading a card
+    filed meanwhile still stays."""
+    accounts, t = five_accounts(tmp_path)[:1], [NOW]                          # five
+
+    def step(card):
+        def in_flight(a):
+            usage.readings(accounts, tmp_path, True, NOW + 3, lambda a: dict(card))     # the card's own ask, the lock free
+            t[0] = NOW + 9
+            return TANK["five"]
+        t[0] = NOW
+        (tmp_path / usage.FILE).write_text(json.dumps({"five": {"error": "unreadable (ValueError)", "at": NOW - 1200, "source": "live"}}))
+        usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=in_flight)
+        return usage.last(tmp_path)["five"]
+    assert step(FAILED) == {**TANK["five"], "at": NOW + 9, "source": "live"}
+    assert step(TANK["two"]) == {**TANK["two"], "at": NOW + 3, "source": "live"}
 
 
 def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():

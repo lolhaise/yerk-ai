@@ -502,6 +502,22 @@ def test_a_room_asked_why_its_emails_land_in_spam_hears_the_email_name_way_and_w
     assert [e["key"] for e in abilities.asked("send an email for me", s, TAB)] == ["email"]
 
 
+def test_a_room_asked_why_a_worker_waits_while_an_account_has_its_usage_back_hears_the_usage_back_way(tmp_path):
+    """need-2026-11-17-104: a room asked why its worker waited for an account while two had usage left found the rest
+    list holding one of them on a rate limit until the reset the limit named, days off, though its usage had come back,
+    and started its worker there by name to skip the list. Asked that way, a room gets usage-back whole: such a rest ends
+    on a reading of the usage back, taken about every 15 minutes and by /status, so no worker goes there by name for it."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("why is my worker waiting for an account when the other one's usage came back?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["usage-back"] and hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    text = found[0]["text"]
+    assert text.startswith(f"usage-back, a Yerk AI ability ({words.ability('on')[1]}): An account's rest ends when its usage "
+                           "comes back early")
+    assert "the account is free again within about 15 minutes" in text and "so Fable's week never holds Opus" in text
+    assert [e["key"] for e in abilities.asked("the card says it is still resting, until Sun 3a", y.memory, TAB)] == ["usage-back"]
+    assert not abilities.asked("the dog is resting on the couch until dinner", y.memory, TAB)
+
+
 def test_a_room_asked_for_no_chat_box_on_its_page_hears_the_page_tool_s_switch(tmp_path):
     """need-2026-11-09-81: asked on the live page a second time for no chat box, a room found no switch for the chat in its
     page tool, only the close button in the owner's browser. Asked that way, or about the chat on the right, or to bring

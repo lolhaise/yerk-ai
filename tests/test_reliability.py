@@ -13,6 +13,7 @@ import time
 
 import pytest
 
+import test_slash
 import yerk_ai.channels.discord as dmod
 from test_discord import HOOK, OWNER, ROOM_CH, Client, Msg, Room, run
 from test_room import Chan, env, send, wait_idle  # noqa: F401  (env: the room fixture)
@@ -83,7 +84,7 @@ def test_kept_fresh_i_the_meters_keeper_says_each_failing_step_once_runs_the_nex
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
     steps: list[list[str]] = []
 
-    def step(accounts, state, tried):
+    def step(accounts, state, tried, cooldowns=None):                # the daemon hands it the rests (usage.back)
         steps.append([a.name for a in accounts])
         if len(steps) <= 3:
             raise OSError("usage.json could not be written" if len(steps) < 3 else "No space left on device")
@@ -117,6 +118,40 @@ def test_kept_fresh_i_the_meters_keeper_says_each_failing_step_once_runs_the_nex
         await asyncio.gather(task, return_exceptions=True)
     asyncio.run(idle())
     assert steps == []
+
+
+def test_failed_read_j_the_meters_keeper_is_one_of_the_tasks_the_daemon_starts(tmp_path, monkeypatch):
+    """failed-read (j) yerkd's start as it runs (test_slash.run_discord, each task returning at once): the meters' keeper is
+    one of the tasks it starts, so the running daemon keeps each account's reading young and not only a test of the keeper."""
+    d, _ = test_slash.run_discord(tmp_path, monkeypatch, f"owner = {test_slash.OWNER}\n")
+    assert getattr(d, "keeper_started", False) is True
+
+
+class Stop(BaseException):
+    """Ends a coroutine under test: never an Exception, so a step's own except leaves it alone."""
+
+
+def test_failed_read_k_the_meters_keeper_waits_every_seconds_between_two_steps(tmp_path, monkeypatch):
+    """failed-read (k) Yerkd.keep_meters on a fake step and a fake asyncio.sleep: a step, then a wait of `every` seconds,
+    then the next, so the keeper never runs as a busy loop starting a background read after another."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    said, real = [], asyncio.sleep
+
+    def step(accounts, state, tried, cooldowns=None):                # the daemon hands it the rests (usage.back)
+        said.append(("step", [a.name for a in accounts]))
+        if len(said) > 6:                                  # steps with no wait between them
+            raise Stop
+
+    async def sleep(seconds, *a):
+        said.append(("wait", seconds))
+        if len(said) >= 6:
+            raise Stop
+        await real(0)
+    monkeypatch.setattr(usage, "keep", step)
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    with pytest.raises(Stop):
+        asyncio.run(y.keep_meters(30.0))
+    assert said == [("step", ["one"]), ("wait", 30.0)] * 3
 
 
 def test_a_turn_that_crashes_is_said_in_the_room_and_its_rows_are_closed(env, monkeypatch):

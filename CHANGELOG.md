@@ -31,6 +31,79 @@ version changes.
   131 times in 600 runs, every time on the fold line.
 - **Upgrading**: nothing to change. No line of yerk_ai/ changed, so budgets.toml is as it was.
 
+### need-2026-11-17-104 (#92)
+
+- An account's rest now ends when its usage comes back early. A rate limit rests an account for the model it hit until
+  the reset the limit names, often days off. When that usage came back before the reset (the model's own week at 0% and
+  the week near empty, the reset unchanged), the rest stood anyway: the picker skipped the account and put a worker on a
+  busy one, where it waited, and the only way around it was to start the worker on that account by name.
+- A live reading of an account now ends its rate limit's rest when it was taken after the rest began and no meter that
+  binds the rest's model is full in it (the 5-hour session, the week, and that model's own week, so Fable's own week
+  never holds a rest on Opus). The readings are the ones yerkd already takes: the keeper's, about every 15 minutes for each
+  account through `nice` (status-meters-kept-fresh), and the one `/status` asks for, which ends such a rest before the
+  card draws it. So the next pick, a room's turn or a worker's start, takes the account again within about 15 minutes of
+  its usage coming back, and `/model`, `yerk accounts` and the card show it free. yerkd's log has a line for each. A
+  reading from before the rest, or one still full, ends nothing, and no Claude Code is started for it.
+- Only a rate limit's rest ends this way: a billing, login or hand rest is no usage and stands to its end. A limit no
+  `/usage` meter shows is tried once: when a turn hits it again before the end a reading took away, that rest stays to
+  its end whatever a reading says, so no turn after it hops on the same wall every time the keeper reads; a reply on the
+  account trusts the readings again.
+- The rest file is now written through a temp file of each writer's own, 0600, since a room's thread and the keeper can
+  write it at once.
+- The ability is `usage-back` (`yerk explain usage-back`), found by a room asking why a worker is waiting for an account,
+  why an account is still resting, or about usage that came back. budgets.toml: `[code] lines` 32,803 to 32,845, with
+  its dated note; docs/budgets.md is what `yerk docs own` writes. docs/GUIDE.md, How a room runs, says it beside the rate
+  limit's rest. The README says `/usage` runs every 15 minutes and ends such a rest, kept under its 12,000 bytes by
+  dropping a repeat ("it never prints or logs one", which Who it trusts says of every credential) and five shorter
+  phrasings with the same meaning.
+- The tests: 7 new, in tests/test_observe.py (the wall: two accounts resting on Fable, a reading from before the rest and
+  one still full end nothing, the keeper's reading ends the one whose usage is back and the picker takes it again, a
+  restart keeping it so, a billing rest left; only a rate limit's rest ends, on the meters that bind its model; a limit
+  no meter shows is ended once, then its next rest stays; the card's own reading ends a rest before it draws the
+  account; the daemon's keeper ends one, says so in its log, and the next worker starts there), tests/test_accounts.py
+  (lift keeps the rest's end and its repeats, and a failure before that end stays) and tests/test_abilities.py (the ask
+  that finds usage-back).
+- **Upgrading**: nothing to do. A rest already resting on a rate limit ends at the first reading of its usage back; one
+  written without the time it began is left to its end.
+
+### status-failed-read-keeps-reading (#93)
+
+- One `/usage` call that fails no longer brings the stale `/status` card back. Since status-meters-kept-fresh yerkd keeps
+  each account's live reading under 15 minutes old, but a card's live ask that failed (no answer in 15 s, output it could
+  not read, no meters printed) was filed in `<state>/usage.json` over the account's good reading. The keeper then took
+  the account as read a moment ago and left it for 15 minutes, and each card meanwhile showed the stream's reading, hours
+  old with its age under it and without the model's own week. The live card, the one edited in after the ask, was handed
+  no kept reading at all, so it showed the stream's even with a good reading minutes old in the file.
+- A failed live ask now leaves a good kept reading in the file as it was: its numbers, its time, its source. The card that
+  asked is still handed the failure, and the failure still counts as the try for a minute, so a second card inside that
+  minute starts no second Claude Code for that account and gets the same failure back; that try is held in yerkd's
+  memory, never in the file over a good reading. An account whose kept entry is itself an error, or that has none, takes
+  the failure in the file as before.
+- The keeper files a good background reading over an error whatever that error's time, so an error a card filed while
+  the background read ran no longer drops the good reading. A good reading a card filed meanwhile still stays, and a
+  failed background read still never replaces a good one.
+- The live card, `yerk status` in a terminal included, shows an account whose ask failed with the newest reading it holds:
+  the kept reading whole where it is newer than the stream's or the stream has none, else the stream's numbers with the
+  kept model's own week while that week runs. The one age line under the account says how old that is, as it says for
+  any reading not live on that card. In the payload the meter carries `live_error`, why the ask failed, beside it; the
+  kept reading has `source` `kept` and its own `at`, as on the first answer. A card where every ask succeeds is the same
+  byte for byte.
+- Two lines of the keeper had no test: one now fails when the keeper is not among the tasks yerkd starts, and one when it
+  does not wait between two steps.
+- budgets.toml: `[code] lines` 32,803 to 32,816, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md is unchanged: what it says of `/status`, `yerk status` and `--json` still holds.
+- The tests: 11 new, in tests/test_observe.py (a failed ask leaves the good kept reading in the file and hands back the
+  failure; a second card inside the minute asks nothing and gets that failure, and after it asks again; an account kept as
+  an error or not kept takes the failure in the file; after a failed ask the keeper reads the account once its good
+  reading is 15 minutes old; a good background read replaces an error a card filed meanwhile, never a good reading),
+  tests/test_room_card.py (a failed ask on the live card: the kept reading 10 minutes old and one age line, not the
+  stream's 8 hours; the kept reading older than the stream's: the stream's numbers with the kept model's week; every ask
+  good: main's card byte for byte), tests/test_slash.py (`/status` whose ask fails: the edit, once, carries the kept
+  numbers) and tests/test_reliability.py (the keeper is one of the tasks yerkd starts; it waits between two steps). The
+  `/status` harness in tests/test_slash.py can have the /usage call fail, and its `run_discord` harness marks that the
+  keeper started.
+- **Upgrading**: nothing to change.
+
 ## 2026-11-16
 
 ### status-meters-kept-fresh (#91)
