@@ -50,9 +50,13 @@ function cooldownFile(settings) {
   return path.join(settings.stateDir, "local-cooldown.json");
 }
 
+// A worker's process (where's `own`) starts from the rooms' shared file until its own folder holds one, so a host resting
+// from the free rungs rests for it too and a read starts where the rooms last read that host; what it learns stays in
+// its own file, since it may not write the shared one.
 function loadCooldowns(settings) {
   if (!cooldownCache || cooldownCache.file !== cooldownFile(settings)) {
-    const hosts = readJson(cooldownFile(settings), {}) || {};
+    const shared = settings.sharedStateDir ? path.join(settings.sharedStateDir, "local-cooldown.json") : "";
+    const hosts = readJson(cooldownFile(settings), null) || (shared && readJson(shared, null)) || {};
     cooldownCache = { file: cooldownFile(settings), hosts };
   }
   return cooldownCache.hosts;
@@ -199,10 +203,12 @@ export function rememberRead(settings, host, { win, plan, url }) {
   }
 }
 
-// Sliding one-minute windows in <stateDir>/local-rate.json, booked by every room's process together.
+// Sliding one-minute windows in <stateDir>/local-rate.json, booked by every room's process together; a worker's
+// process books in its own folder's and counts the shared one with it (takeWindow's `also`).
 // Returns null when a local read may start (and books it), else the reason.
 export function takeLocalSlot(settings, host) {
-  const full = takeWindow(path.join(settings.stateDir, "local-rate.json"), { key: host, perMinute: settings.localMaxPerMinute, perKey: settings.localMaxPerHostPerMinute, now: nowOf(settings) });
+  const also = settings.sharedStateDir ? [path.join(settings.sharedStateDir, "local-rate.json")] : [];
+  const full = takeWindow(path.join(settings.stateDir, "local-rate.json"), { key: host, perMinute: settings.localMaxPerMinute, perKey: settings.localMaxPerHostPerMinute, now: nowOf(settings), also });
   return full === "all" ? "rate_cap_all" : full === "key" ? "rate_cap_host" : null;
 }
 

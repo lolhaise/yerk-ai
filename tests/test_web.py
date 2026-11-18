@@ -139,6 +139,40 @@ def test_yerk_explain_research_ids_answers_from_the_abilities_file_on_with_the_e
     assert "body.metadata = { [META]: ref }" in code and "findRun(key.value, id" in code   # the reference sent, and taken back
 
 
+def test_yerk_explain_worker_web_answers_from_the_abilities_file_and_a_worker_s_plug_in_writes_only_its_own_folder(tmp_path, capsys):
+    """Need 109 (2026-11-18): a worker a room started with the web plug-in failed every web_fetch on EROFS, the lock of the
+    free rungs' shared rate window in <state>/web/fetch, which its unit mounts read-only, and read its pages by a plain GET
+    from its shell. The worker's server is still the room's table plus its id and folder, and its unit still sees the state
+    folder read-only (no write under <state>/web: the worker's shell shares the plug-in's mounts); the plug-in, told it is
+    in a worker, writes its state in that folder and counts the rooms' shared window with its own
+    (plugins/web/test/tools.test.mjs has the wall, with the shared folder unwritable, and the way)."""
+    from yerk_ai import workers
+    assert cli.main(["explain", "worker-web", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    tab = abilities.manifest()
+    ab = tab["worker-web"]
+    assert lines[:2] == [f"{words.DONE} worker-web: {words.ability('on')[1]}", ab["what"]]
+    assert all(w in ab["what"] for w in ("worker", "web plug-in", "`addons`", "own folder", "read-only", "web_fetch"))
+    assert ab["tier"] == "free" and "key" not in ab and "web-ladder" in ab["needs"]
+    assert [e["key"] for e in abilities.asked("web_fetch fails in a worker on every call", None, tab)] == ["worker-web"]
+    rows = [x.removeprefix("# ") for x in (REPO / "rooms.toml.example").read_text().splitlines()]
+    at = rows.index("[defaults.mcp.web-ladder]")
+    web = tomllib.loads("\n".join(rows[at:at + 6]))["defaults"]["mcp"]["web-ladder"]
+    state, folder = tmp_path / "state", tmp_path / "state" / "workers" / "0a1b2c"
+    conf = {"allow": ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search"], "mcp": {"web-ladder": web}}
+    servers, tools = workers.room_addons(conf, ["web-ladder"], "0a1b2c", folder)
+    assert tools == conf["allow"] and servers["web-ladder"]["args"] == web["args"]
+    assert {k: v for k, v in servers["web-ladder"]["env"].items() if k.startswith("YERK_WORK")} == {"YERK_WORKER": "0a1b2c", "YERK_WORK_DIR": str(folder)}
+    p = workers.Systemd(state).sandbox(folder, {})[1::2]
+    assert f"ReadOnlyPaths={state}" in p and [x for x in p if x.startswith("ReadWritePaths=")] == [f"ReadWritePaths={folder}"]
+    lib = REPO / "plugins" / "web" / "lib"
+    common = (lib / "common.mjs").read_text()
+    assert "env.YERK_WORKER" in common and "env.YERK_WORK_DIR" in common and 'own: worker ? path.join(path.resolve(folder), "web") : web' in common
+    assert "also.flatMap((f) => inWindow(f, now))" in common
+    assert (lib / "tools.mjs").read_text().count('...dirsOf(at, "') == 3
+    assert "sharedStateDir" in (lib / "fetch" / "local.js").read_text() and "sharedStateDir" in (lib / "search" / "util.js").read_text()
+
+
 def test_each_room_s_stdio_server_is_told_its_own_limit_so_web_research_answers_inside_it(tmp_path):
     """Need 49's wall as the room met it: a person room's own web-ladder table carried `timeout = 60000` (no [defaults] for
     it), Claude Code cut the call there and dropped its answer, run id and all, while the plug-in waited up to 170 s. Each

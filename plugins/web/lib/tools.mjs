@@ -2,8 +2,9 @@
 // (lib/search), web_research and web_research_result over the Exa Agent (research.mjs), and web_image over the
 // ladder's fetch rungs (fetch/image.js), one picture saved for the room's Read. Settings and keys are read on
 // every call from the private folder (common.mjs), so an edit or a new key applies to the next call; state lives under
-// <state>/web; each paid call books one spend row in Yerk's ledger. Keys stay in this process's memory: never written to
-// a file, a log, a tool result or the environment (the search code spawns children for YouTube).
+// <state>/web, a Yerk worker's under its own folder (where's `own`); each paid call books one spend row in Yerk's ledger.
+// Keys stay in this process's memory: never written to a file, a log, a tool result or the environment (the search code
+// spawns children for YouTube).
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +21,13 @@ import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
 
 export const AT = where();
+
+// Where a tool's state lives: `own` holds what this process writes, and in a worker the shared folder beside it is read
+// (common.mjs where). An `at` made by hand (the tests) without `own` writes in `web`, as a room's process does.
+export const dirsOf = (at, part) => {
+  const own = at.own || at.web;
+  return { stateDir: path.join(own, part), sharedStateDir: own === at.web ? "" : path.join(at.web, part) };
+};
 
 const RUNG = {
   F1: "a plain fetch from this machine, free",
@@ -202,7 +210,7 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   const capMs = at.limit ? Math.max(at.limit - 10000, at.limit / 2) : undefined;
   let p;
   try {
-    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, stateDir: path.join(at.web, "fetch") } }, { signal, capMs }, {
+    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, ...dirsOf(at, "fetch") } }, { signal, capMs }, {
       ...deps,
       credentials: { apiKey: key.value || undefined, projectId: project.value || undefined },
     });
@@ -318,7 +326,7 @@ export async function webSearch(args, { signal, at = AT } = {}) {
   const par = readKey(at, "parallel");
   const exa = readKey(at, "exa");
   const secrets = [par.value, exa.value];
-  const config = { ...rest, parallelApiKey: par.value, exaApiKey: exa.value, stateDir: path.join(at.web, "search") };
+  const config = { ...rest, parallelApiKey: par.value, exaApiKey: exa.value, ...dirsOf(at, "search") };
   const settings = resolvePluginSettings(config);
   const lines = [];
   if (!par.value && settings.searchOrder.includes("parallel-paid")) lines.push(`No Parallel key (${par.why}): paid Parallel was skipped.`);
@@ -449,7 +457,7 @@ export async function webImage(args, { signal, deps = {}, at = AT, now = Date.no
 
   let p;
   try {
-    const settings = resolveSettings({ ...rest, stateDir: path.join(at.web, "fetch") }, deps.settingsOverrides);
+    const settings = resolveSettings({ ...rest, ...dirsOf(at, "fetch") }, deps.settingsOverrides);
     p = await runImage({ url, settings, creds: { apiKey: key.value || undefined, projectId: project.value || undefined }, cap, signal, deps });
   } catch (err) {
     return refuse(scrub(`web_image could not run: ${firstLine(err)}`, secrets));

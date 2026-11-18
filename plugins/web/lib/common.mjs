@@ -14,7 +14,11 @@ import path from "node:path";
 // web_image saves a picture for the room's Read: the folder this process runs in when it is that room's work folder, else
 // <state>/rooms/<room>/work; with no room, the folder it runs in. `limit`: the room's own limit on a call to this server,
 // in ms, from YERK_TOOL_TIMEOUT, which Yerk sets from the server's `timeout` in rooms.toml (Claude Code cuts a call there
-// and drops its answer, and ignores one under a second); null when none is set.
+// and drops its answer, and ignores one under a second); null when none is set. `own`, where this process writes its
+// state: <state>/web, else, for a Yerk worker (YERK_WORKER its id, hex, at most 12 characters, and YERK_WORK_DIR its own
+// folder, as Yerk's worker start sets them), <its folder>/web, since its unit mounts the state folder read-only (need 109
+// of 2026-11-18: every web_fetch in a worker failed on the rate window's lock). <state>/web stays `web`, read for what
+// every room's process booked and learned there (takeWindow's `also`, the site memory) and never written by a worker.
 export function where(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
   const arg = (name) => {
     const i = argv.indexOf(`--${name}`);
@@ -28,7 +32,10 @@ export function where(argv = process.argv.slice(2), env = process.env, cwd = pro
   const room = arg("room") ?? env.YERK_ROOM ?? own;
   const work = path.resolve(room && own !== room ? path.join(state, "rooms", room, "work") : base);
   const limit = Number(env.YERK_TOOL_TIMEOUT);
-  return { private: priv ? path.resolve(priv) : "", state, web: path.join(state, "web"), room: room || null, work, limit: Number.isInteger(limit) && limit >= 1000 ? limit : null };
+  const folder = String(env.YERK_WORK_DIR || "");
+  const worker = /^[0-9a-f]{1,12}$/.test(String(env.YERK_WORKER || "")) && path.isAbsolute(folder) ? String(env.YERK_WORKER) : null;
+  const web = path.join(state, "web");
+  return { private: priv ? path.resolve(priv) : "", state, web, own: worker ? path.join(path.resolve(folder), "web") : web, worker, room: room || null, work, limit: Number.isInteger(limit) && limit >= 1000 ? limit : null };
 }
 
 // ---- keys and settings, read on every call --------------------------------------------------------
@@ -105,17 +112,25 @@ export function withLock(file, fn) {
 // ---- the per-minute caps, one window for every room's process -----------------------------------
 // Each room that attaches yerk-web starts its own process, so a cap kept in one process's memory would grow with the
 // rooms. Every cap is booked here instead, in one file the processes share: null when a slot was booked, else "all"
-// (the window holds perMinute already) or "key" (it holds perKey for this key, a host).
-export function takeWindow(file, { key = "", perMinute = 0, perKey = 0, now = Date.now() }) {
+// (the window holds perMinute already) or "key" (it holds perKey for this key, a host). `also`: windows counted with
+// this one and never written, the shared one a worker reads but may not write (where's `own`), so its reads keep to
+// the caps with every room's; the rooms do not count a worker's, since a worker's shell can write its folder.
+const inWindow = (file, now) => {
+  try {
+    const t = JSON.parse(fs.readFileSync(file, "utf8")).t;
+    return Array.isArray(t) ? t.filter((e) => Array.isArray(e) && e[0] > now - 60000) : [];
+  } catch {
+    return [];
+  }
+};
+
+export function takeWindow(file, { key = "", perMinute = 0, perKey = 0, now = Date.now(), also = [] }) {
   if (!(perMinute > 0) && !(perKey > 0)) return null;
   return withLock(file, () => {
-    let w = [];
-    try {
-      w = JSON.parse(fs.readFileSync(file, "utf8")).t ?? [];
-    } catch {}
-    w = w.filter((e) => Array.isArray(e) && e[0] > now - 60000);
-    if (perMinute > 0 && w.length >= perMinute) return "all";
-    if (perKey > 0 && w.filter((e) => e[1] === key).length >= perKey) return "key";
+    const w = inWindow(file, now);
+    const all = [...w, ...also.flatMap((f) => inWindow(f, now))];
+    if (perMinute > 0 && all.length >= perMinute) return "all";
+    if (perKey > 0 && all.filter((e) => e[1] === key).length >= perKey) return "key";
     w.push([now, key]);
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify({ t: w }) + "\n", { mode: 0o600 });

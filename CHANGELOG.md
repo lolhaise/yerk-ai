@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-18
 
+### need-2026-11-18-109 (#98)
+
+- A worker given the web plug-in reads pages now. Its unit sees Yerk's state folder read-only, and the plug-in kept the
+  free rungs' rate window there, so every web_fetch in a worker failed before any read ("EROFS: read-only file system",
+  on the window's lock file), as a picture's web_image did, and a worker sent to read a list of job postings read each
+  one by a plain GET from its shell instead: no blocked-page check, no stealth browser, no cap.
+- The plug-in now knows it runs in a worker (the `YERK_WORKER` id and `YERK_WORK_DIR` folder Yerk's worker start already
+  hands an add-on) and keeps its state in `web/` in the worker's own folder: its rate window, site memory, call logs,
+  meters and its stealth browser's profile. Yerk's state folder stays read-only to the worker, whose shell shares the
+  plug-in's mounts, so a worker writes nothing a room's process reads; the worker's sandbox is unchanged.
+- The caps hold with every room's: each free read in a worker counts the one window every room's process books with its
+  own (30 reads a minute, 6 a host) and books in its own; You.com's 100 searches a day count the same way. A worker's site
+  memory starts from the rooms' (a host resting from the free rungs rests for it too) and what it learns stays in its
+  folder. The rooms do not count a worker's window, which its shell could write.
+- A worker reads no key (its unit has no secrets/), so it runs the free rungs and the keyless search engines only, and
+  web_research does not run there, as before. A page's PDF or Word file and a picture still save in the room's work
+  folder. A room's process and its files are as they were.
+- `yerk explain worker-web` has it, found by asks such as "web_fetch in a worker"; the README's Add-ons line names it, its
+  note that the plug-in is outside `[code]` left to docs/GUIDE.md, Web reach, so the README stays under 12,000 bytes.
+- **Upgrading**: nothing to change; the next worker given the plug-in (a start's `addons` or its room's `worker_addons`
+  naming its server, web-ladder in rooms.toml.example) runs it this way. No tool's description changed, so budgets.toml
+  is as it was.
+
 ### worker-room-tools (#99)
 
 - A worker now starts with the add-on tools its room gives every worker. The new room key `worker_addons` in rooms.toml
