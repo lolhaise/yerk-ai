@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-18
 
-### worker-room-tools
+### worker-room-tools (#99)
 
 - A worker now starts with the add-on tools its room gives every worker. The new room key `worker_addons` in rooms.toml
   names them, each the way a worker start's `addons` names one: a tool as the room's `allow` has it, or a server's name
