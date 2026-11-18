@@ -22,7 +22,7 @@ import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 import { REF, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
 import { buildExaBody, buildParallelPaidBody, buildYouCall, searchDuckDuckGo, searchFirecrawl, searchParallelFree } from "../lib/search/engines.js";
 import { resetCooldowns } from "../lib/search/provider.js";
-import { ENGINES } from "../lib/search/util.js";
+import { ENGINES, takeYouSlot } from "../lib/search/util.js";
 import { ENFORCED, TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-test-"));
@@ -116,7 +116,7 @@ after(() => fs.rmSync(TMP, { recursive: true, force: true })); // the test's own
 // ---- where, keys and settings -------------------------------------------------------------------
 test("the command line names the private folder; the state folder and the room follow Yerk's own rules", () => {
   const w = where(["--private", "/srv/p", "--state", "/srv/s"], {}, "/anywhere");
-  assert.deepEqual(w, { private: "/srv/p", state: "/srv/s", web: "/srv/s/web", room: null, work: "/anywhere", limit: null });
+  assert.deepEqual(w, { private: "/srv/p", state: "/srv/s", web: "/srv/s/web", own: "/srv/s/web", worker: null, room: null, work: "/anywhere", limit: null });
   const r = where([], { YERK_STATE: "/srv/s2" }, "/srv/s2/rooms/gym-room/work");
   assert.deepEqual([r.private, r.state, r.room, r.work], ["", "/srv/s2", "gym-room", "/srv/s2/rooms/gym-room/work"]);
   assert.equal(where([], { XDG_STATE_HOME: "/x" }, "/").state, "/x/yerk");
@@ -125,6 +125,16 @@ test("the command line names the private folder; the state folder and the room f
   assert.equal(where(["--state", "/srv/s", "--room", "gym-room"], {}, "/srv/s/rooms/gym-room/work").work, "/srv/s/rooms/gym-room/work");
   assert.equal(where(["--state", "/srv/s", "--room", "gym-room"], {}, "/srv/elsewhere").work, "/srv/s/rooms/gym-room/work");
   assert.equal(where(["--state", "/srv/s", "--room", "gym-room"], {}, "/srv/s/rooms/other-room/work").work, "/srv/s/rooms/gym-room/work");
+});
+
+test("a Yerk worker's process writes its state in its own folder and reads the shared one; a bad id or folder is a room's process", () => {
+  const argv = ["--state", "/srv/s", "--room", "gym-room"];
+  const w = where(argv, { YERK_WORKER: "0a1b2c", YERK_WORK_DIR: "/srv/s/workers/0a1b2c" }, "/srv/s/workers/0a1b2c");
+  assert.deepEqual([w.web, w.own, w.worker, w.work], ["/srv/s/web", "/srv/s/workers/0a1b2c/web", "0a1b2c", "/srv/s/rooms/gym-room/work"]);
+  for (const env of [{ YERK_WORKER: "0a1b2c" }, { YERK_WORKER: "0a1b2c", YERK_WORK_DIR: "workers/0a1b2c" }, { YERK_WORKER: "../x", YERK_WORK_DIR: "/srv/x" }, { YERK_WORK_DIR: "/srv/x" }]) {
+    const r = where(argv, env, "/srv/elsewhere");
+    assert.deepEqual([r.own, r.worker], ["/srv/s/web", null], JSON.stringify(env));
+  }
 });
 
 test("a key is its file's first line; a missing, empty or unnamed one says why and never carries a value", () => {
@@ -274,6 +284,100 @@ test("the shared window counts every booking in its file, whoever made it", () =
   assert.equal(takeWindow(file, { key: "c.example", perKey: 1, now: now + 61000 }), "key");
 });
 
+test("a window counts the windows in `also` with its own and writes only its own", () => {
+  const file = path.join(TMP, "window-own", "rate.json");
+  const shared = path.join(TMP, "window-shared", "rate.json");
+  const now = Date.now();
+  fs.mkdirSync(path.dirname(shared), { recursive: true });
+  const was = JSON.stringify({ t: [[now - 1000, "a.example"], [now - 70000, "a.example"]] }) + "\n";
+  fs.writeFileSync(shared, was);
+  assert.equal(takeWindow(file, { key: "a.example", perKey: 2, now, also: [shared] }), null);
+  assert.equal(takeWindow(file, { key: "a.example", perKey: 2, now, also: [shared] }), "key"); // one shared, one its own
+  assert.equal(takeWindow(file, { key: "b.example", perMinute: 3, now, also: [shared, path.join(TMP, "no-such", "rate.json")] }), null);
+  assert.equal(takeWindow(file, { key: "c.example", perMinute: 3, now, also: [shared] }), "all");
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).t.map((e) => e[1]), ["a.example", "b.example"]);
+  assert.equal(fs.readFileSync(shared, "utf8"), was);
+});
+
+// Need 109 of 2026-11-18: a Yerk worker's unit mounts the state folder read-only, and every web_fetch in it failed on the
+// shared window's lock (EROFS). Here the shared folder is one this process may not write (0500), as in a worker's unit.
+function workerAt(base, id = "0a1b2c") {
+  const own = path.join(TMP, "workers", id);
+  fs.rmSync(own, { recursive: true, force: true });
+  fs.mkdirSync(own, { recursive: true });
+  return { ...base, own: path.join(own, "web"), worker: id };
+}
+function sharedReadOnly(dirs, fn) {
+  for (const d of dirs) fs.mkdirSync(d, { recursive: true });
+  for (const d of [...dirs, path.join(STATE, "web")]) fs.chmodSync(d, 0o500);
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => {
+      for (const d of [path.join(STATE, "web"), ...dirs]) fs.chmodSync(d, 0o700);
+    });
+}
+
+test("web_fetch in a worker reads a page with the shared state folder read-only: it books and logs in its own folder", async () => {
+  const w = workerAt(WITHOUT);
+  const OWN = path.join(w.own, "fetch");
+  const r = rig({ pages: { "jobs.example": { body: ARTICLE, status: 200 } } });
+  fs.mkdirSync(FETCH, { recursive: true });
+  const before = JSON.stringify({ t: [[Date.now() - 1000, "other.example"]] }) + "\n";
+  fs.writeFileSync(path.join(FETCH, "local-rate.json"), before);
+  await sharedReadOnly([FETCH], async () => {
+    assert.throws(() => fs.writeFileSync(path.join(FETCH, "local-rate.json.lock"), ""), { code: "EACCES" }); // the wall, as the worker met it
+    const room = textOf(await webFetch({ url: "https://jobs.example/posting/1" }, { deps: r.deps, at: WITHOUT }));
+    assert.match(room.split("\n")[0], /^web_fetch could not run: EACCES/); // a room's process in this folder still meets it
+    const out = await webFetch({ url: "https://jobs.example/posting/1" }, { deps: r.deps, at: w });
+    await flushPending();
+    const t = textOf(out);
+    assert.equal(out.isError, undefined);
+    assert.match(t.split("\n")[0], /^web_fetch read https:\/\/jobs\.example\/posting\/1 at F1 \(a plain fetch from this machine, free\): HTTP 200/);
+    assert.match(t, /15 to 25 millimetres/);
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(OWN, "local-rate.json"), "utf8")).t.map((e) => e[1]), ["jobs.example"]);
+  assert.equal(fs.readFileSync(path.join(FETCH, "local-rate.json"), "utf8"), before);
+  assert.deepEqual(fs.readdirSync(FETCH), ["local-rate.json"]); // nothing written in the shared folder
+  assert.deepEqual(jsonl(path.join(OWN, "calls.jsonl")).map((l) => [l.host, l.rung]), [["jobs.example", "F1"]]);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(OWN, `usage-${month()}.json`), "utf8")).localFetchCalls >= 1);
+});
+
+test("a worker's reads keep to the caps with every room's: the shared window counts, and its own reads count too", async () => {
+  fs.writeFileSync(path.join(WITHOUT.private, "web.json"), JSON.stringify({ ...WEB_JSON, fetch: { ...WEB_JSON.fetch, localMaxPerHostPerMinute: 2 } }));
+  try {
+    const w = workerAt(WITHOUT);
+    const r = rig({ pages: { "cap.example": { body: ARTICLE, status: 200 }, "free.example": { body: ARTICLE, status: 200 } } });
+    fs.mkdirSync(FETCH, { recursive: true });
+    fs.writeFileSync(path.join(FETCH, "local-rate.json"), JSON.stringify({ t: [[Date.now() - 1000, "cap.example"]] }));
+    await sharedReadOnly([FETCH], async () => {
+      assert.match(textOf(await webFetch({ url: "https://cap.example/1" }, { deps: r.deps, at: w })).split("\n")[0], / at F1 /);
+      assert.match(textOf(await webFetch({ url: "https://cap.example/2" }, { deps: r.deps, at: w })).split("\n")[0], /wall no_key, rungs none\.$/);
+      assert.match(textOf(await webFetch({ url: "https://free.example/1" }, { deps: r.deps, at: w })).split("\n")[0], / at F1 /);
+    });
+    assert.equal(r.seen.local.length, 2);
+  } finally {
+    fs.writeFileSync(path.join(WITHOUT.private, "web.json"), JSON.stringify(WEB_JSON));
+  }
+});
+
+test("a worker starts from the rooms' site memory and keeps what it learns in its own folder", async () => {
+  const w = workerAt(WITHOUT);
+  const OWN = path.join(w.own, "fetch");
+  const r = rig({ f2ok: true });
+  fs.mkdirSync(FETCH, { recursive: true });
+  const memory = JSON.stringify({ "memo.example": { start: "F2", readAt: new Date().toISOString(), probeAt: new Date().toISOString() } });
+  fs.writeFileSync(path.join(FETCH, "local-cooldown.json"), memory);
+  await sharedReadOnly([FETCH], async () => {
+    assert.match(textOf(await webFetch({ url: "https://memo.example/a" }, { deps: r.deps, at: w })).split("\n")[0], / at F2 /);
+    local.resetGuards();
+    assert.match(textOf(await webFetch({ url: "https://late.example/a" }, { deps: r.deps, at: w })).split("\n")[0], / at F2 /);
+  });
+  assert.deepEqual(r.seen.local, ["https://late.example/a"]); // the rooms' memory skipped F1 for memo.example
+  const own = JSON.parse(fs.readFileSync(path.join(OWN, "local-cooldown.json"), "utf8"));
+  assert.deepEqual([own["memo.example"]?.start, own["late.example"]?.start], ["F2", "F2"]);
+  assert.equal(fs.readFileSync(path.join(FETCH, "local-cooldown.json"), "utf8"), memory);
+});
+
 test("each process takes its own browser profile slot, skipping a live owner's", () => {
   const base = path.join(TMP, "slots", "local-profile-cloak");
   fs.mkdirSync(path.dirname(base), { recursive: true });
@@ -331,6 +435,31 @@ test("web_search with no keys says so in one line each, the keyless engine answe
   } finally {
     f.restore();
   }
+});
+
+test("web_search in a worker logs in its own folder, and You.com's day counts every room's searches with its own", async () => {
+  const w = workerAt(WITHOUT);
+  const OWN = path.join(w.own, "search");
+  const f = stubFetch((url) => (url === "https://api.firecrawl.dev/v2/search"
+    ? json({ success: true, data: [{ url: "https://en.wikipedia.org/wiki/Example", title: "Example", description: "An example page." }] })
+    : json({}, 500)));
+  try {
+    await sharedReadOnly([SEARCH], async () => {
+      assert.match(textOf(await webSearch({ query: "example wikipedia" }, { at: w })).split("\n")[0], /: 1 results from Firecrawl keyless, free\.$/);
+    });
+    assert.deepEqual(jsonl(path.join(OWN, "calls.jsonl")).length, 1);
+    assert.deepEqual(fs.readdirSync(SEARCH), []);
+  } finally {
+    f.restore();
+  }
+  const day = dayStamp();
+  fs.writeFileSync(path.join(SEARCH, "you-daily"), `${day} 99\n`);
+  const settings = { stateDir: OWN, sharedStateDir: SEARCH, youDailyCap: 100 };
+  assert.deepEqual(takeYouSlot(settings), { ok: true, count: 100 });
+  assert.equal(fs.readFileSync(path.join(OWN, "you-daily"), "utf8"), `${day} 1\n`);
+  assert.deepEqual(takeYouSlot(settings), { ok: false, count: 100 });
+  assert.equal(fs.readFileSync(path.join(SEARCH, "you-daily"), "utf8"), `${day} 99\n`);
+  assert.deepEqual(takeYouSlot({ stateDir: SEARCH, youDailyCap: 100 }), { ok: true, count: 100 }); // a room's process counts its own file
 });
 
 test("web_search answers from Exa first with the key from secrets/, counts it and books what Exa billed", async () => {
