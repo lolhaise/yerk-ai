@@ -1631,4 +1631,12 @@ secs = 60
 # wrong early end stays to its end; show marks it; _save through config.write_private, a temp file of each writer's own,
 # since a room's thread and the keeper write at once), status.py 2 (the card's own reading ends a rest before a line is
 # drawn), daemon.py 0 (the keeper is handed the rests). 32,858: main 834acb5's 32,816 plus 42.
-lines = 32858
+# 2026-11-17: needs-risky-paths-wait raised it by 59, a need whose change touches a listed path waits for a deeper check
+# before it merges (the owner's ask, 2026-11-17: review effort matched to risk, the tier set by the change and never by who
+# built it, starting strict), not folded to fit: pipeline.py 47 (SENSITIVE, the default list, each entry beside what going
+# wrong there means; waits, the paths a head changes against its merge base with origin/main read by git in the daemon's
+# own tree, a change git cannot read waiting too; deeper_why, the why at phone width; the stop in merge before anything is
+# merged or landed; stop's own field, cleared by any other stop; the header's step and the docstrings), words.py 8 (few,
+# NEED_DEEPER and its two), config.py 3 ([needs] sensitive's description), needs.py 1 (a held why's lines as one line in
+# `yerk needs list`). 32,917: main 0244973's 32,858 plus 59.
+lines = 32917

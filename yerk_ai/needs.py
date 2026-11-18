@@ -101,7 +101,8 @@ def said(r: dict[str, Any]) -> str:
             "building": f"building {r.get('worker')}", "built": f"built on branch {r.get('branch')}{plug}",
             "pr": f"PR {pr}" + (f", checks {ran.count('success')} of {len(ran)} passed" if ran else "") + plug,
             "fixing": f"fixing PR {pr}, fix {r.get('fixes')} of {r.get('fix_cap', 2)}, {r.get('worker')}",
-            "reading": f"cold read of PR {pr}{plug}, {r.get('worker')}", "held": f"held: {r.get('why')}", "stuck": f"stuck: {r.get('why')}",
+            "reading": f"cold read of PR {pr}{plug}, {r.get('worker')}", "held": f"held: {' '.join(str(r.get('why')).splitlines())}",
+            "stuck": f"stuck: {r.get('why')}",
             "merged": f"merged, PR {pr}", "deploying": f"merged, PR {pr}, deploying", "live": f"live, PR {pr}"}.get(st, "filed" + last)
 
 

@@ -59,6 +59,11 @@ def either(ws: list[str]) -> str:
     return ", ".join(ws[:-1]) + " or " + ws[-1] if len(ws) > 1 else "".join(ws)
 
 
+def few(ws: list[str], k: int = 3) -> str:
+    """Words as a notice names some: "a", "a and b", "a, b and c", and the first k of more with how many: "a, b, c and 4 more"."""
+    return f"{', '.join(ws[:k])} and {len(ws) - k} more" if len(ws) > k else " and ".join([", ".join(ws[:-1]), ws[-1]] if len(ws) > 1 else ws)
+
+
 def line(text: str, n: int = PHONE) -> str:
     """One line held to `n` phone columns, cut at a word with "..." when it is longer."""
     text = " ".join(str(text).split())
@@ -821,6 +826,9 @@ NEED_FIXED = WORKING + " need {n}: PR {pr} fixed, its checks run again"
 NEED_READING = WORKING + " need {n}: PR {pr} checks passed, its cold read starts"
 NEED_HELD = NOT_DONE + " need {n} held, a person decides: {ability}\n{why}"
 NEED_STUCK = NOT_DONE + " need {n} stuck: {ability}\n{why}"
+NEED_DEEPER = "the cold read said merge; it waits for a deeper check, since it changes {what}"   # [needs] sensitive's hold
+NEED_DEEPER_UNREAD = "the cold read said merge; it waits for a deeper check, since git could not read what it changes: {why}"
+NEED_DEEPER_PLUGIN = "the {name} plug-in"
 NEED_LATE = WORKING + " need {n}: PR {pr} checks all came in late, so it goes on"
 NEED_NO_BUILDER = "its builder did not start: {error}"
 NEED_CUT = WORKING + " need {n}: {what} on PR {pr} was cut off by a stop nobody asked for, so it starts again"

@@ -23,6 +23,12 @@ stale_after = "3h"                       # no part when the newest fix is older 
 # need as its brief, its card in the machine room. Every key is optional.
 account = "<an account name from accounts.toml>"   # the account builders run on; default: [curate] account, else the workers' pick
 cap_minutes = 60                                  # a builder's minutes before it is stopped
+# A need whose change touches one of these (a path, a folder/ and every file below it, or plugin:NAME, a branch in that
+# plug-in) is held after its cold read says merge: it waits for a deeper check, and a person merges it and runs `yerk needs
+# done DAY N PR`. This is the default written out; a list here replaces it whole, and [] turns the wait off.
+sensitive = ["yerk_ai/texting/", "yerk_ai/emails.py", "yerk_ai/gates.py", "yerk_ai/hooks.py", "yerk_ai/deletes.py",
+             "yerk_ai/accounts.py", "yerk_ai/git_askpass.py", "yerk_ai/github.py", "yerk_ai/deploy.py", "yerk_ai/pipeline.py",
+             "yerk_ai/needs.py", "yerk_ai/workers.py", ".github/", "pyproject.toml", "uv.lock", "units/", "plugin:hands"]
 
 [imessage]
 # The `text` tool's way to the owner's Mac (docs/GUIDE.md: Texts in your name): ssh to `host`, then socat to the bridge's socket

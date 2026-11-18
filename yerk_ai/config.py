@@ -302,7 +302,10 @@ YERKD_WORDS = {
               "checks_minutes": "minutes a PR's head waits for all its checks before the need is stuck (default 40)",
               "contexts": "how many CI checks a head gets before they count as all in (default 7)",
               "repo": "the GitHub OWNER/NAME of the pipeline's PRs (default: from the daemon tree's origin)",
-              "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)"},
+              "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)",
+              "sensitive": "what a need's change may not touch and still merge on the cold read alone: a path, a folder/ or plugin:NAME; "
+                           "one touched holds the need for a deeper check, a person merges (default pipeline.SENSITIVE, replaced "
+                           "whole; [] none, the pipeline's road as before)"},
     "curate": {"account": "the one account the night's curation runs on", "logs": "more files in the private folder read as the owner's own stream"},
     "docs": {"fetch": "the doctor's daily fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 1)",
              "pages": "the pages kept, slug = URL (default config.DOCS_PAGES)",

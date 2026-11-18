@@ -8,6 +8,7 @@ import asyncio
 import json
 import subprocess
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ from test_needs import ASK, FLYER, listed, need, ops, twins
 from test_pictures import Rec
 from test_slash import OWNER, run_discord
 
-from yerk_ai import cli, git_askpass, github, needs, pipeline, words
+from yerk_ai import cli, git_askpass, github, jobs, needs, pipeline, words
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, head
 
 SLUG, TOK = "example-owner/example-repo", "tok-placeholder-0000"
@@ -53,7 +54,8 @@ class Deploys:
 @pytest.fixture
 def pipe(tmp_path, monkeypatch):
     y, rec = ops(tmp_path, "example-room", "her-room")
-    y.conf["needs"] = {"repo": SLUG}                      # auto on, as by default
+    y.conf["needs"] = {"repo": SLUG, "sensitive": []}     # auto on, as by default; no wait (the heads here are no commits git
+                                                          # could read): decision 40's road exactly, the risk tests' own below
     hub, units = Hub(), Deploys()
     monkeypatch.setattr(github, "api", hub)
     monkeypatch.setattr(github, "token", lambda private: TOK)
@@ -838,3 +840,305 @@ def test_github_reads_its_answers_and_says_a_refused_merge_in_words(monkeypatch)
     assert github.merge(SLUG, 7, "a" * 40, TOK) == {"ok": False, "code": 409, "error": "GitHub said 409: Head branch was modified. Review and try the merge again."}
     assert github.slug(REPO, "o/n") == "o/n" and github.SLUG.search("ssh://github.com:o/n.git")[1] == "o/n"
     assert github.SLUG.search("https://github.com/o/n.git")[1] == "o/n"
+
+
+# the deeper check (2026-11-17): a need whose change touches the [needs] sensitive list waits before it merges
+@pytest.fixture
+def risk(pipe):
+    """The pipe with the default list in force ([needs] sensitive not set), as an install has it."""
+    del pipe[0].conf["needs"]["sensitive"]
+    return pipe
+
+
+def daemon_tree(y, tmp_path: Path, base: dict[str, str] | None = None) -> Path:
+    """The daemon's own tree, a scratch one made here: main with `base` committed and origin/main where the box's fetch keeps
+    it. A builder's branch is a branch of this tree, so the pipeline reads a need's change here with git, no network."""
+    tree = tmp_path / "daemon-tree"
+    for name, text in {"README.md": "baseline\n", **(base or {})}.items():
+        (tree / name).parent.mkdir(parents=True, exist_ok=True)
+        (tree / name).write_text(text)
+    git(tree, "init", "-q", "-b", "main")
+    git(tree, "add", ".")
+    git(tree, *ID, "commit", "-q", "-m", "baseline")
+    git(tree, "update-ref", "refs/remotes/origin/main", "main")
+    y.pipeline.tree = tree
+    return tree
+
+
+def commit(tree: Path, wt: Path, branch: str, changes: dict[str, str]) -> str:
+    """A worker's commit on `branch`, in its own worktree of the daemon's tree, each path in `changes` written."""
+    if not wt.exists():
+        git(tree, "worktree", "add", "-q", str(wt), "-b", branch, "main")
+    for name, text in changes.items():
+        (wt / name).parent.mkdir(parents=True, exist_ok=True)
+        (wt / name).write_text(text)
+    git(wt, "add", "-A")
+    git(wt, *ID, "commit", "-q", "-m", "the need")
+    return git(wt, "rev-parse", "HEAD")
+
+
+def to_read(y, hub, day: str, sha: str) -> None:
+    """PR 7 seen at `sha`, its seven checks green, its cold read running, and GitHub ready to merge it."""
+    to_pr(y, hub, day, sha)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{sha}/status")] = (200, {"state": "success", "statuses": GREEN})
+    hub.routes[("PUT", f"/repos/{SLUG}/pulls/7/merge")] = (200, {"merged": True, "sha": "c" * 40})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "reading"
+
+
+def risky(y, hub, tmp_path: Path, changes: dict[str, str], base: dict[str, str] | None = None) -> tuple[str, str]:
+    """Need 1 built with `changes` on its branch of the daemon's tree and read cold at that head: its day, and the head."""
+    day = need(y, "example-room", *ASK)["day"]
+    sha = commit(daemon_tree(y, tmp_path, base), tmp_path / "builder-wt", f"need-{day}-1", changes)
+    to_read(y, hub, day, sha)
+    return day, sha
+
+
+def puts(hub) -> list:
+    return [c for c in hub.calls if c[0] == "PUT"]
+
+
+def flat(why: str) -> str:
+    return " ".join(why.splitlines())
+
+
+def test_risk_a_a_change_on_the_list_is_held_after_merge_and_nothing_is_merged_landed_or_deployed(risk, tmp_path, capsys):
+    """risk (a): a need whose head changes a listed path, the cold read saying merge: held, the why naming the path, the
+    row's own field holding it, github.merge never called and nothing landed or deployed; `yerk needs list` shows the why."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n", "README.md": "a word\n"})
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and puts(hub) == [] and units.argv == [] and git(y.pipeline.tree, "rev-parse", "main") != sha
+    assert r["deeper"] == {"head": sha, "paths": ["yerk_ai/emails.py"], "plugins": []}
+    assert flat(r["why"]) == words.NEED_DEEPER.format(what="yerk_ai/emails.py") and r["why"] == pipeline.deeper_why(r["deeper"])
+    assert rec.lines[-1] == words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])
+    capsys.readouterr()
+    assert listed(y.state, capsys) == [f"{day} 1 held: {flat(r['why'])}: {ASK[2]} (asked 1 time)"]
+
+
+def test_risk_b_a_change_off_the_list_merges_exactly_as_on_main(risk, tmp_path):
+    """risk (b): a need whose head changes only paths off the list merges as on main, pinned: the same GitHub calls, the
+    merge at the head's sha, the same row with no field of the wait, the same line."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"README.md": "a word\n", "yerk_ai/texts.py": "a text\n", "docs/GUIDE.md": "a page\n"})
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert [c[:2] for c in hub.calls] == [("GET", f"/repos/{SLUG}/pulls?head=example-owner:need-{day}-1&state=open"),
+                                          ("GET", f"/repos/{SLUG}/pulls/7"), ("GET", f"/repos/{SLUG}/commits/{sha}/status"),
+                                          ("PUT", f"/repos/{SLUG}/pulls/7/merge")]
+    assert hub.calls[-1][2] == {"sha": sha, "merge_method": "merge"} and "deeper" not in r
+    assert (r["state"], r["merge"], r["worker"]) == ("merged", "c" * 40, "") and rec.lines[-1] == words.NEED_MERGED.format(n=1, pr=7)
+
+
+def test_risk_c_an_empty_list_is_decision_40s_road_and_reads_nothing(risk, tmp_path):
+    """risk (c): [needs] sensitive = [] turns the wait off: the need of (a) merges as on main, and nothing is read (a tree git
+    cannot read would hold it otherwise)."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"]["sensitive"] = []
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n", "README.md": "a word\n"})
+    y.pipeline.tree = tmp_path / "no-checkout"
+    end(y, row(y, day)["worker"], "merge")
+    assert puts(hub) == [("PUT", f"/repos/{SLUG}/pulls/7/merge", {"sha": sha, "merge_method": "merge"})] and "deeper" not in row(y, day)
+    assert row(y, day)["state"] == "merged" and rec.lines[-1] == words.NEED_MERGED.format(n=1, pr=7)
+
+
+@pytest.mark.parametrize("path, waits", [("yerk_ai/gates.py", False), ("docs/GUIDE.md", True)])
+def test_risk_d_a_list_in_yerkd_toml_replaces_the_default_whole(risk, tmp_path, path, waits):
+    """risk (d): a list in yerkd.toml's [needs] replaces the default: a default path no longer stops, a configured one does;
+    and yerkd.toml.example writes the default out as it is."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"] |= tomllib.loads('[needs]\nsensitive = ["docs/", "plugin:example-plugin"]\n')["needs"]
+    day, sha = risky(y, hub, tmp_path, {path: "a change\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert (row(y, day)["state"], len(puts(hub))) == (("held", 0) if waits else ("merged", 1))
+    assert row(y, day).get("deeper") == ({"head": sha, "paths": [path], "plugins": []} if waits else None)
+    assert tomllib.loads((REPO / "yerkd.toml.example").read_text())["needs"]["sensitive"] == list(pipeline.SENSITIVE)
+
+
+@pytest.mark.parametrize("how", ["a head the tree lacks", "no origin/main"])
+def test_risk_e_a_change_git_cannot_read_is_held_and_said_so(risk, tmp_path, how):
+    """risk (e): the changed paths cannot be read (the PR's head is no commit of the daemon's tree, or the tree has no
+    origin/main): held, never merged as a safe change, the why saying git could not read it in git's own words."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path)
+    sha = commit(tree, tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"}) if how == "no origin/main" else "b" * 40
+    if how == "no origin/main":
+        git(tree, "update-ref", "-d", "refs/remotes/origin/main")
+    to_read(y, hub, day, sha)
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and puts(hub) == [] and r["deeper"]["unread"] and r["deeper"] == {
+        "head": sha, "paths": [], "plugins": [], "unread": r["deeper"]["unread"]}
+    assert flat(r["why"]) == words.NEED_DEEPER_UNREAD.format(why=r["deeper"]["unread"]) and sha not in r["why"]
+    assert all(words.width(x) <= words.PHONE for x in r["why"].splitlines()), r["why"]
+
+
+def test_risk_f_a_branch_in_a_listed_plugin_is_held_and_nothing_lands(risk, tmp_path):
+    """risk (f): a need with a branch in a listed plug-in (hands, by its server's name in the rooms' mcp tables) is held,
+    though its own change is off the list, and the plug-in's base never moves."""
+    y, rec, hub, units, rooms = risk
+    p, mcp = attach(y, tmp_path), y.room_confs["example-room"]["mcp"]
+    mcp["hands"] = mcp.pop("example-plugin")
+    day = need(y, "example-room", *ASK)["day"]
+    plug = commit_on(p, tmp_path / "worker-plugin-wt", f"need-{day}-1", "export const gate = 'the page marks';\n")
+    to_read(y, hub, day, sha := commit(daemon_tree(y, tmp_path), tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"}))
+    assert row(y, day)["plugins"]["hands"]["head"] == plug
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and puts(hub) == [] and git(p, "rev-parse", "main") != plug
+    assert r["deeper"] == {"head": sha, "paths": [], "plugins": ["hands"]}
+    assert flat(r["why"]) == words.NEED_DEEPER.format(what=words.NEED_DEEPER_PLUGIN.format(name="hands"))
+
+
+def test_risk_g_a_folder_takes_each_file_below_it_and_an_entry_never_a_longer_name(risk, tmp_path):
+    """risk (g): a folder entry takes a file below it at any depth, and an entry never takes a longer name that only starts
+    with it: yerk_ai/accounts.py does not catch yerk_ai/accounts.py.bak, units/ (or units, written with no slash) does not
+    catch units_old/x, plugin:hands no hands-old plug-in."""
+    y, rec, hub, units, rooms = risk
+    tree = daemon_tree(y, tmp_path)
+    alike = {"yerk_ai/accounts.py.bak": "x\n", "units_old/x": "x\n", "yerk_ai/texting_old.py": "x\n", ".github.bak/x": "x\n", "uv.lock.old": "x\n"}
+    sha = commit(tree, tmp_path / "builder-wt", "need-x", alike)
+    for entries in (pipeline.SENSITIVE, ["units", "yerk_ai/accounts.py", "plugin:hands"]):
+        y.conf["needs"]["sensitive"] = entries
+        assert y.pipeline.waits({"head": sha, "plugins": {"hands-old": {}}}) == {}
+    below = commit(tree, tmp_path / "builder-wt", "need-x", {"units/deep/yerk-new.service": "x\n", "yerk_ai/texting/new.py": "x\n"})
+    assert y.pipeline.waits({"head": below}) == {"head": below, "paths": ["units/deep/yerk-new.service"], "plugins": []}
+    y.conf["needs"]["sensitive"] = pipeline.SENSITIVE
+    assert y.pipeline.waits({"head": below})["paths"] == ["units/deep/yerk-new.service", "yerk_ai/texting/new.py"]
+
+
+def test_risk_h_a_person_releases_it_the_hand_road_way_and_it_deploys_and_goes_live(risk, tmp_path, capsys):
+    """risk (h): the need of (a), then a person merges its PR and runs `yerk needs done DAY N PR`: it goes on to the deploy
+    and live as any held need does, that road unchanged."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and row(y, day)["deeper"]["paths"] == ["yerk_ai/emails.py"]
+    capsys.readouterr()
+    assert cli.main(["needs", "done", day, "1", "7", "--state", str(y.state), "--private", str(EXAMPLE_PRIVATE)]) == 0
+    assert capsys.readouterr().out.strip() == f"need 1 of {day}: merged, PR 7"
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "deploying" and len(units.argv) == 1 and rec.lines[-1] == words.NEED_DEPLOYING.format(n=1, pr=7)
+    done = head(REPO)                                    # the deployed commit holds the merge, as the hand road's own test has it
+    asyncio.run(y.pipeline.set(row(y, day), {"merge": done}))
+    y.ledger.deploy(kind="deploy", unit="yerkd", before="0" * 7, after=done, outcome="proven")
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "live" and rec.lines.count(words.NEED_LIVE.format(n=1, ability=ASK[2])) == 1 and puts(hub) == []
+    assert rooms["example-room"].lines == [words.NEED_LIVE_ROOM.format(n=1, ability=ASK[2])]
+
+
+def test_risk_i_a_pr_that_loosens_the_list_in_its_own_tree_is_judged_by_the_running_one(risk, tmp_path):
+    """risk (i): a pull request whose tree takes yerk_ai/gates.py off the default list (and the example's list to none) and
+    changes it is judged by the running daemon's list, never its own, and held: the list's own file is on it too."""
+    y, rec, hub, units, rooms = risk
+    own = (REPO / "yerk_ai" / "pipeline.py").read_text()
+    loose = own.replace('"yerk_ai/gates.py", ', "", 1)
+    assert '"yerk_ai/gates.py"' in own and '"yerk_ai/gates.py"' not in loose and "yerk_ai/gates.py" in pipeline.SENSITIVE
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/pipeline.py": loose, "yerk_ai/gates.py": "no hold\n", "yerkd.toml.example": "[needs]\nsensitive = []\n"},
+                     base={"yerk_ai/pipeline.py": own, "yerk_ai/gates.py": "the holds\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == []
+    assert row(y, day)["deeper"] == {"head": sha, "paths": ["yerk_ai/gates.py", "yerk_ai/pipeline.py"], "plugins": []}
+
+
+def test_risk_j_many_paths_name_the_first_three_and_how_many_more_on_lines_at_phone_width(risk, tmp_path):
+    """risk (j): a change touching many listed paths: the why names the first three and how many more, each of its lines at
+    phone width (STYLE.md) and the whole line under the machine room's cut; the row holds every path."""
+    y, rec, hub, units, rooms = risk
+    many = [".github/workflows/tests.yml", "pyproject.toml", "units/yerkd.service", "uv.lock", "yerk_ai/accounts.py",
+            "yerk_ai/deploy.py", "yerk_ai/texting/sender.py"]
+    day, sha = risky(y, hub, tmp_path, {p: "a change\n" for p in many})
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and r["deeper"]["paths"] == many and puts(hub) == []
+    assert flat(r["why"]) == words.NEED_DEEPER.format(what=".github/workflows/tests.yml, pyproject.toml, units/yerkd.service and 4 more")
+    assert len(r["why"].splitlines()) > 1 and all(words.width(x) <= words.PHONE for x in r["why"].splitlines()), r["why"]
+    said = words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])
+    assert rec.lines[-1] == said and len(said) <= jobs.ALERT_MAX
+
+
+def test_risk_k_a_fix_workers_later_commit_on_the_list_stops_it_too(risk, tmp_path):
+    """risk (k): the tier comes from the change, on the final head at the merge, whoever made it: the builder's commit is
+    off the list, the cold read says fix first, the fix worker's commit touches a listed path, and that head's read saying
+    merge holds it."""
+    y, rec, hub, units, rooms = risk
+    day, first = risky(y, hub, tmp_path, {"README.md": "a word\n"})
+    end(y, row(y, day)["worker"], "fix first: the word is wrong")
+    assert row(y, day)["state"] == "fixing" and role(y, fixer := row(y, day)["worker"])["role"] == "fix"
+    sha = commit(y.pipeline.tree, tmp_path / "builder-wt", f"need-{day}-1", {"yerk_ai/hooks.py": "the fix\n"})
+    end(y, fixer, f"fixed: {sha[:7]}")
+    hub.routes[("GET", f"/repos/{SLUG}/pulls/7")] = (200, {"head": {"sha": sha}, "merged": False, "state": "open"})
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{sha}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert (row(y, day)["state"], row(y, day)["head"]) == ("reading", sha)
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and row(y, day)["deeper"] == {"head": sha, "paths": ["yerk_ai/hooks.py"], "plugins": []}
+    assert puts(hub) == []
+
+
+def test_risk_l_any_other_stop_clears_the_field_so_the_held_needs_with_one_are_those_that_wait(risk, tmp_path):
+    """risk (l): a program finds the needs that wait for the deeper check by the field alone: a later stop of another kind
+    clears it (a deploy that failed after a person released it), and a stop of a need that never had one writes none."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert [(r["day"], r["n"]) for r in needs.load(y.state) if r.get("state") == "held" and r.get("deeper")] == [(day, 1)]
+    asyncio.run(y.pipeline.stop(row(y, day), "held", "deploy failed: the fast tests failed"))
+    assert (row(y, day)["state"], row(y, day)["deeper"], row(y, day)["why"]) == ("held", {}, "deploy failed: the fast tests failed")
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "stuck", "a reason"))
+    assert row(y, day, n2)["state"] == "stuck" and "deeper" not in row(y, day, n2)
+
+
+@pytest.mark.parametrize("value", ["yerk_ai/gates.py", False, 0])
+def test_risk_m_a_sensitive_that_is_no_list_is_the_default_list_never_no_list(risk, tmp_path, value):
+    """risk (m): [needs] sensitive written as something that is no list (one path as a string, false) is the default list, the
+    strict side: a mistyped line never turns the wait off, only [] does."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"]["sensitive"] = value
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == [] and row(y, day)["deeper"]["paths"] == ["yerk_ai/emails.py"]
+
+
+def test_risk_n_a_listed_file_moved_off_its_path_is_still_seen(risk, tmp_path):
+    """risk (n): a change that moves a listed file to another name (git calls it a rename and names only the new path) is read
+    with both its paths, so the old, listed one holds it."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "".join(f"line {i} of the gate\n" for i in range(40))})
+    wt = tmp_path / "builder-wt"
+    git(tree, "worktree", "add", "-q", str(wt), "-b", f"need-{day}-1", "main")
+    git(wt, "mv", "yerk_ai/gates.py", "yerk_ai/doors.py")
+    git(wt, *ID, "commit", "-q", "-m", "the need")
+    to_read(y, hub, day, git(wt, "rev-parse", "HEAD"))
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == [] and row(y, day)["deeper"]["paths"] == ["yerk_ai/gates.py"]
+
+
+def test_risk_o_main_moving_on_a_listed_path_never_holds_a_change_that_leaves_it_alone(risk, tmp_path):
+    """risk (o): the change is read against its merge base with origin/main, never main's tip: main moving on with a listed
+    path after the branch was cut (another merge) is no part of this need's change, so it merges."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "the gate\n"})
+    sha = commit(tree, tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"})
+    (tree / "yerk_ai" / "gates.py").write_text("the gate, changed on main since\n")
+    git(tree, "add", "-A")
+    git(tree, *ID, "commit", "-q", "-m", "main moves on")
+    git(tree, "update-ref", "refs/remotes/origin/main", "main")
+    to_read(y, hub, day, sha)
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "merged" and "deeper" not in row(y, day) and puts(hub)[-1][2]["sha"] == sha
+
+
+@pytest.mark.parametrize("head", ["", "main", "--no-index"])
+def test_risk_p_a_head_that_is_no_sha_waits_and_is_never_handed_to_git(risk, tmp_path, head):
+    """risk (p): a row whose head is no sha (none, a branch's name, something shaped like an option) is never handed to git:
+    the need waits, said as a change that could not be read, never read as the tree's own HEAD and taken as safe."""
+    y, rec, hub, units, rooms = risk
+    daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "the gate\n"})
+    assert y.pipeline.waits({"head": head, "plugins": {}}) == {"head": head, "paths": [], "plugins": [],
+                                                              "unread": "its PR's head is no commit"}
