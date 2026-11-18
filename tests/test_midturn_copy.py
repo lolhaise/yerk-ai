@@ -133,6 +133,21 @@ def test_the_size_mid_turn_comes_from_each_calls_message_start_and_a_subagents_c
     room.rp.close()
 
 
+def test_the_size_mid_turn_still_moves_on_the_rooms_own_assistant_event_when_no_message_start_is_the_rooms():
+    """The other feed. A stream whose message_start the room cannot call its own (none streamed, or one that names no thread,
+    as a later Claude Code may send) still moves the size mid-turn, one event later: from the room's own assistant event, the
+    one that sets the size a turn records. A subagent's assistant event moves neither."""
+    def call(n, parent=None):
+        return {"type": "assistant", "parent_tool_use_id": parent, "message": {"content": [], "usage": {"input_tokens": n}}}
+    t = Turn(started=0)
+    t.observe(1, {"type": "stream_event", "event": {"type": "message_start", "message": {"usage": {"input_tokens": 830000}}}})
+    assert (t.reached, t.context) == (0, 0)                       # no thread named: left out
+    t.observe(2, call(830000))
+    assert (t.reached, t.context) == (830000, 830000)             # the room's own call, as it is recorded
+    t.observe(3, call(900000, parent="toolu_sub"))
+    assert (t.reached, t.context) == (830000, 830000)
+
+
 def test_the_size_a_turn_records_is_the_same_with_message_start_read(y, tmp_path):
     """The ledger's context column and the room's size are fed as before, from the room's assistant events: every turn of
     the fake streams a message_start now, and a call that started and never finished (here a /stop while it ran) is no
@@ -376,6 +391,19 @@ def test_a_turn_already_in_the_band_at_its_first_call_with_no_copy_starts_one_th
     assert len(forks(tmp_path)) == 1 and not lines(caplog, "a turn ended at")
     gate.set()
     until(lambda: room.fork is None and compactions(tmp_path) == 1)
+    room.rp.close()
+
+
+def test_a_call_that_starts_exactly_at_the_bands_start_is_in_the_band(y, tmp_path, caplog):
+    """The band's start is inclusive, as _ended's is for a turn's end: 192,000 of this room's 250,000 (its line 217,000 less
+    0.1 of the window). A call that starts one token short says nothing; the call that starts exactly there does."""
+    room = room_in(y, "log")
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        step(tmp_path, 2)
+        say(y, room, "1", "GROW:191999,192000 CONTEXT:192001 the long job")
+        wait_idle(room)
+        until(lambda: room.fork is None and compactions(tmp_path) == 1)   # its end is in the band too: that copy, as before
+    assert [m.split(" tokens,")[0] for m in lines(caplog, WOULD)] == [f"room {ROOM}: {WOULD} at 192000 of its 250000"]
     room.rp.close()
 
 
