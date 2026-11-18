@@ -113,7 +113,7 @@ def cmd_worker(a: argparse.Namespace) -> int:
             print("stop needs the worker's id", file=sys.stderr)
             return 2
         req = {"action": a.action, "id": a.id or "", "room": a.room or "", "tasks": a.task, "cap_minutes": a.cap,
-               "account": a.account or "", "model": a.model or "", "effort": a.effort or "",
+               "account": a.account or "", "model": a.model or "", "effort": a.effort or "", "addons": a.addon,
                "brief_file": str(Path(a.brief).expanduser().resolve()) if a.brief else ""}
         out = _control(a.state, {"worker": req}, 120)
         print(json.dumps(out))
@@ -290,7 +290,8 @@ def cmd_schedule(a: argparse.Namespace) -> int:
             return 2
         out = jobs.schedule_add(path, units, env, a.name, a.kind, a.when, a.what, room,
                                 a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "",
-                                int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)), a.model or "", a.effort or "", models(conf))
+                                int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)), a.model or "", a.effort or "", models(conf),
+                                a.addon, rs[room])
     if a.json:
         print(json.dumps(out, default=str))
     elif not out["ok"]:
@@ -301,7 +302,7 @@ def cmd_schedule(a: argparse.Namespace) -> int:
         print("\n".join([f"{a.name}: removed"] + out["diff"]))
     else:
         print(f"{out['name']}: {out['schedule']}, {out['kind']} job, room {out['room']}, deliver {out['deliver']}"
-              + "".join(f", {k} {out[k]}" for k in ("model", "effort") if k in out) + f"; next {out['next_text']}; unit {out['unit']}")
+              + "".join(f", {k} {out[k]}" for k in ("model", "effort", "addons") if k in out) + f"; next {out['next_text']}; unit {out['unit']}")
     return 0 if out["ok"] else 1
 
 
@@ -897,6 +898,8 @@ def parser() -> argparse.ArgumentParser:
     wk.add_argument("--account", help="start: the account to run on (default [workers], else the first not resting)")
     wk.add_argument("--model", help="start: the model (default [workers], else the room's)")
     wk.add_argument("--effort", help="start: the thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)")
+    wk.add_argument("--addon", action="append", default=[], help="start: one of the room's own add-on tools it gets too, a tool or a "
+                    "server's name (repeat for each), beside the room's worker_addons")
     wk.add_argument("--limit", type=int, default=20, help="list: how many")
     wk.add_argument("--json", action="store_true")
     wk.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -945,6 +948,8 @@ def parser() -> argparse.ArgumentParser:
     sc.add_argument("--account", help="add: agent jobs, the account to run on")
     sc.add_argument("--model", help="add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)")
     sc.add_argument("--effort", help="add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)")
+    sc.add_argument("--addon", action="append", default=[], help="add: agent jobs, one of the room's own add-on tools the worker gets "
+                    "too, a tool or a server's name (repeat for each), beside the room's worker_addons")
     sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
                         "hit rates (exit 5 when a control misses, 2 no question set, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")

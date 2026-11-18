@@ -118,8 +118,10 @@ def test_a_room_whose_privacy_is_not_owner_inherits_nothing_and_keeps_its_own_ta
 
 
 @pytest.mark.parametrize("bad, said", [
-    ("[defaults]\nsandbox = { enabled = true }\n", "rooms.toml: [defaults] sandbox: a default carries allow and mcp tables only; set sandbox in each room"),
-    ('[defaults]\nmodel = "claude-opus-5-5"\n', "rooms.toml: [defaults] model: a default carries allow and mcp tables only; set model in each room"),
+    ("[defaults]\nsandbox = { enabled = true }\n", "rooms.toml: [defaults] sandbox: a default carries allow, worker_addons and mcp tables only; set sandbox in each room"),
+    ('[defaults]\nmodel = "claude-opus-5-5"\n', "rooms.toml: [defaults] model: a default carries allow, worker_addons and mcp tables only; set model in each room"),
+    ('[defaults]\nworker_addons = "web"\n', "rooms.toml: [defaults] worker_addons must be a list of add-on tools or servers, like"),
+    ('[defaults]\nworker_addons = ["Bash(rm:*)"]\n', "rooms.toml: [defaults] worker_addons must be a list of add-on tools or servers, like"),
     ('[defaults]\nallow = "mcp__web__fetch"\n', "rooms.toml: [defaults] allow must be a list of tool names, like"),
     ('[defaults.mcp]\nweb = "server.mjs"\n', "rooms.toml: [defaults] mcp must be a table of servers, like [defaults.mcp.web], each one a table"),
     ("defaults = 3\n", "rooms.toml: defaults must be a table, [defaults], holding allow and mcp tables"),
@@ -164,3 +166,17 @@ def test_a_room_made_like_another_copies_its_own_keys_and_inherits_the_defaults_
     own, rs = rooms(priv, own=True)["sports-on-yerk"], rooms(priv)["sports-on-yerk"]
     assert "allow" not in own and "mcp" not in own and own["sandbox"] == {"filesystem": {"denyWrite": ["//elsewhere"]}}
     assert rs["allow"] == ["mcp__web__fetch"] and rs["mcp"]["web"]["args"] == ["server.mjs", "--room", "sports-on-yerk"]
+
+
+def test_worker_addons_rides_the_defaults_into_owner_rooms_only_and_a_rooms_own_list_replaces_it_whole():
+    """The add-ons every worker gets come the way allow does: an owner room carries [defaults] worker_addons, a room's own
+    list replaces it whole ([] gives its workers none), and a room whose privacy is not owner gets none it did not set."""
+    base = BASE.replace("\n\n[defaults.mcp.web]", '\nworker_addons = ["web"]\n\n[defaults.mcp.web]', 1)
+    rs = rooms(Path(), base + room("a", 1) + room("b", 2, "worker_addons = []\n") + room("c", 3, 'worker_addons = ["mcp__web__fetch"]\n')
+               + room("fam", 4, privacy="family") + room("fam2", 5, 'worker_addons = ["web"]\n', privacy="family"))
+    assert (rs["a"]["worker_addons"], rs["b"]["worker_addons"], rs["c"]["worker_addons"]) == (["web"], [], ["mcp__web__fetch"])
+    assert "worker_addons" not in rs["fam"] and rs["fam2"]["worker_addons"] == ["web"]
+    assert "worker_addons" not in rooms(Path(), BASE + room("a", 1))["a"]                  # no default, nothing carried
+    with pytest.raises(SystemExit) as e:
+        rooms(Path(), BASE + room("a", 1, 'worker_addons = "web"\n'))
+    assert str(e.value).startswith("rooms.toml: a: worker_addons must be a list of add-on tools or servers") and "\n" not in str(e.value)

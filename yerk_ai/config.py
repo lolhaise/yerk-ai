@@ -6,6 +6,7 @@ import copy
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -174,6 +175,9 @@ ROOM_WORDS = {
     "when something is actually wrong and it changes what the person would say or do, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)",
     "watch_assistant": "the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, "
     "not to this room (default: the other assistant)",
+    "worker_addons": "the room's own add-on tools every worker started from it gets, each named as a worker start's addons names one (a "
+    "tool as allow has it, or a server's name for each of its tools allow names); one allow has not, or on a server whose table passes a "
+    "credential, is skipped and the worker starts. An owner room carries [defaults] worker_addons unless it sets its own; [] gives none",
     "watch_wait": "seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's "
     "progress card's last edit while the card is up, at most three times this (default 150)",
 }
@@ -337,25 +341,37 @@ YERKD_WORDS = {
 
 
 # [defaults] in rooms.toml: the one tool set every owner room carries (one best way for every
-# queue 0 for its"), turn and the last part closes the; case before the next run starts. The example note says the sample
+# room, with no hand edit per room), allow, the mcp servers and the add-ons a worker gets (worker_addons); each room keeps its own sandbox. An inherited key sits in a
 # room's table before the first of the room's own keys named here for it, where rooms.toml.example writes it, else last.
-DEFAULT_KEYS = ("allow", "mcp")
-BEFORE = {"allow": ("also", "sealed", "thinking_panel", "mcp", "sandbox"), "mcp": ("sandbox",)}
+DEFAULT_KEYS = ("allow", "mcp", "worker_addons")
+BEFORE = {"allow": ("also", "sealed", "thinking_panel", "mcp", "sandbox"), "mcp": ("sandbox",), "worker_addons": ("mcp", "sandbox")}
+ADDON_NAME = re.compile(r"^(?:mcp__)?[A-Za-z0-9_-]+$")     # a worker add-on's shape: a server's name, or one of its tools
 
 
 def room_defaults(doc: dict[str, Any]) -> dict[str, Any]:
-    """rooms.toml's [defaults], {} for none: allow and mcp.<name> tables only; any other key, or one of another shape,
-    stops the start with one line naming it."""
+    """rooms.toml's [defaults], {} for none: allow, worker_addons and mcp.<name> tables only; any other key, or one of another
+    shape, stops the start with one line naming it."""
     base = doc.get("defaults", {})
     if not isinstance(base, dict):
         raise SystemExit("rooms.toml: defaults must be a table, [defaults], holding allow and mcp tables")
     for k in (k for k in base if k not in DEFAULT_KEYS):
-        raise SystemExit(f"rooms.toml: [defaults] {k}: a default carries allow and mcp tables only; set {k} in each room")
+        raise SystemExit(f"rooms.toml: [defaults] {k}: a default carries allow, worker_addons and mcp tables only; set {k} in each room")
     if not isinstance(base.get("allow", []), list) or not all(isinstance(x, str) for x in base.get("allow", [])):
         raise SystemExit(f'rooms.toml: [defaults] allow must be a list of tool names, like allow = ["mcp__web__web_fetch"], not {base["allow"]!r}')
     if not isinstance(m := base.get("mcp", {}), dict) or not all(isinstance(v, dict) for v in m.values()):
         raise SystemExit("rooms.toml: [defaults] mcp must be a table of servers, like [defaults.mcp.web], each one a table")
+    worker_addons("[defaults]", base)
     return base
+
+
+def worker_addons(where: str, conf: dict[str, Any]) -> list[str]:
+    """A room's worker_addons (or [defaults]', `where` naming it), [] unset; one that is not a list of add-on names (a server's
+    name or one of its tools, ADDON_NAME) stops the start with one line, as a [defaults] allow of another shape does."""
+    want = conf.get("worker_addons", [])
+    if not isinstance(want, list) or not all(isinstance(x, str) and ADDON_NAME.match(x) for x in want):
+        raise SystemExit(f'rooms.toml: {where} worker_addons must be a list of add-on tools or servers, like worker_addons = '
+                         f'["mcp__web__web_fetch"] or ["web"], not {want!r}')
+    return want
 
 
 def filled(server: dict[str, Any], name: str) -> dict[str, Any]:
@@ -370,12 +386,15 @@ def filled(server: dict[str, Any], name: str) -> dict[str, Any]:
 
 def inherit(name: str, conf: dict[str, Any], base: dict[str, Any]) -> None:
     """An owner room under [defaults] (`base`), in place: the default allow less the room's allow_remove, unless the room
-    has its own allow, and each default mcp server, filled, unless the room has its own mcp.<name> table of that name;
-    a key of the room's own replaces the default whole, its other servers kept after the defaults'."""
+    has its own allow, the default worker_addons unless the room has its own ([] for none), and each default mcp server,
+    filled, unless the room has its own mcp.<name> table of that name; a key of the room's own replaces the default whole,
+    its other servers kept after the defaults'."""
     drop = conf.get("allow_remove", [])
     if not isinstance(drop, list):
         raise SystemExit(f'rooms.toml: {name}: allow_remove must be a list of tool names, like allow_remove = ["mcp__web__web_fetch"], not {drop!r}')
     add: dict[str, Any] = {} if "allow" in conf or "allow" not in base else {"allow": [t for t in base["allow"] if t not in drop]}
+    if "worker_addons" in base and "worker_addons" not in conf:
+        add["worker_addons"] = list(base["worker_addons"])
     if base.get("mcp") and isinstance(own := conf.get("mcp", {}), dict):        # an mcp of another shape: the daemon names it
         add["mcp"] = {s: own[s] if s in own else filled(v, name) for s, v in base["mcp"].items()}
         add["mcp"] |= {s: v for s, v in own.items() if s not in base["mcp"]}
@@ -404,6 +423,7 @@ def rooms(private: Path, text: str | None = None, own: bool = False) -> dict[str
         people(n, c)                                    # a `people` that is not a list of ids stops the start here
         if not isinstance(c.get("watch_audit", False), bool):   # so does a `watch_audit` that is not true or false
             raise SystemExit(f"rooms.toml: {n}: watch_audit must be true or false, like watch_audit = true, not {c['watch_audit']!r}")
+        worker_addons(f"{n}:", c)                       # and a `worker_addons` that is not a list of add-on names
     return rs
 
 

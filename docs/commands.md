@@ -100,6 +100,7 @@ workers: start (needs a running yerkd), list, stop, report
 - `--account ACCOUNT`: start: the account to run on (default [workers], else the first not resting)
 - `--model MODEL`: start: the model (default [workers], else the room's)
 - `--effort EFFORT`: start: the thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)
+- `--addon ADDON`: start: one of the room's own add-on tools it gets too, a tool or a server's name (repeat for each), beside the room's worker_addons; repeat for each
 - `--limit LIMIT`: list: how many; default 20
 - `--json`
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
@@ -174,6 +175,7 @@ add a one-shot or a recurring job, remove one, or list them (the room's `schedul
 - `--account ACCOUNT`: add: agent jobs, the account to run on
 - `--model MODEL`: add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)
 - `--effort EFFORT`: add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)
+- `--addon ADDON`: add: agent jobs, one of the room's own add-on tools the worker gets too, a tool or a server's name (repeat for each), beside the room's worker_addons; repeat for each
 - `--json`
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
