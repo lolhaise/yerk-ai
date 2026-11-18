@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 131523`
+- `total = 131923`
 
 ## [session_start.claude_code]
 
@@ -122,9 +122,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-13, need-2026-11-13-91: the `show` tool (a file of the room's own folders opened on the PC's screen, in a window of the owner's own browser on the monitor named, since a room asked during a timed exam to bring up the slide deck it built had a browser tool that opens only http(s) addresses, a server in its shell the PC could not reach and a Windows command refused outside its sandbox; filed 2026-11-13) is 730 as this tree builds it, about 761 as sent (31 over, as each of Yerk AI's entries goes), on the about 27,156 the rooms send, so about 27,917, 667 over the line; so 28,000, no part could pay, the total rose by the 750 (to 131,523 on main's 130,773). The hands plug-in's tool entries do not change.
 
+2026-11-18, worker-room-tools: the `schedule` tool's `addons` and its words on what an agent job's worker has (a shell, files and the web, of the room's tools only the add-ons the room gives every worker and those `addons` names, never send, text or email, so a light timed check needing the room's tools is a note), since a booked check told to search the owner's mail started a worker with no mail tool; and the `worker` tool's words on what a worker has with none named: schedule 2,399 to 2,727 and worker 1,710 to 1,796 as this tree builds them, all 24 from 26,197 to 26,611 (414 more, measured on main c957024 and on this tree the same way), about 28,331 as sent, 331 over the line; so 28,400, no part could pay, the total rose by the 400 (to 131,923 on main's 131,523). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 28000`
+- `yerk_tools = 28400`
 - `deferred_tool_names = 3581`
 - `mcp__hands__ = 10131`
 - `mcp__web-ladder__web_image = 913`
@@ -751,7 +753,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: precompact-midturn raised it by 63, the compaction copy started in the middle of a long turn, behind a room's precompact_midturn and off by default (a room learns its size only as a turn ends, so a turn that grows across the copy's whole band in one go ends in the held compaction and a message then waits about two minutes: the 96 hours measured, 7 of 1,189 turns grew over 100,000), not folded to fit: room.py 52 (_midturn and its trigger in _on_event, its resets in _turn, TAIL_RAN and the mid-turn exchange kept whole in _tail, its mark in _said, the drop in _end, _fork_off's `at`, MIDTURN, the module docstring's sentence), engine.py 6 (Turn.reached, from a main-thread message_start and the assistant events, never the row's `context`), config.py 3 (its words), daemon.py 2 (the key handed to the room, a bad value said once). 32,980: main 03eeb13's 32,917 plus 63.
 
-- `lines = 32980`
+2026-11-18: worker-room-tools raised it by 89, a worker starts with the add-on tools its room gives every worker and a booked agent job can name add-ons (seen live: a booked check whose brief needed the room's mail tool started a worker with none, since a job could name no add-on and no start got one unnamed), not folded to fit: jobs.py 36 (`addons` in KEYS, the Job and make_job, refused on a note and a script by the key; fields_for, schedule_add's check against the room before anything is written, addons_refusal and room_confs, the sync's check where it can read the rooms file; the fire hands them on; runs_on names them; the header), workers.py 22 (with_defaults, its call in start, the docstrings), config.py 20 (worker_addons in ROOM_WORDS, DEFAULT_KEYS and BEFORE, its check and ADDON_NAME, inherit's carry), mcp_server.py 6 (the schedule tool's `addons`, both tools' words, the module's line), cli.py 5 (`--addon` on `yerk worker start` and `yerk schedule add`, the add's line). 33,069: main c957024's 32,980 plus 89.
+
+- `lines = 33069`
 
 ## Uncapped
 

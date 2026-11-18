@@ -89,7 +89,8 @@ Heavy work leaves the room: a worker is a headless run with its own card in the 
 report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
 leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
 `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
-add-on tools it gets too, as named here or by server, such as a browser; a step needing `confirmed` it leaves ready for you). Returns its id, folder
+add-on tools it gets too, as named here or by server, such as a browser; unnamed it has a shell, files, the web and the
+add-ons this room gives every worker; a step needing `confirmed` it leaves ready for you). Returns its id, folder
 and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
 NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words).
 ```
@@ -116,7 +117,9 @@ owner's rooms, "note" in any other): "note", a reminder
 (when it is due this room is told the text and says it in its own voice; no worker, shell or
 account); "agent", the brief a worker gets (a headless run with a card here, its last message told
 by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
-`model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
+`model` one from the install's list, default this room's live ones; it has a shell, files and the web, of your tools
+only the add-ons this room gives every worker and those `addons` names, never send, text or email, so a light timed
+check needing your tools is a note); "script", the shell line to run (no model call, its
 output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
 adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
 rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
@@ -137,6 +140,7 @@ next fire time read back from systemd. "remove": by `name`. "list": the jobs thi
 - `account`: string, default ""
 - `model`: string, default ""
 - `effort`: string, default ""
+- `addons`: list of string or null, default null
 
 ## settings
 

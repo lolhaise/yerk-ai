@@ -1142,3 +1142,77 @@ def test_the_worker_tool_hands_the_rooms_browser_to_a_worker_from_an_owner_room_
     servers = json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]
     assert spec["addon_tools"] == ["mcp__hands__browser"] and servers["hands"]["env"]["YERK_WORKER"] == own["id"]
     assert [c["unit"] for c in units.calls] == [own["unit"]]
+
+
+ABACUS = {"type": "stdio", "command": "/usr/bin/node", "args": ["/opt/example/abacus/server.mjs"], "env": {"YERK_ROOM": "r"}}
+COUNTING = {"model": "m", "allow": ["mcp__abacus__sum", "mcp__abacus__chart", "mcp__web__web_fetch"],          # a made-up add-on
+            "mcp": {"abacus": ABACUS, "web": {"type": "stdio", "command": "web", "env": {"WEB_API_KEY": "placeholder"}}}}
+
+
+def test_a_worker_started_naming_no_add_on_gets_the_ones_its_room_gives_every_worker(setup):
+    """Seen live: a booked agent job told to search the owner's mail started a worker with no mail tool, since a job
+    could name no add-on and no start got one unnamed. A room's worker_addons go to every worker started from it; a room
+    with none starts the same worker as before, no add-on and no MCP server."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy(), "q": Busy()})
+        w.room_confs["r"] = {**COUNTING, "worker_addons": ["mcp__abacus__sum"]}
+        w.room_confs["q"] = COUNTING
+        w.begin(asyncio.get_running_loop())
+        out, bare = await w.start("r", 'FAKE report="read"', account="one"), await w.start("q", 'FAKE report="x"', account="one")
+        return out, await ended(s.ledger, out["id"]), bare, await ended(s.ledger, bare["id"])
+    out, row, bare, _ = asyncio.run(go())
+    folder = Path(out["staging"])
+    spec = json.loads((folder / "worker.json").read_text())
+    assert spec["addon_tools"] == out["addons"] == ["mcp__abacus__sum"] and row["exit"] == "done"
+    cfg = json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]
+    assert list(cfg) == ["abacus"] and cfg["abacus"]["env"]["YERK_WORKER"] == out["id"]
+    prompt = (folder / "PROMPT.md").read_text()
+    assert "- You have the room's own mcp__abacus__sum too." in prompt and "`confirmed`) is refused" in prompt
+    argv = json.loads((folder / "fake-record.json").read_text())["argv"]
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__abacus__sum"
+    plain = json.loads((Path(bare["staging"]) / "worker.json").read_text())
+    assert "addon_tools" not in plain and "mcp_config" not in plain and "addons" not in bare
+    assert not (Path(bare["staging"]) / "mcp.json").exists() and "the room's own" not in (Path(bare["staging"]) / "PROMPT.md").read_text()
+
+
+@pytest.mark.parametrize(("default", "warned"), [("mcp__abacus__erase", False), ("web", True)])
+def test_a_default_the_room_cannot_give_is_skipped_and_the_worker_starts_but_named_it_refuses_the_start(setup, caplog, default,
+                                                                                                         warned):
+    """A default is never a refusal: one the room's allow has not is skipped, one whose server's table passes a credential
+    skipped with one warning, and the worker starts with the rest. The same add-on named by the start is refused whole."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = {**COUNTING, "worker_addons": [default, "mcp__abacus__sum"]}
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="x"', account="one")
+        await ended(s.ledger, out["id"])
+        return out, await w.start("r", 'FAKE report="x"', account="one", addons=[default])
+    with caplog.at_level("WARNING", logger="yerk.workers"):
+        out, named = asyncio.run(go())
+    assert out["ok"] and out["addons"] == ["mcp__abacus__sum"]
+    assert list(json.loads((Path(out["staging"]) / "mcp.json").read_text())["mcpServers"]) == ["abacus"]   # no key handed over
+    said = [r.getMessage() for r in caplog.records if "worker_addons" in r.getMessage()]
+    assert len(said) == warned and all("passes a credential" in x for x in said)
+    assert named["ok"] is False and ("passes a credential" if warned else "no add-on tool 'mcp__abacus__erase'") in named["error"]
+
+
+def test_the_rooms_add_ons_and_the_ones_a_start_names_are_one_list_with_no_repeat(setup):
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = {**COUNTING, "worker_addons": ["abacus", "mcp__abacus__sum"]}
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="x"', account="one", addons=["mcp__abacus__sum"])
+        await ended(s.ledger, out["id"])
+        return out
+    out = asyncio.run(go())
+    folder = Path(out["staging"])
+    assert json.loads((folder / "worker.json").read_text())["addon_tools"] == out["addons"] == [
+        "mcp__abacus__sum", "mcp__abacus__chart"]
+    assert list(json.loads((folder / "mcp.json").read_text())["mcpServers"]) == ["abacus"]
+    assert "- You have the room's own mcp__abacus__sum, mcp__abacus__chart too." in (folder / "PROMPT.md").read_text()

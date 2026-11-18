@@ -8,8 +8,9 @@ page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, 
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
 mounts all but the room's folders read-only, zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn, and show because that
-reaches no screen. A worker gets none of it: by default no MCP server at all, and with
-[workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
+reaches no screen. A worker gets none of it: with [workers] yerk_tools its own stdio server (`worker_server`) carrying
+and of its room's add-on servers those the room gives every worker (worker_addons) and those its start or its job names; no MCP server at all when there
+are none.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
 values open it: the install's secret (the CLI, the job units, the tests: everything), a room process's
@@ -213,7 +214,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
         leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
         `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
-        add-on tools it gets too, as named here or by server, such as a browser; a step needing `confirmed` it leaves ready for you). Returns its id, folder
+        add-on tools it gets too, as named here or by server, such as a browser; unnamed it has a shell, files, the web and the
+        add-ons this room gives every worker; a step needing `confirmed` it leaves ready for you). Returns its id, folder
         and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
         NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words)."""
         req = {"action": action, "brief": brief, "id": id, "room": room, "tasks": tasks or [],
@@ -223,7 +225,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     @mcp.tool()
     async def schedule(action: str, name: str = "", when: str = "", what: str = "", kind: str = "",
                        tz: str = "", deliver: str = "announce", room: str = "", cap_minutes: float = 0,
-                       account: str = "", model: str = "", effort: str = "", *, ctx: Context) -> str:
+                       account: str = "", model: str = "", effort: str = "", addons: list[str] | None = None,
+                       *, ctx: Context) -> str:
         """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
         "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
         a one-shot, removed after it fires) or a systemd calendar line, recurring ("Mon..Fri 09:00",
@@ -232,7 +235,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         (when it is due this room is told the text and says it in its own voice; no worker, shell or
         account); "agent", the brief a worker gets (a headless run with a card here, its last message told
         by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
-        `model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
+        `model` one from the install's list, default this room's live ones; it has a shell, files and the web, of your tools
+        only the add-ons this room gives every worker and those `addons` names, never send, text or email, so a light timed
+        check needing your tools is a note); "script", the shell line to run (no model call, its
         output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
         adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
         rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
@@ -240,7 +245,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         <example>"remind me Saturday at 10 to call the clinic": action "add", kind "note", name
         "call-clinic", when "2026-10-24 10:00", what "Remind them to call the clinic now."</example>"""
         req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz, "deliver": deliver,
-               "room": room, "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort}
+               "room": room, "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort,
+               "addons": addons or []}
         return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))
 
     @mcp.tool()

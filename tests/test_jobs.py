@@ -1188,3 +1188,109 @@ def test_the_example_nightly_rules_job_reads_exit_1_as_proposals_to_read_and_2_a
         (y := b / "yerk").write_text(f"#!/bin/sh\n[ \"$*\" = \"curate --rules\" ] || exit 9\nexit {code}\n")
         y.chmod(0o755)
         assert subprocess.run(["/bin/sh", "-c", job.payload], env={"PATH": f"{b}:/usr/bin:/bin"}).returncode == rc
+
+
+def test_an_agent_job_names_add_ons_and_a_note_or_a_script_naming_them_is_refused_by_the_key():
+    base = {"schedule": "Mon 10:00", "tz": "UTC", "room": "r"}
+    job = make_job("look", {**base, "kind": "agent", "message": "look", "addons": ["mcp__hands__browser", "mailbox"]})
+    assert job.addons == ("mcp__hands__browser", "mailbox") and job.runs_on() == {"addons": "mcp__hands__browser mailbox"}
+    assert make_job("plain", {**base, "kind": "agent", "message": "look"}).addons == () and "addons" in jobs.KEYS
+    for kind, what, said in (("note", {"message": "x"}, "a note runs nothing, so it takes no `addons`"),
+                             ("script", {"command": "true"}, "a script job runs no worker; `addons` is for agent jobs"),
+                             ("agent", {"message": "x"}, "`addons` must be a list of the room's add-on tools or servers")):
+        with pytest.raises(JobError) as e:
+            make_job("x", {**base, "kind": kind, **what, "addons": ["mailbox"] if kind != "agent" else "mailbox"})
+        assert str(e.value).startswith(said)
+
+
+MAILBOX = {"model": "m", "timezone": "UTC", "allow": ["mcp__mailbox__search", "mcp__abacus__sum"],
+           "mcp": {"mailbox": {"type": "stdio", "command": "mailbox"}, "abacus": {"type": "stdio", "command": "abacus"}}}
+QUIET = 'FAKE report="NO_REPLY" result="NO_REPLY"'
+
+
+def fired(j, w, s, sd, priv, state, name):
+    """The job fired as its unit fires it, and its worker's row once it ended."""
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        assert await asyncio.to_thread(jobs.run, name, priv, state, sd, handoff) == 0
+        return await ended(s.ledger, s.ledger.job_runs(job=name)[0]["worker"])
+    return asyncio.run(go())
+
+
+def test_a_booked_agent_job_names_add_ons_its_room_has_and_its_fired_worker_gets_them(setup, tmp_path, capsys):
+    """The schedule tool and `yerk schedule add` take `addons`, checked against the job's room when it is booked with
+    room_addons' own sentence, nothing written when refused; the list names them and the fired worker has them."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()}, room_confs={"r": MAILBOX})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    w.room_confs["r"] = MAILBOX
+    path = write_jobs(priv / "jobs.toml", "# the owner's comment stays\n")
+    add = lambda **k: asyncio.run(j.handle("r", {"action": "add", "kind": "agent", "when": "Mon..Fri 09:00", "what": QUIET,  # noqa: E731
+                                                 "deliver": "silent", **k}))
+    booked = add(name="inbox", addons=["mcp__mailbox__search"])
+    assert booked["ok"] and booked["addons"] == "mcp__mailbox__search", booked
+    assert 'room = "r"\naddons = ["mcp__mailbox__search"]\ndeliver = "silent"\n' in path.read_text()
+    before = path.read_bytes()
+    assert add(name="odd", addons=["mcp__mailbox__send"]) == {"ok": False, "error": "this room has no add-on tool "
+                                                              "'mcp__mailbox__send'; its add-on tools: mcp__mailbox__search, mcp__abacus__sum"}
+    assert add(name="odd", kind="note", what="x", addons=["mailbox"])["error"].startswith("a note runs nothing, so it takes no `addons`")
+    assert path.read_bytes() == before and sd.ours() == ["inbox"]
+    listed = asyncio.run(j.handle("r", {"action": "list"}))
+    assert listed["lines"][0].endswith("room r, agent, addons mcp__mailbox__search") and listed["jobs"][0]["addons"] == "mcp__mailbox__search"
+    row = fired(j, w, s, sd, priv, state, "inbox")
+    spec = json.loads((Path(row["staging"]) / "worker.json").read_text())
+    assert spec["addon_tools"] == ["mcp__mailbox__search"] and row["job"] == "inbox"
+    assert list(json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]) == ["mailbox"]
+    capsys.readouterr()
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(jobs, "Systemd", lambda: sd)
+    monkey.setattr(cli, "rooms", lambda p: {"r": MAILBOX})
+    try:
+        rc = cli.main(["schedule", "add", "cli-inbox", "--when", "*:0/45", "--what", "look", "--room", "r", "--addon", "mailbox",
+                       "--private", str(priv), "--state", str(state)])
+        odd = cli.main(["schedule", "add", "cli-odd", "--when", "*:0/45", "--what", "look", "--room", "r", "--addon", "mcp__web__fetch",
+                        "--private", str(priv), "--state", str(state)])
+    finally:
+        monkey.undo()
+    out, err = capsys.readouterr()
+    assert (rc, odd) == (0, 1) and ", addons mailbox; next " in out and err.startswith("this room has no add-on tool 'mcp__web__fetch'")
+    assert jobs.load(path)[0]["cli-inbox"].addons == ("mailbox",) and "cli-odd" not in path.read_text()
+
+
+def test_a_hand_edited_jobs_add_on_its_room_has_not_is_named_at_the_sync_and_never_scheduled(tmp_path):
+    priv = tmp_path / "private"
+    priv.mkdir()
+    (priv / "rooms.toml").write_text('[rooms.r]\nchannel = "discord:1"\nallow = ["mcp__mailbox__search"]\n\n'
+                                     '[rooms.r.mcp.mailbox]\ntype = "stdio"\ncommand = "mailbox"\n')
+    path = write_jobs(priv / "jobs.toml", '[jobs.good]\nkind = "agent"\nschedule = "Mon 09:00"\ntz = "UTC"\nroom = "r"\n'
+                      'addons = ["mailbox"]\nmessage = "look"\n\n[jobs.odd]\nkind = "agent"\nschedule = "Mon 09:00"\ntz = "UTC"\n'
+                      'room = "r"\naddons = ["mcp__mailbox__send"]\nmessage = "look"\n')
+    sd = FakeSystemd(tmp_path / "units")
+    p, _ = jobs.sync(path, sd, Env(ENV.python, ENV.repo, priv, ENV.state))
+    assert p.added == ["good"] and sd.ours() == ["good"]
+    assert p.errors == {"odd": "this room has no add-on tool 'mcp__mailbox__send'; its add-on tools: mcp__mailbox__search"}
+    p, _ = jobs.sync(path, sd, ENV)                                    # where the rooms file cannot be read: left to the fire
+    assert p.errors == {} and sorted(sd.ours()) == ["good", "odd"]
+
+
+def test_a_job_naming_no_add_on_in_a_room_giving_every_worker_one_starts_a_worker_that_has_it(setup, tmp_path):
+    """The case itself, seen live: a booked agent job named no add-on (none could), its brief needed the room's mail
+    tool, and its worker started without one. Its room's worker_addons now reach the job's worker with nothing named."""
+    s = setup
+    conf = {**MAILBOX, "worker_addons": ["mailbox"]}
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()}, room_confs={"r": conf})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    w.room_confs["r"] = conf
+    path = write_jobs(priv / "jobs.toml", '[jobs.inbox]\nkind = "agent"\nschedule = "Mon..Fri 09:00"\ntz = "UTC"\nroom = "r"\n'
+                      f"deliver = \"silent\"\nmessage = '{QUIET}'\n")
+    jobs.sync(path, sd, j.env())
+    row = fired(j, w, s, sd, priv, state, "inbox")
+    folder = Path(row["staging"])
+    spec = json.loads((folder / "worker.json").read_text())
+    assert spec["addon_tools"] == ["mcp__mailbox__search"] and row["job"] == "inbox"
+    assert list(json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]) == ["mailbox"]
+    assert "- You have the room's own mcp__mailbox__search too." in (folder / "PROMPT.md").read_text()
