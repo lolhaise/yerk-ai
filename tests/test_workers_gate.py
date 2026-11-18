@@ -134,7 +134,7 @@ def test_an_addon_call_that_carries_the_owners_word_is_refused_in_a_worker(worke
     assert "acts on the owner's word" in denied(out) and "Leave that step ready" in denied(out)
 
 
-def test_an_add_on_the_room_gives_every_worker_is_one_of_its_tools_and_the_owners_word_on_it_is_still_refused(setup) -> None:
+def test_an_add_on_the_room_gives_every_worker_is_one_of_its_tools_and_the_owners_word_on_it_is_still_refused(setup) -> None:  # noqa: F811
     """A room's worker_addons pass the gate as a named add-on does (`given`); a call on one that carries `confirmed` is
     refused all the same, and a Yerk AI tool the worker was not given stays refused."""
     s = setup
