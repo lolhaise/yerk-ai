@@ -109,11 +109,14 @@ def test_a_watched_channel_is_read_as_the_rooms_own_and_never_written_to(tmp_pat
 
     def answered(text):
         wait(lambda: any(text in m.content for m in own.sent) and not room.busy)
-    # a turn: the owner's message in the watched channel with a file that cannot be fetched, a second mid-turn
-    go(dc.on_message(Msg(watched, 501, "SLOW how was the session", attachments=[Attachment("plan.pdf", fail=True)])))
+    # a turn: the owner's message in the watched channel with a file that cannot be fetched, a second mid-turn. The fake
+    # holds the turn open until the second line comes (HOLD_OPEN): `reading` is set once the room wrote the first line, maybe
+    # before the fake read it, and SLOW's 1.5 s select then missed a second line that landed in the same read (45 of 911 runs
+    # under load, 2026-11-17)
+    go(dc.on_message(Msg(watched, 501, "HOLD_OPEN how was the session", attachments=[Attachment("plan.pdf", fail=True)])))
     wait(lambda: room.reading)
     go(dc.on_message(Msg(watched, 502, "and the bench")))
-    answered(f"echo: {SENT}\nSLOW how was the session")
+    answered(f"echo: {SENT}\nHOLD_OPEN how was the session")
     # a slash command there: one ephemeral line naming the room's own channel
     it = It("status", channel=WATCHED)
     go(dc.on_interaction(it))
@@ -155,7 +158,7 @@ def test_a_watched_channel_is_read_as_the_rooms_own_and_never_written_to(tmp_pat
     assert wired and bot.puts == [1]                  # rooms.toml's watch, wired by the daemon; commands in the own guild only
     # ... while the room read it as its own and answered in its own channel
     said = [m.content for m in own.sent]
-    assert any(f"echo: {SENT}\nSLOW how was the session" in x and f"{SENT}\nand the bench" in x for x in said)   # folded
+    assert any(f"echo: {SENT}\nHOLD_OPEN how was the session" in x and f"{SENT}\nand the bench" in x for x in said)   # folded
     quiet = d.ledger.inbound_get("504")
     card = next(m for m in own.sent if str(m.id) == quiet["reply_ids"])
     assert card.edits[-1].split("\n")[0] == f"{words.DONE} {words.QUIET}" and not card.deleted and quiet["note"] == "silent"

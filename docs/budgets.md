@@ -745,7 +745,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-17: status-failed-read-keeps-reading raised it by 13, one /usage call that fails never brings the stale /status card back (status-meters-kept-fresh's judge read, 2026-11-17: a card's failed live ask was filed over the account's good kept reading, so the keeper left the account for 15 minutes and the cards showed the stream's reading, hours old), not folded to fit: usage.py 11 (readings holds a failed ask over a good kept reading in memory, under the lock, the file keeping that reading; keep files a good reading over an error whatever its time; the header and the docstrings), status.py 2 (collect hands the kept readings to a live card too; reading says why the ask failed beside a kept reading; the docstrings). 32,816: 32,803 plus 13.
 
-- `lines = 32816`
+2026-11-17: need-2026-11-17-104 raised it by 42, an account's rest ends when its usage comes back early, for every room (need 104: a rate limit had rested an account on Fable until the reset it named, days off; its usage came back early, the Fable week at 0% with the same reset, and the rest stood, so the picker skipped the account and put a worker on a busy one, where it waited), not folded to fit: usage.py 30 (full, the meters that bind a rest's model; back, a live reading taken after a rest began with none of them full ends it, a log line each; keep hands it each reading it files; RATE and the logger; the header), accounts.py 10 (Cooldowns.lift, the rest ended and its end kept; fail, the rest after a wrong early end stays to its end; show marks it; _save through config.write_private, a temp file of each writer's own, since a room's thread and the keeper write at once), status.py 2 (the card's own reading ends a rest before a line is drawn), daemon.py 0 (the keeper is handed the rests). 32,858: main 834acb5's 32,816 plus 42.
+
+- `lines = 32858`
 
 ## Uncapped
 

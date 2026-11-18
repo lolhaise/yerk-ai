@@ -49,6 +49,64 @@ version changes.
   how a contributor checks a change. No line of yerk_ai/ changes.
 - **Upgrading**: nothing to change.
 
+### watch-test-waits-on-events (#94)
+
+- tests/test_watch.py's proof that a watched channel is read as the room's own and never written to no longer fails now
+  and then on a loaded box. On the box's own checks it was the first failure in 10 of 647 commits, on 3.12, 3.13 and
+  3.14 alike, each time "1 failed" beside one to two thousand passed, and each red was run again until it was green.
+  Nine copies at once at nice 19 in the heavy slice made it fail 45 times in 911 runs, every time on its fold line: the
+  second message, sent mid-turn, came back as a reply of its own.
+- The cause was the test and its fake, not the room. The test sent the second message once the room was `reading`,
+  which the room sets when it has written the first line to Claude Code's stdin, maybe before the process read it. Under
+  load the fake started late, so both lines were in the pipe at its first read: Python's buffered stdin took both, and
+  SLOW's 1.5 s `select` on the descriptor never saw the second, so the fake answered them apart after waiting 1.5 s. The
+  room had done its part each time: the ledger had the second message folded into the running turn, written 0.05 to
+  0.07 s after the first, and both answers were posted in the room's own channel only.
+- The fake (tests/fake_claude.py) has a new line marker, HOLD_OPEN: the turn stays open until another line comes, however
+  late, read through stdin's own buffer, with no clock. The test's first message uses it, so the fold waits on the second
+  line itself. No sleep, no retry, no longer timeout. Every assertion stays as it was: the message itself, the wait for
+  its answer and the fold assertion say HOLD_OPEN where they said SLOW, and nothing else changed. SLOW is unchanged for
+  the tests that use its 1.5 s, some of which prove that a message coming after it is not folded.
+- The proof: 300 runs on each of 3.12, 3.13 and 3.14 under the same load, all green, and tests/test_watch.py whole green
+  on each. Then, with twelve copies at once, 200 more on each Python, all green, while main's test beside them failed
+  131 times in 600 runs, every time on the fold line.
+- **Upgrading**: nothing to change. No line of yerk_ai/ changed, so budgets.toml is as it was.
+
+### need-2026-11-17-104 (#92)
+
+- An account's rest now ends when its usage comes back early. A rate limit rests an account for the model it hit until
+  the reset the limit names, often days off. When that usage came back before the reset (the model's own week at 0% and
+  the week near empty, the reset unchanged), the rest stood anyway: the picker skipped the account and put a worker on a
+  busy one, where it waited, and the only way around it was to start the worker on that account by name.
+- A live reading of an account now ends its rate limit's rest when it was taken after the rest began and no meter that
+  binds the rest's model is full in it (the 5-hour session, the week, and that model's own week, so Fable's own week
+  never holds a rest on Opus). The readings are the ones yerkd already takes: the keeper's, about every 15 minutes for each
+  account through `nice` (status-meters-kept-fresh), and the one `/status` asks for, which ends such a rest before the
+  card draws it. So the next pick, a room's turn or a worker's start, takes the account again within about 15 minutes of
+  its usage coming back, and `/model`, `yerk accounts` and the card show it free. yerkd's log has a line for each. A
+  reading from before the rest, or one still full, ends nothing, and no Claude Code is started for it.
+- Only a rate limit's rest ends this way: a billing, login or hand rest is no usage and stands to its end. A limit no
+  `/usage` meter shows is tried once: when a turn hits it again before the end a reading took away, that rest stays to
+  its end whatever a reading says, so no turn after it hops on the same wall every time the keeper reads; a reply on the
+  account trusts the readings again.
+- The rest file is now written through a temp file of each writer's own, 0600, since a room's thread and the keeper can
+  write it at once.
+- The ability is `usage-back` (`yerk explain usage-back`), found by a room asking why a worker is waiting for an account,
+  why an account is still resting, or about usage that came back. budgets.toml: `[code] lines` 32,803 to 32,845, with
+  its dated note; docs/budgets.md is what `yerk docs own` writes. docs/GUIDE.md, How a room runs, says it beside the rate
+  limit's rest. The README says `/usage` runs every 15 minutes and ends such a rest, kept under its 12,000 bytes by
+  dropping a repeat ("it never prints or logs one", which Who it trusts says of every credential) and five shorter
+  phrasings with the same meaning.
+- The tests: 7 new, in tests/test_observe.py (the wall: two accounts resting on Fable, a reading from before the rest and
+  one still full end nothing, the keeper's reading ends the one whose usage is back and the picker takes it again, a
+  restart keeping it so, a billing rest left; only a rate limit's rest ends, on the meters that bind its model; a limit
+  no meter shows is ended once, then its next rest stays; the card's own reading ends a rest before it draws the
+  account; the daemon's keeper ends one, says so in its log, and the next worker starts there), tests/test_accounts.py
+  (lift keeps the rest's end and its repeats, and a failure before that end stays) and tests/test_abilities.py (the ask
+  that finds usage-back).
+- **Upgrading**: nothing to do. A rest already resting on a rate limit ends at the first reading of its usage back; one
+  written without the time it began is left to its end.
+
 ### status-failed-read-keeps-reading (#93)
 
 - One `/usage` call that fails no longer brings the stale `/status` card back. Since status-meters-kept-fresh yerkd keeps

@@ -2056,13 +2056,13 @@ class Yerkd:
         """Each account's live reading kept under usage.EVERY old for /status's first answer: one step of usage.keep (one
         account read at most, through nice) in a thread, then `every` seconds' sleep, forever; none with no account. A step
         that raises is a warning, once for each distinct message, and the next step runs: a keeper that died unseen would
-        bring the stale card back."""
+        bring the stale card back. A reading it files ends a rate limit's rest it shows over (usage.back)."""
         tried: dict[str, float] = {}
         said: set[str] = set()
         while True:
             if self.accounts:
                 try:
-                    await asyncio.to_thread(usage.keep, self.accounts, self.state, tried)
+                    await asyncio.to_thread(usage.keep, self.accounts, self.state, tried, cooldowns=self.cooldowns)
                 except Exception as e:
                     if (why := f"{type(e).__name__}: {e}") not in said:
                         said.add(why)

@@ -84,7 +84,7 @@ def test_kept_fresh_i_the_meters_keeper_says_each_failing_step_once_runs_the_nex
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
     steps: list[list[str]] = []
 
-    def step(accounts, state, tried):
+    def step(accounts, state, tried, cooldowns=None):                # the daemon hands it the rests (usage.back)
         steps.append([a.name for a in accounts])
         if len(steps) <= 3:
             raise OSError("usage.json could not be written" if len(steps) < 3 else "No space left on device")
@@ -137,7 +137,7 @@ def test_failed_read_k_the_meters_keeper_waits_every_seconds_between_two_steps(t
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
     said, real = [], asyncio.sleep
 
-    def step(accounts, state, tried):
+    def step(accounts, state, tried, cooldowns=None):                # the daemon hands it the rests (usage.back)
         said.append(("step", [a.name for a in accounts]))
         if len(said) > 6:                                  # steps with no wait between them
             raise Stop
