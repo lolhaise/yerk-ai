@@ -1353,6 +1353,16 @@ free_path = "this is the free path: the owner signs in by hand"
 why_not = "After the rooms move; the account ladder itself is built (Layer 2)."
 asked_as = ["sign back in", "login expired", "relogin"]
 
+[abilities.usage-back]
+state = "built"
+what = "An account's rest ends when its usage comes back early. A rate limit rests an account for the model it hit until the reset the limit names, often days off; when its usage comes back before that (a reset ahead of its time), the account is free again within about 15 minutes, so the next pick, a room's turn or a worker's start, takes it rather than skipping it for a busy account. yerkd reads each account's meters with Claude Code's own /usage about every 15 minutes (no model call), and /status reads them when asked: a reading taken after the rest began with no meter binding its model full (the session, the week, and that model's own week, so Fable's week never holds Opus) ends the rest. A billing, login or hand rest is no usage and stands. A limit no meter shows is tried once: a turn that hits it again before the old end rests the account to that end, no reading ending it, until a reply on the account."
+tier = "free"
+needs = "Claude Code's /usage on each account's own login, as the status card reads it (a one-year token cannot read the meters)"
+free_path = "this is the free path"
+asked_as = ["usage came back", "usage is back", "usage reset early", "usage was reset", "still resting", "resting until", "rest list",
+            "waiting for an account"]
+layer = 2
+
 [abilities.room-notes]
 state = "described"
 what = "Gives one room its own long reference file, a handbook for that part of life, loaded whole at session start and checked that it fits."

@@ -8,6 +8,41 @@ version changes.
 
 ## 2026-11-17
 
+### need-2026-11-17-104 (#92)
+
+- An account's rest now ends when its usage comes back early. A rate limit rests an account for the model it hit until
+  the reset the limit names, often days off. When that usage came back before the reset (the model's own week at 0% and
+  the week near empty, the reset unchanged), the rest stood anyway: the picker skipped the account and put a worker on a
+  busy one, where it waited, and the only way around it was to start the worker on that account by name.
+- A live reading of an account now ends its rate limit's rest when it was taken after the rest began and no meter that
+  binds the rest's model is full in it (the 5-hour session, the week, and that model's own week, so Fable's own week
+  never holds a rest on Opus). The readings are the ones yerkd already takes: the keeper's, about every 15 minutes for each
+  account through `nice` (status-meters-kept-fresh), and the one `/status` asks for, which ends such a rest before the
+  card draws it. So the next pick, a room's turn or a worker's start, takes the account again within about 15 minutes of
+  its usage coming back, and `/model`, `yerk accounts` and the card show it free. yerkd's log has a line for each. A
+  reading from before the rest, or one still full, ends nothing, and no Claude Code is started for it.
+- Only a rate limit's rest ends this way: a billing, login or hand rest is no usage and stands to its end. A limit no
+  `/usage` meter shows is tried once: when a turn hits it again before the end a reading took away, that rest stays to
+  its end whatever a reading says, so no turn after it hops on the same wall every time the keeper reads; a reply on the
+  account trusts the readings again.
+- The rest file is now written through a temp file of each writer's own, 0600, since a room's thread and the keeper can
+  write it at once.
+- The ability is `usage-back` (`yerk explain usage-back`), found by a room asking why a worker is waiting for an account,
+  why an account is still resting, or about usage that came back. budgets.toml: `[code] lines` 32,803 to 32,845, with
+  its dated note; docs/budgets.md is what `yerk docs own` writes. docs/GUIDE.md, How a room runs, says it beside the rate
+  limit's rest. The README says `/usage` runs every 15 minutes and ends such a rest, kept under its 12,000 bytes by
+  dropping a repeat ("it never prints or logs one", which Who it trusts says of every credential) and five shorter
+  phrasings with the same meaning.
+- The tests: 7 new, in tests/test_observe.py (the wall: two accounts resting on Fable, a reading from before the rest and
+  one still full end nothing, the keeper's reading ends the one whose usage is back and the picker takes it again, a
+  restart keeping it so, a billing rest left; only a rate limit's rest ends, on the meters that bind its model; a limit
+  no meter shows is ended once, then its next rest stays; the card's own reading ends a rest before it draws the
+  account; the daemon's keeper ends one, says so in its log, and the next worker starts there), tests/test_accounts.py
+  (lift keeps the rest's end and its repeats, and a failure before that end stays) and tests/test_abilities.py (the ask
+  that finds usage-back).
+- **Upgrading**: nothing to do. A rest already resting on a rate limit ends at the first reading of its usage back; one
+  written without the time it began is left to its end.
+
 ### status-failed-read-keeps-reading (#93)
 
 - One `/usage` call that fails no longer brings the stale `/status` card back. Since status-meters-kept-fresh yerkd keeps
