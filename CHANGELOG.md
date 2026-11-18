@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-18
 
-### deploy-waits-for-copy (#?)
+### deploy-waits-for-copy (#100)
 
 - `yerk deploy` now waits for a room's copy that is compacting before it restarts the daemon, instead of dropping it. A
   restart drops a copy in flight, and the room then runs high until the next one lands: on 2026-11-18 a deploy restarted
