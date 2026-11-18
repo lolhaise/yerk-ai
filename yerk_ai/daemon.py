@@ -43,7 +43,7 @@ from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
-from .room import Channel, Inbound, Room
+from .room import MIDTURN, Channel, Inbound, Room
 from .texting import check as tcheck, hands as thands, holds as tholds, intake as tintake, link as tlink, people as tpeople, \
     sender as tsender, writer as twriter
 from . import abilities, addons, words   # STYLE.md: what a room reads
@@ -375,11 +375,13 @@ class Yerkd:
             paged = False
         if paged:                                                # its replies render on its page too
             channel = self.page.mirror(channel)
+        if (midturn := str(s.get("precompact_midturn", "off"))) not in MIDTURN:   # off, as unset, and said once
+            log.warning("room %s: precompact_midturn = %r is none of off, log and on, so it is off", name, s["precompact_midturn"])
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
                     compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0)),
                              float(s.get("idle_compact_within", 0))), precompact=float(s.get("precompact_within", 0)),
-                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))))
+                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))), midturn=midturn)
         room.cite = self.day_cite                                # a long tail names its oldest exchanges by their lines
         self.rooms[name], self.channels[name] = room, channel
         if paged:

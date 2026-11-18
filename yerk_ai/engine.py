@@ -264,6 +264,8 @@ class Turn:
     result: dict[str, Any] | None = None
     failure: Failure | None = None
     context: int = 0                                          # the session's tokens at its last call (0: none said)
+    reached: int = 0                                          # ... as the turn runs, from each main-thread call's message_start
+                                                              # on: a mid-turn copy's trigger (Room._midturn), never the row's
     compacted: dict[str, Any] | None = None                   # a compaction's compact_metadata (pre_tokens, post_tokens)
     fast_note: str = ""                                       # "Fast mode disabled · Out of usage credits", once a turn while it lasts
 
@@ -274,8 +276,12 @@ class Turn:
             c = (ev.get("message") or {}).get("content")
             self.replayed.append(c if isinstance(c, str) else "".join(str(b.get("text") or "") for b in c or [] if b.get("type") == "text"))
         elif kind == "stream_event":
-            if self.first_visible is None and visible(ev.get("event") or {}):
+            e = ev.get("event") or {}
+            if self.first_visible is None and visible(e):
                 self.first_visible = t
+            if e.get("type") == "message_start" and "parent_tool_use_id" in ev and not ev["parent_tool_use_id"]:   # the room's call as
+                u = (e.get("message") or {}).get("usage") or {}       # it starts; 2.1.321 streams none of a subagent's (2026-11-18)
+                self.reached = sum(int(u.get(k) or 0) for k in CONTEXT) or self.reached
         elif kind == "assistant":
             if ev.get("error"):
                 self.error_type = str(ev["error"])
@@ -284,7 +290,7 @@ class Turn:
                     self.tools.append(str(c.get("name")))
             u = (ev.get("message") or {}).get("usage") or {}       # a subagent's calls (parent_tool_use_id) are not the room's
             if not ev.get("parent_tool_use_id") and (n := sum(int(u.get(k) or 0) for k in CONTEXT)):
-                self.context = n
+                self.context = self.reached = n
         elif kind == "system" and ev.get("subtype") == "compact_boundary":
             self.compacted = dict(ev.get("compact_metadata") or {})
             self.context = int(self.compacted.get("post_tokens") or 0) or self.context

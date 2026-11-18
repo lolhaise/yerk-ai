@@ -6,6 +6,34 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-18
+
+### precompact-midturn (#97)
+
+- A room can now start its compaction copy in the middle of a long turn, not only as a turn ends. Until now a room learned
+  its session's size only when a turn ended, so a turn that started under the copy's band (`precompact_within` of the
+  window under Claude Code's line) and grew across the whole band in one go ended in the held compaction, and a message
+  sent then waited about two minutes. In the 96 hours to 2026-11-18, 7 of 1,189 turns grew that much.
+- The new room key `precompact_midturn` turns it on: `on` starts the copy at the call whose size first reaches the band,
+  read from that call's first stream event (`message_start`), at most once a turn, under every rule a turn-end copy keeps
+  (none while one compacts or waits to be taken, none while the daemon stops, a compaction holds the room, the turn was
+  stopped or the next run starts a fresh session, never without a live process). The copy compacts while the turn runs
+  and the room takes it as the turn ends, so the turn-end compaction reads the copy's size. `log` writes one line, "would
+  have started a copy mid-turn at N of its W tokens, ... s into the turn", and starts nothing. `off` is the default, also
+  for any other value, which is said once in the log at the start. It reads as `precompact_within` does: budgets.toml
+  `[session]`, a room's own key over it.
+- The turn the copy was made in reaches the copy as the first exchange of the text its first message carries, ahead of it
+  a line saying it was already running when the summary was written, that it is one request asked once, and that it
+  finished on the live session and nothing in it is to be done again; that exchange is never cut for `copy_tail`. A turn
+  that ends with no reply (a /stop, a failure it cannot get past) drops the copy made in it.
+- The size a turn records (the ledger's `context` column, the room card) is fed exactly as before; the mid-turn figure is
+  a field of its own. A subagent's calls are not the room's size: Claude Code 2.1.321 streams no `message_start` for
+  them, and one that named a subagent, or no thread at all, would be left out.
+
+- **Upgrading**: nothing to change; no room changes until its block or budgets.toml `[session]` sets
+  `precompact_midturn`. budgets.toml: `[code] lines` 32,917 to 32,980, with its dated note; docs/budgets.md and
+  docs/settings.md are what `yerk docs own` writes from it and from the key's words.
+
 ## 2026-11-17
 
 ### needs-risky-paths-wait (#96)

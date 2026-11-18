@@ -31,6 +31,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `people`: Discord user ids answered in the room besides the owner, as sender person (unset: the owner only); needs privacy family or shared
 - `persona`: the persona file, the session start's persona part
 - `pinned_memory`: the pinned memory file, the session start's pinned_memory part
+- `precompact_midturn`: on: a turn that reaches precompact_within's band mid-turn starts that copy at the call that reached it, once a turn, its exchange given to the copy as one request already answered; log: one line saying it would have, nothing started; off, the default, also for any other value (said once at the start)
 - `precompact_within`: the share of compact_window under Claude Code's own line within which a turn's end compacts a copy of the session, the room left free, and the copy becomes its session once compacted, at a turn's end (unset: budgets.toml [session]; 0: never)
 - `privacy`: owner (the default): the owner's room, which reads the whole memory; any other value walls the room: its own lines and the shared files only
 - `read`: folders the room may read besides its own, from its work folder; a room with people takes none, trusted or not

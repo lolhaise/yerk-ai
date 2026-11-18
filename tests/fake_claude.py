@@ -27,8 +27,13 @@ message and a success result echoing the text. Variations:
 - a control request (get_context_usage), its line appended to FAKE_CLAUDE_ASKS: FAKE_CLAUDE_CONTEXT=N answers
   fixtures/context_usage.json (a 2.1.321 answer, its id and picture cut) with totalTokens N, "recorded" as recorded,
   "silent" never, "exit" ends the process; unset, the error 2.1.321 holds for a process that cannot count
-- a line containing CONTEXT:N (the last one in it): its assistant message's usage says the session holds N tokens; SUBAGENT:M adds, after it,
-  the test reads (it_back_as_plain text) with one more Line
+- a line containing CONTEXT:N (the last one in it): its assistant message's usage says the session holds N tokens, and so does the
+  call's message_start ahead of it (a stream_event, parent_tool_use_id null, as 2.1.321 streams one); SUBAGENT:M adds, after it,
+  a subagent's call (parent_tool_use_id set) whose usage says M, its message_start too (2.1.321 streams none of a subagent's)
+- a line of the message's own starting GROW:N1,N2,... (a tail's "[time] owner: GROW:" never counts): before the answer, one tool call
+  per size, each its message_start with that usage, then its assistant tool_use with it and the tool's result; with
+  FAKE_CLAUDE_GROW_GATE set, each call waits after its message_start (up to 20 s) for a line of that file no call used yet
+  (FAKE_CLAUDE_GROW_GATE.used counts them, across processes): a turn of several calls whose size grows, held at the test's pace
 - a line containing AUTO_COMPACT: before its answer, Claude Code's own compaction inside the turn as 2.1.316 streams it:
   status compacting, FAKE_CLAUDE_COMPACT_SLOW seconds, status null (compact_result success), a compact_boundary (trigger
   auto, post_tokens FAKE_CLAUDE_POST, else 20000)
@@ -284,14 +289,46 @@ def answer(text):
         out({"type": "system", "subtype": "compact_boundary", "session_id": sid, "uuid": str(uuid.uuid4()),
              "compact_metadata": {"trigger": "auto", "post_tokens": int(os.environ.get("FAKE_CLAUDE_POST") or 20000)}})
     reply = "\nNO_REPLY\n" if "READ_ALONG" in text else "echo: " + text
-    out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     n = int(text.split("CONTEXT:")[-1].split()[0]) if "CONTEXT:" in text else 0     # the last: a copy's tail ahead names earlier ones
+    if n:                                      # the call's size as it starts, ahead of every other event of it
+        out(started({"input_tokens": 2, "cache_read_input_tokens": n - 2}))
+    out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}],
                                           **({"usage": {"input_tokens": 2, "cache_read_input_tokens": n - 2}} if n else {})}})
     if "SUBAGENT:" in text:
-        out({"type": "assistant", "parent_tool_use_id": "toolu_sub", "message": {
-            "content": [], "usage": {"input_tokens": int(text.split("SUBAGENT:")[1].split()[0])}}})
+        sub = {"input_tokens": int(text.split("SUBAGENT:")[1].split()[0])}
+        out(started(sub, parent="toolu_sub"))
+        out({"type": "assistant", "parent_tool_use_id": "toolu_sub", "message": {"content": [], "usage": sub}})
     return result(reply)
+
+
+def started(usage, parent=None):
+    """A call's message_start as 2.1.321 streams it: every stream_event carries parent_tool_use_id, null on the room's thread."""
+    return {"type": "stream_event", "parent_tool_use_id": parent, "session_id": sid,
+            "event": {"type": "message_start", "message": {"usage": usage}}}
+
+
+def grow(text):
+    """GROW:N1,N2,...: one tool call per size ahead of the answer, each held after its message_start while a gate says so."""
+    sizes = [int(x) for x in [x for x in text.splitlines() if x.startswith("GROW:")][-1].split()[0][5:].split(",")]
+    gate = os.environ.get("FAKE_CLAUDE_GROW_GATE", "")
+    for i, n in enumerate(sizes):
+        usage = {"input_tokens": 2, "cache_read_input_tokens": n - 2}
+        out(started(usage))
+        end = time.time() + 20
+        while gate and time.time() < end:      # a line of the gate no call used yet: this call goes on
+            used = Path(gate + ".used")
+            if (len(Path(gate).read_text().splitlines()) if os.path.exists(gate) else 0) > (
+                    len(used.read_text().splitlines()) if used.exists() else 0):
+                with open(used, "a") as f:
+                    f.write(f"{n}\n")
+                break
+            time.sleep(0.02)
+        tid = f"toolu_grow{i}"
+        out({"type": "assistant", "session_id": sid, "message": {"content": [
+            {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": f"echo step {i}"}}], "usage": usage}})
+        out({"type": "user", "session_id": sid, "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": tid, "content": f"step {i}"}]}})
 
 
 def notice_turn(status, text, tasks=("bg1",)):
@@ -355,6 +392,8 @@ while True:
         for _ in range(7):
             out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "."}}})
             time.sleep(0.3)
+    if any(x.startswith("GROW:") for x in text.splitlines()):
+        grow(text)
     answer(text)
     if "BACKGROUND" in text:                   # the notice turn lands while the room asks nothing
         notice_turn("completed", "The render finished.")
