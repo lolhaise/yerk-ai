@@ -40,11 +40,14 @@ daemon restarts.
 - One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
   waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
   the account frees. A worker that moves account mid-run is not built.
-- Tools: none from Yerk AI by default. [workers] yerk_tools may give it the read-only ones (recall,
-  read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
-  schedule tool to give. A start's `addons` gives it the room's own add-on tools it names (need 83 of 2026-11-10: a
-  room could not hand a worker the browser), each one the room's allow list has, its server's table as the room runs it
-  plus YERK_WORKER and YERK_WORK_DIR; never one whose table hands it a credential, which the worker's shell could read. Its gate
+- Tools: a shell, files and the web (TOOLS); none from Yerk AI by default. [workers] yerk_tools may give it the read-only
+  ones (recall, read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
+  schedule tool to give. Of the room's own add-on tools it gets the ones the room gives every worker started from it
+  (rooms.toml worker_addons, an owner room's carried from [defaults]; a job's worker too, with no one to remember them) and
+  the ones a start's `addons` names (need 83 of 2026-11-10: a room could not hand a worker the browser), one list with no
+  repeat: each one the room's allow list has, its server's table as the room runs it plus YERK_WORKER and YERK_WORK_DIR;
+  never one whose table hands it a credential, which the worker's shell could read. A named one the room cannot give
+  refuses the start; a default it cannot give is skipped (a credential's with a warning) and the worker starts. Its gate
   (gates.worker_check) refuses any other MCP tool, and every call that carries the owner's word (`confirmed`).
 - A daemon start re-attaches from the ledger and the unit list: a running unit gets its watch and its
   card back, one that ended while the daemon was away completes, one that vanished settles as lost.
@@ -194,6 +197,23 @@ def room_addons(conf: dict[str, Any], want: Sequence[str], wid: str, folder: Pat
             env["YERK_TOOL_TIMEOUT"] = str(table["timeout"])
         out[name] = {**table, "env": env}
     return out, tools
+
+
+def with_defaults(conf: dict[str, Any], given: tuple[dict[str, Any], list[str]], wid: str,
+                  folder: Path) -> tuple[dict[str, Any], list[str]]:
+    """A start's own add-ons (`given`, from room_addons) and the room's worker_addons after them, one list with no repeat. A
+    default is never a refusal: one the room's allow has not is skipped, one whose server's table passes a credential
+    skipped with one warning."""
+    servers, tools, said = dict(given[0]), list(given[1]), set()
+    for w in conf.get("worker_addons") or []:
+        if isinstance(got := room_addons(conf, [str(w)], wid, folder), str):
+            if got not in said and not got.startswith("this room has no"):
+                log.warning("worker %s: worker_addons %s is skipped: %s", wid, w, got)
+            said.add(got)
+            continue
+        servers |= {k: v for k, v in got[0].items() if k not in servers}
+        tools += [t for t in got[1] if t not in tools]
+    return servers, tools
 
 
 # the unit; systemctl and unit_line are the jobs' and the deploy's too
@@ -639,7 +659,8 @@ class Workers:
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
                     more: dict[str, Any] | None = None, effort: str = "", addons: list[str] | None = None) -> dict[str, Any]:
         """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one.
-        `addons`: the room's own add-on tools the worker gets (room_addons), refused whole when one is not given."""
+        `addons`: the room's own add-on tools the worker gets (room_addons), refused whole when one is not given; the room's
+        worker_addons come with every start, whoever calls it (with_defaults)."""
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if brief_file and not brief:
@@ -663,6 +684,7 @@ class Workers:
         given = room_addons(self.room_confs.get(room, {}), addons, wid, d) if addons else ({}, [])
         if isinstance(given, str):
             return {"ok": False, "error": given}
+        given = with_defaults(self.room_confs.get(room, {}), given, wid, d)
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
         report, tasks_md = d / REPORT, d / TASKS

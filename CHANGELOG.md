@@ -23,6 +23,32 @@ version changes.
 
 **Upgrading**: nothing to do. Set `copy_seconds` under `[deploy]` in yerkd.toml only to change the bound.
 
+### worker-room-tools (#99)
+
+- A worker now starts with the add-on tools its room gives every worker. The new room key `worker_addons` in rooms.toml
+  names them, each the way a worker start's `addons` names one: a tool as the room's `allow` has it, or a server's name
+  for each of its tools `allow` names. Every start from the room gets them, whoever starts it: the `worker` tool, `yerk
+  worker start`, a booked agent job, the daemon's own workers. An owner room carries `[defaults] worker_addons` unless it
+  sets its own, `worker_addons = []` gives a room's workers none, and a room whose privacy is not owner gets only the ones
+  it sets itself. A value that is not a list of add-on names stops the start with one line, as a wrong `[defaults] allow` does.
+- A default is never a refusal: one the room's `allow` has not is skipped, and one on a server whose table passes a
+  credential is skipped with one warning in the log; the worker starts either way. An add-on a start names itself is still
+  refused whole when the room cannot give it. The defaults and the named ones are one list with no repeat, and the
+  worker's PROMPT.md names every one. The gate is unchanged: a call that carries the owner's word (`confirmed`) is refused.
+- An agent job can name add-ons: `addons = [...]` in jobs.toml, `addons` on the `schedule` tool, `--addon` on `yerk
+  schedule add`. They are checked against the job's room when it is booked, with the sentence a worker start gives, and
+  nothing is written when they are refused; `yerk jobs sync` checks a hand-edited job the same way where it can read
+  rooms.toml and names it as one that cannot be scheduled. A note or a script that names `addons` is refused by the key.
+  `yerk jobs list` and the tool's list name a job's add-ons. `yerk worker start --addon NAME` names one from the command line.
+- The `schedule` tool now says what an agent job's worker has: a shell, files and the web, of the room's tools only the
+  add-ons the room gives every worker and those `addons` names, never send, text or email, so a light timed check that
+  needs the room's tools is a note. The `worker` tool says what a worker has with none named. Nothing changes where no
+  room sets `worker_addons` and no job names `addons`.
+
+**Upgrading**: budgets.toml's `yerk_tools` goes from 28,000 to 28,400 and the total from 131,523 to 131,923 for the longer
+tool words, and [code] lines to 33,069. To give a room's workers an add-on, add `worker_addons = [...]` to the room, or to
+`[defaults]` for every owner room, then restart yerkd.
+
 ### precompact-midturn (#97)
 
 - A room can now start its compaction copy in the middle of a long turn, not only as a turn ends. Until now a room learned

@@ -20,7 +20,9 @@ room (rooms.toml role = "machine"), else the ops room (yerkd.toml [jobs] ops_roo
 room. An agent job is a worker (workers.py): the
 `message` is its brief, the job's account, cap, model and thinking level apply, its card is in the job's room, and when
 it ends its last message is told by the room's own session; a last message of exactly NO_REPLY is
-silence. A note runs nothing: when it is due, its room's own session is told `[reminder NAME due]` and
+silence. Its worker has a shell, files and the web, and of the room's own tools only the add-ons the room gives every
+worker (rooms.toml worker_addons) and the ones its `addons` names, checked against the room when it is booked and at
+each sync that can read the rooms file; never send, text or email. A note runs nothing: when it is due, its room's own session is told `[reminder NAME due]` and
 its `message` in a harness turn of its own and says it in its voice (no worker, shell, account or cap).
 `deliver = "silent"` keeps a job's output and relay out of the room (the ledger has them);
 a failure still alerts. Every run is a row in the ledger's job_runs table: the job, when it was
@@ -53,12 +55,13 @@ from typing import Any, Callable, Collection, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
-from .config import EFFORTS, REPO, toml_value, write_private
+from .config import ADDON_NAME, EFFORTS, REPO, toml_value, write_private
+from .config import rooms as read_rooms
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
 from .words import DONE, NOT_DONE, NOTHING, PHONE
-from .workers import ENV_KEEP, Workers, for_memory, last_message, oom_note, systemctl, took, unit_line
+from .workers import ENV_KEEP, Workers, for_memory, last_message, oom_note, room_addons, systemctl, took, unit_line
 
 log = logging.getLogger("yerk.jobs")
 FILE = "jobs.toml"
@@ -97,6 +100,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
              "yerkd.toml); unset, [workers] model, else the room's live one",
     "effort": "agent jobs: the worker's thinking level, one of low, medium, high, xhigh, max; unset, [workers] effort, "
               "else the room's live level",
+    "addons": "agent jobs: the room's own add-on tools the worker gets beside the ones the room gives every worker "
+              "(rooms.toml worker_addons), each a tool as the room's allow names it or a server's name for all of its "
+              "tools there, such as [\"mcp__web__web_fetch\"]; one the room has not refuses the job when it is booked",
     "cap": "minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); "
            "a stopped run alerts",
     "deliver": '"announce" (default): the output or the relay goes to the room; "silent": the run and its ledger '
@@ -186,6 +192,7 @@ class Job:
     at_epoch: float = 0.0
     model: str = ""               # agent jobs: the worker's own model and thinking level; "" the room's
     effort: str = ""
+    addons: tuple[str, ...] = ()  # agent jobs: the room's own add-on tools its worker gets too
 
     @property
     def unit(self) -> str:
@@ -196,8 +203,8 @@ class Job:
         return ZoneInfo(self.tz or "UTC")
 
     def runs_on(self) -> dict[str, str]:
-        """The model and thinking level an agent job sets for its worker; {} runs on the room's."""
-        return {k: v for k, v in (("model", self.model), ("effort", self.effort)) if v}
+        """The model, thinking level and add-ons an agent job sets for its worker; {} runs on the room's."""
+        return {k: v for k, v in (("model", self.model), ("effort", self.effort), ("addons", " ".join(self.addons))) if v}
 
     def describe(self) -> str:
         if self.when == "calendar":
@@ -226,7 +233,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         raise JobError(f"unknown key{'s' if len(bad) > 1 else ''} {', '.join(bad)}; the keys are {', '.join(KEYS)}")
     if (kind := str(raw.get("kind", ""))) not in KINDS:
         raise JobError('`kind` must be "script", "agent" or "note"' + (f", not {kind!r}" if kind else ""))
-    if kind == "note" and (extra := [k for k in ("command", "account", "cap", "model", "effort") if k in raw]):
+    if kind == "note" and (extra := [k for k in ("command", "account", "cap", "model", "effort", "addons") if k in raw]):
         raise JobError(f"a note runs nothing, so it takes no `{extra[0]}`: its `message` is what its room is told")
     whens = [k for k in ("schedule", "at") if k in raw]
     if len(whens) != 1:
@@ -247,6 +254,8 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
         raise JobError('`deliver` must be "announce" or "silent"')
     account, model = str(raw.get("account", "") or ""), str(raw.get("model", "") or "").strip()
+    if not isinstance(addons := raw.get("addons", []), list) or not all(isinstance(a, str) and ADDON_NAME.match(a) for a in addons):
+        raise JobError('`addons` must be a list of the room\'s add-on tools or servers, like addons = ["mcp__web__web_fetch"]')
     if (effort := str(raw.get("effort", "") or "").strip().lower()) and effort not in EFFORTS:
         raise JobError(f"`effort` must be one of {', '.join(EFFORTS)}, or left out for the room's level")
     if kind == "script":
@@ -256,6 +265,8 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             raise JobError("a script job runs with no account; `account` is for agent jobs")
         if (extra := [k for k in ("model", "effort") if k in raw]):
             raise JobError(f"a script job runs no model; `{extra[0]}` is for agent jobs")
+        if "addons" in raw:
+            raise JobError("a script job runs no worker; `addons` is for agent jobs")
         payload = str(raw.get("command", "") or "")
         if not payload.strip():
             raise JobError("a script job needs `command`, the shell line to run")
@@ -279,7 +290,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             tz_name = "UTC"
         if at_epoch <= now:
             raise JobError(f"`at` {when_text(at_epoch, tz_name)} is in the past")
-    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort)
+    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort, tuple(addons))
 
 
 def load(path: Path, now: float | None = None) -> tuple[dict[str, Job], dict[str, str]]:
@@ -382,7 +393,7 @@ def remove(path: Path, name: str) -> bool:
 
 
 def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str = "announce", cap: float = 0.0,
-               account: str = "", model: str = "", effort: str = "") -> dict[str, Any]:
+               account: str = "", model: str = "", effort: str = "", addons: Collection[str] = ()) -> dict[str, Any]:
     """The table a `schedule add` writes: `when` is a time (a one-shot) or a systemd calendar line
     (recurring); `what` is the message (agent, note) or the command (script)."""
     w = when.strip()
@@ -400,8 +411,24 @@ def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str
     if account:
         out["account"] = account
     out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
+    if addons:
+        out["addons"] = list(addons)
     out["command" if kind == "script" else "message"] = what
     return out
+
+
+def addons_refusal(conf: dict[str, Any], addons: Collection[str]) -> str:
+    """Why the job's room cannot give its worker these add-ons, room_addons' own sentence; "" when it can."""
+    got = room_addons(conf, list(addons), "", Path())
+    return got if isinstance(got, str) else ""
+
+
+def room_confs(private: Path) -> dict[str, dict[str, Any]] | None:
+    """rooms.toml's rooms as the daemon reads them; None where it cannot be read here (a job's add-ons wait for its fire)."""
+    try:
+        return read_rooms(private)
+    except (OSError, SystemExit, tomllib.TOMLDecodeError):
+        return None
 
 
 def default_tz(room_confs: dict[str, dict[str, Any]], room: str, conf: dict[str, Any]) -> str:
@@ -539,7 +566,11 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
     jobs, errors = load(path, now)
     kept = running_one_shots(path, units, errors)               # kept as they are, never checked for a next fire
     p = Plan(jobs=jobs, errors=errors)
+    confs = room_confs(env.private) if any(j.addons for j in jobs.values()) else None
     for name, job in jobs.items():
+        if confs is not None and job.addons and (why := addons_refusal(confs.get(job.room, {}), job.addons)):
+            p.errors[name] = why
+            continue
         for spec in job.calendar():
             if (why := units.check(spec)):
                 p.errors[name] = why
@@ -794,10 +825,12 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
 # the schedule tool's three actions: one code path for the tool and for `yerk schedule`
 def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
                  deliver: str = "announce", cap: float = 0.0, account: str = "", note_chars: int = NOTE_CHARS,
-                 model: str = "", effort: str = "", models: dict[str, str] | None = None) -> dict[str, Any]:
+                 model: str = "", effort: str = "", models: dict[str, str] | None = None, addons: Collection[str] = (),
+                 room_conf: dict[str, Any] | None = None) -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
     a job systemd will not schedule is taken out of the file again. A note longer than `note_chars` is refused, and so is
-    a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list."""
+    a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list,
+    and an agent job's `addons` its room (`room_conf`) cannot give its worker, before anything is written."""
     name, low, effort = name.strip().lower(), model.strip().lower(), effort.strip().lower()
     model = low if low in (models or {}) else model.strip()
     if kind == "note" and len(what) > note_chars:
@@ -805,11 +838,13 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
     if kind == "agent" and model and models is not None and model not in models and model not in models.values():
         listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in models.items())
         return {"ok": False, "error": words.NOT_LISTED.format(model=model, models=listed)}
+    if kind == "agent" and addons and room_conf is not None and (why := addons_refusal(room_conf, addons)):
+        return {"ok": False, "error": why}
     if not tz:
         return {"ok": False, "error": f"give `tz` (an IANA name such as Europe/Paris): room {room!r} has no timezone "
                                       "configured, and nothing is put on UTC by accident"}
     try:
-        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort)
+        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort, addons)
         job = add(path, name, fields)
         p, back = sync(path, units, env)
     except JobError as e:
@@ -937,7 +972,8 @@ class Jobs:
                            str(req.get("when", "")), str(req.get("what", "")), room, tz,
                            str(req.get("deliver") or "announce"), float(req.get("cap_minutes") or 0),
                            str(req.get("account") or ""), int(self.conf.get("note_chars", NOTE_CHARS)),
-                           str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models)
+                           str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models,
+                           [str(a) for a in req.get("addons") or []], self.room_confs[room])
         if out["ok"]:
             log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line", out["schedule"], out["next_text"])
         return out
@@ -966,7 +1002,7 @@ class Jobs:
         if job.kind != "agent":
             return {"ok": False, "error": f"job {name} is a {job.kind} job; only agent jobs and notes are fired this way"}
         out = await self.workers.start(job.room, brief_for(job, run_id, float(run["fired"])), account=job.account,
-                                       cap_minutes=job.cap, job=name, effort=job.effort,
+                                       cap_minutes=job.cap, job=name, effort=job.effort, addons=list(job.addons),
                                        model=self.workers.models.get(job.model.lower(), job.model))   # an alias, by the list
         if not out.get("ok"):
             self.ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start",

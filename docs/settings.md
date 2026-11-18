@@ -50,10 +50,11 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `watch_assistant`: the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, not to this room (default: the other assistant)
 - `watch_audit`: true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 only when something is actually wrong and it changes what the person would say or do, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)
 - `watch_wait`: seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's progress card's last edit while the card is up, at most three times this (default 150)
+- `worker_addons`: the room's own add-on tools every worker started from it gets, each named as a worker start's addons names one (a tool as allow has it, or a server's name for each of its tools allow names); one allow has not, or on a server whose table passes a credential, is skipped and the worker starts. An owner room carries [defaults] worker_addons unless it sets its own; [] gives none
 
 ### [defaults]
 
-Keys: allow, mcp. An owner room under [defaults] (`base`), in place: the default allow less the room's allow_remove, unless the room has its own allow, and each default mcp server, filled, unless the room has its own mcp.<name> table of that name; a key of the room's own replaces the default whole, its other servers kept after the defaults'.
+Keys: allow, mcp, worker_addons. An owner room under [defaults] (`base`), in place: the default allow less the room's allow_remove, unless the room has its own allow, the default worker_addons unless the room has its own ([] for none), and each default mcp server, filled, unless the room has its own mcp.<name> table of that name; a key of the room's own replaces the default whole, its other servers kept after the defaults'.
 
 ## yerkd.toml
 
@@ -280,6 +281,7 @@ One `[jobs.NAME]` table a scheduled job; `yerk jobs sync` makes its systemd time
 - `account`: agent jobs: the account (accounts.toml) the worker runs on; unset, the first one not resting
 - `model`: agent jobs: the worker's model, an alias or a full id on the install's list (models.toml, or [models] in yerkd.toml); unset, [workers] model, else the room's live one
 - `effort`: agent jobs: the worker's thinking level, one of low, medium, high, xhigh, max; unset, [workers] effort, else the room's live level
+- `addons`: agent jobs: the room's own add-on tools the worker gets beside the ones the room gives every worker (rooms.toml worker_addons), each a tool as the room's allow names it or a server's name for all of its tools there, such as ["mcp__web__web_fetch"]; one the room has not refuses the job when it is booked
 - `cap`: minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); a stopped run alerts
 - `deliver`: "announce" (default): the output or the relay goes to the room; "silent": the run and its ledger row happen, nothing is posted, a failure still alerts the ops room
 - `command`: script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts it, exit 0 with nothing posts nothing, anything else alerts
