@@ -37,14 +37,17 @@ version changes.
 - budgets.toml: `[code] lines` 32,816 to 32,875, with its dated note; docs/budgets.md and docs/settings.md are what `yerk
   docs own` writes. docs/GUIDE.md has a new section, Needs that wait for a deeper check, and the pipeline's header says
   the step.
-- The tests: 14 new in tests/test_needs_pipeline.py, each named for the risk it pins: a listed path held with nothing
+- The tests: 22 new in tests/test_needs_pipeline.py, each named for the risk it pins: a listed path held with nothing
   merged, landed or deployed and the field on the row; a change off the list merged exactly as on main; `[]` merging as on
   main and reading nothing; a list in yerkd.toml replacing the default (two cases); a change git cannot read held, a head
   the tree lacks and a tree with no origin/main; a branch in the hands plug-in held; a folder taking a file below it and
   no entry taking a longer name; release by `yerk needs done` to deploy and live; a pull request that loosens the list in
   its own tree judged by the running one; seven paths named as three and how many more at phone width; a fix worker's
-  later commit on a listed path; any other stop clearing the field. The file's other tests run with `[needs] sensitive =
-  []`, decision 40's road exactly, since their heads are no commits git could read.
+  later commit on a listed path; any other stop clearing the field; a setting that is no list read as the default list
+  (three cases); a listed file moved off its path still seen by its old one; main moving on with a listed path holding
+  no change that leaves it alone; a head that is no sha waiting, never handed to git (three cases). The last eight pin
+  what four of the judge's twenty mutants survived without. The file's other tests run with `[needs] sensitive = []`,
+  decision 40's road exactly, since their heads are no commits git could read.
 - **Upgrading**: nothing to change for the default. `[needs] sensitive` in yerkd.toml replaces the list whole and `[]`
   turns the wait off (yerkd.toml.example writes the default out); yerkd reads it at its start. A need that waits stays
   held until a person merges it and runs `yerk needs done`.

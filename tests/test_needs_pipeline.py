@@ -1090,3 +1090,55 @@ def test_risk_l_any_other_stop_clears_the_field_so_the_held_needs_with_one_are_t
     n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
     asyncio.run(y.pipeline.stop(row(y, day, n2), "stuck", "a reason"))
     assert row(y, day, n2)["state"] == "stuck" and "deeper" not in row(y, day, n2)
+
+
+@pytest.mark.parametrize("value", ["yerk_ai/gates.py", False, 0])
+def test_risk_m_a_sensitive_that_is_no_list_is_the_default_list_never_no_list(risk, tmp_path, value):
+    """risk (m): [needs] sensitive written as something that is no list (one path as a string, false) is the default list, the
+    strict side: a mistyped line never turns the wait off, only [] does."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"]["sensitive"] = value
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == [] and row(y, day)["deeper"]["paths"] == ["yerk_ai/emails.py"]
+
+
+def test_risk_n_a_listed_file_moved_off_its_path_is_still_seen(risk, tmp_path):
+    """risk (n): a change that moves a listed file to another name (git calls it a rename and names only the new path) is read
+    with both its paths, so the old, listed one holds it."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "".join(f"line {i} of the gate\n" for i in range(40))})
+    wt = tmp_path / "builder-wt"
+    git(tree, "worktree", "add", "-q", str(wt), "-b", f"need-{day}-1", "main")
+    git(wt, "mv", "yerk_ai/gates.py", "yerk_ai/doors.py")
+    git(wt, *ID, "commit", "-q", "-m", "the need")
+    to_read(y, hub, day, git(wt, "rev-parse", "HEAD"))
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == [] and row(y, day)["deeper"]["paths"] == ["yerk_ai/gates.py"]
+
+
+def test_risk_o_main_moving_on_a_listed_path_never_holds_a_change_that_leaves_it_alone(risk, tmp_path):
+    """risk (o): the change is read against its merge base with origin/main, never main's tip: main moving on with a listed
+    path after the branch was cut (another merge) is no part of this need's change, so it merges."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "the gate\n"})
+    sha = commit(tree, tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"})
+    (tree / "yerk_ai" / "gates.py").write_text("the gate, changed on main since\n")
+    git(tree, "add", "-A")
+    git(tree, *ID, "commit", "-q", "-m", "main moves on")
+    git(tree, "update-ref", "refs/remotes/origin/main", "main")
+    to_read(y, hub, day, sha)
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "merged" and "deeper" not in row(y, day) and puts(hub)[-1][2]["sha"] == sha
+
+
+@pytest.mark.parametrize("head", ["", "main", "--no-index"])
+def test_risk_p_a_head_that_is_no_sha_waits_and_is_never_handed_to_git(risk, tmp_path, head):
+    """risk (p): a row whose head is no sha (none, a branch's name, something shaped like an option) is never handed to git:
+    the need waits, said as a change that could not be read, never read as the tree's own HEAD and taken as safe."""
+    y, rec, hub, units, rooms = risk
+    daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "the gate\n"})
+    assert y.pipeline.waits({"head": head, "plugins": {}}) == {"head": head, "paths": [], "plugins": [],
+                                                              "unread": "its PR's head is no commit"}
