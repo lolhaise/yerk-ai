@@ -34,6 +34,9 @@ message and a success result echoing the text. Variations:
   auto, post_tokens FAKE_CLAUDE_POST, else 20000)
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
+- a line containing HOLD_OPEN: the turn stays open until another line comes, however late, and that line is replayed and
+  answered in the same result (a fold on the line's arrival, never on a clock). It is read through stdin's own buffer, so a
+  line that landed together with the first is seen too; SLOW's select watches the descriptor and misses that one
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
 - a line containing MERGE: replayed, then up to 0.5 s for more lines (0.2 s more once one comes, unread), then answered
   as usual; every line then waiting on stdin is replayed as ONE user message, their texts joined with newlines (one
@@ -338,6 +341,10 @@ while True:
         continue
     if "SLOW" in text and select.select([sys.stdin], [], [], 1.5)[0]:
         extra = json.loads(sys.stdin.readline())
+        replay(extra)
+        text = text + " + " + extra["message"]["content"]
+    if "HOLD_OPEN" in text and (more := sys.stdin.readline()):   # blocks for the next line; one already buffered is returned
+        extra = json.loads(more)
         replay(extra)
         text = text + " + " + extra["message"]["content"]
     if "HANG" in text:
