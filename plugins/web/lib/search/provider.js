@@ -69,7 +69,7 @@ const PAID_ACCOUNT_COOLDOWN_MS = 5 * 60000;
 const KEYED = { exa: ["exaApiKey", "exaKeySource"], "parallel-paid": ["parallelApiKey", "parallelKeySource"] };
 const MAX_COOLDOWN_MS = 24 * 3600000;
 // Paces paid Parallel under its 600-a-minute limit, in one window every room's process books
-// (<stateDir>/paid-rate.json); a full window falls through to the free engines.
+// (<stateDir>/paid-rate.json, a worker's counted with the shared one); a full window falls through to the free engines.
 export function resetCooldowns() {
   COOLDOWN_UNTIL.clear();
 }
@@ -118,7 +118,8 @@ async function runEngineChain(a, settings, signal) {
       attempts.push({ engine, ms: 0, error: "cooldown", until: new Date(until).toISOString() });
       continue;
     }
-    if (engine === "parallel-paid" && takeWindow(path.join(settings.stateDir, "paid-rate.json"), { perMinute: settings.paidRatePerMinute })) {
+    const also = settings.sharedStateDir ? [path.join(settings.sharedStateDir, "paid-rate.json")] : [];
+    if (engine === "parallel-paid" && takeWindow(path.join(settings.stateDir, "paid-rate.json"), { perMinute: settings.paidRatePerMinute, also })) {
       attempts.push({ engine, ms: 0, error: "local_rate_limit" });
       continue;
     }

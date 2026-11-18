@@ -1450,6 +1450,27 @@ asked_as = ["worker that can drive the browser", "worker with the browser", "fil
             "worker can't open a web form", "run it outside the room", "give the worker hands", "worker with add-ons"]
 layer = 5
 
+# need-2026-11-18-109: a worker a room started with the web plug-in to read a list of job postings met a wall on every
+# web_fetch: its unit sees the state folder read-only, so the lock of the free rungs' shared rate window could not be made
+# (EROFS), and it read each page by a plain GET from its shell; filed 2026-11-18.
+[abilities.worker-web]
+state = "built"
+what = "A worker given the web plug-in (the worker tool's `addons`, or its room's `worker_addons`) reads pages, searches and saves pictures as its room does: the plug-in, told it runs in a worker, keeps its state in the worker's own folder, since the worker's unit sees Yerk's state folder read-only, where every web_fetch failed on the free rungs' shared rate window."
+how = [
+  "Where it writes: web/ in the worker's own folder holds its rate window, site memory, call logs, meters and its stealth browser's profile; Yerk's state folder stays read-only to the worker, whose shell shares the plug-in's mounts, so a worker writes nothing a room's process reads.",
+  "The caps: each free read counts the one window every room's process books with the worker's own, 30 a minute and 6 a host, so a worker's reads keep to the caps with the rooms'; the rooms do not count a worker's window, which its shell could write. You.com's 100 searches a day count the same way.",
+  "What it knows: its site memory starts from the rooms' (a host resting from the free rungs rests for it too, a host the stealth browser read starts there), and what it learns stays in its folder.",
+  "No key in a worker: its unit has no secrets/, so only the free rungs and the keyless search engines run, and web_research does not, as before.",
+  "Files: a page's PDF or Word file and a picture save in the room's work folder, which the worker's unit has, as in the room.",
+]
+tier = "free"
+needs = "the web plug-in in the room's own rooms.toml table and allow list, given to the worker by its server's name in a start's `addons` or the room's `worker_addons` (web-ladder in rooms.toml.example)"
+price = "none: a worker has no key, so it reads only from the machine"
+free_path = "this is the free path"
+asked_as = ["web_fetch in a worker", "web fetch in a worker", "worker can't fetch", "worker cannot fetch", "web_fetch fails in a worker",
+            "worker with web_fetch", "worker with the web plug-in", "web plug-in in a worker"]
+layer = 5
+
 # need-2026-11-16-100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", though four were
 # runs of one job whose reports each held a forecast's one line and two another job's with nothing, and the owner, on a
 # phone, asked whether they were the same worker doing the same thing. This name rides the census (abilities.abilities)

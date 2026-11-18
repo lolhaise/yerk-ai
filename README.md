@@ -58,11 +58,11 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), PDF or Word files (`web-documents`), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`).
+What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), PDF or Word files (`web-documents`), search and research (`research-ids`), in a worker too (`worker-web`) ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`).
 
 ## The docs
 
-- [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md): who is who, one message from send to reply, and the project's words in plain ones. Read it next., with its help
+- [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md): who is who, one message from send to reply, and the project's words in plain ones. Read it next.
 - [docs/GUIDE.md](docs/GUIDE.md): the long guide: running it, and how each part works inside
 - Six reference pages that `yerk docs own` writes from the code: [commands](docs/commands.md), [tools](docs/tools.md), [settings](docs/settings.md), [budgets](docs/budgets.md), [hooks](docs/hooks.md), [units](docs/units.md)
 - [docs/STATUS.md](docs/STATUS.md): how it was built, stage by stage; not checked against today's code
