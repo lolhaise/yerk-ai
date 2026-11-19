@@ -68,6 +68,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Sequence
 
@@ -83,7 +84,10 @@ from .room import Inbound
 log = logging.getLogger("yerk.workers")
 UNIT = "yerk-worker-"
 EXIT, TASKS, REPORT = "exit.json", "TASKS.md", "REPORT.md"
-TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
+# a worker's git worktrees in its folder, by the names every need brief gives them (needs.py): `wt`, Yerk's, and
+# `<plug-in>-wt`, a plug-in's; an owner room's Read, Grep and Glob reach them (Yerkd.worktree_reads), its own files never
+WORKTREES = ("wt", "*-wt")
+TOOLS =["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
@@ -1023,8 +1027,14 @@ def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
              "relay": r["relay"], "relay_note": r["relay_note"]} for r in ledger.workers(limit=limit)]
 
 
+def worktrees(folder: Path) -> list[str]:
+    """Each git worktree in a worker's folder that an owner room's Read reaches (WORKTREES; a linked one's .git is a file),
+    by its path, so a room checks the worker's claim about its change there; none once needs.tidy or the sweep took them."""
+    return [str(p.parent) for p in sorted(folder.glob("*/.git")) if p.is_file() and any(fnmatch(p.parent.name, w) for w in WORKTREES)]
+
+
 def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
-    """A worker's report: its path, first line and text (at most `limit` characters)."""
+    """A worker's report: its path, first line and text (at most `limit` characters), and its worktrees."""
     if (row := ledger.worker_get(wid)) is None:
         return {"ok": False, "error": f"no worker {wid!r}"}
     try:
@@ -1034,7 +1044,7 @@ def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
     return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"], "job": row.get("job") or "",
             "first_line": first_line(Path(row["report"])), "text": text[:limit], "trimmed": len(text) > limit,
             "unit": row["unit"], "exit_detail": row["exit_detail"], "staging": row["staging"], "account": row["account"],
-            "model": row["model"]}
+            "model": row["model"], "worktrees": worktrees(Path(row["staging"])) if row["staging"] else []}
 
 
 def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = None, full: bool = False) -> list[str]:

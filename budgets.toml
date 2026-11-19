@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 131923
+total = 132023
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -374,8 +374,13 @@ skills = 0
 # of the lines they overlap, each of the nine absolutes given its scope and the exception that lifts it, and the line naming
 # the steps that need no approval took the mechanics file to 8,348, 8,472 with a checkout's path of 130 characters; so
 # 8,500. No part was measured again to pay for it, so the total rose by the 1,300, to 126,748.
+# 2026-11-18, need-2026-11-18-110: the code line's clause (a worker's own change is in its worktrees, which `worker`
+# report names, open to an owner room's Read and Grep like the checkout, so a claim about its change is checked there;
+# that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on
+# the report's word) took the mechanics file to 8,443, 8,567 with a checkout's path of 130 characters; so 8,600. No part
+# was measured again to pay for it, so the total rose by the 100, to 132,023 on main's 131,923.
 [session_start.appended]
-mechanics = 8500
+mechanics = 8600
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -1671,4 +1676,10 @@ secs = 60
 # the card; the header's step), status.py 3 (the row's `copy`, read under the room's lock), room.py 2 (Room.forked, set
 # in _fork_off), words.py 1 (COPYING and COPY_DROPPED), config.py 1 (copy_seconds's words). 33,087: main 0a8e930's
 # 33,069 plus 18.
-lines = 33087
+# 2026-11-18: need-2026-11-18-110 raised it by 22, an owner room's Read, Grep and Glob reach each worker's worktrees and the
+# worker's report names them (that afternoon a room relaying a worker's result had its Grep of the worker's worktree
+# refused and gave the change on the report's word), not folded to fit: daemon.py 12 (worktree_reads, a pattern per
+# worktree name over the workers' root and none around the private folder, its docstring; spec_for hands it to every
+# owner room), workers.py 10 (WORKTREES, the names a need brief gives a worker's worktrees; worktrees, those a worker
+# left, in report; fnmatch). 33,109: main ed081db's 33,087 plus 22.
+lines = 33109
