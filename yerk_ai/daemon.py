@@ -205,7 +205,7 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        code = self.code_reads() if self.owner(name) else []          # the checkout that runs: an owner room checks a claim there
+        code = [*self.code_reads(), *self.worktree_reads()] if self.owner(name) else []   # the checkout that runs, each worker's: a claim checked there
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
                                                     "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
@@ -327,6 +327,18 @@ class Yerkd:
         entries around the private and state folders when it holds one (a clone's example layer). Rules, never an --add-dir,
         which Claude Code's sandbox opens to the room's shell for writing; never_read's denies still beat them."""
         return [f"Read(/{p}/**)" if p.is_dir() else f"Read(/{p})" for p in around(REPO.resolve(), [self.private.resolve(), self.state.resolve()])]
+
+    def worktree_reads(self) -> list[str]:
+        """Read rules opening each worker's git worktrees (workers.WORKTREES in its folder under the workers' root) to an owner
+        room's Read, Grep and Glob (need 110 of 2026-11-18: a room relaying a worker's result Grepped the worker's worktree for
+        the change it claimed, the read was refused, and the claim went out on the report's word): a pattern each, so a worker
+        started after the room's process is reached too, and never the worker's own files (its report, brief and stream). None
+        when the root is, holds or sits inside the private folder, or holds the state folder, where a pattern could reach a
+        layer or a room's folder. Rules, never an --add-dir; never_read's denies still beat them."""
+        root, private, state = self.workers.conf.root.resolve(), self.private.resolve(), self.state.resolve()
+        if root.is_relative_to(private) or private.is_relative_to(root) or state.is_relative_to(root):
+            return []
+        return [f"Read(/{root}/*/{w}/**)" for w in workers.WORKTREES]
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""

@@ -30,6 +30,26 @@ version changes.
 longer entry, and the code ceiling to 33,124; both come with the merge. The plug-in's main takes the branch at the same
 merge, and the rooms that attach it pick it up at their next start.
 
+### need-2026-11-18-110 (#101)
+
+- An owner room reads a worker's own change now. Its Read, Grep and Glob reached its own folders and the checkout that
+  runs, so a room asked to relay a finished worker's result with the worker's code claims checked had its Grep of the
+  worker's worktree refused, and told the change on the report's word.
+- Every owner room's settings carry a read rule per worktree name over the workers' root: `wt` (Yerk's) and
+  `<plug-in>-wt` (a plug-in's) in a worker's folder, the names every need brief gives them. A pattern, so a worker
+  started after the room's process is reached too; never the worker's own files (its report, brief and stream), never
+  an added folder its shell could write, and the secrets' denies still beat it. None when `[workers] root` is, holds or
+  sits inside the private folder, or holds the state folder.
+- The `worker` tool's report (and `yerk worker report --json`) names the worktrees a worker left, and the mechanics'
+  code line says a worker's change is in them, beside the checkout, so a claim about a change is checked there before
+  it is said. A need's builder's clean worktree still goes when it ends, and a worker's folder with the 30-day sweep.
+- A room whose privacy is not owner reads its own folders only, as before.
+- `yerk explain worker-code` has it, found by asks such as "read the worker's worktree"; the README's line on a room's
+  read rules names the worktrees.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rule. budgets.toml: the mechanics
+  line 8,500 to 8,600 for the code line's clause, the session start's total 131,923 to 132,023, and `[code] lines`
+  33,087 to 33,109.
+
 ### deploy-waits-for-copy (#100)
 
 - `yerk deploy` now waits for a room's copy that is compacting before it restarts the daemon, instead of dropping it. A

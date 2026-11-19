@@ -378,10 +378,12 @@ def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
     assert "layer" not in y.room_confs["example-room"]
     spec = y.spec_for("example-room")
     layer = context.layer_dir(private, y.room_confs["example-room"])
-    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)") and r not in y.code_reads()]
+    opened = [*y.code_reads(), *y.worktree_reads()]
+    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)") and r not in opened]
     folders = [layer, *spec.add_dirs] + [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in rules]
     assert layer == private.resolve() and rules and all(f.resolve() == layer for f in folders)
     code = [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in y.code_reads()]     # the checkout that runs, read too
+    code.append(y.workers.conf.root.resolve())                                               # each worker's worktrees in it, too
     for secret in (y.secret_file, y.worker_secret_file):
         assert secret.is_relative_to(tmp_path / "state") and oct(secret.stat().st_mode & 0o777) == "0o600"
         assert not any(secret.resolve().is_relative_to(f.resolve()) for f in [*folders, *code]), secret.name

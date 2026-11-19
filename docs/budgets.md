@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 132262`
+- `total = 132362`
 
 ## [session_start.claude_code]
 
@@ -124,7 +124,7 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-18, worker-room-tools: the `schedule` tool's `addons` and its words on what an agent job's worker has (a shell, files and the web, of the room's tools only the add-ons the room gives every worker and those `addons` names, never send, text or email, so a light timed check needing the room's tools is a note), since a booked check told to search the owner's mail started a worker with no mail tool; and the `worker` tool's words on what a worker has with none named: schedule 2,399 to 2,727 and worker 1,710 to 1,796 as this tree builds them, all 24 from 26,197 to 26,611 (414 more, measured on main c957024 and on this tree the same way), about 28,331 as sent, 331 over the line; so 28,400, no part could pay, the total rose by the 400 (to 131,923 on main's 131,523). The hands plug-in's tool entries do not change.
 
-2026-11-18, need-2026-11-18-111: the hands plug-in's browser gains `video` (an Instagram post's own video, read by the signed-in browser where Instagram shuts the post to a logged-out reader, saved in the room's work folder for the `watch` tool on its path, since a room sent a reel to watch met watch's "Instagram sent an empty media response" twice and the browser's background tab painted a black frame with no sound; filed 2026-11-18): its entry 4,715 to 5,054 as the plug-in's branch need-2026-11-18-111 (a049bf2) builds it, 339 more, so about 5,085 as sent (31 over, as each of the five goes; all five 9,974 built on the plug-in's main 7a692c0, 10,313 on the branch, the same way); so 10,470, no other line lowered for it, the total rose by the 339 (to 132,262 on main's 131,923). Yerk AI's own tool entries do not change: the way past the wall is in watch's refusal, never its description.
+2026-11-18, need-2026-11-18-111: the hands plug-in's browser gains `video` (an Instagram post's own video, read by the signed-in browser where Instagram shuts the post to a logged-out reader, saved in the room's work folder for the `watch` tool on its path, since a room sent a reel to watch met watch's "Instagram sent an empty media response" twice and the browser's background tab painted a black frame with no sound; filed 2026-11-18): its entry 4,715 to 5,054 as the plug-in's branch need-2026-11-18-111 (a049bf2) builds it, 339 more, so about 5,085 as sent (31 over, as each of the five goes; all five 9,974 built on the plug-in's main 7a692c0, 10,313 on the branch, the same way); so 10,470, no other line lowered for it, the total rose by the 339 (to 132,362 on main's 132,023). Yerk AI's own tool entries do not change: the way past the wall is in watch's refusal, never its description.
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
@@ -182,7 +182,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-09, fable-5-2 (everything in Yerk the way Claude Fable 5.2's docs say): the opening line, updates and recap, the "Communicating clearly" and "Finishing work" blocks of Claude Fable 5.2's prompting page in place of the lines they overlap, each of the nine absolutes given its scope and the exception that lifts it, and the line naming the steps that need no approval took the mechanics file to 8,348, 8,472 with a checkout's path of 130 characters; so 8,500. No part was measured again to pay for it, so the total rose by the 1,300, to 126,748.
 
-- `mechanics = 8500`
+2026-11-18, need-2026-11-18-110: the code line's clause (a worker's own change is in its worktrees, which `worker` report names, open to an owner room's Read and Grep like the checkout, so a claim about its change is checked there; that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word) took the mechanics file to 8,443, 8,567 with a checkout's path of 130 characters; so 8,600. No part was measured again to pay for it, so the total rose by the 100, to 132,023 on main's 131,923.
+
+- `mechanics = 8600`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -759,9 +761,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: deploy-waits-for-copy raised it by 18, a deploy waits for a room's copy that is compacting instead of dropping it, up to [deploy] copy_seconds (seen live: a deploy at quiet_seconds 60 restarted the daemon 62 s into a busy room's copy, the 39 copies of the 8 days before 90 to 171 s, and the room ran past 820,000 through three turns until the next copy), not folded to fit: deploy.py 11 (quiet's copy check, its card line for a copy past the bound and its docstring; copy_seconds read beside quiet_seconds; settle hands both on and puts the line on the card; the header's step), status.py 3 (the row's `copy`, read under the room's lock), room.py 2 (Room.forked, set in _fork_off), words.py 1 (COPYING and COPY_DROPPED), config.py 1 (copy_seconds's words). 33,087: main 0a8e930's 33,069 plus 18.
 
-2026-11-18: need-2026-11-18-111 raised it by 37, an Instagram post shut to a logged-out reader is said with the way past it, the browser plug-in's video action that reads it signed in (2026-11-18 20:40: a room sent a reel to watch met "Instagram sent an empty media response" twice, and the signed-in browser's background tab painted a black frame with no sound), not folded to fit: watch.py 31 (INSTAGRAM, SHUT and BROWSER, Shut, shut and browses, pull's first sentence, run's shut mark and the docstrings), words.py 5 (WATCH_SHUT and its two ways), daemon.py 3 (tool_watch's words by the room's own tools). 33,124: main ed081db's 33,087 plus 37.
+2026-11-18: need-2026-11-18-110 raised it by 22, an owner room's Read, Grep and Glob reach each worker's worktrees and the worker's report names them (that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word), not folded to fit: daemon.py 12 (worktree_reads, a pattern per worktree name over the workers' root and none around the private folder, its docstring; spec_for hands it to every owner room), workers.py 10 (WORKTREES, the names a need brief gives a worker's worktrees; worktrees, those a worker left, in report; fnmatch). 33,109: main ed081db's 33,087 plus 22.
 
-- `lines = 33124`
+2026-11-18: need-2026-11-18-111 raised it by 37, an Instagram post shut to a logged-out reader is said with the way past it, the browser plug-in's video action that reads it signed in (2026-11-18 20:40: a room sent a reel to watch met "Instagram sent an empty media response" twice, and the signed-in browser's background tab painted a black frame with no sound), not folded to fit: watch.py 31 (INSTAGRAM, SHUT and BROWSER, Shut, shut and browses, pull's first sentence, run's shut mark and the docstrings), words.py 5 (WATCH_SHUT and its two ways), daemon.py 3 (tool_watch's words by the room's own tools). 33,146: main 6c0f72b's 33,109 plus 37.
+
+- `lines = 33146`
 
 ## Uncapped
 
