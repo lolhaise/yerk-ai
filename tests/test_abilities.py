@@ -681,3 +681,29 @@ def test_store_stock_names_the_bot_check_and_web_fetch_for_what_it_is_and_prices
     lines = capsys.readouterr().out.splitlines()
     assert lines[:2] == [f"{words.NOTHING} store-stock: {words.ability('described')[1]}", ab["what"]]
     assert abilities.HOW["described"] in lines
+
+
+def test_a_room_whose_reel_instagram_shuts_to_a_logged_out_reader_hears_the_signed_in_browsers_way(tmp_path, capsys):
+    """need-2026-11-18-111: a room sent an Instagram reel to watch met watch's "Instagram sent an empty media response"
+    twice (the account limits who sees it, and watch reads logged out), and the signed-in browser's background tab painted
+    a black frame with no sound. Asked that way, a room gets locked-reels whole under the recall cap: the browser plug-in's
+    video action reads the post signed in and saves its video in the room's work folder, then watch on that path; the
+    session never leaves the browser; and its built part is watch, whose entry names it."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("it says people under 18 can't see this, can you still watch the reel?", y.memory, TAB)
+    assert "locked-reels" in [e["key"] for e in found]
+    text = next(e["text"] for e in found if e["key"] == "locked-reels")
+    assert text.startswith(f"locked-reels, a Yerk AI ability ({words.ability('described')[1]}): Watches an Instagram reel or post")
+    for want in ("The wall named with its way", "One browser action, video", "Read as the post's own player reads it",
+                 "Saved in the room's own work folder", "Then watch on that path", "whose browser plug-in carries the video action",
+                 "never answering off the caption or a black frame of the playing tab"):
+        assert want in text, want
+    assert hooks.render_recall([e for e in found if e["key"] == "locked-reels"], [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = "\n".join(abilities.explain("locked-reels", TAB["locked-reels"], TAB, y.memory))
+    for want in ("never yt-dlp's advice on cookies", "no cookie is read or copied", "never shown to the room",
+                 "never through a link the room's shell left there"):
+        assert want in told, want
+    assert "(yerk explain locked-reels)" in " ".join(TAB["watch"]["how"])
+    assert cli.main(["explain", "locked-reels", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    assert "Built part: watch (yerk explain watch)" in capsys.readouterr().out.splitlines()
+    assert not abilities.asked("I watched the reel on my phone, it was good", y.memory, TAB)
