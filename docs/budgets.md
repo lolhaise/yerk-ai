@@ -771,7 +771,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: worker-preamble-tools raised it by 3, a worker's prompt names the Yerk AI tools it was given (seen live: two workers given recall and read_memory read in their prompts that they had none, so a worker read the memory only when its brief named a tool), not folded to fit: workers.py 2 (the prompt's line on them, from `yerk`, the one list the line, worker.json and its server take), mcp_server.py 1 (the worker tool's words on them). 33,217: main f0abcba's 33,214 plus 3.
 
-- `lines = 33217`
+2026-11-19: doctor-code-and-pins raised it by 9, a one-time code stands alone and is its own orange line, and a spent one is no hit wherever it sits (from 2026-11-14 the doctor was red each day on a fact file's payment reference, the digits after its letter read as a login code, and told the owner to rotate a key), not folded to fit: doctor.py 5 (the shape's whole-word digits and its comment, scan dating a day log by its day and naming a line by its worst shape, leaked giving every root the two-day rule, leaks' two lines), words.py 4 (SECRET_LINES, today's words, and ONE_TIME_CODES). 33,226: main bb64ace's 33,217 plus 9.
+
+- `lines = 33226`
 
 ## Uncapped
 
