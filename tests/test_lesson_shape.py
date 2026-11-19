@@ -212,6 +212,24 @@ def test_the_fable_5_2_pins_match_through_a_link_and_the_density_pin_binds_a_5_1
     assert [k for k, *_ in shape.pinned(docs, shape.pages(["claude-fable-5-1"]))] == ["density"]
 
 
+def test_a_pin_after_a_bold_lead_matches_the_page_and_is_quoted_with_its_lead_and_no_marks(tmp_path):
+    """Claude Fable 5.2's page as fetched 2026-11-13 opens two bullets with a bold lead: "Claude Fable 5.2 follows them
+    closely" leans on its lead "Style rules for writing:", so that pin is the lead with its sentence, and "Be explicit about
+    exceptions." is a sentence itself. flat drops the bold marks, so both hold on the page as it is, and a refusal quotes
+    them as a person reads them, with no marks."""
+    pages = every_pin()
+    for lead in ("Style rules for writing:", "Be explicit about exceptions."):
+        pages["prompting_fable_5_2"] = pages["prompting_fable_5_2"].replace(lead, f"* **{lead}**")
+    docs = docs_with(tmp_path, **pages)
+    assert "* **Style rules for writing:** Claude Fable 5.2 follows them closely" in (docs / "claude" / "prompting-fable-5-2.md").read_text()
+    assert shape.pinned(docs) == []
+    assert shape.sentence("style-limit", docs) == ('"Style rules for writing: Claude Fable 5.2 follows them closely, so a hard limit such '
+                                                   'as "one instruction per sentence, in 20 words or fewer" can make its prose choppy." '
+                                                   '(docs/claude/prompting-fable-5-2.md)')
+    assert shape.sentence("exception", docs) == '"Be explicit about exceptions." (docs/claude/prompting-fable-5-2.md)'
+    assert shape.flat("a **bold** lead, a [link](https://example.com/x) and “curly” quotes") == 'a bold lead, a link and "curly" quotes'
+
+
 def test_an_absolute_rule_states_its_scope_its_reason_and_the_exception_that_lifts_it():
     bare = shape.lesson("dates", "Never guess a date, since a guessed one reads as fact.", None, LIMITS, read=FABLE2)
     assert bare == {"absolute": ['"never" with no scope and no exception written in']}
@@ -294,7 +312,7 @@ def test_the_doctors_daily_run_reads_the_rooms_models_and_files_a_need_for_a_mod
 
 
 def test_the_mechanics_say_the_5_2_blocks_in_their_own_voice_and_each_absolute_carries_its_scope_and_exception():
-    """Claude Fable 5.2's page: "Write the exception into the rule." and "Name the steps that need no approval." Each mechanics
+    """Claude Fable 5.2's page: "Be explicit about exceptions." and "Name the steps that need no approval." Each mechanics
     line is read as the store's checks read a rule, so no absolute, vague approval, think-less or reasoning line comes back."""
     from yerk_ai import context
     text = context.MECHANICS.read_text()

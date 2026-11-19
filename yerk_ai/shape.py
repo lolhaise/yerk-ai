@@ -230,7 +230,7 @@ def rules_text() -> str:
 # A lesson in the Claude docs' shape (2026-11-09, on the owner's word: always written the way the Claude docs say). Each check
 # derives from one sentence of a page `yerk docs` fetches to <state>/docs/claude/<slug>.md: PINS holds the page's slug and
 # the sentence as the page says it, so `pinned` can tell when the page moved, and every refusal quotes the sentence off
-# the test reads (`it`). Back as plain text with one more line for/the_check_while.a second entry waits in the
+# the fetched page (`sentence`). A pin the page no longer holds turns tests/test_lesson_shape.py red and the doctor's daily
 # run files a need naming it. Thresholds: budgets.toml [shape], the lesson_* keys.
 FABLE, FABLE1, FABLE2, CODE_MEMORY, GUIDE = "prompting-fable-5", "prompting-fable-5-1", "prompting-fable-5-2", "code-memory", "prompting-guide"
 # The pages every room's checks read whatever model it runs: the general guide, the Fable family page (the memory recipe
@@ -252,18 +252,18 @@ PINS = {
     "index": (CODE_MEMORY, "Example note 000 says the `Sample.item`, moved to the 00Next, step and the, test reads it back "
                            "starts the example note."),
     # Claude Fable 5.2's page (2026-11-09, on the owner's word: everything in Yerk the way its docs say)
-    "caution": (FABLE2, "Starts the example note says the sample item: moved, to, the next, step "
-                        "the sample item."),
+    "caution": (FABLE2, "Cautious instructions can build up from past sessions through memory, notes, and instruction files."),
     "no-approval": (FABLE2, "Name the steps that need no approval."),
-    "exception": (FABLE2, "And the test reads it back."),
-    "approvals": (FABLE2, "While a second entry waits in the, queue for its turn and the, last part closes "
-                          "one more line for."),
-    "style-limit": (FABLE2, "Check While 0.0 a second entry waits, in the queue for its turn “and the last "
-                            "starts, the 00 example note says” the sample item moved to."),
-    "built-up": (FABLE2, "Moved to the, next step and the test reads it back, as plain text with one "
-                         "part closes the case before the next."),
-    "think-less": (FABLE2, "The Last part, closes the case before the Next Run 0.0 starts the example `note` says the."),
-    "reasoning": (FABLE2, "Back as plain, text, with one more line for the check while a second entry waits in, "
+    "exception": (FABLE2, "Be explicit about exceptions."),                              # a bold lead, a sentence itself
+    "approvals": (FABLE2, "If you also write approval rules into your system prompt, be specific about the actions you want "
+                          "double-checked."),
+    "style-limit": (FABLE2, "Style rules for writing: Claude Fable 5.2 follows them closely, so a hard limit such as “one "
+                            "instruction per sentence, in 20 words or fewer” can make its prose choppy."),   # its bold lead with it
+    "built-up": (FABLE2, "Before you migrate, delete cautions whose reason no longer holds, and rewrite absolute rules with "
+                         "their scope and reason."),
+    "think-less": (FABLE2, "In Anthropic’s testing, an instruction to answer directly without deliberating didn’t stop the model "
+                           "from thinking at `medium` and above."),
+    "reasoning": (FABLE2, "If your prompts, skills, or tool descriptions ask the model to write out its reasoning in the response, "
                           "remove those instructions."),
     "new-conversations": (FABLE2, "Make these changes in new conversations only."),
     "newest-turn": (FABLE2, "To change instructions partway through a conversation, put them in the newest turn."),
@@ -330,8 +330,9 @@ def page(docs: Path | None, slug: str) -> str:
 
 def flat(text: str) -> str:
     """Text as a pin is matched: one space for any run of white space, straight quotes for curly ones, and a Markdown link
-    as its words, since a page's sentence reads the same with a link in it (5.2's "put them in the newest turn" is one)."""
-    return " ".join(LINK.sub(r"\1", text).translate(str.maketrans("‘’“”", "''\"\"")).split())
+    as its words and bold as its words, since a page's sentence reads the same with a link in it (5.2's "put them in the
+    newest turn" is one) and a bold lead is quoted with the sentence that leans on it (5.2's "Style rules for writing:")."""
+    return " ".join(LINK.sub(r"\1", text).replace("**", "").translate(str.maketrans("‘’“”", "''\"\"")).split())
 
 
 LINK = re.compile(r"\[([^\]\n]*)\]\([^)\s]*\)")
