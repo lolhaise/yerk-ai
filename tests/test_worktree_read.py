@@ -46,11 +46,12 @@ def worker_folder(root: Path, wid: str) -> Path:
     return d
 
 
-def test_an_owner_rooms_read_and_grep_reach_each_workers_worktree_and_never_its_own_files(tmp_path, monkeypatch):
+def test_an_owner_rooms_read_and_grep_reach_each_workers_worktree_and_the_worktree_rules_never_its_own_files(tmp_path, monkeypatch):
     """The wall: an owner room's settings opened its own layer and the checkout that runs, so its Grep of a worker's
-    worktree for the change the worker claimed was refused. Every owner room, with a shell or without, now carries a
-    pattern per worktree name over the workers' root: the worktrees' files are reached, the worker's report, brief,
-    stream and other folders are not, nor the rest of the state folder, and never as an --add-dir or in the sandbox."""
+    worktree for the change the worker claimed was refused. Every owner room, with a shell or without, now reaches the
+    worktrees' files: through its folder rule (worker_reads, need 123, test_worker_folder_read.py), or a sealed room's
+    pattern per worktree name over the workers' root, which never reaches the worker's report, brief, stream and other
+    folders, nor the rest of the state folder; never as an --add-dir or in the sandbox."""
     home, private, state = layout(tmp_path, monkeypatch)
     y = Yerkd(private, state)
     root = y.workers.conf.root.resolve()
@@ -59,7 +60,7 @@ def test_an_owner_rooms_read_and_grep_reach_each_workers_worktree_and_never_its_
     for name in ("work-room", "example-room", "example-quiet"):
         spec = y.spec_for(name)
         perms, code = spec.settings["permissions"], y.code_reads()
-        assert perms["allow"][1:1 + len(code) + 2] == [*code, *y.worktree_reads()], name
+        assert perms["allow"][1:1 + len(code) + 1] == [*code, *y.worker_reads(name)], name
         assert all(reaches((d / f).resolve(), perms["allow"]) for f in CHANGED), name
         assert not any(reaches((d / f).resolve(), y.worktree_reads()) for f in OWN), name
         for p in (state / "secrets" / "yerk-http.secret", state / "rooms" / name / "hook-header", state / "ledger.sqlite"):
@@ -82,7 +83,7 @@ def test_a_room_whose_privacy_is_not_owner_never_reads_a_workers_worktree(tmp_pa
         perms = y.spec_for("family-room").settings["permissions"]
         assert not set(y.worktree_reads()) & set(perms["allow"]) and perms["blockReadsOutsideWorkingDirectories"] is True, sub
         assert not any(reaches((d / f).resolve(), perms["allow"]) for f in CHANGED), sub
-        assert set(y.worktree_reads()) <= set(y.spec_for("work-room").settings["permissions"]["allow"]), sub   # sample item moved to the
+        assert set(y.worker_reads("work-room")) <= set(y.spec_for("work-room").settings["permissions"]["allow"]), sub   # the owner's room beside it
 
 
 def test_the_rules_follow_the_workers_root_and_open_none_around_the_private_folder(tmp_path, monkeypatch):
@@ -98,7 +99,7 @@ def test_the_rules_follow_the_workers_root_and_open_none_around_the_private_fold
         assert bool(rules) is want, root
         assert all(r.startswith(f"Read(/{root.resolve()}/*/") for r in rules), root
         assert (not want) or reaches((worker_folder(root.resolve(), WID) / "wt" / "README.md").resolve(), rules), root
-        assert set(rules) <= set(y.spec_for("example-room").settings["permissions"]["allow"]), root
+        assert set(y.worker_reads("example-room")) <= set(y.spec_for("example-room").settings["permissions"]["allow"]), root
 
 
 def test_the_worker_report_names_the_worktrees_a_room_reads(tmp_path):
@@ -148,7 +149,7 @@ def test_every_room_is_told_where_a_workers_change_is_in_the_mechanics(tmp_path)
     """A rule is no use to a room that does not know where the change is: the code line names a worker's worktrees and
     the report that names them, beside the checkout, inside the mechanics' budget and the rule-shape check."""
     line = next(x for x in context.MECHANICS.read_text().splitlines() if context.CODE in x)
-    assert all(w in line for w in ("a worker's own change is in its worktrees", "`worker` report names them", "Read and Grep",
+    assert all(w in line for w in ("a worker's own work is in its folder", "worktrees, which `worker` report names", "Read and Grep",
                                    "worker's claim about Yerk or its change", "since"))
     assert shape.offenses(line) == []
     assert context.chars(context.MECHANICS.read_text().strip().replace(context.CODE, "x" * 130)) <= budgets()["session_start"]["appended"]["mechanics"]

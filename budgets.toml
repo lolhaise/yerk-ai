@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 132562
+total = 132662
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -394,8 +394,14 @@ skills = 0
 # that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on
 # the report's word) took the mechanics file to 8,443, 8,567 with a checkout's path of 130 characters; so 8,600. No part
 # was measured again to pay for it, so the total rose by the 100, to 132,023 on main's 131,923.
+# 2026-11-19, need-2026-11-19-123: the code line's clause (a worker's own work is in its folder, its report, a patch, its
+# stream and worktrees, open to an owner room's Read and Grep, a sealed room's to the worktrees only; that morning a room
+# relaying a worker's result had its Glob of the worker's folder and its Read of the patch there refused, the worker having
+# made no worktree, and gave the patch on the report's word) took the mechanics file to 8,519, 8,643 with a checkout's path
+# of 130 characters; so 8,700. No part was measured again to pay for it, so the total rose by the 100, to 132,662 on main's
+# 132,562.
 [session_start.appended]
-mechanics = 8600
+mechanics = 8700
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -1728,4 +1734,11 @@ secs = 60
 # unit, restarted every timer and answered every job "(changed)"), not folded to fit: jobs.py 11 (spelled, the
 # folder's own `python` or `python3` when it is the same file, and unit_texts writing through it). 33,238: main
 # 8bbb850's 33,227 plus 11.
-lines = 33238
+# 2026-11-19: need-2026-11-19-123 raised it by 12, an owner room's Read, Grep and Glob reach each worker's own folder whole
+# beyond its worktrees (that morning a room relaying a worker's result had its Glob of the worker's folder and its Read of
+# the patch the worker left there refused, the worker having made no worktree, and gave the patch on the report's word),
+# not folded to fit: daemon.py 13 (worker_reads, one pattern over the workers' root, a sealed room's the worktrees only,
+# its docstring; spec_for hands it to every owner room; worktree_reads opens none for a root inside the state folder
+# anywhere but its workers folder, where a pattern could reach a room's folder or the trash), workers.py -1 (the relay's trimmed
+# report no longer says the room does not open it). 33,250: main 66724cc's 33,238 plus 12.
+lines = 33250
