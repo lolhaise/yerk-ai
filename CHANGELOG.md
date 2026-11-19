@@ -11,7 +11,7 @@ version changes.
 ### need-2026-11-19-124 (#108)
 
 - An owner room reads Yerk's own fetched docs pages and the doctor's findings now. Its Read, Grep and Glob reached its
-  own folders, the checkout that runs and each worker's worktrees, so a room asked to check a worker's re-pinned docs
+  own folders, the checkout that runs and each worker's folder, so a room asked to check a worker's re-pinned docs
   sentences against the fetched page, with that day's doctor findings read first, had its Grep of both refused, and
   checked the sentences against another log's quotes of the page.
 - Every owner room's settings now carry two more read rules: the docs folder in the state folder (the Claude docs pages
@@ -28,8 +28,35 @@ version changes.
 - `yerk explain harness-docs` has it, found by asks such as "the docs page" and "doctor findings"; the README's line on
   a room's read rules and the guide's "Yerk knows its harness" say so.
 - **Upgrading**: nothing to change; each owner room's next process start writes the rules. budgets.toml: the mechanics
-  line 8,600 to 8,800 for the docs line, the session start's total 132,562 to 132,762, and `[code] lines` 33,238 to
-  33,248.
+  line 8,700 to 8,900 for the docs line, the session start's total 132,662 to 132,862, the per-message recall line
+  2,100 to 2,200 and its cap 5,750 to 5,850 (with this entry's name and need-2026-11-19-123's `worker-folder` both in,
+  "what can you do" came to 2,110 and rides whole or not at all; a message's recall on a hit may run 100 characters
+  longer), and `[code] lines` 33,250 to 33,260.
+
+### need-2026-11-19-123 (#106)
+
+- An owner room reads a worker's own folder now, beyond its worktrees. Its Read, Grep and Glob reached the checkout that
+  runs and each worker's `wt` and `<plug-in>-wt` worktrees, so a room asked to relay a finished worker's result with its
+  patch checked had its Glob of the worker's folder and its Read of the patch the worker left there refused, since that
+  worker made no worktree, and gave the patch on the report's word.
+- Every owner room's settings now carry one read rule over the workers' root, which Claude Code reads as each worker's
+  folder and all under it: its report, brief, tasks and stream, a patch or any file it wrote, and its worktrees. A
+  pattern, so a worker started after the room's process is reached too; never an added folder its shell could write, and
+  the secrets' denies still beat it. The `worker` tool's report names the folder, as before.
+- A sealed room keeps the worktree rules alone, since a worker's brief and stream carry the lines of the room that
+  started it. A room whose privacy is not owner reads its own folders only, as before.
+- No rule, for the worktrees or the folder, when `[workers] root` is, holds or sits inside the private folder, holds the
+  state folder, or, new, sits inside the state folder anywhere but its workers folder (its rooms' folders, the trash),
+  since each entry under the root is read whole.
+- The relay of a report past its cap no longer says the rest is in a report "which this room does not open"; it says
+  the rest is in the report, true in every room.
+- The mechanics' code line says a worker's own work is in its folder (its report, a patch, its stream and worktrees) and
+  that a sealed room reads the worktrees. New ability entry `worker-folder` (`yerk explain worker-folder`), found by asks
+  such as "read the worker's patch"; `worker-code`'s entry says the folder is open beside it. The README's and the
+  GUIDE's lines on a room's read rules name the folder.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rule. budgets.toml: the mechanics
+  line 8,600 to 8,700 for the code line's clause, the session start's total 132,562 to 132,662, and `[code] lines`
+  33,238 to 33,250.
 
 ### job-units-one-spelling (#107)
 

@@ -47,7 +47,7 @@ def test_an_owner_rooms_read_and_grep_reach_the_fetched_docs_and_the_doctors_fin
     assert y.docs_reads("example-room") == [f"Read(/{root}/**)", f"Read(/{(state / 'doctor.json').resolve()})"]
     for name in ("work-room", "example-room", "example-quiet"):
         spec = y.spec_for(name)
-        perms, code = spec.settings["permissions"], [*y.code_reads(), *y.worktree_reads()]
+        perms, code = spec.settings["permissions"], [*y.code_reads(), *y.worker_reads(name)]
         assert not any(reaches(p.resolve(), [perms["allow"][0], *code]) for p in files.values()), name      # the wall
         assert perms["allow"][1:1 + len(code) + 2] == [*code, *y.docs_reads(name)], name
         assert all(reaches(p.resolve(), perms["allow"]) for p in files.values()), name

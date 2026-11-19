@@ -205,7 +205,7 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        code = [*self.code_reads(), *self.worktree_reads(), *self.docs_reads(name)] if self.owner(name) else []   # code, worktrees, docs: a claim checked there
+        code = [*self.code_reads(), *self.worker_reads(name), *self.docs_reads(name)] if self.owner(name) else []   # the checkout that runs, each worker's folder, Yerk's docs: a claim checked there
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
                                                     "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
@@ -332,13 +332,26 @@ class Yerkd:
         """Read rules opening each worker's git worktrees (workers.WORKTREES in its folder under the workers' root) to an owner
         room's Read, Grep and Glob (need 110 of 2026-11-18: a room relaying a worker's result Grepped the worker's worktree for
         the change it claimed, the read was refused, and the claim went out on the report's word): a pattern each, so a worker
-        started after the room's process is reached too, and never the worker's own files (its report, brief and stream). None
-        when the root is, holds or sits inside the private folder, or holds the state folder, where a pattern could reach a
-        layer or a room's folder. Rules, never an --add-dir; never_read's denies still beat them."""
+        started after the room's process is reached too, never the worker's own files (its report, brief and stream): a
+        sealed room's whole reach of the workers (worker_reads). None when the root is, holds or sits inside the private
+        folder, holds the state folder or sits inside it anywhere but its workers folder, where a pattern could reach a layer,
+        a room's folder or the trash. Rules, never an --add-dir; never_read's denies still beat them."""
         root, private, state = self.workers.conf.root.resolve(), self.private.resolve(), self.state.resolve()
-        if root.is_relative_to(private) or private.is_relative_to(root) or state.is_relative_to(root):
+        if root.is_relative_to(private) or private.is_relative_to(root) or state.is_relative_to(root) or (
+                root.is_relative_to(state) and not root.is_relative_to(state / "workers")):
             return []
         return [f"Read(/{root}/*/{w}/**)" for w in workers.WORKTREES]
+
+    def worker_reads(self, room: str) -> list[str]:
+        """Read rules opening each worker's own folder whole to an owner room's Read, Grep and Glob, beyond its worktrees (need
+        123 of 2026-11-19: a room relaying a worker's result had its Glob of the worker's folder and its Read of the patch the
+        worker left there refused, since that worker made no worktree, and gave the patch on the report's word): one pattern
+        over the workers' root, which Claude Code reads as each worker's folder and all under it (its report, brief, tasks,
+        stream, a patch, its worktrees), so a worker started after the room's process is reached too. A sealed room keeps to
+        the worktrees, since a worker's brief and stream carry the lines of the room that started it; none where
+        worktree_reads opens none. A rule, never an --add-dir; never_read's denies still beat it."""
+        rules = self.worktree_reads()
+        return rules if not rules or self.reader(room).sealed else [f"Read(/{self.workers.conf.root.resolve()}/*/**)"]
 
     def docs_reads(self, room: str) -> list[str]:
         """Read rules opening what Yerk keeps on its harness to an owner room's Read, Grep and Glob (need 124 of 2026-11-19: a

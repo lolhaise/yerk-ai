@@ -1715,11 +1715,19 @@ asked_as = ["read your own code", "read the harness code", "check the code yours
 
 [abilities.worker-code]
 state = "built"
-what = "Reads a worker's own change before it is merged: every owner room's Read, Grep and Glob reach each worker's git worktrees, `wt` (Yerk's) and `<plug-in>-wt` (a plug-in's) in its folder, the names every need brief gives them, the `worker` tool's report names the ones a worker left, and the mechanics say so, so a room relaying a worker's result checks a claim about its change (a gate it says it added, a flag it says it passes) in the code before telling the owner, never on the report's word. The daemon writes the rule into each owner room's settings at its process start, a pattern over the workers' root, so a worker started after it is reached too; never the worker's own files (its report, brief and stream), never an added folder, and the secrets' denies still beat it. A need's builder's clean worktree goes when it ends (its branch kept for the next) and a worker's folder with the 30-day sweep; a room whose privacy is not owner reads its own folders only, as before."
+what = "Reads a worker's own change before it is merged: every owner room's Read, Grep and Glob reach each worker's git worktrees, `wt` (Yerk's) and `<plug-in>-wt` (a plug-in's) in its folder, the names every need brief gives them, the `worker` tool's report names the ones a worker left, and the mechanics say so, so a room relaying a worker's result checks a claim about its change (a gate it says it added, a flag it says it passes) in the code before telling the owner, never on the report's word. The daemon writes the rule into each owner room's settings at its process start, a pattern over the workers' root, so a worker started after it is reached too; the worker's own files (its report, brief and stream) too, except in a sealed room (`worker-folder`), never an added folder, and the secrets' denies still beat it. A need's builder's clean worktree goes when it ends (its branch kept for the next) and a worker's folder with the 30-day sweep; a room whose privacy is not owner reads its own folders only, as before."
 tier = "free"
 needs = "an owner room with Read, Grep or Glob in its tools, and a worker whose worktree is `wt` or `<name>-wt` in its folder; nothing to set"
 free_path = "this is the free path"
 asked_as = ["read the worker's worktree", "read a worker's worktree", "check the worker's change", "the worker's code"]
+
+[abilities.worker-folder]
+state = "built"
+what = "Reads a worker's own folder, beyond its worktrees: every owner room's Read, Grep and Glob reach each worker's folder whole, its report, brief, tasks and stream, a patch it left, every file it wrote and its worktrees, so a room relaying a worker's result checks a patch, a run or a report file there before telling the owner, a worker that made no worktree too, never on the report's word. The daemon writes one rule into each owner room's settings at its process start, a pattern over the workers' root, so a worker started after it is reached too; never an added folder, and the secrets' denies still beat it. A root that is, holds or sits inside the private folder, holds the state folder or sits in it anywhere but its workers folder gets none, since a pattern there could reach a layer, a room's folder or the trash. A sealed room keeps to the worktrees (`worker-code`), since a worker's brief and stream carry the lines of the room that started it; a room whose privacy is not owner reads its own folders only, as before, and a worker's folder goes with the 30-day sweep."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools that is not sealed; nothing to set"
+free_path = "this is the free path"
+asked_as = ["read the worker's folder", "read a worker's folder", "read the worker's patch", "read a worker's patch", "the worker's files"]
 
 [abilities.rule-shape]
 state = "built"
