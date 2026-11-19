@@ -205,7 +205,7 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        code = [*self.code_reads(), *self.worktree_reads()] if self.owner(name) else []   # the checkout that runs, each worker's: a claim checked there
+        code = [*self.code_reads(), *self.worktree_reads(), *self.docs_reads(name)] if self.owner(name) else []   # code, worktrees, docs: a claim checked there
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
                                                     "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
@@ -339,6 +339,16 @@ class Yerkd:
         if root.is_relative_to(private) or private.is_relative_to(root) or state.is_relative_to(root):
             return []
         return [f"Read(/{root}/*/{w}/**)" for w in workers.WORKTREES]
+
+    def docs_reads(self, room: str) -> list[str]:
+        """Read rules opening what Yerk keeps on its harness to an owner room's Read, Grep and Glob (need 124 of 2026-11-19: a
+        room asked to check a worker's re-pinned docs sentences against the fetched page, today's doctor findings read first,
+        had its Grep of both refused): the docs root (the Claude docs `yerk docs` fetches, the doctor's reports on the rules)
+        and the doctor's last run, doctor.json. A sealed room gets the fetched pages alone, of class shared, since a shape
+        report or a finding names other rooms' rules and files. Rules, never an --add-dir; never_read's denies still beat them."""
+        if self.reader(room).sealed:
+            return [f"Read(/{self.memory.docs}/claude/**)"]
+        return [f"Read(/{self.memory.docs}/**)", f"Read(/{(self.state / doctor.LAST).resolve()})"]
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""

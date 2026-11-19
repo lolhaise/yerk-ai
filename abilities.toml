@@ -1695,6 +1695,16 @@ free_path = "this is the free path"
 asked_as = ["claude docs", "what the docs say", "the prompting guide"]
 command = "docs"
 
+# need-2026-11-19-124: a room asked to check a worker's re-pinned docs sentences against the fetched page, with that
+# day's doctor findings read first, had its Grep of both refused, and checked them against another log's quotes.
+[abilities.harness-docs]
+state = "built"
+what = "Reads what Yerk keeps on its own harness with Read, Grep and Glob, beside recall: every owner room's settings open the Claude docs pages `yerk docs` fetches (docs/claude/ in the state folder), the doctor's reports on the rules (docs/shape/) and the doctor's last run (doctor.json: its findings and the last day's repairs), and the mechanics say where they are, so a room checks a pinned sentence against the page as it reads today, or a claim about today's doctor run against its findings, in the files themselves, never on a log's quote of them. The daemon writes the rules into each owner room's settings at its process start, never an added folder, and the secrets' denies still beat them. A sealed room reads the fetched pages only, since a shape report or a finding names other rooms' rules and files; a room whose privacy is not owner reaches the docs by recall and read_memory, as before, and the findings not at all."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools; nothing to set"
+free_path = "this is the free path"
+asked_as = ["the docs page", "fetched docs page", "grep the docs", "doctor findings", "doctor.json", "the doctor's findings file"]
+
 [abilities.harness-code]
 state = "built"
 what = "Reads Yerk's own code, the checkout that runs: every owner room's Read, Grep and Glob reach it and the mechanics name its path, so a worker's claim about Yerk (a flag it says is passed, a check it says runs) or a question on how Yerk does a thing is checked against the code before it is said, never relayed on a report's word. The daemon writes the read rule into each owner room's settings at its process start: the checkout whole, or each of its entries around the private and state folders when it holds one, the secrets' denies still beating it; a rule and never an added folder, since Claude Code's sandbox opens an added folder to the room's shell for writing. A room whose privacy is not owner reads its own folders only, as before."

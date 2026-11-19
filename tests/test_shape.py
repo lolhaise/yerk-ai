@@ -68,7 +68,7 @@ def test_the_mechanics_and_the_example_layer_are_in_the_shape(tmp_path):
     assert shape.findings(r, budgets()["shape"]) == [] and shape.totals(r)["lines"] >= 30
     text = context.MECHANICS.read_text().strip()
     assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
-    assert "cited in `<example>` tags, `Landed, daily/YYYY-MM-DD.md:N`" in text and "never announced" in text and "`docs/claude/` and `docs/shape/`" in text
+    assert "cited in `<example>` tags, `Landed, daily/YYYY-MM-DD.md:N`" in text and "never announced" in text and "`docs/claude/`, `docs/shape/` and `doctor.json`" in text
 
 
 def test_the_rule_shape_counts_are_one_weekly_line_said_on_sunday_or_the_day_one_rose_and_each_rooms_report_is_written(tree, capsys):  # noqa: F811

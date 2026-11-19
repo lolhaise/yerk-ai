@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 132562`
+- `total = 132762`
 
 ## [session_start.claude_code]
 
@@ -186,7 +186,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-18, need-2026-11-18-110: the code line's clause (a worker's own change is in its worktrees, which `worker` report names, open to an owner room's Read and Grep like the checkout, so a claim about its change is checked there; that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word) took the mechanics file to 8,443, 8,567 with a checkout's path of 130 characters; so 8,600. No part was measured again to pay for it, so the total rose by the 100, to 132,023 on main's 131,923.
 
-- `mechanics = 8600`
+2026-11-19, need-2026-11-19-124: the docs line's where and who (`doctor.json`, the doctor's last findings, beside the two docs folders; all three in Yerk's state folder, a room's work folder's path before `rooms/`; `read_memory` reads the docs, an owner room's Read and Grep all three, a sealed room's the Claude docs; that morning a room asked to check a worker's re-pinned docs sentences against the fetched page and the doctor's findings looked for the page in its work folder and the checkout, and had its Grep of both refused) took the mechanics file to 8,657, 8,781 with a checkout's path of 130 characters; so 8,800. No part was measured again to pay for it, so the total rose by the 200, to 132,762 on main's 132,562.
+
+- `mechanics = 8800`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -775,7 +777,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: job-units-one-spelling raised it by 11, a job's unit names its interpreter one way whoever syncs (the daemon wrote `python`, the `yerk` command `python3`, one file, so the writer that followed the other rewrote every unit, restarted every timer and answered every job "(changed)"), not folded to fit: jobs.py 11 (spelled, the folder's own `python` or `python3` when it is the same file, and unit_texts writing through it). 33,238: main 8bbb850's 33,227 plus 11.
 
-- `lines = 33238`
+2026-11-19: need-2026-11-19-124 raised it by 10, an owner room's Read, Grep and Glob reach Yerk's fetched docs pages and the doctor's findings (that morning a room asked to check a worker's re-pinned docs sentences against the fetched page, with the doctor's findings read first, had its Grep of both refused), not folded to fit: daemon.py 10 (docs_reads, a rule on the docs root and one on doctor.json, a sealed room's on the fetched pages alone, its docstring; spec_for hands them to every owner room). 33,248: main 66724cc's 33,238 plus 10.
+
+- `lines = 33248`
 
 ## Uncapped
 

@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-19
 
+### need-2026-11-19-124 (#108)
+
+- An owner room reads Yerk's own fetched docs pages and the doctor's findings now. Its Read, Grep and Glob reached its
+  own folders, the checkout that runs and each worker's worktrees, so a room asked to check a worker's re-pinned docs
+  sentences against the fetched page, with that day's doctor findings read first, had its Grep of both refused, and
+  checked the sentences against another log's quotes of the page.
+- Every owner room's settings now carry two more read rules: the docs folder in the state folder (the Claude docs pages
+  `yerk docs` fetches, `docs/claude/`, and the doctor's reports on the rules, `docs/shape/`) and the doctor's last run,
+  `doctor.json` (its findings and the last day's repairs). Never an added folder its shell could write, and the secrets'
+  denies still beat them.
+- A sealed room's rule opens the fetched pages alone, since a shape report or a finding names other rooms' rules and
+  files. A room whose privacy is not owner reaches the docs by recall and read_memory, as before, and the findings not
+  at all.
+- The mechanics' docs line names `doctor.json` beside the two docs folders and says where all three are: in Yerk's
+  state folder, a room's work folder's path before `rooms/`, with `read_memory` reading the docs in any room and an
+  owner room's Read and Grep all three. Before, it named the two folders by their memory paths alone, and a room looked
+  for them in its work folder and in the checkout.
+- `yerk explain harness-docs` has it, found by asks such as "the docs page" and "doctor findings"; the README's line on
+  a room's read rules and the guide's "Yerk knows its harness" say so.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rules. budgets.toml: the mechanics
+  line 8,600 to 8,800 for the docs line, the session start's total 132,562 to 132,762, and `[code] lines` 33,238 to
+  33,248.
+
 ### job-units-one-spelling (#107)
 
 - A sync from the command line no longer rewrites every job's unit and restarts every timer. A job's unit names the
