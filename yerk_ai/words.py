@@ -422,6 +422,11 @@ WATCH_NOT_HERE = "{name} is outside this room's folders; watch reads the videos 
 WATCH_NO_FILE = "there is no file {name} in this room's folders"
 WATCH_NO_YTDLP = "yt-dlp is not on this machine, so no video could be pulled"
 WATCH_FAILED, WATCH_NO_WHY = "no video was pulled from that link: {why}", "it gave no reason"
+WATCH_SHUT = "no video was pulled from that link: Instagram shuts this post to a logged-out reader, as watch is ({why}); {way}"
+WATCH_SHUT_BROWSER = ("your browser tool reads it signed in: its video action on this link saves the post's video in this room's "
+                      "work folder, then watch that path for its frames and its transcript")
+WATCH_SHUT_NO_BROWSER = ("this room has no signed-in browser to read it, so say the video itself was not seen, never an answer off "
+                         "its caption or its cover")
 WATCH_NOTHING = ("no video was pulled from that link: yt-dlp saved nothing, as it does for a video over 300 MB or a page with "
                  "no video in it")
 WATCH_TIMED_OUT = "the download did not finish in {seconds} s, so it was stopped and no video was saved"
