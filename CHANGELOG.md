@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-18
 
-### start-names-unseen-paths
+### start-names-unseen-paths (#103)
 
 - A worker's start says which paths in its brief the worker cannot see. A brief named another room's work folder as a
   source; the unit hid it, as it hides every room's folder but the worker's own room's work folder, the start said
