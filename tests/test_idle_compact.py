@@ -10,10 +10,11 @@ import logging
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from yerk_ai import words
+from yerk_ai import status, words
 from yerk_ai.accounts import Account
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
@@ -729,3 +730,76 @@ def test_a_turn_within_the_turn_end_line_still_compacts_the_live_session_and_a_b
     wait_idle(other)
     time.sleep(0.3)
     assert compactions(tmp_path) == 1 and "--fork-session" not in (tmp_path / "argv.jsonl").read_text() and other.fork is None
+
+
+def copy_row(y, tmp_path):
+    """The room's `copy` in the /status answer as the daemon builds it (status.collect), no systemd asked."""
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, y.accounts, y.cooldowns, y.ledger, y.rooms, units=set, timers=SimpleNamespace(timers=dict))
+    return next(r["copy"] for r in s["rooms"] if r["room"] == ROOM)
+
+
+def test_the_status_row_says_a_copys_seconds_while_it_compacts_or_waits_for_the_turns_end_and_null_with_none(y, tmp_path):
+    """Seen live: a deploy restarted the daemon 62 s into a room's copy, which the /status answer
+    never named, so nothing could wait for it. Each room's row says how long its copy in flight has been going, from its
+    start (Room.forked, while Room.fork compacts; the third of Room.ready, compacted and held for the running turn's end),
+    and null when the room has none."""
+    room = y.add_room(ROOM, Chan())
+    assert copy_row(y, tmp_path) is None
+    room.fork, room.forked = SimpleNamespace(), time.time() - 30      # compacting, 30 s in
+    assert 30 <= copy_row(y, tmp_path) < 32
+    room.fork = room.forked = None
+    room.ready = (SimpleNamespace(), SimpleNamespace(), time.time() - 45)   # compacted, held for the turn's end
+    assert 45 <= copy_row(y, tmp_path) < 47
+    room.ready = None
+    assert copy_row(y, tmp_path) is None
+
+
+def test_the_room_keeps_its_copys_start_from_fork_off_to_the_take_and_the_row_reads_it(y, tmp_path, gate, caplog):
+    """The start is set as a copy starts (_fork_off) and cleared as the room takes it, whether at once or held for the turn
+    that ran while it compacted; the row follows it to null."""
+    band(y)
+    room = y.add_room(ROOM, Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")            # in the band: a copy compacts, held at the gate
+        wait_idle(room)
+        assert room.fork is not None and 0 <= time.time() - room.forked < 10 and 0 <= copy_row(y, tmp_path) < 10
+        gate.set()                                           # no turn runs: taken at once
+        until(lambda: any("compacted on a copy" in m for m in caplog.messages))
+    assert room.fork is None and room.forked is None and room.ready is None and copy_row(y, tmp_path) is None
+    gate.clear()
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "2", "CONTEXT:195000 again")            # the next copy, from the taken one
+        wait_idle(room)
+        fork = room.fork
+        assert fork is not None and room.forked is not None
+        say(y, room, "3", "CONTEXT:196000 SLOW still here")  # a turn runs while it compacts
+        until(lambda: room.reading)
+        gate.set()
+        until(lambda: room.ready is not None or room.rp is fork)
+        assert room.forked is None                           # held for the turn's end, its start in `ready`
+        wait_idle(room)
+    assert room.rp is fork and room.ready is None and room.forked is None and copy_row(y, tmp_path) is None
+
+
+@pytest.mark.parametrize("end", ["respec", "fail", "stop"])
+def test_the_copys_start_is_cleared_on_each_kind_of_drop_and_the_row_says_null(y, tmp_path, gate, monkeypatch, caplog, end):
+    """A drop by a change of the live session (_drop_fork), by its own compaction failing, and by the daemon stopping
+    (Room.shutdown, the deploy's case): the room keeps no start and the row says null."""
+    band(y)
+    if end == "fail":
+        monkeypatch.setenv("FAKE_CLAUDE_COMPACT_FAIL", "1")
+    room = y.add_room(ROOM, Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")
+        wait_idle(room)
+        assert room.fork is not None and room.forked is not None and copy_row(y, tmp_path) is not None
+        if end == "respec":
+            room.respec()
+        elif end == "stop":
+            started(tmp_path)                                # its /compact is running
+            room.shutdown()
+        if end != "fail":                                    # ended at once, before its thread sees it
+            assert room.fork is None and room.forked is None and copy_row(y, tmp_path) is None
+        gate.set()
+        until(lambda: any("compaction on a copy is dropped" in m for m in caplog.messages))
+    assert room.fork is None and room.forked is None and room.ready is None and copy_row(y, tmp_path) is None

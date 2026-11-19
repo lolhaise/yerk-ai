@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-18
 
+### deploy-waits-for-copy (#100)
+
+- `yerk deploy` now waits for a room's copy that is compacting before it restarts the daemon, instead of dropping it. A
+  restart drops a copy in flight, and the room then runs high until the next one lands: on 2026-11-18 a deploy restarted
+  the daemon 62 s into a busy room's copy and the room ran past 820,000 tokens through three more turns. The
+  quiet window alone could not hold it: copies take 90 to 171 s, longer than a `quiet_seconds` of 60.
+- The wait has a bound, the new `[deploy] copy_seconds` (default 300; 0 never waits), so a copy that hangs never holds
+  every deploy. Past it the deploy restarts all the same and its card says so in one line, the room and how long its copy
+  had been going. While it waits, the reason names the room and the copy's time, as the turn and message reasons do.
+- The /status answer (and so `yerk status --json`) gives each room a `copy`: the seconds since its copy in flight
+  started, while it compacts or waits to be taken at the running turn's end; null when there is none. The card is
+  unchanged. A daemon older than this says no `copy`, which reads as no copy, so the first deploy of it waits for none.
+
+**Upgrading**: nothing to do. Set `copy_seconds` under `[deploy]` in yerkd.toml only to change the bound.
+
 ### need-2026-11-18-109 (#98)
 
 - A worker given the web plug-in reads pages now. Its unit sees Yerk's state folder read-only, and the plug-in kept the

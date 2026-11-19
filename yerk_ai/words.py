@@ -1144,6 +1144,7 @@ RECALL, RECALL_BY, MISSED = "recall: {n} of {of} hit", " ({m} by meaning)", "mis
 RECALL_NONE, RECALL_BROKE = "recall: not checked, {why}", "the recall check did not run"
 NOT_QUIET = "never quiet in {span}"
 TURN_RUNS, RECENT = "{name} has a turn", "{name} had a message {ago} ago"
+COPYING, COPY_DROPPED = "{name} compacts a copy, {ago} in", "{name}'s copy dropped, {ago} in"   # [deploy] copy_seconds
 PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "status answers"
 PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
 PROOF_FILE = "unit runs from its file"
