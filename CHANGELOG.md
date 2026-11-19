@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-19
 
-### job-units-one-spelling (its pull request to come)
+### job-units-one-spelling (#107)
 
 - A sync from the command line no longer rewrites every job's unit and restarts every timer. A job's unit names the
   interpreter its run starts with, and each writer named it its own way: the daemon `.venv/bin/python`, the `yerk`
