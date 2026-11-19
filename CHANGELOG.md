@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-18
 
-### need-2026-11-18-111
+### need-2026-11-18-111 (#102)
 
 - An Instagram reel or post that Instagram shuts to a logged-out reader (an account that limits who sees its posts, an
   age check, a login-only post) can be watched now. `watch` reads as a logged-out reader, as yt-dlp does, so such a post
