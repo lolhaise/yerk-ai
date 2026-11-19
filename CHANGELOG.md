@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-11-19
 
+### need-2026-11-19-123 (#106)
+
+- An owner room reads a worker's own folder now, beyond its worktrees. Its Read, Grep and Glob reached the checkout that
+  runs and each worker's `wt` and `<plug-in>-wt` worktrees, so a room asked to relay a finished worker's result with its
+  patch checked had its Glob of the worker's folder and its Read of the patch the worker left there refused, since that
+  worker made no worktree, and gave the patch on the report's word.
+- Every owner room's settings now carry one read rule over the workers' root, which Claude Code reads as each worker's
+  folder and all under it: its report, brief, tasks and stream, a patch or any file it wrote, and its worktrees. A
+  pattern, so a worker started after the room's process is reached too; never an added folder its shell could write, and
+  the secrets' denies still beat it. The `worker` tool's report names the folder, as before.
+- A sealed room keeps the worktree rules alone, since a worker's brief and stream carry the lines of the room that
+  started it. A room whose privacy is not owner reads its own folders only, as before.
+- No rule, for the worktrees or the folder, when `[workers] root` is, holds or sits inside the private folder, holds the
+  state folder, or, new, sits inside the state folder anywhere but its workers folder (its rooms' folders, the trash),
+  since each entry under the root is read whole.
+- The relay of a report past its cap no longer says the rest is in a report "which this room does not open"; it says
+  the rest is in the report, true in every room.
+- The mechanics' code line says a worker's own work is in its folder (its report, a patch, its stream and worktrees) and
+  that a sealed room reads the worktrees. New ability entry `worker-folder` (`yerk explain worker-folder`), found by asks
+  such as "read the worker's patch"; `worker-code`'s entry says the folder is open beside it. The README's and the
+  GUIDE's lines on a room's read rules name the folder.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rule. budgets.toml: the mechanics
+  line 8,600 to 8,700 for the code line's clause, the session start's total 132,562 to 132,662, and `[code] lines`
+  33,217 to 33,229.
+
 ### worker-preamble-tools (#104)
 
 - A worker given Yerk AI's read-only tools is told it has them. An install can give every worker `recall` and

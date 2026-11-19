@@ -85,7 +85,7 @@ log = logging.getLogger("yerk.workers")
 UNIT = "yerk-worker-"
 EXIT, TASKS, REPORT = "exit.json", "TASKS.md", "REPORT.md"
 # a worker's git worktrees in its folder, by the names every need brief gives them (needs.py): `wt`, Yerk's, and
-# `<plug-in>-wt`, a plug-in's; an owner room's Read, Grep and Glob reach them (Yerkd.worktree_reads), its own files never
+# `<plug-in>-wt`, a plug-in's; an owner room's Read, Grep and Glob reach them, and the worker's own files too except in a sealed room (Yerkd.worker_reads)
 WORKTREES = ("wt", "*-wt")
 TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
@@ -608,8 +608,7 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     saved = relay_line(row)
     whole = ("the report, all of it:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="it is all here, so "
                                                                 "there is no file to open"))
-    part = ("the report begins:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="the rest is in the report, "
-                                                           "which this room does not open"))
+    part = ("the report begins:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="the rest is in the report"))
     label, ask = whole if not cap or len(head) + len(whole[0]) + len(body) + 1 + len(whole[1]) <= cap else part
     room = cap - len(head) - len(label) - 1 - len(ask)
     if cap and len(body) > room:

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 132562`
+- `total = 132662`
 
 ## [session_start.claude_code]
 
@@ -186,7 +186,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-18, need-2026-11-18-110: the code line's clause (a worker's own change is in its worktrees, which `worker` report names, open to an owner room's Read and Grep like the checkout, so a claim about its change is checked there; that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word) took the mechanics file to 8,443, 8,567 with a checkout's path of 130 characters; so 8,600. No part was measured again to pay for it, so the total rose by the 100, to 132,023 on main's 131,923.
 
-- `mechanics = 8600`
+2026-11-19, need-2026-11-19-123: the code line's clause (a worker's own work is in its folder, its report, a patch, its stream and worktrees, open to an owner room's Read and Grep, a sealed room's to the worktrees only; that morning a room relaying a worker's result had its Glob of the worker's folder and its Read of the patch there refused, the worker having made no worktree, and gave the patch on the report's word) took the mechanics file to 8,519, 8,643 with a checkout's path of 130 characters; so 8,700. No part was measured again to pay for it, so the total rose by the 100, to 132,662 on main's 132,562.
+
+- `mechanics = 8700`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -771,7 +773,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: worker-preamble-tools raised it by 3, a worker's prompt names the Yerk AI tools it was given (seen live: two workers given recall and read_memory read in their prompts that they had none, so a worker read the memory only when its brief named a tool), not folded to fit: workers.py 2 (the prompt's line on them, from `yerk`, the one list the line, worker.json and its server take), mcp_server.py 1 (the worker tool's words on them). 33,217: main f0abcba's 33,214 plus 3.
 
-- `lines = 33217`
+2026-11-19: need-2026-11-19-123 raised it by 12, an owner room's Read, Grep and Glob reach each worker's own folder whole beyond its worktrees (that morning a room relaying a worker's result had its Glob of the worker's folder and its Read of the patch the worker left there refused, the worker having made no worktree, and gave the patch on the report's word), not folded to fit: daemon.py 13 (worker_reads, one pattern over the workers' root, a sealed room's the worktrees only, its docstring; spec_for hands it to every owner room; worktree_reads opens none for a root inside the state folder anywhere but its workers folder, where a pattern could reach a room's folder or the trash), workers.py -1 (the relay's trimmed report no longer says the room does not open it). 33,229: main bb64ace's 33,217 plus 12.
+
+- `lines = 33229`
 
 ## Uncapped
 
