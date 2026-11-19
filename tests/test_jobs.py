@@ -239,6 +239,66 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     assert jobs.phone("x" * 60) == "x" * 37 + "\N{HORIZONTAL ELLIPSIS}" and jobs.phone("short") == "short"
 
 
+TWO_JOBS = ('[jobs.kettle]\nkind = "script"\nschedule = "*:0/5"\ntz = "UTC"\nroom = "r"\ncommand = "true"\n\n'
+            '[jobs.lamp]\nkind = "agent"\nschedule = "Mon..Fri 09:00"\ntz = "America/Toronto"\nroom = "r"\nmessage = "m"\n')
+
+
+def venv_bin(root):
+    """A venv's bin as venv and uv make it on Linux, and the system's bin it points into: the venv's `python` a link to the
+    system's one file (a stand-in; the fake systemd runs nothing), its `python3` and `python3.13` links to `python` beside it."""
+    (system := root / "system" / "bin").mkdir(parents=True)
+    (system / "python3.13").write_text("a stand-in interpreter\n")
+    (system / "python3").symlink_to("python3.13")
+    (b := root / "venv" / "bin").mkdir(parents=True)
+    (b / "python").symlink_to(system / "python3.13")
+    for name in ("python3", "python3.13"):
+        (b / name).symlink_to("python")
+    return b, system
+
+
+def on(python):
+    return Env(str(python), ENV.repo, ENV.private, ENV.state)
+
+
+def test_two_spellings_of_one_interpreter_plan_every_job_unchanged_both_ways_round(tmp_path):
+    b, _ = venv_bin(tmp_path)
+    path = write_jobs(tmp_path / "jobs.toml", TWO_JOBS)
+    for first, then in (("python", "python3"), ("python3", "python"), ("python3.13", "python3")):   # the daemon's, the yerk command's
+        sd = FakeSystemd(tmp_path / f"units-{first}")
+        assert jobs.sync(path, sd, on(b / first))[0].added == ["kettle", "lamp"]
+        n = len(sd.calls)
+        p, _ = jobs.sync(path, sd, on(b / then))
+        assert (p.added, p.changed, p.unchanged) == ([], [], ["kettle", "lamp"]) and len(sd.calls) == n    # nothing rewritten or restarted
+        assert jobs.diff_lines(p) == ["= 2 unchanged: kettle, lamp"]
+        # the daemon's own spelling, the one the units already hold when it synced last: the first sync after the deploy rewrites none
+        assert f"ExecStart={jobs.unit_line(str(b / 'python'), '-P', '-m', 'yerk_ai.jobs', 'run', 'lamp')}\n" in sd.read("yerk-job-lamp.service")
+
+
+def test_a_unit_on_another_interpreter_file_plans_its_job_changed(tmp_path):
+    b, system = venv_bin(tmp_path)
+    other, _ = venv_bin(tmp_path / "other")
+    (old := tmp_path / "old" / "bin").mkdir(parents=True)          # a box whose `python` is Python 2: two files in one folder
+    (old / "python").write_text("python 2\n")
+    (old / "python3").write_text("python 3\n")
+    path = write_jobs(tmp_path / "jobs.toml", TWO_JOBS)
+    # the system's python3 is the venv's file and runs without the venv; another venv; the folder's other file
+    for i, (was, now) in enumerate(((b / "python3", system / "python3"), (b / "python", other / "python"), (old / "python3", old / "python"))):
+        sd = FakeSystemd(tmp_path / f"units-{i}")
+        jobs.sync(path, sd, on(was))
+        assert jobs.plan(path, sd, on(now)).changed == ["kettle", "lamp"] and jobs.plan(path, sd, on(was)).changed == []
+    assert f"ExecStart={jobs.unit_line(str(old / 'python3'), '-P')}" in sd.read("yerk-job-kettle.service")   # never the folder's other file
+
+
+def test_one_jobs_unit_text_is_the_same_from_either_spelling_and_an_install_with_only_python3_keeps_python3(tmp_path):
+    b, system = venv_bin(tmp_path)
+    job = make_job("kettle", {"kind": "script", "schedule": "*:0/5", "tz": "UTC", "room": "r", "command": "true"})
+    assert jobs.unit_texts(job, on(b / "python")) == jobs.unit_texts(job, on(b / "python3")) == jobs.unit_texts(job, on(b / "python3.13"))
+    # no virtual environment and no `python` in the folder: the unit names python3, a name that is there
+    timer, service = jobs.unit_texts(job, on(system / "python3.13"))
+    assert (timer, service) == jobs.unit_texts(job, on(system / "python3"))
+    assert f"ExecStart={jobs.unit_line(str(system / 'python3'), '-P')} -m yerk_ai.jobs run kettle\n" in service
+
+
 def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     sd = FakeSystemd(tmp_path / "units")
     path = write_jobs(tmp_path / "jobs.toml", '[jobs.tokyo]\nkind = "script"\nschedule = "*-*-* 09:00"\ntz = "Asia/Tokyo"\n'

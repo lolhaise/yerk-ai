@@ -1723,4 +1723,9 @@ secs = 60
 # its worst shape, leaked giving every root the two-day rule, leaks' two lines), words.py 4 (SECRET_LINES, today's
 # words, and ONE_TIME_CODES), shape.py 1 (the seven sentences, one a line shorter and one a line longer, and flat
 # dropping bold marks so a bold lead is quoted with the sentence that leans on it). 33,227: main bb64ace's 33,217 plus 10.
-lines = 33227
+# 2026-11-19: job-units-one-spelling raised it by 11, a job's unit names its interpreter one way whoever syncs (the
+# daemon wrote `python`, the `yerk` command `python3`, one file, so the writer that followed the other rewrote every
+# unit, restarted every timer and answered every job "(changed)"), not folded to fit: jobs.py 11 (spelled, the
+# folder's own `python` or `python3` when it is the same file, and unit_texts writing through it). 33,238: main
+# 8bbb850's 33,227 plus 11.
+lines = 33238
