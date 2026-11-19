@@ -1145,6 +1145,38 @@ def test_unseen_and_the_units_properties_agree_on_every_path(setup):
         assert len(by_props) >= 9, spec                                         # the fixture hides something
 
 
+def test_a_room_name_that_is_a_path_gets_nothing_back_a_link_out_of_a_hidden_folder_stays_hidden_and_a_token_not_there_is_none(setup):
+    # three guards the fence and its question share that no test held: the agreement test above cannot see them, since
+    # both of its sides read one _fence
+    s = setup
+    unit, rooms = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms"
+    folder, theirs = s.tmp / "workers" / "abc123", rooms / "r" / "work" / "a.md"
+    folder.mkdir(parents=True)
+    # the room whose work folder comes back is a name, never a path: rooms/../r/work is a folder outside rooms/, and a
+    # BindPaths line is read and write
+    for spec in ({"room": "../r"}, {"room": "a/b"}, {"room": "."}, {"room": ".."}, {"room": "r", "bind": "../b"}, {"room": "r", "bind": "."}):
+        (folder / "worker.json").write_text(json.dumps(spec))
+        props = unit.sandbox(folder, {})[1::2]
+        assert f"TemporaryFileSystem={rooms}:ro" in props and not any(x.startswith("Bind") for x in props), spec
+        assert unit.unseen(spec["room"], spec.get("bind", ""), "", [str(s.tmp / "r" / "work"), str(theirs)]) == [str(theirs)], spec
+    (folder / "worker.json").write_text(json.dumps({"room": "r"}))
+    assert [x for x in unit.sandbox(folder, {})[1::2] if x.startswith("Bind")] == [f"BindPaths=-{rooms / 'r' / 'work'}"]
+    # a path is judged as written too: a link inside a hidden folder that points out of it is still not there for the worker
+    opened, link = s.tmp / "open", rooms / "other" / "work" / "out"
+    opened.mkdir()
+    link.parent.mkdir(parents=True)
+    link.symlink_to(opened)
+    assert unit.unseen("r", "", "", [str(link / "notes.md"), str(opened / "notes.md")]) == [str(link / "notes.md")]
+    # an account whose token file is not there has no token of its own: none is handed to its unit, and a brief naming
+    # that path is told it is hidden, as the unit hides it
+    one = s.accounts[0]
+    assert workers.own_token(one) == str(one.token_file)
+    one.token_file.unlink()
+    assert workers.own_token(one) == ""
+    out, prompt = started(s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp))), "r", f"Your token is {one.token_file}.")
+    assert out["unseen"] == [str(one.token_file)] and str(one.token_file) in prompt
+
+
 def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps_every_form(tmp_path):
     from yerk_ai.config import EXAMPLE_PRIVATE
     from yerk_ai.daemon import Yerkd
