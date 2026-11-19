@@ -759,7 +759,7 @@ class Workers:
             f"- Write your report to {report}. Its first line is the one-line result; the card shows it.\n"
             "- Your last message is the deliverable: end with it, no tool call after it.\n"
             + (f"- You have no room session and no subagents. Of Yerk AI's tools you have {' and '.join(f'mcp__yerk__{t}' for t in yerk)} and no other: "
-               f"{'they read' if yerk[1:] else 'it reads'} the memory of the room that started you, as the room does. Where the brief turns on what "
+               f"{'they read' if yerk[1:] else 'it reads'} the memory of the room that started you, as the room does. Where the brief depends on what "
                "the owner or the room said, decided or keeps on file, look there first. " if yerk else
                "- You have no room session, no Yerk AI tools and no subagents. ") + f"Your cap is {cap / 60:g} minutes; past it the run is stopped.\n"
             + (f"- You have the room's own {', '.join(given[1])} too. A step that needs the owner's word (`confirmed`) is "

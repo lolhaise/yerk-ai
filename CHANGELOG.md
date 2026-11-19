@@ -15,7 +15,7 @@ version changes.
   "no room session, no Yerk AI tools and no subagents", so a worker read the memory only when its brief named a tool.
 - Now that line names the tools it has as its tool list shows them (`mcp__yerk__recall`, `mcp__yerk__read_memory`, or
   the one it was given), says it has no other Yerk AI tool, that they read the memory of the room that started it as
-  the room does, and that a brief turning on what the owner or the room said, decided or keeps on file is looked up
+  the room does, and that a brief depending on what the owner or the room said, decided or keeps on file is looked up
   there first. The names come from the one list the start writes to worker.json and the unit turns into
   `--allowedTools`, kept to recall and read_memory, so a name the setting holds that a worker may not get is never said.
 - With none given the line is today's, byte for byte, and an add-on's line still follows it, its `confirmed` sentence

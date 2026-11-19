@@ -834,7 +834,7 @@ def preamble(prompt):
 
 
 BOTH = ("- You have no room session and no subagents. Of Yerk AI's tools you have mcp__yerk__recall and mcp__yerk__read_memory "
-        "and no other: they read the memory of the room that started you, as the room does. Where the brief turns on what the "
+        "and no other: they read the memory of the room that started you, as the room does. Where the brief depends on what the "
         "owner or the room said, decided or keeps on file, look there first. Your cap is 65 minutes; past it the run is stopped.")
 
 
@@ -881,7 +881,7 @@ def test_a_worker_given_recall_alone_is_told_that_one_in_words_for_one_and_never
     own = preamble(prompt)
     assert own.splitlines()[5] == ("- You have no room session and no subagents. Of Yerk AI's tools you have mcp__yerk__recall and "
                                    "no other: it reads the memory of the room that started you, as the room does. Where the brief "
-                                   "turns on what the owner or the room said, decided or keeps on file, look there first. Your cap "
+                                   "depends on what the owner or the room said, decided or keeps on file, look there first. Your cap "
                                    "is 65 minutes; past it the run is stopped.")
     assert "read_memory" not in own and "they read" not in own and set(re.findall(r"mcp__yerk__\w+", own)) == {"mcp__yerk__recall"}
     spec = json.loads((Path(out["staging"]) / "worker.json").read_text())
