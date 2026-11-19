@@ -31,7 +31,34 @@ version changes.
   GUIDE's lines on a room's read rules name the folder.
 - **Upgrading**: nothing to change; each owner room's next process start writes the rule. budgets.toml: the mechanics
   line 8,600 to 8,700 for the code line's clause, the session start's total 132,562 to 132,662, and `[code] lines`
-  33,217 to 33,229.
+  33,227 to 33,239.
+
+### doctor-code-and-pins (#105)
+
+- `yerk doctor` no longer takes a payment reference for a login code. From 2026-11-14 it was red every day on a fact
+  file's undated payment line: after "confirmation code starting", the window after the cue word took the reference's
+  first letter, the four digits after it read as the code, and the line said to rotate the key. A one-time code's
+  digits now stand alone, a whole word: digits with a letter or a digit directly before them are no hit. Every cue word
+  stays, so "your confirmation code is 482913", "verification code: 482913" and "security code 4821" are hits as before.
+- A one-time code is its own finding, orange: "one-time codes: N in N files, first FILE:LINE; a code works once and soon
+  expires, so there is nothing to change, and `yerk doctor --scrub` takes it out if you want it gone". It never says to
+  rotate. A key, a password line and a token line stay one red line in today's words; with both kinds found, both lines
+  are said. A line that holds a code beside a key, a password or a token is counted with that one, in red.
+- A spent code is no hit wherever it sits. The two-day rule that kept old mail's codes quiet under imports/ now holds in
+  the day logs, notes and fact files too: a day log's line is dated by its day, an entry anywhere by its own
+  `- YYYY-MM-DD HH:MM` (the lines under it share it). A line with no date is still said. `yerk doctor --scrub` leaves a
+  line that is no hit as it is, byte for byte.
+- The import of an OpenClaw box (`yerk import openclaw:`) withholds lines by the doctor's shapes, so it no longer
+  withholds a reference's tail after a cue word either. The texts and mail importers keep their own shapes, unchanged.
+- The seven orange "docs moved" lines are gone. The Claude Fable 5.2 prompting page was reworded on 2026-11-13, and
+  seven sentences the lesson checks quote were no longer on it word for word. Each is re-pinned to the page's sentence
+  as it reads now, so every refusal and finding quotes what the page says: the caution, exception, approvals,
+  style-limit, built-up, think-less and reasoning pins. None was retired; each still says what its check enforces.
+- A pin's bold lead is quoted with it. The page opens two bullets with a bold lead: "Be explicit about exceptions." is a
+  sentence by itself and is the exception pin, and the style-limit pin is the lead with the sentence that leans on it,
+  "Style rules for writing: Claude Fable 5.2 follows them closely, so a hard limit ... can make its prose choppy." Pins
+  now match with the bold marks left out, as they already matched with a link's address left out.
+- **Upgrading**: nothing to change. budgets.toml: `[code] lines` 33,217 to 33,227.
 
 ### worker-preamble-tools (#104)
 
