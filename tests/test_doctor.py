@@ -111,13 +111,14 @@ def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_i
 def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_never_by_value(tree, capsys):
     """Claim 4's scan: each shape planted once (a key, a bot token, a one-time code, a password line, a token line) across
     a day log, a fact file and a file an import saved is counted and the first named by file:line and kind, the values
-    nowhere in what the doctor says; a password that is only "wrong" and an area code are not secrets."""
+    nowhere in what the doctor says; a password that is only "wrong" and an area code are not secrets. The code, on a
+    fact file's undated line, is its own orange line; the day log's spent code (a month old) is none."""
     priv, state, day, *_ = tree
     key, bot = "sk-ant-" + "a" * 24, "M" + "a" * 24 + "." + "b" * 6 + "." + "c" * 27
     said = ["your verification code is 482913", "the example wifi password is Exa-mple9!", "the password is wrong; area code 416"]
     at = datetime(2026, 10, 20, 11, 20).astimezone()
     planted = {"attachments/discord-1/note.txt": "token: " + "abcd1234" * 3, "imports/mail/2026-10.md": "# mail\n\n- api key: " + "q" * 20,
-               "memory/facts/example-thing.md": f"# example thing\n\n- the example key {key}\n- the bot's {bot}\n",
+               "memory/facts/example-thing.md": f"# example thing\n\n- the example key {key}\n- the bot's {bot}\n- {said[0]}\n",
                "memory/daily/2026-10-20.md": day.read_text() + "".join(
                    memory.format_line(at, "example-room", "", "owner", "", t, "private", f"s{i}") + "\n" for i, t in enumerate(said))}
     for rel, text in planted.items():
@@ -125,8 +126,10 @@ def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_n
         (priv / rel).write_text(text)
     assert doctor.main(priv, state) == 1
     out = capsys.readouterr().out
-    assert out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 6 in 4 files, first attachments/discord-1/note.txt:1 (token line); "
-                                "`yerk doctor --scrub`, then rotate the key"]
+    assert out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 5 in 4 files, first attachments/discord-1/note.txt:1 (token line); "
+                                "`yerk doctor --scrub`, then rotate the key",
+                                f"{words.WORKING} one-time codes: 1 in 1 file, first memory/facts/example-thing.md:5; a code works "
+                                "once and soon expires, so there is nothing to change, and `yerk doctor --scrub` takes it out if you want it gone"]
     assert not [v for v in (key, bot, "482913", "Exa-mple9!", "abcd1234", "q" * 20) if v in out]
     assert {k for k, rx in doctor.SECRETS.items() for t in planted.values() if rx.search(t)} == set(doctor.SECRETS)
 
@@ -146,11 +149,107 @@ def test_a_one_time_code_in_an_import_two_days_past_its_own_lines_date_is_dead_a
         (priv / rel).parent.mkdir(parents=True, exist_ok=True)
         (priv / rel).write_text(text)
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 3 in 3 files, first imports/mail/2019-02.md:6 (password line); "
-                                                    "`yerk doctor --scrub`, then rotate the key"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 1 in 1 file, first imports/mail/2019-02.md:6 (password line); "
+                                                    "`yerk doctor --scrub`, then rotate the key", f"{words.WORKING} " + words.ONE_TIME_CODES.format(
+                                                        n=2, files="2 files", first=f"imports/mail/{fresh:%Y-%m}.md:4")]
     assert doctor.scan(priv / f"imports/mail/{fresh:%Y-%m}.md", time.time()) == [(4, "one-time code")]
     assert doctor.scan(priv / "imports/mail/2019-02.md", time.time()) == [(6, "password line")]
-    assert doctor.scan(priv / "imports/mail/2019-02.md") == [(3, "one-time code"), (5, "one-time code"), (6, "one-time code")]
+    assert doctor.scan(priv / "imports/mail/2019-02.md") == [(3, "one-time code"), (5, "one-time code"), (6, "password line")]   # a code beside a password: the password's
+
+
+REFERENCE = "- 2 payments made, card paid, confirmation code starting Q4821"      # a reference's tail after a cue word
+CUED = [f"the {w} {k} is 482913" for w in ("verification", "security", "one-time", "one time", "login", "sign-in", "sign in", "2fa",
+                                           "confirmation") for k in ("code", "pin")] + [
+    "your confirmation code is 482913", "verification code: 482913", "security code 4821", "otp: 48213", "passcode 4821",
+    "your code is 482913", "your pin is 4821"]
+
+
+def plant(priv: Path, **files: str) -> None:
+    """Each file given (memory__facts__example_thing = text) at its place in the private folder, memory/facts/example-thing.md."""
+    for rel, text in files.items():
+        (f := priv / (rel.replace("__", "/").replace("_", "-") + ".md")).parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text)
+
+
+def test_a_payment_reference_after_a_cue_is_no_code_and_a_scrub_leaves_its_file_byte_for_byte(tree, capsys):
+    """2026-11-14 on: a fact file's undated payment line, "confirmation code starting" and then a reference cut off after
+    a letter and four digits, was red every day, the window after the cue word taking the letter and the digits after it
+    read as the code. Its digits are no whole word, so no hit; the scrub leaves its file, and its line beside a key and a
+    code in another file, as they were, byte for byte."""
+    priv, state, *_ = tree
+    key = "sk-ant-" + "a" * 24
+    plant(priv, memory__facts__example_card="# example card\n\n" + REFERENCE + "\n",
+          memory__facts__example_mixed=f"# example mixed\n\n{REFERENCE}\n- the example key {key}\n- {CUED[0]}\n")
+    card, mixed = priv / "memory/facts/example-card.md", priv / "memory/facts/example-mixed.md"
+    was = card.read_bytes()
+    assert doctor.scan(card, time.time()) == [] and doctor.scan(card) == []
+    assert doctor.scan(mixed, time.time()) == [(4, "key"), (5, "one-time code")]
+    assert doctor.main(priv, state, scrubbing=True) == 0
+    assert capsys.readouterr().out.splitlines()[0].startswith(f"{words.DONE} memory/facts/example-mixed.md: scrubbed lines 4, 5 (key, one-time code)")
+    assert card.read_bytes() == was
+    assert mixed.read_bytes() == f"# example mixed\n\n{REFERENCE}\n- the example key [scrubbed]\n- the verification code is [scrubbed]\n".encode()
+
+
+def test_every_cue_still_hits_with_a_number_that_stands_alone(tree):
+    priv, *_ = tree
+    plant(priv, memory__facts__example_codes="".join(f"- {x}\n" for x in CUED))
+    assert doctor.scan(priv / "memory/facts/example-codes.md", time.time()) == [(n, "one-time code") for n in range(1, len(CUED) + 1)]
+
+
+def test_digits_with_a_letter_or_a_digit_directly_before_them_are_no_code(tree):
+    priv, *_ = tree
+    tails = ["confirmation code starting Q4821", "the security code A1234567", "a login code x48213 was sent",
+             "verification code 123456789", "your code is 1234567890", "otp 2fa9999"]
+    plant(priv, memory__facts__example_refs="".join(f"- {x}\n" for x in tails))
+    assert doctor.scan(priv / "memory/facts/example-refs.md", time.time()) == []
+    assert [doctor.SECRETS["one-time code"].search(x)["v"] for x in ("your code is Q 4821", "verification code: (482913)")] == ["4821", "482913"]
+
+
+def test_a_code_in_the_memory_root_is_dead_two_days_past_its_own_date_and_said_with_none(tree, capsys):
+    """A spent code is no hit wherever it sits: a day log's line is dated by its day (daily/YYYY-MM-DD.md), an entry
+    anywhere by its own `- YYYY-MM-DD HH:MM`, the lines under it sharing it; an undated line is still said."""
+    priv, state, *_ = tree
+    line = memory.format_line(datetime(2026, 11, 16, 9, 30).astimezone(), "example-room", "", "owner", "", CUED[0], "private", "s1")
+    old, new = datetime.now() - timedelta(days=4), datetime.now() - timedelta(days=1)    # on the clock: four, so a clock change
+    plant(priv, **{f"memory__daily__{d:%Y_%m_%d}": f"# {d:%Y-%m-%d}\n\n{line}\n" for d in (old, new)})   # never brings it inside two
+    assert doctor.main(priv, state) == 1                                         # days; three exactly with a fixed now below
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} " + words.ONE_TIME_CODES.format(
+        n=1, files="1 file", first=f"memory/daily/{new:%Y-%m-%d}.md:3")]
+    now = datetime(2026, 11, 19, 12, 0).timestamp()
+    plant(priv, memory__daily__2026_11_16=f"# 2026-11-16\n\n{line}\n", memory__daily__2026_11_18=f"# 2026-11-18\n\n{line}\n",
+          memory__notes__example_log=f"# example log\n\n- 2026-11-16 09:30 sign in\n  {CUED[0]}\n- 2026-11-18 09:30 sign in\n  {CUED[0]}\n",
+          memory__facts__example_bare=f"# example bare\n\n- {CUED[0]}\n")
+    scans = {p: doctor.scan(priv / f"memory/{p}.md", now) for p in ("daily/2026-11-16", "daily/2026-11-18", "notes/example-log", "facts/example-bare")}
+    assert scans == {"daily/2026-11-16": [], "daily/2026-11-18": [(3, "one-time code")], "notes/example-log": [(6, "one-time code")],
+                     "facts/example-bare": [(3, "one-time code")]}
+
+
+def test_an_undated_code_in_a_fact_file_is_its_own_orange_line_that_never_says_rotate(tree, capsys):
+    priv, state, *_ = tree
+    plant(priv, memory__facts__example_login=f"# example login\n\n- {CUED[1]}\n")
+    assert doctor.main(priv, state) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out == [f"{words.WORKING} one-time codes: 1 in 1 file, first memory/facts/example-login.md:3; a code works once and soon "
+                   "expires, so there is nothing to change, and `yerk doctor --scrub` takes it out if you want it gone"]
+    assert "rotate" not in out[0] and "482913" not in out[0]
+
+
+def test_a_key_beside_a_code_gives_two_lines_the_red_one_worded_as_today(tree, capsys):
+    priv, state, *_ = tree
+    plant(priv, memory__facts__example_both=f"# example both\n\n- {CUED[2]}\n- the example key sk-ant-{'b' * 24}\n",
+          memory__facts__example_pass="# example pass\n\n- the example wifi password is Exa-mple9! and its login code 551234\n")
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        f"{words.NOT_DONE} secret-shaped lines: 2 in 2 files, first memory/facts/example-both.md:4 (key); `yerk doctor --scrub`, then rotate the key",
+        f"{words.WORKING} " + words.ONE_TIME_CODES.format(n=1, files="1 file", first="memory/facts/example-both.md:3")]
+
+
+def test_the_red_line_comes_alone_when_no_code_is_found(tree, capsys):
+    priv, state, *_ = tree
+    plant(priv, memory__facts__example_key=f"# example key\n\n- the example key sk-ant-{'c' * 24}\n- {REFERENCE[2:]}\n")
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        f"{words.NOT_DONE} secret-shaped lines: 1 in 1 file, first memory/facts/example-key.md:3 (key); `yerk doctor --scrub`, then rotate the key"]
 
 
 def test_the_doctors_key_shapes_are_the_scrub_tests(tree):
@@ -579,8 +678,8 @@ def test_a_timer_in_units_the_box_never_installed_or_turned_off_is_one_orange_li
 def test_the_scrub_swaps_each_planted_value_keeps_every_line_backs_up_first_and_a_second_run_finds_nothing(tree, capsys):
     """quiet-doctor (2026-10-24): `yerk doctor --scrub` on the shapes PR 66's scan finds (example values only, decision 22):
     a dry run says each file and changes nothing; the scrub copies each file into <private>/backups/scrub-<day>/ first, swaps
-    each value for [scrubbed] with the label and every line kept, never says a value, leaves an import's dead code (no hit)
-    as it is, and a second run finds nothing to scrub."""
+    each value for [scrubbed] with the label and every line kept, never says a value, leaves a dead code (no hit), an
+    import's or a day log's a month old, as it is, and a second run finds nothing to scrub."""
     priv, state, day, *_ = tree
     key, bot = "sk-ant-" + "a" * 24, "M" + "a" * 24 + "." + "b" * 6 + "." + "c" * 27
     at = datetime(2026, 10, 20, 11, 20).astimezone()
@@ -595,12 +694,12 @@ def test_the_scrub_swaps_each_planted_value_keeps_every_line_backs_up_first_and_
         (priv / rel).parent.mkdir(parents=True, exist_ok=True)
         (priv / rel).write_text(text)
     before = {rel: (priv / rel).read_bytes() for rel in planted}
-    values = (key, bot, "abcd1234" * 3, "482913", "Exa-mple9!")
+    values = (key, bot, "abcd1234" * 3, "Exa-mple9!")
     assert doctor.main(priv, state, dry=True, scrubbing=True) == 0
     out = capsys.readouterr().out
     assert out.splitlines() == [f"{words.WORKING} attachments/discord-1/note.txt: would scrub line 1 (token line)",
                                 f"{words.WORKING} imports/mail/2019-02.md: would scrub line 5 (password line)",
-                                f"{words.WORKING} memory/daily/2026-10-20.md: would scrub lines 8, 9 (one-time code, password line)",
+                                f"{words.WORKING} memory/daily/2026-10-20.md: would scrub line 9 (password line)",
                                 f"{words.WORKING} memory/facts/example-thing.md: would scrub lines 3, 4 (key)"]
     assert {rel: (priv / rel).read_bytes() for rel in planted} == before and not (priv / "backups").exists()
     assert doctor.main(priv, state, scrubbing=True) == 0
@@ -608,7 +707,7 @@ def test_the_scrub_swaps_each_planted_value_keeps_every_line_backs_up_first_and_
     kept = list((priv / "backups").glob("scrub-*"))
     assert len(kept) == 1 and out.splitlines()[0] == (f"{words.DONE} attachments/discord-1/note.txt: scrubbed line 1 (token line), "
                                                       f"its copy in backups/{kept[0].name}/") and len(out.splitlines()) == 4
-    assert not [v for v in values if v in out]
+    assert not [v for v in (*values, "482913") if v in out]
     assert sorted(p.read_bytes() for p in kept[0].iterdir()) == sorted(before.values())          # each file copied first
     for rel, was in before.items():
         now = (priv / rel).read_bytes()
@@ -616,6 +715,7 @@ def test_the_scrub_swaps_each_planted_value_keeps_every_line_backs_up_first_and_
     assert (priv / "attachments/discord-1/note.txt").read_text() == "token: [scrubbed] and after it\n"
     assert "- the example key [scrubbed]\n- the bot's [scrubbed]\n- a plain line\n" in (priv / "memory/facts/example-thing.md").read_text()
     assert "your verification code is 551234" in (priv / "imports/mail/2019-02.md").read_text()      # dead: not a hit, not touched
+    assert (priv / "memory/daily/2026-10-20.md").read_text().split("\n")[7] == before["memory/daily/2026-10-20.md"].decode().split("\n")[7]
     after = {rel: (priv / rel).read_bytes() for rel in planted}
     assert doctor.main(priv, state, scrubbing=True) == 0
     assert capsys.readouterr().out == f"{words.DONE} scrub: no secret-shaped line\n"
