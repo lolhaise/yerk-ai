@@ -87,7 +87,7 @@ def test_the_place_part_has_its_budget_and_the_cap_rose_by_it():
     pm = budgets()["per_message"]
     part = context.per_message("example-room", OWNER, "owner", LAST, None, budgets(), location.part(loc(), OWNER, LAST))[2]
     assert part.name == "place" and part.budget == pm["parts"]["place"] == 150 and not part.over
-    assert sum(pm["parts"].values()) + sum(pm["on_hit"].values()) == pm["cap"] == 5750   # need-2026-11-09-74: the recall line's 100
+    assert sum(pm["parts"].values()) + sum(pm["on_hit"].values()) == pm["cap"] == 5850   # need-2026-11-09-74 and need-2026-11-19-124: the recall line's 100 each
 
 
 def install(tmp_path, table=""):

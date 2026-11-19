@@ -285,7 +285,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     total by the 339 to 132,362 on main's 132,023; then (worker-preamble-tools) `yerk_tools` to 28,600 for the `worker` and
     `schedule` tools' words on recall and read_memory where the install gives workers them (159 more as built; all 24 about
     28,490 as sent), the total by the 200 to 132,562; then (need-2026-11-19-123) the mechanics, an appended part, the total
-    by the 100 to 132,662."""
+    by the 100 to 132,662; then (need-2026-11-19-124) the mechanics to 8,900 for the docs line's where and who, the total by
+    the 200 to 132,862."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -303,7 +304,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 132662
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 132862
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -459,10 +460,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     then Yerk AI's tools' line (200, the `worker` and `schedule` tools' words on recall and read_memory where the install
     gives workers them), no part could pay, to 132,562 (worker-preamble-tools); then the mechanics (100, the code line's
     clause on a worker's own folder, open to an owner room's Read and Grep), no part could pay, to 132,662
-    (need-2026-11-19-123)."""
+    (need-2026-11-19-123); then the mechanics' docs line saying where the fetched docs and the doctor's findings are and who
+    reads them how (200), no part could pay, to 132,862 (need-2026-11-19-124)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 132662
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 132862
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
@@ -486,7 +488,7 @@ def test_the_mechanics_say_when_to_use_the_place_unasked_in_one_line_inside_thei
     text = context.MECHANICS.read_text().strip()
     lines = [x for x in text.splitlines() if "`[place]`" in x]
     assert len(lines) == 1 and all(w in lines[0] for w in ("unasked", "gym", "log the session", "work", "commute", "moving", "short"))
-    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 8700
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 8900
 
 
 def test_the_mechanics_say_a_message_arriving_mid_turn_is_answered_by_name_in_one_line_inside_their_budget():

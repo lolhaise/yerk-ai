@@ -115,7 +115,9 @@ def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(
     need-2026-11-19-123, each
     one's mechanics line its only change, need-2026-10-25-21's with the checkout's path, CODE; and on need-2026-10-28-25, its only change the rules
     note past its size naming the room's work folder file, context.CHANGED; and on persona-voice-news-2026-11-09, its only
-    change the room's look on file, rules-seen.json, holding the persona and voice texts): the start file, both messages,
+    change the room's look on file, rules-seen.json, holding the persona and voice texts; and on need-2026-11-19-124, its
+    mechanics line and the recall part's 2,200, which holds the room's own line on the topic whole in both messages; and on
+    start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and
     false."""
     want = json.loads(FIXTURE.read_text())

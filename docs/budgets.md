@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 132662`
+- `total = 132862`
 
 ## [session_start.claude_code]
 
@@ -188,7 +188,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-19, need-2026-11-19-123: the code line's clause (a worker's own work is in its folder, its report, a patch, its stream and worktrees, open to an owner room's Read and Grep, a sealed room's to the worktrees only; that morning a room relaying a worker's result had its Glob of the worker's folder and its Read of the patch there refused, the worker having made no worktree, and gave the patch on the report's word) took the mechanics file to 8,519, 8,643 with a checkout's path of 130 characters; so 8,700. No part was measured again to pay for it, so the total rose by the 100, to 132,662 on main's 132,562.
 
-- `mechanics = 8700`
+2026-11-19, need-2026-11-19-124: the docs line's where and who (`doctor.json`, the doctor's last findings, beside the two docs folders; all three in Yerk's state folder, a room's work folder's path before `rooms/`; `read_memory` reads the docs, an owner room's Read and Grep all three, a sealed room's the Claude docs; that morning a room asked to check a worker's re-pinned docs sentences against the fetched page and the doctor's findings looked for the page in its work folder and the checkout, and had its Grep of both refused) took the mechanics file to 8,733, 8,857 with a checkout's path of 130 characters, on main's code line for need-2026-11-19-123; so 8,900. No part was measured again to pay for it, so the total rose by the 200, to 132,862 on main's 132,662.
+
+- `mechanics = 8900`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -208,7 +210,9 @@ What the UserPromptSubmit hook adds to each message: `typical` caps the parts ev
 
 2026-11-10, need-2026-11-09-74: 5,650 to 5,750, the recall part's 100 below.
 
-- `cap = 5750`
+2026-11-19, need-2026-11-19-124: 5,750 to 5,850, the recall part's 100 below.
+
+- `cap = 5850`
 
 ## [per_message.parts]
 
@@ -233,7 +237,9 @@ Paid only when a message hits: the people and things it names, then the room's o
 
 2026-11-10, need-2026-11-09-74: 2,100. The answer to "what can you do" (abilities.py's census: every ability's name by its state) rides whole under this line or not at all, and on main d97c1ba it sat 7 characters under it (1,993); form-typing's name (the browser plug-in's type, filed by a room that saw a quote form only in a shot) takes it 6 over, 2,006; so 100 more, room for about seven names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
 
-- `recall = 2100`
+2026-11-19, need-2026-11-19-124: 2,200. With need-2026-11-19-123's worker-folder in, the answer to "what can you do" sat 4 characters under 2,100 on main 9e9aba7 (2,096); harness-docs's name (an owner room's Read, Grep and Glob on the fetched docs pages and the doctor's findings) takes it 10 over, 2,110, and the census rides whole or not at all; so 100 more again, room for about six names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+
+- `recall = 2200`
 
 Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 
@@ -779,7 +785,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: need-2026-11-19-123 raised it by 12, an owner room's Read, Grep and Glob reach each worker's own folder whole beyond its worktrees (that morning a room relaying a worker's result had its Glob of the worker's folder and its Read of the patch the worker left there refused, the worker having made no worktree, and gave the patch on the report's word), not folded to fit: daemon.py 13 (worker_reads, one pattern over the workers' root, a sealed room's the worktrees only, its docstring; spec_for hands it to every owner room; worktree_reads opens none for a root inside the state folder anywhere but its workers folder, where a pattern could reach a room's folder or the trash), workers.py -1 (the relay's trimmed report no longer says the room does not open it). 33,250: main 66724cc's 33,238 plus 12.
 
-- `lines = 33250`
+2026-11-19: need-2026-11-19-124 raised it by 10, an owner room's Read, Grep and Glob reach Yerk's fetched docs pages and the doctor's findings (that morning a room asked to check a worker's re-pinned docs sentences against the fetched page, with the doctor's findings read first, had its Grep of both refused), not folded to fit: daemon.py 10 (docs_reads, a rule on the docs root and one on doctor.json, a sealed room's on the fetched pages alone, its docstring; spec_for hands them to every owner room, after need-2026-11-19-123's worker_reads). 33,260: main 9e9aba7's 33,250 plus 10.
+
+- `lines = 33260`
 
 ## Uncapped
 
