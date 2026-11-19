@@ -763,9 +763,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: need-2026-11-18-110 raised it by 22, an owner room's Read, Grep and Glob reach each worker's worktrees and the worker's report names them (that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word), not folded to fit: daemon.py 12 (worktree_reads, a pattern per worktree name over the workers' root and none around the private folder, its docstring; spec_for hands it to every owner room), workers.py 10 (WORKTREES, the names a need brief gives a worker's worktrees; worktrees, those a worker left, in report; fnmatch). 33,109: main ed081db's 33,087 plus 22.
 
-2026-11-18: need-2026-11-18-111 raised it by 37, an Instagram post shut to a logged-out reader is said with the way past it, the browser plug-in's video action that reads it signed in (2026-11-18 20:40: a room sent a reel to watch met "Instagram sent an empty media response" twice, and the signed-in browser's background tab painted a black frame with no sound), not folded to fit: watch.py 31 (INSTAGRAM, SHUT and BROWSER, Shut, shut and browses, pull's first sentence, run's shut mark and the docstrings), words.py 5 (WATCH_SHUT and its two ways), daemon.py 3 (tool_watch's words by the room's own tools). 33,146: main 6c0f72b's 33,109 plus 37.
+2026-11-18: need-2026-11-18-111 raised it by 40, an Instagram post shut to a logged-out reader is said with the way past it, the browser plug-in's video action that reads it signed in (seen live: a room sent a reel to watch met "Instagram sent an empty media response" twice, and the signed-in browser's background tab painted a black frame with no sound), not folded to fit: watch.py 34 (INSTAGRAM, POST, SHUT and BROWSER, Shut, shut and browses, pull's first sentence, run's shut mark and the docstrings; POST and shut's path since PR 102's cold read: a story's link, which the plug-in's video action refuses, is never shut), words.py 5 (WATCH_SHUT and its two ways), daemon.py 3 (tool_watch's words by the room's own tools). 33,149: main 6c0f72b's 33,109 plus 40.
 
-- `lines = 33146`
+- `lines = 33149`
 
 ## Uncapped
 

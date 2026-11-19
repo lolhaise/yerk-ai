@@ -376,6 +376,36 @@ def test_a_room_browses_only_with_an_add_ons_browser_tool_its_allow_names_and_it
     assert not watch.shut("https://notinstagram.com/p/x/", "login required") and not watch.shut(REEL, "There is no video in this post")
 
 
+def test_an_instagram_story_shut_to_a_logged_out_reader_is_said_in_yt_dlps_words_never_the_browsers_way(tmp_path, monkeypatch, clips):
+    """PR 102's cold read: "This content is unreachable" and "You need to log in to access this content" are the words of
+    yt-dlp's story reader (2026.08.19), for a story or a highlight, a link the hands plug-in's video action refuses (it
+    reads a post, a reel or a tv link), so a room with that browser sent a story heard its video action named and was sent
+    back to watch by it. Only the links that action takes are shut; a story is said in yt-dlp's own words, as before."""
+    y, work, bin_ = room(tmp_path, monkeypatch, clips, code=1, info_code=1)
+    conf = y.room_confs["example-room"]
+    y.room_confs["example-room"] = {**conf, "allow": ["mcp__example-hands__browser"], "mcp": {"example-hands": {"type": "stdio", "command": "node"}}}
+    for err in ("This content is unreachable", "You need to log in to access this content"):
+        for link, name in (("https://www.instagram.com/stories/example.account/123456789/", "123456789"),
+                           ("https://www.instagram.com/stories/highlights/987654321/", "987654321"),
+                           ("https://instagram.com/stories/example.account", "example.account")):
+            (bin_ / "knobs.json").write_text(json.dumps({"code": 1, "info_code": 1, "said": f"ERROR: [instagram:story] {name}: {err}. Use "
+                                                         "--cookies-from-browser or --cookies for the authentication. See  "
+                                                         "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  "
+                                                         "for how to manually pass cookies\n"}))
+            r = ask(y, link)
+            assert r == {"ok": False, "error": words.WATCH_FAILED.format(why=f"[instagram:story] {name}: {err}.")}, (err, link, r)
+            assert "browser" not in r["error"] and "--" not in r["error"] and not watch.shut(link, err)
+    # a post's words on any link that is not a post, a reel or a tv link on a host hands' video action reads: not shut
+    for link in ("https://www.instagram.com/example.account/", "https://www.instagram.com/explore/tags/example/", "https://l.instagram.com/?u=x",
+                 "https://help.instagram.com/p/Ab1_cD-2eF/", "https://www.instagr.am/p/Ab1_cD-2eF/", "https://www.instagram.com/REEL/Ab1_cD-2eF/",
+                 "https://www.instagram.com/reel/Ab1/", "https://www.instagram.com/stories/example.account/123456789/"):
+        assert not watch.shut(link, "Instagram sent an empty media response"), link
+    for link in (REEL, "https://instagram.com/example.account/p/Xy9-ab_CDE1/", "https://www.instagram.com/reels/Xy9-ab_CDE1",
+                 "https://m.instagram.com/tv/Xy9-ab_CDE1/", "https://instagr.am/p/Ab1_cD-2eF/", "https://WWW.Instagram.com/reel/Ab1_cD-2eF"):
+        assert watch.shut(link, "Instagram sent an empty media response"), link
+    assert kinds(bin_).count("pull") == 6 and watch.saved(work / "videos" / "instagram-123456789") is None
+
+
 def test_a_run_that_saves_nothing_is_said_in_words(tmp_path, monkeypatch, clips):
     y, work, bin_ = room(tmp_path, monkeypatch, clips, nothing=True)          # what --max-filesize does to a video past it
     assert ask(y, REEL) == {"ok": False, "error": words.WATCH_NOTHING}                   # a page with no captions

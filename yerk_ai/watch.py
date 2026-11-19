@@ -44,9 +44,10 @@ FORMAT = "bv*[height<=720]+ba/b[height<=720]/b"    # the best picture at 720 lin
 SOURCE = "url.txt"           # the link a folder's post was pulled from
 MOST_BYTES = 300 << 20       # CAP in bytes: a video attached to a Discord message past it is not saved
 DISCORD = re.compile(r"https://(?:(?:www|ptb|canary)\.)?discord(?:app)?\.com/channels/(?:\d+|@me)/(\d+)/(\d+)/?")
-INSTAGRAM = re.compile(r"(?:^|\.)(?:instagram\.com|instagr\.am)$", re.I)     # a post a signed-in browser reads when yt-dlp cannot
-SHUT = re.compile(r"empty media response|login required|registered users|log in to access|locked behind the login|"
-                  r"redirected to the login page|restricted video|unreachable", re.I)   # yt-dlp's words for a post shut to it
+INSTAGRAM = re.compile(r"(?:(?:www|m)\.)?instagram\.com|instagr\.am", re.I)    # a host and a path (a post, a reel or a tv link,
+POST = re.compile(r"/(?:[A-Za-z0-9._]{1,30}/)?(?:p|reels?|tv)/[A-Za-z0-9_-]{5,80}(?:/|$)")   # never a story) hands' video reads
+SHUT = re.compile(r"empty media response|login required|registered users|locked behind the login|redirected to the login page|"
+                  r"restricted video", re.I)    # yt-dlp's words for a post shut to it (its story reader's own are no post's)
 BROWSER = re.compile(r"^mcp__([A-Za-z0-9_-]+?)__browser$")    # an add-on's browser tool as a room's allow names it (hands')
 KINDS = (".mp4", ".mov", ".m4v", ".mkv", ".avi", ".3gp", ".mpg", ".mpeg", ".wmv")    # a video file as a phone or a camera saves it
 ONE = threading.Lock()       # one download at a time across rooms; a caller waits its turn, never fails for it
@@ -64,9 +65,11 @@ class Shut(Failed):
 
 
 def shut(url: str, why: str) -> bool:
-    """An Instagram post whose yt-dlp words say a login, a follow, an age check or an empty media response: shut to a
-    logged-out reader, so a signed-in browser is the one way to it. `url` is one is_link took, so it parses."""
-    return bool(INSTAGRAM.search(urlsplit(url.strip()).hostname or "") and SHUT.search(why))
+    """An Instagram post, reel or tv link, as the hands plug-in's video action takes one, whose yt-dlp words say a login, a
+    follow, an age check or an empty media response: shut to a logged-out reader, so a signed-in browser is the one way to
+    it. A story's link is never one (that action refuses it). `url` is one is_link took, so it parses."""
+    u = urlsplit(url.strip())
+    return bool(INSTAGRAM.fullmatch(u.hostname or "") and POST.match(u.path) and SHUT.search(why))
 
 
 def browses(conf: dict[str, Any]) -> bool:

@@ -17,8 +17,10 @@ version changes.
 - `watch` now says that wall in one line, Instagram's own first sentence and never yt-dlp's advice on cookies flags, and
   names the way by what the room has: a room with an add-on's browser tool is told its `video` action reads the post
   signed in and saves its video in the room's work folder, then to watch that path; a room with none is told the video
-  itself was not seen, never to answer off its caption or its cover. Any other site's login and Instagram's other words
-  read as before.
+  itself was not seen, never to answer off its caption or its cover. Only a post, a reel or a tv link is marked so, the
+  links that `video` reads: a story or a highlight shut to a logged-out reader (yt-dlp's "This content is unreachable"
+  and "You need to log in to access this content") is said in yt-dlp's own words, as before, since `video` refuses its
+  link and would send the room back to watch. Any other site's login and Instagram's other words read as before.
 - The hands plug-in's browser gains `video` (its branch need-2026-11-18-111, a049bf2): the post's own page asks
   Instagram's web API for the post, as its player does, and hands saves each part's video file under
   `hands-videos/instagram-<code>/` in the room's work folder, an MP4 under 300 MB, the folder walked without following a
@@ -26,8 +28,8 @@ version changes.
   room. Not signed in, a post the account cannot see, photos only, Instagram's ask to wait and a refused file are each said.
 - New ability entry `locked-reels` (`yerk explain locked-reels`), its built part `watch`, whose entry names it.
 
-**Upgrading**: budgets.toml's `mcp__hands__` line rises to 10,470 and the session-start total to 132,262 for the browser's
-longer entry, and the code ceiling to 33,124; both come with the merge. The plug-in's main takes the branch at the same
+**Upgrading**: budgets.toml's `mcp__hands__` line rises to 10,470 and the session-start total to 132,362 for the browser's
+longer entry, and the code ceiling to 33,149; both come with the merge. The plug-in's main takes the branch at the same
 merge, and the rooms that attach it pick it up at their next start.
 
 ### need-2026-11-18-110 (#101)
