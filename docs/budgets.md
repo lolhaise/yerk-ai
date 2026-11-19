@@ -773,7 +773,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: doctor-code-and-pins raised it by 10, a one-time code stands alone and is its own orange line, and a spent one is no hit wherever it sits (from 2026-11-14 the doctor was red each day on a fact file's payment reference, the digits after its letter read as a login code, and told the owner to rotate a key), and seven lesson pins re-pinned to the Claude Fable 5.2 page as it reads now (from 2026-11-13, seven orange "docs moved" lines each day), not folded to fit: doctor.py 5 (the shape's whole-word digits and its comment, scan dating a day log by its day and naming a line by its worst shape, leaked giving every root the two-day rule, leaks' two lines), words.py 4 (SECRET_LINES, today's words, and ONE_TIME_CODES), shape.py 1 (the seven sentences, one a line shorter and one a line longer, and flat dropping bold marks so a bold lead is quoted with the sentence that leans on it). 33,227: main bb64ace's 33,217 plus 10.
 
-- `lines = 33227`
+2026-11-19: job-units-one-spelling raised it by 11, a job's unit names its interpreter one way whoever syncs (the daemon wrote `python`, the `yerk` command `python3`, one file, so the writer that followed the other rewrote every unit, restarted every timer and answered every job "(changed)"), not folded to fit: jobs.py 11 (spelled, the folder's own `python` or `python3` when it is the same file, and unit_texts writing through it). 33,238: main 8bbb850's 33,227 plus 11.
+
+- `lines = 33238`
 
 ## Uncapped
 
