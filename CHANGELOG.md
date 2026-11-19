@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-19
 
-### worker-preamble-tools (its pull request to come)
+### worker-preamble-tools (#104)
 
 - A worker given Yerk AI's read-only tools is told it has them. An install can give every worker `recall` and
   `read_memory` (`[workers] yerk_tools` in yerkd.toml), and two workers given both read in their PROMPT.md that they had
