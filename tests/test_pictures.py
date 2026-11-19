@@ -43,10 +43,11 @@ class Rec(ConsoleChannel):
         return "card-1"
 
 
-class Units:
-    """systemd-run as Workers relies on it, recorded, nothing run."""
+class Units(workers.Systemd):
+    """systemd-run as Workers relies on it, recorded, nothing run; the rest is the launcher's own."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.calls: list[dict] = []
 
     def start(self, unit, argv, env, cwd, out, err, cap, post) -> None:

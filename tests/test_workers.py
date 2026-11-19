@@ -33,14 +33,23 @@ MANAGER_ENV = {"HOME": "/nonexistent-home", "USER": "someone", "LANG": "C.UTF-8"
                "SSH_AUTH_SOCK": "/tmp/planted-agent.sock", "GPG_AGENT_INFO": "planted"}  # two the worker must not get
 
 
-class Units:
+class Units(workers.Systemd):
     """systemd-run's part, as the code relies on it: argv runs with exactly the given environment on
     top of the manager's, in its folder, output appended to the files; the cap kills it (result
     timeout); a stop kills its process group (result success, killed TERM, as systemd reports a
-    stopped service); ExecStopPost runs `post` with SERVICE_RESULT, EXIT_CODE and EXIT_STATUS."""
+    stopped service); ExecStopPost runs `post` with SERVICE_RESULT, EXIT_CODE and EXIT_STATUS. The
+    rest is the launcher's own: given a state folder and hidden paths, its fence's question (unseen)."""
 
-    def __init__(self):
+    def __init__(self, state=None, hidden=()):
+        super().__init__(state, hidden)
         self.calls, self.procs, self.stopped = [], {}, set()
+
+    def keep(self, *a, **kw):
+        """This stand-in, holding what the daemon gives its launcher (the state folder, the hidden paths); a bare
+        Systemd() (`yerk status`'s) keeps what it holds."""
+        if a or kw:
+            super().__init__(*a, **kw)
+        return self
 
     def start(self, unit, argv, env, cwd, out, err, cap, post):
         self.calls.append({"unit": unit, "argv": list(argv), "env": dict(env), "cwd": cwd, "cap": cap, "post": post})
@@ -867,10 +876,11 @@ def test_a_relay_into_a_closed_room_resumes_the_rooms_own_session(setup):
 
 
 # the sandbox: what a worker's unit sees of the state folder, and which rooms may use workers
-class Record:
-    """A launcher that only records: nothing runs, no systemd, no model."""
+class Record(workers.Systemd):
+    """A launcher that only records: nothing runs, no systemd, no model; its fence's question is the launcher's own."""
 
-    def __init__(self):
+    def __init__(self, state=None, hidden=()):
+        super().__init__(state, hidden)
         self.calls = []
 
     def start(self, unit, argv, env, cwd, out, err, cap, post):
@@ -997,6 +1007,174 @@ def test_the_unit_does_not_see_the_private_layers_secrets_but_its_own_accounts_t
             assert [x for x in p if str(keys) in x] == [f"TemporaryFileSystem={keys}:ro", f"BindReadOnlyPaths=-{own}"]
         else:                                         # no token there: not there at all, and with no secrets/ it still starts
             assert [x for x in p if str(keys) in x] == [f"InaccessiblePaths=-{keys}"]
+
+
+# what a start says of the paths its brief names that the unit hides (Systemd.unseen): told, never refused
+def fence_of(t):
+    """The daemon's four hidden paths on the setup's state folder `t`: the install's secret, every room's folder, the private
+    layer's secrets/ (the setup's, holding each account's token, as the default does) and the pages' keys."""
+    return (t / "yerk" / "yerk-http.secret", t / "rooms", t / "secrets", t / "yerk" / "pages")
+
+
+def started(w, room, brief, **kw):
+    """`start`'s answer and the PROMPT.md it wrote."""
+    out = asyncio.run(w.start(room, brief, account="one", **kw))
+    return out, (Path(out["staging"]) / "PROMPT.md").read_text()
+
+
+def test_a_brief_naming_another_rooms_work_folder_starts_and_its_answer_and_prompt_say_the_worker_cannot_see_it(setup, caplog):
+    # seen live: a brief's third source was another room's work folder; the start said nothing and the worker ran
+    # one source short. The unit is right to hide it; the start now says so, and the worker is told
+    s = setup
+    caplog.set_level("INFO", logger="yerk.workers")
+    units = Record(s.tmp, fence_of(s.tmp))
+    w = s.make({"r": Busy(), "other": Busy()}, launcher=units)
+    own, other = s.tmp / "rooms" / "r" / "work", s.tmp / "rooms" / "other" / "work"
+    brief = (f"Three sources.\n1. {own}/a.md\n2. The checkout {ROOT}.\n"
+             f"3. Another room's work folder {other}/: notes.md and the list*.txt reads.\nAgain: {other}.\n")
+    out, prompt = started(w, "r", brief)
+    assert out["ok"] and out["unseen"] == [str(other)]
+    assert out["unseen_note"] == W.WORKER_UNSEEN.format(paths=other, work=own) and str(own) in out["unseen_note"]
+    line = (f"- Not there for you, since your unit hides them: {other}. The brief names them; name them in your report's "
+            "first lines, with what you did without them.\n")
+    assert line in prompt and prompt.index(line) < prompt.index("The brief (also in")
+    assert [c["unit"] for c in units.calls] == [out["unit"]]                  # launched as before
+    assert (Path(out["staging"]) / "BRIEF.md").read_text() == brief            # the brief as given
+    assert f"worker {out['id']}: its brief names 1 path(s) its unit hides" in caplog.text and str(other) not in caplog.text
+
+
+def test_a_brief_naming_only_what_the_worker_sees_gets_todays_answer_and_prompt(setup, caplog):
+    s = setup
+    caplog.set_level("INFO", logger="yerk.workers")
+    own = s.tmp / "rooms" / "r" / "work"
+    brief = (f"Write in {s.tmp / 'workers'}, read {own}, {own / 'notes' / 'a.md'} and `{ROOT / 'yerk_ai'}`, "
+             f"then ~/notes/today.md and {Path.home() / 'Documents'}; your token is {s.accounts[0].token_file}.")
+    fenced, plain = s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp))), s.make({"r": Busy()}, launcher=Record())
+    (out, prompt), (was, before) = started(fenced, "r", brief), started(plain, "r", brief)   # no state folder: no fence
+    assert sorted(out) == sorted(was) == ["account", "cap_minutes", "card", "effort", "id", "model", "ok", "report", "room",
+                                          "staging", "tasks", "unit"]
+    assert prompt.replace(out["id"], "ID") == before.replace(was["id"], "ID") and "Not there for you" not in prompt
+    assert "hides" not in caplog.text
+
+
+def test_unseen_hides_every_rooms_folder_but_the_workers_rooms_work_folder_and_every_secret_but_its_own_token(setup):
+    s = setup
+    unit, rooms, keys = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms", s.tmp / "secrets"
+    token, other = str(keys / "claude-one.token"), str(keys / "claude-two.token")
+    ask = lambda *ps, room="r", bind="", tok=token: unit.unseen(room, bind, tok, [str(p) for p in ps])  # noqa: E731
+    assert ask(rooms / "r" / "settings.json", rooms / "r", rooms, rooms / "r" / "work" / "x.md", rooms / "r" / "work") == \
+        [str(rooms / "r" / "settings.json"), str(rooms / "r"), str(rooms)]   # its room outside work and the root alone
+    assert ask(keys, other, token, keys / "openai.key") == [str(keys), other, str(keys / "openai.key")]
+    assert ask(token, tok="") == [token]                                        # no token of its own: none comes back
+    assert ask(s.tmp / "yerk" / "yerk-http.secret", s.tmp / "yerk" / "pages" / "r.key", s.tmp / "yerk") == \
+        [str(s.tmp / "yerk" / "yerk-http.secret"), str(s.tmp / "yerk" / "pages" / "r.key")]
+    # given `bind` (a pictures backfill): the bound room's work folder is seen, the calling room's own is hidden
+    assert ask(rooms / "r" / "work" / "inbox", rooms / "ops" / "work", room="ops", bind="r") == [str(rooms / "ops" / "work")]
+    w = s.make({"ops": Busy(), "r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp)))
+    out, _ = started(w, "ops", f"Describe {rooms / 'r' / 'work' / 'inbox' / 'p.png'}; not {rooms / 'ops' / 'work'}.",
+                     more={"bind": "r"})
+    assert out["unseen"] == [str(rooms / "ops" / "work")] and str(rooms / "r" / "work") in out["unseen_note"]
+    assert ask(rooms, rooms, rooms / "r") == [str(rooms), str(rooms / "r")]                    # each once
+    assert workers.Systemd(None, fence_of(s.tmp)).unseen("r", "", token, [str(rooms / "other")]) == []   # no state folder
+
+
+def test_a_brief_names_its_paths_in_backticks_quotes_brackets_at_a_sentences_end_and_as_globs_each_once(setup, monkeypatch):
+    s = setup
+    monkeypatch.setenv("HOME", str(s.tmp / "home"))
+    o = s.tmp / "rooms" / "other"
+    assert workers.named(f"See `{o}/a`, \"{o}/b\" and '{o}/c' ({o}/d) [{o}/e] {{{o}/f}}. Then {o}/g; {o}/h: {o}/i? "
+                         f"{o}/j! ~/k/l. {o}/*.txt and {o}/x?.md. Again {o}/a. https://example.com/x a/b TemporaryFileSystem={o}/m") \
+        == [f"{o}/{x}" for x in "abcdefghij"] + [str(s.tmp / "home" / "k" / "l"), f"{o}/*.txt", f"{o}/x?.md", f"{o}/m"]
+    unit = workers.Systemd(s.tmp, fence_of(s.tmp))
+    home = s.tmp / "rooms" / "r" / "work"
+    assert unit.unseen("r", "", "", [f"{home}/list*.txt", f"{s.tmp}/rooms/*/work", f"{s.tmp}/rooms*", f"{s.tmp}/room?"]) == \
+        [f"{s.tmp}/rooms/*/work", f"{s.tmp}/rooms*"]                             # a glob by the part before its wildcard
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp)))
+    five = [str(o / n / "work") for n in ("a", "b", "c", "d", "e")]
+    out, prompt = started(w, "r", "Read " + ", ".join(five) + f" and ~/notes, then {five[0]} again.")
+    assert out["unseen"] == five and out["unseen_note"].startswith(f"this worker cannot see {', '.join(five[:3])} and 2 more, and")
+    assert f"hides them: {', '.join(five)}." in prompt                          # the worker is told every one
+
+
+def test_a_link_in_the_rooms_work_folder_into_a_hidden_folder_is_hidden(setup):
+    s = setup
+    work, other = s.tmp / "rooms" / "r" / "work", s.tmp / "rooms" / "other" / "work"
+    work.mkdir(parents=True)
+    other.mkdir(parents=True)
+    (work / "theirs").symlink_to(other)
+    (work / "mine").symlink_to(work)
+    unit = workers.Systemd(s.tmp, fence_of(s.tmp))
+    assert unit.unseen("r", "", "", [str(work / "theirs"), str(work / "theirs" / "notes.md"), str(work / "mine")]) == \
+        [str(work / "theirs"), str(work / "theirs" / "notes.md")]
+
+
+def test_a_start_with_no_state_folder_names_nothing_and_a_worker_in_line_gets_the_same_answer(setup):
+    s = setup
+    brief = f"Read {s.tmp / 'rooms' / 'other' / 'work'}."
+    out, prompt = started(s.make({"r": Busy()}, launcher=Record(None, fence_of(s.tmp))), "r", brief)
+    assert "unseen" not in out and "Not there for you" not in prompt
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp)), per_account=1)
+    (first, _), (second, told) = started(w, "r", brief), started(w, "r", brief)
+    assert "waiting" not in first and second["waiting"] == W.WAITING_ACCOUNT and second["line"] == 1
+    assert first["unseen"] == second["unseen"] == [brief[5:-1]] and first["unseen_note"] == second["unseen_note"]
+    assert "Not there for you" in told
+    (s.tmp / "brief.md").write_text(brief)
+    assert asyncio.run(w.start("r", brief_file=str(s.tmp / "brief.md"), account="two"))["unseen"] == first["unseen"]
+
+
+def test_unseen_and_the_units_properties_agree_on_every_path(setup):
+    # the question and the fence read one _fence: for the same hidden paths, each sample is hidden by unseen exactly when
+    # it is under a TemporaryFileSystem or an InaccessiblePaths of sandbox's and under no Bind line
+    s = setup
+    unit, rooms, keys = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms", s.tmp / "secrets"
+    token, folder = keys / "claude-one.token", s.tmp / "workers" / "abc123"
+    samples = [rooms, rooms / "r", rooms / "r" / "settings.json", rooms / "r" / "work", rooms / "r" / "work" / "a.md",
+               rooms / "ops", rooms / "ops" / "work", rooms / "ops" / "work" / "inbox" / "p.png", rooms / "other" / "work",
+               keys, token, keys / "claude-two.token", keys / "deep" / "x", s.tmp / "yerk", s.tmp / "yerk" / "yerk-http.secret",
+               s.tmp / "yerk" / "pages", s.tmp / "yerk" / "pages" / "r.key", s.tmp, folder, s.tmp / "ledger.sqlite", ROOT,
+               Path.home()]
+    folder.mkdir(parents=True)
+    for spec, token_env in (({"room": "r"}, str(token)), ({"room": "ops", "bind": "r"}, str(token)), ({"room": "r"}, ""),
+                            ({"room": "../r"}, str(token))):
+        (folder / "worker.json").write_text(json.dumps(spec))
+        props = unit.sandbox(folder, {"YERK_TOKEN_FILE": token_env} if token_env else {})[1::2]
+        gone = [Path(re.sub(r"^\w+=-?|:ro$", "", p)) for p in props if p.startswith(("TemporaryFileSystem=", "InaccessiblePaths="))]
+        back = [Path(p.split("=-", 1)[1]) for p in props if p.startswith(("BindPaths=", "BindReadOnlyPaths="))]
+        by_props = [str(q) for q in samples if any(q.is_relative_to(g) for g in gone) and not any(q.is_relative_to(b) for b in back)]
+        assert unit.unseen(spec["room"], spec.get("bind", ""), token_env, [str(q) for q in samples]) == by_props, spec
+        assert len(by_props) >= 9, spec                                         # the fixture hides something
+
+
+def test_a_room_name_that_is_a_path_gets_nothing_back_a_link_out_of_a_hidden_folder_stays_hidden_and_a_token_not_there_is_none(setup):
+    # three guards the fence and its question share that no test held: the agreement test above cannot see them, since
+    # both of its sides read one _fence
+    s = setup
+    unit, rooms = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms"
+    folder, theirs = s.tmp / "workers" / "abc123", rooms / "r" / "work" / "a.md"
+    folder.mkdir(parents=True)
+    # the room whose work folder comes back is a name, never a path: rooms/../r/work is a folder outside rooms/, and a
+    # BindPaths line is read and write
+    for spec in ({"room": "../r"}, {"room": "a/b"}, {"room": "."}, {"room": ".."}, {"room": "r", "bind": "../b"}, {"room": "r", "bind": "."}):
+        (folder / "worker.json").write_text(json.dumps(spec))
+        props = unit.sandbox(folder, {})[1::2]
+        assert f"TemporaryFileSystem={rooms}:ro" in props and not any(x.startswith("Bind") for x in props), spec
+        assert unit.unseen(spec["room"], spec.get("bind", ""), "", [str(s.tmp / "r" / "work"), str(theirs)]) == [str(theirs)], spec
+    (folder / "worker.json").write_text(json.dumps({"room": "r"}))
+    assert [x for x in unit.sandbox(folder, {})[1::2] if x.startswith("Bind")] == [f"BindPaths=-{rooms / 'r' / 'work'}"]
+    # a path is judged as written too: a link inside a hidden folder that points out of it is still not there for the worker
+    opened, link = s.tmp / "open", rooms / "other" / "work" / "out"
+    opened.mkdir()
+    link.parent.mkdir(parents=True)
+    link.symlink_to(opened)
+    assert unit.unseen("r", "", "", [str(link / "notes.md"), str(opened / "notes.md")]) == [str(link / "notes.md")]
+    # an account whose token file is not there has no token of its own: none is handed to its unit, and a brief naming
+    # that path is told it is hidden, as the unit hides it
+    one = s.accounts[0]
+    assert workers.own_token(one) == str(one.token_file)
+    one.token_file.unlink()
+    assert workers.own_token(one) == ""
+    out, prompt = started(s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp))), "r", f"Your token is {one.token_file}.")
+    assert out["unseen"] == [str(one.token_file)] and str(one.token_file) in prompt
 
 
 def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps_every_form(tmp_path):

@@ -765,7 +765,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: need-2026-11-18-111 raised it by 40, an Instagram post shut to a logged-out reader is said with the way past it, the browser plug-in's video action that reads it signed in (seen live: a room sent a reel to watch met "Instagram sent an empty media response" twice, and the signed-in browser's background tab painted a black frame with no sound), not folded to fit: watch.py 34 (INSTAGRAM, POST, SHUT and BROWSER, Shut, shut and browses, pull's first sentence, run's shut mark and the docstrings; POST and shut's path since PR 102's cold read: a story's link, which the plug-in's video action refuses, is never shut), words.py 5 (WATCH_SHUT and its two ways), daemon.py 3 (tool_watch's words by the room's own tools). 33,149: main 6c0f72b's 33,109 plus 40.
 
-- `lines = 33149`
+2026-11-18: start-names-unseen-paths raised it by 65, a worker's start says which paths in its brief the unit hides (that night a brief named another room's work folder as a source, the start said nothing and the worker ran one source short), not folded to fit: workers.py 61 (Systemd._fence, the one reading of the hidden paths sandbox and unseen share, and sandbox on it; unseen, its docstring; _bound, shared by _room and unseen; named, the paths a brief names, NAMED and WILD; own_token, shared by start and _launch; start's question, its log line, the prompt's line and the answer's two keys), words.py 4 (WORKER_UNSEEN and its why). 33,214: main e12676f's 33,149 plus 65.
+
+- `lines = 33214`
 
 ## Uncapped
 

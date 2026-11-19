@@ -1219,6 +1219,22 @@ def fired(j, w, s, sd, priv, state, name):
     return asyncio.run(go())
 
 
+def test_a_fired_agent_job_whose_brief_names_a_path_its_unit_hides_tells_its_worker_in_the_prompt(setup, tmp_path):
+    """A job's run reads no start answer (Jobs.fire keeps the worker's id): its worker hears of the path in PROMPT.md."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    s.units.keep(w.state, (w.state / "rooms",))                    # the daemon's launcher: every room's folder hidden
+    other = w.state / "rooms" / "other" / "work"
+    write_jobs(priv / "jobs.toml", '[jobs.peek]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+               f'message = "Read {other}/notes.md. FAKE report=\\"NO_REPLY\\" result=\\"NO_REPLY\\""\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+    row = fired(j, w, s, sd, priv, state, "peek")
+    prompt = (Path(row["staging"]) / "PROMPT.md").read_text()
+    assert f"- Not there for you, since your unit hides them: {other}/notes.md. " in prompt
+
+
 def test_a_booked_agent_job_names_add_ons_its_room_has_and_its_fired_worker_gets_them(setup, tmp_path, capsys):
     """The schedule tool and `yerk schedule add` take `addons`, checked against the job's room when it is booked with
     room_addons' own sentence, nothing written when refused; the list names them and the fired worker has them."""

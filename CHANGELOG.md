@@ -8,6 +8,24 @@ version changes.
 
 ## 2026-11-18
 
+### start-names-unseen-paths (#103)
+
+- A worker's start says which paths in its brief the worker cannot see. A brief named another room's work folder as a
+  source; the unit hid it, as it hides every room's folder but the worker's own room's work folder, the start said
+  nothing, and the worker ran one source short. Now the `worker` tool's answer (and `yerk worker start`'s) carries
+  `unseen`, each such path once in the brief's order, and `unseen_note`, one sentence naming three of them and the
+  count of the rest, the work folder a worker does see, and that it runs without them.
+- The worker's PROMPT.md has one more line then, naming every such path and asking for them in the report's first lines
+  with what was done without them, so a job's run and a need's builder, which read no answer, are told too.
+- The start is never refused and the brief never changed: a brief may quote a path it does not ask the worker to read.
+  With no such path the answer and the prompt are as before, byte for byte, and the fence is the same.
+- What counts is read from the code that builds the fence (`Systemd.unseen` beside `Systemd.sandbox`, one `_fence` for
+  both): absolute and `~/` paths, a glob by the part before its first wildcard, each as written and resolved, so a link
+  into a hidden folder counts.
+- The GUIDE's line on a worker's unit names the work folder it sees and the start's answer; its line on an owner room
+  reading Yerk's code names a worker's worktrees beside the checkout.
+- **Upgrading**: nothing to change. budgets.toml: `[code] lines` 33,149 to 33,214.
+
 ### need-2026-11-18-111 (#102)
 
 - An Instagram reel or post that Instagram shuts to a logged-out reader (an account that limits who sees its posts, an

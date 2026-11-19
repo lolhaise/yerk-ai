@@ -267,6 +267,10 @@ FOLD = ("\"{text}\" came in while you were answering, and your reply does not sa
         "name, the thing), so the person can see it was read; a correction replaces the question it corrects.")
 FILLER = frozenset("yes no ok okay yeah yep nah nope ty thx thanks pls lol nvm sure cool bet idk wait hmm same".split())   # no content
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
+# a start whose brief names a path the worker's unit hides (Systemd.unseen): said to the caller, never on a card (2026-11-18:
+# a brief named another room's work folder as a source, the start said nothing, and the worker ran one source short)
+WORKER_UNSEEN = ("this worker cannot see {paths}, and it runs without them: of the rooms' folders a worker sees only its own "
+                 "room's work folder, {work}")
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
 
