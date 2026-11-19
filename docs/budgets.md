@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 131923`
+- `total = 132023`
 
 ## [session_start.claude_code]
 
@@ -180,7 +180,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-09, fable-5-2 (everything in Yerk the way Claude Fable 5.2's docs say): the opening line, updates and recap, the "Communicating clearly" and "Finishing work" blocks of Claude Fable 5.2's prompting page in place of the lines they overlap, each of the nine absolutes given its scope and the exception that lifts it, and the line naming the steps that need no approval took the mechanics file to 8,348, 8,472 with a checkout's path of 130 characters; so 8,500. No part was measured again to pay for it, so the total rose by the 1,300, to 126,748.
 
-- `mechanics = 8500`
+2026-11-18, need-2026-11-18-110: the code line's clause (a worker's own change is in its worktrees, which `worker` report names, open to an owner room's Read and Grep like the checkout, so a claim about its change is checked there; that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word) took the mechanics file to 8,443, 8,567 with a checkout's path of 130 characters; so 8,600. No part was measured again to pay for it, so the total rose by the 100, to 132,023 on main's 131,923.
+
+- `mechanics = 8600`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -755,7 +757,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: worker-room-tools raised it by 89, a worker starts with the add-on tools its room gives every worker and a booked agent job can name add-ons (seen live: a booked check whose brief needed the room's mail tool started a worker with none, since a job could name no add-on and no start got one unnamed), not folded to fit: jobs.py 36 (`addons` in KEYS, the Job and make_job, refused on a note and a script by the key; fields_for, schedule_add's check against the room before anything is written, addons_refusal and room_confs, the sync's check where it can read the rooms file; the fire hands them on; runs_on names them; the header), workers.py 22 (with_defaults, its call in start, the docstrings), config.py 20 (worker_addons in ROOM_WORDS, DEFAULT_KEYS and BEFORE, its check and ADDON_NAME, inherit's carry), mcp_server.py 6 (the schedule tool's `addons`, both tools' words, the module's line), cli.py 5 (`--addon` on `yerk worker start` and `yerk schedule add`, the add's line). 33,069: main c957024's 32,980 plus 89.
 
-- `lines = 33069`
+2026-11-18: need-2026-11-18-110 raised it by 22, an owner room's Read, Grep and Glob reach each worker's worktrees and the worker's report names them (that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word), not folded to fit: daemon.py 12 (worktree_reads, a pattern per worktree name over the workers' root and none around the private folder, its docstring; spec_for hands it to every owner room), workers.py 10 (WORKTREES, the names a need brief gives a worker's worktrees; worktrees, those a worker left, in report; fnmatch). 33,091: main 1932bac's 33,069 plus 22.
+
+- `lines = 33091`
 
 ## Uncapped
 

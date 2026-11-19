@@ -1677,6 +1677,14 @@ needs = "an owner room with Read, Grep or Glob in its tools; nothing to set"
 free_path = "this is the free path"
 asked_as = ["read your own code", "read the harness code", "check the code yourself", "check a worker's claim", "yerk's code"]
 
+[abilities.worker-code]
+state = "built"
+what = "Reads a worker's own change before it is merged: every owner room's Read, Grep and Glob reach each worker's git worktrees, `wt` (Yerk's) and `<plug-in>-wt` (a plug-in's) in its folder, the names every need brief gives them, the `worker` tool's report names the ones a worker left, and the mechanics say so, so a room relaying a worker's result checks a claim about its change (a gate it says it added, a flag it says it passes) in the code before telling the owner, never on the report's word. The daemon writes the rule into each owner room's settings at its process start, a pattern over the workers' root, so a worker started after it is reached too; never the worker's own files (its report, brief and stream), never an added folder, and the secrets' denies still beat it. A need's builder's clean worktree goes when it ends (its branch kept for the next) and a worker's folder with the 30-day sweep; a room whose privacy is not owner reads its own folders only, as before."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools, and a worker whose worktree is `wt` or `<name>-wt` in its folder; nothing to set"
+free_path = "this is the free path"
+asked_as = ["read the worker's worktree", "read a worker's worktree", "check the worker's change", "the worker's code"]
+
 [abilities.rule-shape]
 state = "built"
 what = "Checks how its own rules are written: the doctor scores every rule file a room loads (the mechanics, its persona, rulebook and voice, the rules file) against the prompting guide, counting negatives with no why, shouted words, examples outside example tags, alarm marks on an instruction and topics said in two files. A count past budgets.toml [shape] is a finding, a rule filed in the last day that misses the shape is named by its cite, each room's report is docs/shape/<room>.md, the morning diff carries the totals, and `yerk docs shape` prints the report with each count's exact rule."
