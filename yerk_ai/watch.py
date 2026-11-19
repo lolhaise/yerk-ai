@@ -10,7 +10,10 @@ already pulled is never pulled or transcribed again: its folder keeps the video,
 came from, so another post whose slug is the same gets a folder of its own. A video file sent to a room (`path`), which a
 room's Read cannot open, is watched where it is (run_file): nothing pulled, the same frames under videos/, the transcript
 beside it as transcribe writes one. A Discord message's link (`message`) is watched from the video attached to it, which
-the daemon's bot saves to the room's inbox as a file sent to it (the adapter's pull), then run_file.
+the daemon's bot saves to the room's inbox as a file sent to it (the adapter's pull), then run_file. An Instagram post
+shut to a logged-out reader, as yt-dlp is (an account that limits who sees it, an age check, a login-only post: "Instagram
+sent an empty media response"), comes back marked `shut`, and the daemon names the way: a room's own browser add-on reads
+it signed in and saves its video in the room's work folder (the hands plug-in's video action), then run_file on that path.
 """
 from __future__ import annotations
 
@@ -41,6 +44,10 @@ FORMAT = "bv*[height<=720]+ba/b[height<=720]/b"    # the best picture at 720 lin
 SOURCE = "url.txt"           # the link a folder's post was pulled from
 MOST_BYTES = 300 << 20       # CAP in bytes: a video attached to a Discord message past it is not saved
 DISCORD = re.compile(r"https://(?:(?:www|ptb|canary)\.)?discord(?:app)?\.com/channels/(?:\d+|@me)/(\d+)/(\d+)/?")
+INSTAGRAM = re.compile(r"(?:^|\.)(?:instagram\.com|instagr\.am)$", re.I)     # a post a signed-in browser reads when yt-dlp cannot
+SHUT = re.compile(r"empty media response|login required|registered users|log in to access|locked behind the login|"
+                  r"redirected to the login page|restricted video|unreachable", re.I)   # yt-dlp's words for a post shut to it
+BROWSER = re.compile(r"^mcp__([A-Za-z0-9_-]+?)__browser$")    # an add-on's browser tool as a room's allow names it (hands')
 KINDS = (".mp4", ".mov", ".m4v", ".mkv", ".avi", ".3gp", ".mpg", ".mpeg", ".wmv")    # a video file as a phone or a camera saves it
 ONE = threading.Lock()       # one download at a time across rooms; a caller waits its turn, never fails for it
 GUARD = threading.Lock()     # held while a call picks its folder
@@ -50,6 +57,23 @@ Hear = Callable[[Path], dict[str, Any]]    # transcribe.run on the video, as the
 
 class Failed(Exception):
     """A step that stops the call, in words a room can say."""
+
+
+class Shut(Failed):
+    """An Instagram post yt-dlp could not read logged out, in its first sentence: the daemon says the way past it."""
+
+
+def shut(url: str, why: str) -> bool:
+    """An Instagram post whose yt-dlp words say a login, a follow, an age check or an empty media response: shut to a
+    logged-out reader, so a signed-in browser is the one way to it. `url` is one is_link took, so it parses."""
+    return bool(INSTAGRAM.search(urlsplit(url.strip()).hostname or "") and SHUT.search(why))
+
+
+def browses(conf: dict[str, Any]) -> bool:
+    """Whether a room has an add-on's browser tool, one its allow names whose server is in its mcp tables: the hands
+    plug-in's, whose video action reads an Instagram post signed in."""
+    servers = dict(conf.get("mcp") or {})
+    return any((m := BROWSER.match(str(t))) is not None and m.group(1) in servers for t in conf.get("allow") or [])
 
 
 def is_link(url: str) -> bool:
@@ -143,6 +167,8 @@ def pull(exe: str, url: str, folder: Path) -> tuple[Path, float]:
     got = said if said.parent == folder and said.is_file() and not said.is_symlink() else saved(folder)
     if p.returncode or got is None:
         why = re.split(r"\s+Use --|; please report this issue", last(err).removeprefix("ERROR: "), maxsplit=1)[0]   # its advice
+        if why and shut(url, why):                        # its first sentence: the rest is advice on cookies flags
+            raise Shut(words.no_paths(re.split(r"(?<=[a-z])\.\s", why, maxsplit=1)[0].rstrip("."))[:300])
         raise Failed(words.WATCH_FAILED.format(why=words.no_paths(why)[:300]) if why else words.WATCH_NOTHING)    # on its flags
     return got, time.monotonic() - t0
 
@@ -229,7 +255,8 @@ def run(url: str, frames: int, root: Path, hear: Hear) -> tuple[dict[str, Any], 
     """The tool's whole call, blocking (the daemon runs it off the loop): {"ok": False, "error"} on any stop, else the
     video, its length, its frames, its transcript, where that came from and whether it was pulled before; and the seconds
     its download took. With no transcript beside the video, the page's captions are tried first, and a download that
-    fails with a transcript there returns the transcript alone, its note saying why there is no video."""
+    fails with a transcript there returns the transcript alone, its note saying why there is no video. An Instagram post
+    shut to a logged-out reader is {"ok": False, "error": yt-dlp's first sentence, "shut": True}, for the daemon's words."""
     url, n, took, said = url.strip(), max(1, min(MOST, int(frames))), 0.0, ""
     info: dict[str, Any] = {}
     try:
@@ -258,6 +285,8 @@ def run(url: str, frames: int, root: Path, hear: Hear) -> tuple[dict[str, Any], 
             seconds, sound, picture = probe(video)
             shots, lost = stills(video, seconds, n) if picture else ([], words.WATCH_NO_PICTURE)
             text, file, why = heard(video, hear) if sound or kept.is_file() else ("", "", words.WATCH_NO_SOUND)
+    except Shut as e:
+        return {"ok": False, "error": str(e), "shut": True}, took
     except Failed as e:
         return {"ok": False, "error": str(e)}, took
     except (OSError, subprocess.SubprocessError) as e:

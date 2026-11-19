@@ -788,7 +788,7 @@ how = [
   "Captions first: with no transcript beside the video, `yt-dlp -J --skip-download` (about 2 s, nothing downloaded) reads the page's caption tracks, and one is fetched: the video's own language, an uploaded track over an auto-generated one, the untranslated auto track (<lang>-orig) over its plain one, never live chat and never a translation. Exactly one key a call, named only after -J showed it, since a pattern or a list reaches YouTube's auto-translated tracks and it answers HTTP 429. The json3 file it saves is read into the transcript's own lines, [HH:MM:SS -> HH:MM:SS] with the captions' timestamps under the same head line, saved as the transcript beside the video and then deleted; the result's `source` says captions or auto-captions. A video past the size cap still returns its captions, and only a video with no track goes to the paid transcription.",
   "Transcript: a video with no captions has its sound go through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
-  "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
+  "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used, and an Instagram post shut to a logged-out reader names the signed-in browser's way (yerk explain locked-reels).",
   "A file: a video file sent to a room is watched from its saved path the same way, nothing pulled (yerk explain video-file).",
   "Discord: a video attached to a Discord message is watched from the message's link, saved through the daemon's bot, never yt-dlp (yerk explain discord-video).",
 ]
@@ -800,6 +800,32 @@ price = "the download, the frames and a video's own captions are free; a video w
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
+
+# need-2026-11-18-111: a room sent an Instagram reel to watch met watch's "Instagram sent an empty media response" twice (the
+# account limits who sees its posts, and watch reads logged out, as yt-dlp does); the owner's signed-in browser loaded the
+# post, but its background tab painted a black frame and no sound reached the room, so the speech was never heard.
+[abilities.locked-reels]
+state = "described"
+what = "Watches an Instagram reel or post that Instagram shuts to a logged-out reader (an account that limits who sees it, an age check, a login-only post) through the browser ability's signed-in browser: the post's own page reads its video, the file is saved in the room's work folder, and watch takes it from there for its frames and its transcript."
+how = [
+  "The wall named with its way: watch reads as a logged-out reader, and when yt-dlp's words say Instagram shut the post to one (an empty media response, a login, a follow, an age check), watch says so in one line, never yt-dlp's advice on cookies, and names the browser's video action to a room that has the browser, or says the video was not seen to a room that has none.",
+  "One browser action, video, with the post's link (a reel's, a post's or a tv link) or a tab on it: the plug-in opens the post in a background tab of the signed-in browser and closes it after.",
+  "Read as the post's own player reads it: the page asks Instagram's web API for the post, the call yt-dlp makes with a signed-in session, and takes each part's biggest video file, so the session never leaves the browser: no cookie is read or copied, and the file's long signed address is never shown to the room.",
+  "Saved in the room's own work folder, under a folder for the post: each video streamed under a new temporary name and kept only as a video under 300 MB, what watch takes; the folder walked a part at a time, never through a link the room's shell left there.",
+  "Then watch on that path: the frames and the transcript as for any video file (yerk explain video-file), the transcript beside the file, so a second watch pays nothing again; the account and the caption come back as the post's own words, a record.",
+  "Misses in words: a browser not signed in to Instagram (the owner signs it in, or names the other computer's), a post the signed-in account cannot see, a post of photos only, Instagram's ask to wait, and a file the server refuses or that is not a video.",
+]
+tier = "key"
+keys = ["openai"]
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
+needs = "the browser ability with a video action in its plug-in, its browser signed in to Instagram on an account that may see the post; ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
+price = "the read, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+free_path = "the frames come without a key; without the browser's video action the room says the video itself was not seen"
+upgrade = "watch"
+why_not = "Its read rides on the browser ability, a plug-in an install attaches, not code in this repo; an install whose browser plug-in carries the video action has it there, and a room whose watch call says Instagram shut the post saves it with that action on the post's link, then watches the path it names, never answering off the caption or a black frame of the playing tab."
+asked_as = ["age-locked reel", "age restricted reel", "age-restricted reel", "login-only reel", "reel needs a login", "instagram needs a login",
+            "empty media response", "people under 18 can't see this", "set limits on who can see", "instagram won't let you watch it"]
 
 [abilities.video-file]
 state = "built"

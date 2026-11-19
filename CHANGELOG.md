@@ -8,6 +8,28 @@ version changes.
 
 ## 2026-11-18
 
+### need-2026-11-18-111
+
+- An Instagram reel or post that Instagram shuts to a logged-out reader (an account that limits who sees its posts, an
+  age check, a login-only post) can be watched now. `watch` reads as a logged-out reader, as yt-dlp does, so such a post
+  came back as "Instagram sent an empty media response", and the signed-in browser's background tab painted a black frame
+  with no sound, so a room sent a reel to watch heard nothing of it.
+- `watch` now says that wall in one line, Instagram's own first sentence and never yt-dlp's advice on cookies flags, and
+  names the way by what the room has: a room with an add-on's browser tool is told its `video` action reads the post
+  signed in and saves its video in the room's work folder, then to watch that path; a room with none is told the video
+  itself was not seen, never to answer off its caption or its cover. Any other site's login and Instagram's other words
+  read as before.
+- The hands plug-in's browser gains `video` (its branch need-2026-11-18-111, a049bf2): the post's own page asks
+  Instagram's web API for the post, as its player does, and hands saves each part's video file under
+  `hands-videos/instagram-<code>/` in the room's work folder, an MP4 under 300 MB, the folder walked without following a
+  link. The session never leaves the browser: no cookie is read or copied, and the file's signed address never reaches the
+  room. Not signed in, a post the account cannot see, photos only, Instagram's ask to wait and a refused file are each said.
+- New ability entry `locked-reels` (`yerk explain locked-reels`), its built part `watch`, whose entry names it.
+
+**Upgrading**: budgets.toml's `mcp__hands__` line rises to 10,470 and the session-start total to 132,262 for the browser's
+longer entry, and the code ceiling to 33,124; both come with the merge. The plug-in's main takes the branch at the same
+merge, and the rooms that attach it pick it up at their next start.
+
 ### deploy-waits-for-copy (#100)
 
 - `yerk deploy` now waits for a room's copy that is compacting before it restarts the daemon, instead of dropping it. A

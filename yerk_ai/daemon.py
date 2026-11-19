@@ -675,6 +675,9 @@ class Yerkd:
         root = self.state / "rooms" / room / "work" / watch.FOLDER
         r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
         r = {**r, "note": "; ".join(x for x in (r["note"], more) if x)} if more and r["ok"] else r
+        if r.pop("shut", False):              # an Instagram post shut to a logged-out reader: the way, by the room's own tools
+            r["error"] = words.WATCH_SHUT.format(why=r["error"], way=words.WATCH_SHUT_BROWSER if watch.browses(self.room_confs[room])
+                                                 else words.WATCH_SHUT_NO_BROWSER)
         how = "a file of the room's" if p else "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
         said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {r['source'] or 'no'} transcript, {how}"
                 if r["ok"] else r["error"][:160])

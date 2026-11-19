@@ -45,6 +45,7 @@ from test_discord import Attachment
 EXAMPLE_PRIVATE = Path(__file__).resolve().parents[1] / "examples" / "private"
 FFMPEG = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg and ffprobe are not installed")
 REEL = "https://www.instagram.com/reel/Ab1_cD-2eF/?igsh=placeholder"
+CLIP = "https://videos.example.com/clip/abc"           # a placeholder site that is not Instagram
 SAID = "[00:00:00 -> 00:00:04] a placeholder line over the test tone"
 TALK = "https://www.youtube.com/watch?v=AbC123xyz_0"
 TRACK = [{"ext": "json3"}, {"ext": "vtt"}]
@@ -299,19 +300,80 @@ def test_no_yt_dlp_on_the_machine_is_said_in_words(tmp_path, monkeypatch, clips)
 
 
 def test_a_site_that_wants_a_login_is_said_in_its_own_words(tmp_path, monkeypatch, clips):
-    y, work, bin_ = room(tmp_path, monkeypatch, clips, code=1, said="[instagram] abc: Extracting URL\nERROR: [Instagram] abc: login required\n")
-    r = ask(y, REEL)
-    assert r == {"ok": False, "error": words.WATCH_FAILED.format(why="[Instagram] abc: login required")}
+    """A site other than Instagram, whose posts no browser of the room's reads for watch (need 111 is Instagram's)."""
+    y, work, bin_ = room(tmp_path, monkeypatch, clips, code=1, said="[example] abc: Extracting URL\nERROR: [Example] abc: login required\n")
+    r = ask(y, CLIP)
+    assert r == {"ok": False, "error": words.WATCH_FAILED.format(why="[Example] abc: login required")}
     assert "login required" in r["error"] and "ERROR: " not in r["error"]
-    (bin_ / "knobs.json").write_text(json.dumps({"code": 1, "said": "ERROR: [Instagram] abc: Requested content is not available, "
+    (bin_ / "knobs.json").write_text(json.dumps({"code": 1, "said": "ERROR: [Example] abc: Requested content is not available, "
                                                  "rate-limit reached or login required. Use --cookies, --cookies-from-browser, "
-                                                 "--username and --password, --netrc-cmd, or --netrc (instagram) to provide "
+                                                 "--username and --password, --netrc-cmd, or --netrc (example) to provide "
                                                  "account credentials\n"}))
-    assert ask(y, REEL)["error"] == words.WATCH_FAILED.format(why="[Instagram] abc: Requested content is not available, "
+    assert ask(y, CLIP)["error"] == words.WATCH_FAILED.format(why="[Example] abc: Requested content is not available, "
                                                               "rate-limit reached or login required.")   # never its advice on flags
     (bin_ / "knobs.json").write_text(json.dumps({"code": 1}))
-    assert ask(y, REEL) == {"ok": False, "error": words.WATCH_NOTHING}
-    assert watch.saved(work / "videos" / "instagram-Ab1_cD-2eF") is None
+    assert ask(y, CLIP) == {"ok": False, "error": words.WATCH_NOTHING}
+    assert ask(y, REEL) == {"ok": False, "error": words.WATCH_NOTHING}                    # Instagram's, with no words, as before
+    assert watch.saved(work / "videos" / "example-abc") is None and watch.saved(work / "videos" / "instagram-Ab1_cD-2eF") is None
+
+
+# yt-dlp's own words (2026.08.19) when Instagram shuts a post to a logged-out reader, the wall need 111 hit twice
+EMPTY = ("ERROR: [Instagram] Ab1_cD-2eF: Instagram sent an empty media response. Check if this post is accessible in your browser "
+         "without being logged-in. If it is not, then use --cookies-from-browser or --cookies for the authentication. See  "
+         "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Otherwise, "
+         "if the post is accessible in browser without being logged-in, please report this issue on  "
+         "https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest "
+         "version using  yt-dlp -U\n")
+
+
+def test_an_instagram_post_shut_to_a_logged_out_reader_names_the_signed_in_browsers_way(tmp_path, monkeypatch, clips):
+    """need-2026-11-18-111: a room sent a reel to watch met "Instagram sent an empty media response" twice (the account
+    limits who sees it, and watch reads logged out, as yt-dlp does), then the signed-in browser's background tab painted a
+    black frame and no sound reached the room. The wall is said with the way: a room with an add-on's browser tool hears
+    its video action, which saves the post's video signed in (the hands plug-in's), then watch on that path; a room with
+    none hears that the video was not seen and is never answered off its caption; yt-dlp's advice on cookies flags never
+    reaches a room, and nothing is saved or retried."""
+    y, work, bin_ = room(tmp_path, monkeypatch, clips, code=1, said=EMPTY, info_code=1, info_said=EMPTY)
+    said = "[Instagram] Ab1_cD-2eF: Instagram sent an empty media response"
+    r = ask(y, REEL)
+    assert r == {"ok": False, "error": words.WATCH_SHUT.format(why=said, way=words.WATCH_SHUT_NO_BROWSER)}
+    assert "cookies" not in r["error"] and "github" not in r["error"] and "not seen" in r["error"]
+    assert kinds(bin_) == ["probe", "pull"] and watch.saved(work / "videos" / "instagram-Ab1_cD-2eF") is None
+    # an owner room with the browser add-on (a placeholder server's browser tool in its allow and its mcp tables)
+    conf = y.room_confs["example-room"]
+    y.room_confs["example-room"] = {**conf, "allow": ["mcp__example-hands__browser"], "mcp": {"example-hands": {"type": "stdio", "command": "node"}}}
+    r = ask(y, REEL)
+    assert r == {"ok": False, "error": words.WATCH_SHUT.format(why=said, way=words.WATCH_SHUT_BROWSER)}
+    assert "video action on this link" in r["error"] and "watch that path" in r["error"]
+    # each of yt-dlp's other words for a post shut to it, on each form of an Instagram link
+    for err in ("ERROR: [Instagram] Ab1_cD-2eF: This content is only available for registered users who follow this account. Use --cookies",
+                "ERROR: [Instagram] Ab1_cD-2eF: Requested content is not available, rate-limit reached or login required. Use --cookies",
+                "ERROR: [Instagram] Ab1_cD-2eF: The webpage request was redirected to the login page. You have exceeded the rate-limit",
+                "ERROR: [Instagram] Ab1_cD-2eF: Restricted Video: You must be 18 years old or over to see this video. Use --cookies"):
+        (bin_ / "knobs.json").write_text(json.dumps({"code": 1, "said": err + "\n", "info_code": 1}))
+        for link in (REEL, "https://instagram.com/p/Ab1_cD-2eF/", "https://instagr.am/p/Ab1_cD-2eF/"):
+            got = ask(y, link)
+            assert got["error"].startswith("no video was pulled from that link: Instagram shuts this post to a logged-out reader, "
+                                           "as watch is ([Instagram] Ab1_cD-2eF: "), (err, link, got)
+            assert got["error"].endswith(words.WATCH_SHUT_BROWSER) and "--" not in got["error"] and "shut" not in got, got
+    # Instagram's other words (a post with no video in it), and the same words on another site, stay as they were
+    (bin_ / "knobs.json").write_text(json.dumps({"code": 1, "said": "ERROR: [Instagram] Ab1_cD-2eF: There is no video in this post\n"}))
+    assert ask(y, REEL) == {"ok": False, "error": words.WATCH_FAILED.format(why="[Instagram] Ab1_cD-2eF: There is no video in this post")}
+    (bin_ / "knobs.json").write_text(json.dumps({"code": 1, "said": "ERROR: [Example] abc: login required\n"}))
+    assert ask(y, CLIP) == {"ok": False, "error": words.WATCH_FAILED.format(why="[Example] abc: login required")}
+
+
+def test_a_room_browses_only_with_an_add_ons_browser_tool_its_allow_names_and_its_mcp_tables_hold():
+    """watch.browses, the room's tools as the daemon reads them: an add-on server's browser tool named in allow, its server
+    in the room's mcp tables (an owner room's [defaults] merged in); never a tool alone, a server alone or another tool."""
+    hands = {"mcp": {"example-hands": {"command": "node"}}}
+    assert watch.browses({**hands, "allow": ["mcp__example-hands__browser"]})
+    assert watch.browses({**hands, "allow": ["mcp__example-hands__mail", "mcp__example-hands__browser"]})
+    for conf in ({**hands, "allow": ["mcp__example-hands__mail"]}, {**hands, "allow": ["mcp__other__browser"]}, {"allow": ["mcp__example-hands__browser"]},
+                 {**hands, "allow": ["mcp__example-hands"]}, {**hands}, {}):
+        assert not watch.browses(conf), conf
+    assert watch.shut(REEL, "Instagram sent an empty media response") and not watch.shut(CLIP, "Instagram sent an empty media response")
+    assert not watch.shut("https://notinstagram.com/p/x/", "login required") and not watch.shut(REEL, "There is no video in this post")
 
 
 def test_a_run_that_saves_nothing_is_said_in_words(tmp_path, monkeypatch, clips):
