@@ -215,7 +215,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
         `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
         add-on tools it gets too, as named here or by server, such as a browser; unnamed it has a shell, files, the web and the
-        add-ons this room gives every worker; a step needing `confirmed` it leaves ready for you). Returns its id, folder
+        add-ons this room gives every worker, and reads this room's memory with recall and read_memory where the install gives
+        workers those; a step needing `confirmed` it leaves ready for you). Returns its id, folder
         and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
         NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words)."""
         req = {"action": action, "brief": brief, "id": id, "room": room, "tasks": tasks or [],
@@ -236,9 +237,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         account); "agent", the brief a worker gets (a headless run with a card here, its last message told
         by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
         `model` one from the install's list, default this room's live ones; it has a shell, files and the web, of your tools
-        only the add-ons this room gives every worker and those `addons` names, never send, text or email, so a light timed
-        check needing your tools is a note); "script", the shell line to run (no model call, its
-        output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
+        only the add-ons this room gives every worker, those `addons` names and recall and read_memory where the install gives
+        workers those, never send, text or email, so a light timed check needing your tools is a note); "script", the shell
+        line to run (no model call, its output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
         adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
         rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
         next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.

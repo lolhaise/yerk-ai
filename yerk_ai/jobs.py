@@ -20,10 +20,10 @@ room (rooms.toml role = "machine"), else the ops room (yerkd.toml [jobs] ops_roo
 room. An agent job is a worker (workers.py): the
 `message` is its brief, the job's account, cap, model and thinking level apply, its card is in the job's room, and when
 it ends its last message is told by the room's own session; a last message of exactly NO_REPLY is
-silence. Its worker has a shell, files and the web, and of the room's own tools only the add-ons the room gives every
-worker (rooms.toml worker_addons) and the ones its `addons` names, checked against the room when it is booked and at
-each sync that can read the rooms file; never send, text or email. A note runs nothing: when it is due, its room's own session is told `[reminder NAME due]` and
-its `message` in a harness turn of its own and says it in its voice (no worker, shell, account or cap).
+silence. Its worker has a shell, files and the web, and of the room's own tools only the add-ons the room gives every worker (rooms.toml
+worker_addons), the ones its `addons` names, checked against the room when it is booked and at each sync that can read the rooms file, and recall
+and read_memory where [workers] yerk_tools gives workers those; never send, text or email. A note runs nothing: when it is due, its room's own
+session is told `[reminder NAME due]` and its `message` in a harness turn of its own and says it in its voice (no worker, shell, account or cap).
 `deliver = "silent"` keeps a job's output and relay out of the room (the ledger has them);
 a failure still alerts. Every run is a row in the ledger's job_runs table: the job, when it was
 planned and when it fired, how it ended, what was delivered or why nothing was.

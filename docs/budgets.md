@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 132362`
+- `total = 132562`
 
 ## [session_start.claude_code]
 
@@ -126,9 +126,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-18, need-2026-11-18-111: the hands plug-in's browser gains `video` (an Instagram post's own video, read by the signed-in browser where Instagram shuts the post to a logged-out reader, saved in the room's work folder for the `watch` tool on its path, since a room sent a reel to watch met watch's "Instagram sent an empty media response" twice and the browser's background tab painted a black frame with no sound; filed 2026-11-18): its entry 4,715 to 5,054 as the plug-in's branch need-2026-11-18-111 (a049bf2) builds it, 339 more, so about 5,085 as sent (31 over, as each of the five goes; all five 9,974 built on the plug-in's main 7a692c0, 10,313 on the branch, the same way); so 10,470, no other line lowered for it, the total rose by the 339 (to 132,362 on main's 132,023). Yerk AI's own tool entries do not change: the way past the wall is in watch's refusal, never its description.
 
+2026-11-19, worker-preamble-tools: the `worker` and `schedule` tools' words on what a worker has where the install gives workers recall and read_memory ([workers] yerk_tools; the `worker` tool's: it reads this room's memory with them; the `schedule` tool's: they are among the room's tools an agent job's worker has), since a worker given both was told it had no Yerk AI tools and read the memory only when its brief named one: worker 1,796 to 1,893 and schedule 2,727 to 2,789 as this tree builds them, all 24 from 26,611 to 26,770 (159 more, measured on main f0abcba and on this tree the same way), about 28,490 as sent, 90 over the line; so 28,600, no part could pay, the total rose by the 200 (to 132,562 on main's 132,362). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 28400`
+- `yerk_tools = 28600`
 - `deferred_tool_names = 3581`
 - `mcp__hands__ = 10470`
 - `mcp__web-ladder__web_image = 913`
@@ -767,7 +769,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: start-names-unseen-paths raised it by 65, a worker's start says which paths in its brief the unit hides (that night a brief named another room's work folder as a source, the start said nothing and the worker ran one source short), not folded to fit: workers.py 61 (Systemd._fence, the one reading of the hidden paths sandbox and unseen share, and sandbox on it; unseen, its docstring; _bound, shared by _room and unseen; named, the paths a brief names, NAMED and WILD; own_token, shared by start and _launch; start's question, its log line, the prompt's line and the answer's two keys), words.py 4 (WORKER_UNSEEN and its why). 33,214: main e12676f's 33,149 plus 65.
 
-- `lines = 33214`
+2026-11-19: worker-preamble-tools raised it by 3, a worker's prompt names the Yerk AI tools it was given (seen live: two workers given recall and read_memory read in their prompts that they had none, so a worker read the memory only when its brief named a tool), not folded to fit: workers.py 2 (the prompt's line on them, from `yerk`, the one list the line, worker.json and its server take), mcp_server.py 1 (the worker tool's words on them). 33,217: main f0abcba's 33,214 plus 3.
+
+- `lines = 33217`
 
 ## Uncapped
 

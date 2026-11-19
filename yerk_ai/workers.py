@@ -13,7 +13,7 @@ daemon restarts.
   The unit's environment names its account's token file and no
   other; its first step (`python -m yerk_ai.workers run`) reads it the way a room does
   (accounts.account_env) and starts claude with an allowlisted environment. A worker gets no room
-  session, no MCP server (so no `worker` tool: no workers spawning workers) and no subagent tool.
+  session, no `worker` or `schedule` tool on any MCP server it is given (so no workers spawning workers) and no subagent tool.
   The unit sees the state folder read-only and its own folder writable; the install's secret, the
   private layer's secrets/ (its own account's token alone comes back, read-only) and every room's
   folder are not there at all (Systemd.sandbox), so a worker spends no money outside the daemon's
@@ -750,7 +750,7 @@ class Workers:
         (d / "BRIEF.md").write_text(brief)
         if tasks:
             tasks_md.write_text("".join(f"- [ ] {t}\n" for t in tasks))
-        prompt = d / "PROMPT.md"
+        prompt, yerk = d / "PROMPT.md", [t for t in WORKER_TOOLS if t in self.conf.yerk_tools]   # one list: words, worker.json, server
         prompt.write_text(
             f"You are a Yerk AI worker: a headless Claude Code run with one brief, started from room {room}.\n"
             f"- Your folder is {d}. Write your files there unless the brief names another place.\n"
@@ -758,8 +758,10 @@ class Workers:
             "it is done. The room's card shows these lines as you tick them.\n"
             f"- Write your report to {report}. Its first line is the one-line result; the card shows it.\n"
             "- Your last message is the deliverable: end with it, no tool call after it.\n"
-            f"- You have no room session, no Yerk AI tools and no subagents. Your cap is {cap / 60:g} minutes; "
-            "past it the run is stopped.\n"
+            + (f"- You have no room session and no subagents. Of Yerk AI's tools you have {' and '.join(f'mcp__yerk__{t}' for t in yerk)} and no other: "
+               f"{'they read' if yerk[1:] else 'it reads'} the memory of the room that started you, as the room does. Where the brief turns on what "
+               "the owner or the room said, decided or keeps on file, look there first. " if yerk else
+               "- You have no room session, no Yerk AI tools and no subagents. ") + f"Your cap is {cap / 60:g} minutes; past it the run is stopped.\n"
             + (f"- You have the room's own {', '.join(given[1])} too. A step that needs the owner's word (`confirmed`) is "
                "refused, since nobody is here to give it: leave that step ready, and say in your report what waits for "
                "the word, for the room to do once the owner says it.\n" if given[1] else "")
@@ -776,12 +778,12 @@ class Workers:
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
                 "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
         spec.update({k: v for k, v in (more or {}).items() if k not in spec})
-        if self.conf.yerk_tools:
-            spec["yerk_tools"] = list(self.conf.yerk_tools)
+        if yerk:
+            spec["yerk_tools"] = yerk
         if given[1]:
             spec["addon_tools"] = given[1]
-        if self.conf.yerk_tools or given[1]:
-            spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json", given[0]))
+        if yerk or given[1]:
+            spec["mcp_config"] = str(mcp_config(self.state, room, yerk, d / "mcp.json", given[0]))
         (d / "worker.json").write_text(json.dumps(spec, indent=1))
         now = round(time.time(), 3)
         busy = self.busy(acct.name)
