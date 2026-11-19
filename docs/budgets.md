@@ -761,7 +761,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-18: need-2026-11-18-110 raised it by 22, an owner room's Read, Grep and Glob reach each worker's worktrees and the worker's report names them (that afternoon a room relaying a worker's result had its Grep of the worker's worktree refused and gave the change on the report's word), not folded to fit: daemon.py 12 (worktree_reads, a pattern per worktree name over the workers' root and none around the private folder, its docstring; spec_for hands it to every owner room), workers.py 10 (WORKTREES, the names a need brief gives a worker's worktrees; worktrees, those a worker left, in report; fnmatch). 33,109: main ed081db's 33,087 plus 22.
 
-- `lines = 33109`
+2026-11-18: start-names-unseen-paths raised it by 65, a worker's start says which paths in its brief the unit hides (that night a brief named another room's work folder as a source, the start said nothing and the worker ran one source short), not folded to fit: workers.py 61 (Systemd._fence, the one reading of the hidden paths sandbox and unseen share, and sandbox on it; unseen, its docstring; _bound, shared by _room and unseen; named, the paths a brief names, NAMED and WILD; own_token, shared by start and _launch; start's question, its log line, the prompt's line and the answer's two keys), words.py 4 (WORKER_UNSEEN and its why). 33,174: main 6c0f72b's 33,109 plus 65.
+
+- `lines = 33174`
 
 ## Uncapped
 

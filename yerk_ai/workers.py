@@ -87,12 +87,15 @@ EXIT, TASKS, REPORT = "exit.json", "TASKS.md", "REPORT.md"
 # a worker's git worktrees in its folder, by the names every need brief gives them (needs.py): `wt`, Yerk's, and
 # `<plug-in>-wt`, a plug-in's; an owner room's Read, Grep and Glob reach them (Yerkd.worktree_reads), its own files never
 WORKTREES = ("wt", "*-wt")
-TOOLS =["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
+TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
 WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
 ADDON = re.compile(r"^mcp__([A-Za-z0-9_-]+?)(?:__([A-Za-z0-9_-]+))?$")   # a room's add-on tool, or all of its server's
+# a path a brief names: absolute or ~/, at a word's start or after an opening bracket, a quote, a backtick or "="; a closing
+# bracket, a quote or a backtick ends it, and the sentence's punctuation after it is not part of it (NAMED_END)
+NAMED, NAMED_END, WILD = re.compile(r"(?<![^\s(\[{<'\"`=])~?/[^\s'\"`()\[\]{}<>]*"), ".,;:!?", re.compile(r"[*?]")
 CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)   # an env name or header that hands one over
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
@@ -220,6 +223,20 @@ def with_defaults(conf: dict[str, Any], given: tuple[dict[str, Any], list[str]],
     return servers, tools
 
 
+def named(brief: str) -> list[str]:
+    """The paths a brief names, each once in its order: every absolute path, and every ~/ one as the daemon's user's."""
+    out: list[str] = []
+    for m in NAMED.finditer(brief):
+        if (raw := m[0].rstrip(NAMED_END)) and (s := str(Path(os.path.expanduser(raw)))) not in out:
+            out.append(s)
+    return out
+
+
+def own_token(acct: Account) -> str:
+    """The token file a worker's unit gets as YERK_TOKEN_FILE (Systemd.sandbox binds it back): its account's, when there."""
+    return str(acct.token_file) if acct.token_file and acct.token_file.is_file() else ""
+
+
 # the unit; systemctl and unit_line are the jobs' and the deploy's too
 def systemctl(*args: str, check: str = "", timeout: float = 60) -> subprocess.CompletedProcess[str]:
     """`systemctl --user ARGS`; with `check`, an OSError naming it and the stderr when it fails."""
@@ -261,8 +278,8 @@ class Systemd:
         # read-only inside the writable folder, so no tool, shell shape or program of the worker's rewrites, moves or removes it
         props += [f"ReadOnlyPaths={folder / n}" for n in GATE_FILES if (folder / n).is_file()]
         rooms, token = self.state / "rooms", env.get("YERK_TOKEN_FILE", "")
-        for p in self.hidden:
-            if p != rooms and token and Path(token).is_relative_to(p):
+        for p, back in self._fence(self._room(folder), token):
+            if p != rooms and back:
                 # secrets/ holding the worker's own token (secrets/claude-<name>.token, the default): an empty read-only
                 # filesystem with that one file bound back, since nothing comes back inside an InaccessiblePaths (systemd.exec)
                 props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"]
@@ -274,17 +291,52 @@ class Systemd:
             # with the worker's own room's work folder bound back at its own path, read and write: the
             # one room folder a brief may name (systemd.exec's TemporaryFileSystem plus BindPaths pattern)
             props.append(f"TemporaryFileSystem={rooms}:ro")
-            if (room := str(self._room(folder))) and "/" not in room and room not in (".", ".."):
-                props.append(f"BindPaths=-{rooms / room / 'work'}")
+            if back:
+                props.append(f"BindPaths=-{back}")
         return [x for p in props for x in ("-p", p)]
 
+    def _fence(self, room: str, token: str) -> list[tuple[Path, Path | None]]:
+        """Each hidden path with what comes back inside it, for a worker of `room` (_room's) whose own token file is `token`:
+        rooms/ its room's work folder, a secrets folder holding the token that file, any other nothing. The one reading of
+        `hidden` the fence (sandbox) and the question (unseen) share, so the two cannot drift apart."""
+        rooms, out = self.state / "rooms" if self.state else None, list[tuple[Path, Path | None]]()
+        for p in self.hidden:
+            if p != rooms and token and Path(token).is_relative_to(p):
+                out.append((p, Path(token)))
+            elif p != rooms:
+                out.append((p, None))
+            else:                                   # rooms/ itself: the one room folder a brief may name comes back
+                out.append((p, p / room / "work" if room and "/" not in room and room not in (".", "..") else None))
+        return out
+
+    def unseen(self, room: str, bind: str, token: str, paths: Sequence[str]) -> list[str]:
+        """Of `paths`, those this unit hides from a worker of `room` (of `bind`, when the daemon's caller gave one; the calling
+        room's own work folder is then hidden like any other room's) whose own token file is `token`: one of the hidden paths
+        or under one, and not what comes back inside it (_fence). The rooms' root itself is hidden: a worker sees it holding
+        one room. Each path as written and resolved, so a link into a hidden folder is hidden too, and a glob by the part
+        before its first wildcard; with no state folder there is no fence and nothing is hidden. Each once, in order."""
+        if self.state is None:
+            return []
+        fence, out = self._fence(self._bound({"room": room, "bind": bind}), token), []
+        for s in paths:
+            here = [Path(WILD.split(s, 1)[0])]                  # a glob: the part before its first wildcard
+            with contextlib.suppress(OSError, RuntimeError):
+                here.append(here[0].resolve())
+            if s not in out and any(q.is_relative_to(p) and not (back and q.is_relative_to(back)) for q in here for p, back in fence):
+                out.append(s)
+        return out
+
     @staticmethod
-    def _room(folder: Path) -> str:
+    def _bound(spec: dict[str, Any]) -> str:
+        """The room whose work folder comes back: the `bind` the daemon gave, else the worker's own room."""
+        return str(spec.get("bind") or spec.get("room") or "")
+
+    @classmethod
+    def _room(cls, folder: Path) -> str:
         """The room whose work folder the worker gets, from the spec Workers.start wrote before the launch: its own, or the
         `bind` the daemon gave it (a pictures backfill: its card in the machine room, the pictures in the owner room's inbox)."""
         try:
-            spec = json.loads((folder / "worker.json").read_text())
-            return str(spec.get("bind") or spec.get("room") or "")
+            return cls._bound(json.loads((folder / "worker.json").read_text()))
         except (OSError, ValueError):
             return ""
 
@@ -692,6 +744,9 @@ class Workers:
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
         report, tasks_md = d / REPORT, d / TASKS
+        bind = str((more or {}).get("bind") or "")
+        if (unseen := self.launcher.unseen(room, bind, own_token(acct), named(brief))):   # told, never refused: a brief may
+            log.info("worker %s: its brief names %d path(s) its unit hides", wid, len(unseen))   # quote what it never reads
         (d / "BRIEF.md").write_text(brief)
         if tasks:
             tasks_md.write_text("".join(f"- [ ] {t}\n" for t in tasks))
@@ -710,7 +765,10 @@ class Workers:
                "the word, for the room to do once the owner says it.\n" if given[1] else "")
             + "- Your tool calls pass Yerk AI's gates: a plain delete in your folder goes to the trash; a delete "
             "elsewhere or after a cd, an external action (a post, a login, money, a message out) and a change to "
-            "Yerk AI's own config are refused. Put what you could not do in your report.\n\n"
+            "Yerk AI's own config are refused. Put what you could not do in your report.\n"
+            + (f"- Not there for you, since your unit hides them: {', '.join(unseen)}. The brief names them; name them in your "
+               "report's first lines, with what you did without them.\n" if unseen else "")
+            + "\n"
             f"The brief (also in {d / 'BRIEF.md'}):\n\n{brief.strip()}\n")
         sid = str(uuid.uuid4())
         spec = {"id": wid, "room": room, "account": acct.name, "model": model, "effort": effort, "session_id": sid,
@@ -740,7 +798,10 @@ class Workers:
             self.watch.add(d)
         out = {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model, "effort": effort,
                "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60,
-               **({"addons": given[1]} if given[1] else {})}
+               **({"addons": given[1]} if given[1] else {}),
+               **({"unseen": unseen, "unseen_note": words.WORKER_UNSEEN.format(
+                   paths=words.few(unseen), work=self.state / "rooms" / (bind or room) / "work")}
+                  if unseen else {})}
         if row.get("waiting"):
             row["line"] = len(self.in_line(acct.name))
             await self._show(row)
@@ -771,8 +832,8 @@ class Workers:
             return f"no account {row['account']!r}"
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PYTHONPATH": str(PACKAGE.parent),
                "CLAUDE_CONFIG_DIR": str(acct.config_dir)}
-        if acct.token_file and acct.token_file.is_file():
-            env["YERK_TOKEN_FILE"] = str(acct.token_file)
+        if (token := own_token(acct)):
+            env["YERK_TOKEN_FILE"] = token
         me = [sys.executable, "-P", "-m", "yerk_ai.workers"]    # -P: nothing in the folder can shadow an import
         try:
             await asyncio.to_thread(self.launcher.start, row["unit"], [*me, "run", str(d / "worker.json")], env, d,

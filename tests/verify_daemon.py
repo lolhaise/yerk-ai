@@ -270,7 +270,7 @@ class Run:
             self.undo.append((obj, name, getattr(obj, name)))
             setattr(obj, name, value)
         put(dmod.discord, "Client", lambda **kw: self.gateway)
-        put(workers, "Systemd", lambda *a, **kw: self.units)
+        put(workers, "Systemd", self.units.keep)           # the stand-in keeps the daemon's state folder and hidden paths
         put(doctor, "systemctl", lambda *a, **k: subprocess.CompletedProcess(a, 0, "enabled\n" * (len(a) - 1), ""))
         put(page, "tailnet", lambda: "")
         put(page, "wsl", lambda: False)

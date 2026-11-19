@@ -14,7 +14,7 @@ from pathlib import Path
 from test_pictures import Rec, Units
 from test_remember import daemon
 
-from yerk_ai import cli, context, curate, mcp_server, needs, words
+from yerk_ai import cli, context, curate, mcp_server, needs, words, workers
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 
 ASK = ("what does the picture in this post say", "web_fetch of the post: its text and the picture's address, no way to look at it",
@@ -88,6 +88,20 @@ def test_the_brief_from_a_need_carries_every_ask_the_repo_and_the_shape_of_done(
     assert "Never merge, push, open a PR or deploy" in b and "`PR <number>: <what it adds>`" in b
     assert "the full suite green" in b and "no tool call after it" in b and "\N{EM DASH}" not in b
     assert "is a placeholder, never one from the asks above" in b         # a room's asks carry real names; the repo never does
+
+
+def test_a_builders_brief_quoting_a_path_its_unit_hides_starts_and_tells_the_builder_in_its_prompt(tmp_path, capsys):
+    """need_build reads no start answer but its id: the builder hears of the path in PROMPT.md, and the build goes on."""
+    y, rec = ops(tmp_path, "example-room")
+    y.workers.launcher = launcher = Units()
+    workers.Systemd.__init__(launcher, y.state, (y.state / "rooms",))      # the daemon's launcher: every room's folder hidden
+    names = [a.name for a in y.accounts]
+    y.conf["needs"] = {"account": names[-1], "auto": False}
+    other = y.state / "rooms" / "example-room" / "work" / "scan.png"
+    day = need(y, "example-room", f"read the scan {other}", "no ocr tool", "read a scanned page")["day"]
+    r = asyncio.run(y.control({"needs": {"action": "build", "day": day, "n": 1}}))
+    assert r["ok"] and r["unseen"] == [str(other)] and len(launcher.calls) == 1
+    assert f"- Not there for you, since your unit hides them: {other}. " in (Path(r["staging"]) / "PROMPT.md").read_text()
 
 
 def test_build_starts_one_builder_on_the_needs_account_and_its_end_sets_the_state_list_and_done_follow(tmp_path, capsys):
