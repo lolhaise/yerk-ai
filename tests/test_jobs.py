@@ -1338,7 +1338,8 @@ def test_a_job_naming_no_add_on_in_a_room_giving_every_worker_one_starts_a_worke
 
 def test_the_schedule_and_worker_tools_hand_addons_on_and_say_what_a_worker_has(monkeypatch, tmp_path):
     """The schedule tool's `addons` reaches the daemon as the worker tool's does, and both tools say what a worker has: a
-    shell, files and the web, of the room's tools only the add-ons the room gives every worker and those named."""
+    shell, files and the web, of the room's tools only the add-ons the room gives every worker, those named and recall and
+    read_memory where the install gives workers those (2026-11-18: a worker given both was told it had none)."""
     from yerk_ai import mcp_server
     asked: list[dict] = []
 
@@ -1355,10 +1356,13 @@ def test_the_schedule_and_worker_tools_hand_addons_on_and_say_what_a_worker_has(
     asyncio.run(server.call_tool("worker", {"action": "start", "brief": "look"}))
     assert asked[0]["addons"] == ["mailbox"] and asked[1]["addons"] == []
     said = {t.name: " ".join(str(t.description).split()) for t in asyncio.run(server.list_tools())}
-    assert ("it has a shell, files and the web, of your tools only the add-ons this room gives every worker and those `addons` "
-            "names, never send, text or email, so a light timed check needing your tools is a note") in said["schedule"]
+    assert ("it has a shell, files and the web, of your tools only the add-ons this room gives every worker, those `addons` "
+            "names and recall and read_memory where the install gives workers those, never send, text or email, so a light "
+            "timed check needing your tools is a note") in said["schedule"]
     assert '<example>"remind me Saturday at 10 to call the clinic"' in said["schedule"]                    # the example kept
-    assert "unnamed it has a shell, files, the web and the add-ons this room gives every worker" in said["worker"]
+    assert ("unnamed it has a shell, files, the web and the add-ons this room gives every worker, and reads this room's memory "
+            "with recall and read_memory where the install gives workers those; a step needing `confirmed` it leaves ready for "
+            "you") in said["worker"]
     monkeypatch.setattr(cli, "_control", lambda state, payload, timeout: asked.append(payload["worker"]) or {"ok": True})
     (brief := tmp_path / "brief.md").write_text("look")
     assert cli.main(["worker", "start", "--brief", str(brief), "--room", "r", "--addon", "mailbox", "--addon", "mcp__abacus__sum"]) == 0

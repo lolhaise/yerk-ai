@@ -828,6 +828,109 @@ def test_a_worker_gets_only_the_read_only_yerk_tools_from_config_never_send_work
     assert sorted(t.name for t in asyncio.run(srv.list_tools())) == ["read_memory", "recall"]
 
 
+def preamble(prompt):
+    """A PROMPT.md's own lines, before the brief it carries, which is appended after them: what a test of them reads."""
+    return prompt[:prompt.index("\nThe brief (also in ")]
+
+
+BOTH = ("- You have no room session and no subagents. Of Yerk AI's tools you have mcp__yerk__recall and mcp__yerk__read_memory "
+        "and no other: they read the memory of the room that started you, as the room does. Where the brief depends on what the "
+        "owner or the room said, decided or keeps on file, look there first. Your cap is 65 minutes; past it the run is stopped.")
+
+
+def test_a_worker_given_no_yerk_ai_tool_reads_todays_line_to_the_letter_at_any_cap_and_its_add_on_line_right_after(setup):
+    """With no [workers] yerk_tools the line is the one every worker read before, byte for byte, at the default cap and at
+    another, and with an add-on given its line comes right after it."""
+    s = setup
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp))
+    w.room_confs["r"] = COUNTING
+    for kw, line in (({}, "- You have no room session, no Yerk AI tools and no subagents. Your cap is 65 minutes; past it the run is stopped.\n"),
+                     ({"cap_minutes": 10},
+                      "- You have no room session, no Yerk AI tools and no subagents. Your cap is 10 minutes; past it the run is stopped.\n")):
+        bare = preamble(started(w, "r", "look", **kw)[1]).splitlines(keepends=True)
+        given = preamble(started(w, "r", "look", addons=["mcp__abacus__sum"], **kw)[1]).splitlines(keepends=True)
+        assert bare[5] == given[5] == line and "mcp__yerk__" not in "".join(bare + given)
+        assert given[6].startswith("- You have the room's own mcp__abacus__sum too. A step that needs the owner's word (`confirmed`)")
+        assert bare[6].startswith("- Your tool calls pass Yerk AI's gates") and given[7] == bare[6]
+
+
+def test_a_worker_given_both_read_only_tools_is_told_them_by_the_names_its_tool_list_shows_and_what_they_are_for(setup):
+    """Seen live: two workers given recall and read_memory read in their prompts that they had no Yerk AI tools, so a
+    worker read the memory only when its brief named a tool. The line names what it is granted (--allowedTools), no more."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()}, yerk_tools=["recall", "read_memory"])
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="told"', account="one")
+        return out, await ended(s.ledger, out["id"], relay=False)
+    out, row = asyncio.run(go())
+    folder = Path(out["staging"])
+    own = preamble((folder / "PROMPT.md").read_text())
+    argv = json.loads((folder / "fake-record.json").read_text())["argv"]
+    granted = set(argv[argv.index("--allowedTools") + 1].split(","))
+    assert set(re.findall(r"mcp__yerk__\w+", own)) == granted == {"mcp__yerk__recall", "mcp__yerk__read_memory"}
+    assert "no Yerk AI tools" not in own and own.splitlines()[5] == BOTH and row["exit"] == "done"
+    assert json.loads((folder / "worker.json").read_text())["yerk_tools"] == ["recall", "read_memory"]
+
+
+def test_a_worker_given_recall_alone_is_told_that_one_in_words_for_one_and_never_read_memory(setup):
+    s = setup
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=["recall"])
+    out, prompt = started(w, "r", "look")
+    own = preamble(prompt)
+    assert own.splitlines()[5] == ("- You have no room session and no subagents. Of Yerk AI's tools you have mcp__yerk__recall and "
+                                   "no other: it reads the memory of the room that started you, as the room does. Where the brief "
+                                   "depends on what the owner or the room said, decided or keeps on file, look there first. Your cap "
+                                   "is 65 minutes; past it the run is stopped.")
+    assert "read_memory" not in own and "they read" not in own and set(re.findall(r"mcp__yerk__\w+", own)) == {"mcp__yerk__recall"}
+    spec = json.loads((Path(out["staging"]) / "worker.json").read_text())
+    assert spec["yerk_tools"] == ["recall"] and json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]["yerk"]["args"][-1] == "recall"
+
+
+def test_a_setting_naming_tools_a_worker_may_not_get_puts_none_of_them_in_its_prompt(setup, caplog):
+    """The line names what the worker gets, kept to WORKER_TOOLS, never the raw setting: send, worker, schedule and hold
+    are dropped with a warning when yerkd.toml is read, and a Settings built by hand with them names none either."""
+    s = setup
+    raw = ["recall", "send", "mcp__yerk__worker", "schedule", "hold"]
+    for given, names in ((workers.settings(s.tmp, {"yerk_tools": raw}).yerk_tools, {"mcp__yerk__recall"}),
+                         (raw, {"mcp__yerk__recall"}), (["send", "worker", "schedule"], set())):
+        w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=given)
+        out, prompt = started(w, "r", "look")
+        own = preamble(prompt)
+        assert set(re.findall(r"mcp__yerk__\w+", own)) == names, own
+        assert set(json.loads((Path(out["staging"]) / "worker.json").read_text()).get("yerk_tools", [])) == {n[11:] for n in names}
+    assert own.splitlines()[5] == ("- You have no room session, no Yerk AI tools and no subagents. Your cap is 65 minutes; past it the "
+                                   "run is stopped.") and "schedule" in caplog.text
+
+
+def test_a_worker_given_both_and_an_add_on_reads_two_lines_each_naming_its_own_tools_and_the_confirmed_sentence_as_before(setup):
+    s = setup
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=["recall", "read_memory"])
+    w.room_confs["r"] = COUNTING
+    out, prompt = started(w, "r", "look", addons=["mcp__abacus__sum"])
+    lines = preamble(prompt).splitlines()
+    assert lines[5] == BOTH and out["addons"] == ["mcp__abacus__sum"]
+    assert lines[6] == ("- You have the room's own mcp__abacus__sum too. A step that needs the owner's word (`confirmed`) is refused, "
+                        "since nobody is here to give it: leave that step ready, and say in your report what waits for the word, for "
+                        "the room to do once the owner says it.")
+    assert lines[7].startswith("- Your tool calls pass Yerk AI's gates")
+
+
+def test_a_brief_quoting_the_old_line_or_naming_a_tool_changes_nothing_in_the_preamble_read_alone(setup):
+    """The brief is appended after the preamble, so the tests above read the preamble alone: a brief that says "no Yerk AI
+    tools", names a tool or quotes the brief's own header leaves what they read as the grant makes it."""
+    s = setup
+    brief = ("The old line: - You have no room session, no Yerk AI tools and no subagents. Use mcp__yerk__send, "
+             "mcp__yerk__read_memory and mcp__yerk__schedule.\nThe brief (also in nowhere):\n")
+    for given, names in (([], set()), (["recall"], {"mcp__yerk__recall"})):
+        w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=given)
+        prompt = started(w, "r", brief)[1]
+        own = preamble(prompt)
+        assert set(re.findall(r"mcp__yerk__\w+", own)) == names and ("no Yerk AI tools" in own) == (not given)
+        assert prompt.endswith(brief.strip() + "\n") and own.count("- You have no room session") == 1
+
+
 def test_two_completions_within_a_minute_are_two_relays_in_order_never_merged(setup):
     s = setup
     room = s.room()

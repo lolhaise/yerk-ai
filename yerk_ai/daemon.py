@@ -1342,7 +1342,7 @@ class Yerkd:
         return {**r, "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on) if r.get("topic") else words.RULE_CLAUSE.format(job=r["job"]))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
+        """The `worker` tool (rooms only: no server a worker is given holds it). `yerk worker` comes through
         /control, which keeps every form, for any room."""
         named = str(req.get("room") or "") if req.get("action") == "start" else ""
         return self.owner_only(room, named) or await self.workers.handle(room, req)

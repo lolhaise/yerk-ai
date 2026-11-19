@@ -6,6 +6,27 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-19
+
+### worker-preamble-tools (#104)
+
+- A worker given Yerk AI's read-only tools is told it has them. An install can give every worker `recall` and
+  `read_memory` (`[workers] yerk_tools` in yerkd.toml), and two workers given both read in their PROMPT.md that they had
+  "no room session, no Yerk AI tools and no subagents", so a worker read the memory only when its brief named a tool.
+- Now that line names the tools it has as its tool list shows them (`mcp__yerk__recall`, `mcp__yerk__read_memory`, or
+  the one it was given), says it has no other Yerk AI tool, that they read the memory of the room that started it as
+  the room does, and that a brief depending on what the owner or the room said, decided or keeps on file is looked up
+  there first. The names come from the one list the start writes to worker.json and the unit turns into
+  `--allowedTools`, kept to recall and read_memory, so a name the setting holds that a worker may not get is never said.
+- With none given the line is today's, byte for byte, and an add-on's line still follows it, its `confirmed` sentence
+  as before.
+- The `worker` tool's words say a worker started with no add-on named reads this room's memory with recall and
+  read_memory where the install gives workers those; the `schedule` tool's say an agent job's worker has them among the
+  room's tools on the same condition. The words are the same on every install. The module lines that said a worker has
+  no MCP server, and a job's worker has of the room's tools only add-ons, say what stays true.
+- **Upgrading**: nothing to change. budgets.toml: `[session_start.claude_code] yerk_tools` 28,400 to 28,600, `total`
+  132,362 to 132,562, `[code] lines` 33,214 to 33,217.
+
 ## 2026-11-18
 
 ### start-names-unseen-paths (#103)
