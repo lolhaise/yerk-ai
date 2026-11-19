@@ -3,8 +3,9 @@ moves the daemon back to the commit it ran and proves that. REF must fast-forwar
 from the branch checked out in the daemon's tree, which moves to it by `merge --ff-only` (a rollback moves it
 back with `reset --keep`; a detached tree stays detached); the fast tests run there, then the layer's recall
 controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing); the
-person's turn runs, no room has had a message either way (a person's or its own post) for [deploy] quiet_seconds and the memory
-index is not rebuilding, and gives quiet_seconds and the memory index is not rebuilding, and gives up after cap_minutes, the checkout as it was
+restart waits until no person's turn runs, no room's copy (its compaction off to the side) is younger than
+[deploy] copy_seconds, no room has had a message either way (a person's or its own post) for [deploy]
+quiet_seconds and the memory index is not rebuilding, and gives up after cap_minutes, the checkout as it was
 found. The proof: the unit active, the channel connected, /status answering under the install's secret with the
 new commit and every room served before. A failed proof rolls back the same way. Each deploy and rollback is a
 ledger row with the commits and the turns cut (never any); the card goes to the machine room, else to the
@@ -259,10 +260,12 @@ class Systemd:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=180).returncode == 0
 
 
-def quiet(state: Path, ask: Ask, window: float, now: float, blind_ok: bool = False) -> tuple[bool, str]:
-    """No person's turn runs or waits, and no room had a message either way (a person's, or its own post) within `window`.
-    A yerkd that runs and does not answer is not quiet (unknown), unless `blind_ok`: a rollback of a daemon whose
-    proof failed goes ahead."""
+def quiet(state: Path, ask: Ask, window: float, now: float, blind_ok: bool = False, copy: float = 0.0,
+          over: list[str] | None = None) -> tuple[bool, str]:
+    """No person's turn runs or waits, no room's copy (its compaction off to the side, which a restart drops) has run under
+    `copy` seconds, and no room had a message either way (a person's, or its own post) within `window`; quiet, `over` gets
+    a line for each copy older than that. A row with no `copy` (an older yerkd's) has none. A yerkd that runs and does not
+    answer is not quiet (unknown), unless `blind_ok`: a rollback of a daemon whose proof failed goes ahead."""
     s = ask(state) if status.alive(state) else {"rooms": []}
     if s is None:
         return blind_ok, words.line(f"{words.PLAIN} {words.NOT_ANSWERING_WHY}")
@@ -271,10 +274,16 @@ def quiet(state: Path, ask: Ask, window: float, now: float, blind_ok: bool = Fal
     for r in s["rooms"]:
         if r["busy"] or r["waiting"]:
             return False, words.named(f"{words.PLAIN} {words.TURN_RUNS}", r["room"])
+    for r in s["rooms"]:                        # seen live: a deploy dropped a busy room's copy at 62 s
+        if r.get("copy") is not None and r["copy"] < copy:
+            return False, words.named(f"{words.PLAIN} {words.COPYING}", r["room"], ago=words.span(r["copy"]))
     ledger = Ledger(state / "ledger.sqlite")
     for r in s["rooms"]:
         if now - (last := max(ledger.last_received(r["room"]) or 0.0, ledger.last_said(r["room"]) or 0.0)) < window:
             return False, words.named(f"{words.PLAIN} {words.RECENT}", r["room"], ago=words.span(now - last))
+    if over is not None:                        # quiet: a copy past `copy` holds nothing, the restart drops it
+        over.extend(words.named(f"{words.NOT_DONE} {words.COPY_DROPPED}", r["room"], ago=words.span(r["copy"]))
+                    for r in s["rooms"] if r.get("copy") is not None)
     return True, ""
 
 
@@ -380,6 +389,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     sd = sd or systemd(named or found)
     tree = Path(conf.get("tree") or sd.show("WorkingDirectory") or REPO)
     window, cap = float(conf.get("quiet_seconds", 240)), float(conf.get("cap_minutes", 60)) * 60
+    copying = float(conf.get("copy_seconds", 300))   # a room's copy compacting holds the restart this long at most
     wait = float(conf.get("proof_seconds", 60))
     before = str((was or {}).get("commit") or head(tree))
     served = {r["room"] for r in was.get("rooms", [])} if was else configured(private)
@@ -419,9 +429,10 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         n, ok, outcome, begun, counted = 0, False, "", False, False
         lines: list[str] = []
         lost: list[str] = []
+        over: list[str] = []                            # a copy older than copy_seconds, the restart went over it
         try:
             with interruptible():
-                while not (q := quiet(state, ask, window, time.time(), blind_ok=kind == "rollback"))[0]:
+                while not (q := quiet(state, ask, window, time.time(), blind_ok=kind == "rollback", copy=copying, over=over))[0]:
                     if time.monotonic() >= end:
                         return False, [W.line(f"{W.PLAIN} {W.NOT_QUIET.format(span=W.span(cap))}"), q[1]], "gave up"
                     sleep(5.0)
@@ -448,7 +459,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
                 return False, [W.line(f"{W.PLAIN} {fault(e)}"), W.line(f"{W.PLAIN} {W.NOTHING_STOPPED}")], "fault"
             lines, outcome = [W.line(f"{W.NOT_DONE} {fault(e)}")], "fault"
         said = (W.CUT.format(n=n) if n else W.NO_CUT) if counted else W.NOT_COUNTED
-        card.extend(lines + [W.line(f"{W.NOT_DONE if n or not counted else W.PLAIN} {said}")])
+        card.extend(lines + [W.line(f"{W.NOT_DONE if n or not counted else W.PLAIN} {said}")] + over)
         outcome = outcome or ("proven" if ok else "proof failed")
         card.extend(lost + ledgered(kind, before=came_from, after=want, outcome=outcome, cut=n if counted else None,
                                     proof="; ".join(lines)))
