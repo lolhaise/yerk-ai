@@ -8,6 +8,20 @@ version changes.
 
 ## 2026-11-19
 
+### job-units-one-spelling (#107)
+
+- A sync from the command line no longer rewrites every job's unit and restarts every timer. A job's unit names the
+  interpreter its run starts with, and each writer named it its own way: the daemon `.venv/bin/python`, the `yerk`
+  command `.venv/bin/python3` (its first line), one file under two names. Whichever synced after the other took every
+  unit for changed, wrote it again, restarted its timer, and the answer listed every job as "(changed)". Every writer
+  now names it one way: the interpreter folder's own `python` when that is the same file, else its `python3` when that
+  is, else the path as it is, so an install with no virtual environment and only `python3` keeps `python3`. A unit on
+  another interpreter file (another venv, or the system's Python that a venv's `python` links to) is still changed.
+- **Upgrading**: nothing to change. The first sync after the deploy rewrites no unit that names `.venv/bin/python`, the
+  daemon's spelling, which every unit holds when the daemon synced last; a unit a command-line sync left on
+  `.venv/bin/python3` is rewritten once, to `.venv/bin/python`, and never again. budgets.toml: `[code] lines` 33,227
+  to 33,238.
+
 ### doctor-code-and-pins (#105)
 
 - `yerk doctor` no longer takes a payment reference for a login code. From 2026-11-14 it was red every day on a fact

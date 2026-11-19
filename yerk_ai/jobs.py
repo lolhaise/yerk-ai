@@ -451,6 +451,17 @@ def env_for(private: Path, state: Path) -> Env:
     return Env(sys.executable, REPO, private.resolve(), state.resolve())
 
 
+def spelled(python: str) -> str:
+    """The interpreter as every writer spells it in a unit (the daemon `python`, the `yerk` command's first line `python3`;
+    2026-11-19: each took the other's units for changed): its folder's `python`, else `python3`, when that is the same file,
+    else as given. Never another folder's: a venv's python is the system's file and runs another environment."""
+    for name in ("python", "python3"):
+        with suppress(OSError):
+            if os.path.samefile(plain := os.path.join(os.path.dirname(python), name), python):
+                return plain
+    return python
+
+
 def start_limit(job: Job) -> int:
     """The unit's TimeoutStartSec in seconds: an agent job's runner only hands off, a script runs its cap in the unit."""
     return 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
@@ -462,7 +473,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     run = [f"WorkingDirectory={unit_line(str(env.repo))}", f'Environment="PYTHONPATH={unit_line(str(env.repo))}"',
            f'Environment="YERK_PRIVATE={unit_line(str(env.private))}"',
            f'Environment="YERK_STATE={unit_line(str(env.state))}"',
-           f"ExecStart={unit_line(env.python, '-P', '-m', 'yerk_ai.jobs', 'run', job.name)}"]
+           f"ExecStart={unit_line(spelled(env.python), '-P', '-m', 'yerk_ai.jobs', 'run', job.name)}"]
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
