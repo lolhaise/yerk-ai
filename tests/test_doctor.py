@@ -210,9 +210,9 @@ def test_a_code_in_the_memory_root_is_dead_two_days_past_its_own_date_and_said_w
     anywhere by its own `- YYYY-MM-DD HH:MM`, the lines under it sharing it; an undated line is still said."""
     priv, state, *_ = tree
     line = memory.format_line(datetime(2026, 11, 16, 9, 30).astimezone(), "example-room", "", "owner", "", CUED[0], "private", "s1")
-    old, new = datetime.now() - timedelta(days=3), datetime.now() - timedelta(days=1)
-    plant(priv, **{f"memory__daily__{d:%Y_%m_%d}": f"# {d:%Y-%m-%d}\n\n{line}\n" for d in (old, new)})
-    assert doctor.main(priv, state) == 1                                         # three days old: none; a day old: said
+    old, new = datetime.now() - timedelta(days=4), datetime.now() - timedelta(days=1)    # on the clock: four, so a clock change
+    plant(priv, **{f"memory__daily__{d:%Y_%m_%d}": f"# {d:%Y-%m-%d}\n\n{line}\n" for d in (old, new)})   # never brings it inside two
+    assert doctor.main(priv, state) == 1                                         # days; three exactly with a fixed now below
     assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} " + words.ONE_TIME_CODES.format(
         n=1, files="1 file", first=f"memory/daily/{new:%Y-%m-%d}.md:3")]
     now = datetime(2026, 11, 19, 12, 0).timestamp()
