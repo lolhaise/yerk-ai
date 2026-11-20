@@ -417,6 +417,37 @@ def test_pytest_trees_still_go_as_pytest_counted_apart_from_built(tmp_path):
     assert (trash / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "copy" / ".venv" / "pyvenv.cfg").exists() and (trash / "wt" / "__pycache__" / "b.pyc").exists()
 
 
+def test_only_the_five_names_are_built_trees_each_matched_whole_and_a_folder_named_for_real_work_stays(tmp_path):
+    """The list is five names and a name is matched whole: a folder a person names for work (scratch, build, dist, tmp, data),
+    one that only starts, ends or is cased like a cache folder, and one named like an environment that holds no pyvenv.cfg
+    stay, with everything in them."""
+    priv, state, projects, led = layer(tmp_path)
+    w = state / "workers" / "aaaaaa"
+    put(w / "REPORT.md")
+    for name in ("scratch", "build", "dist", "tmp", "data", "node_modules_old", "my__pycache__", "__pycache__x", ".mypy_cache.keep",
+                 ".ruff_cache2", "Node_Modules", "venv", ".venv"):
+        put(w / "wt" / name / "f.bin", "k" * 5)
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    before = files(w)
+    r = retention.run(priv, state, now=NOW)
+    assert retention.BUILT == ("__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache", "node_modules")
+    assert files(w) == before and "built" not in r["kinds"] and "error" not in r
+
+
+def test_a_pytest_tree_waits_its_own_days_when_they_are_longer_than_builts_and_is_not_walked_meanwhile(tmp_path):
+    """`pytest = 3` beside built's 1: a worker finished two days ago loses what its run built, and its pytest tree waits its
+    third day whole, the cache folder inside it too, then goes as pytest."""
+    priv, state, projects, led = layer(tmp_path, "[retention]\npytest = 3\n")
+    w = state / "workers" / "aaaaaa"
+    inner = put(w / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "__pycache__" / "a.pyc", "a" * 9)
+    put(w / "wt" / "__pycache__" / "b.pyc", "b" * 7)
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    r = retention.run(priv, state, now=NOW)
+    assert r["kinds"]["built"] == [1, 7] and "pytest" not in r["kinds"] and inner.read_text() == "a" * 9 and "error" not in r
+    r = retention.run(priv, state, now=NOW + 1.5 * DAY)                            # three and a half days
+    assert r["kinds"]["pytest"] == [1, 9] and "built" not in r["kinds"] and not (w / "tmp" / "pytest-of-owner").exists() and "error" not in r
+
+
 def test_a_job_runs_folder_goes_after_its_days_once_ended_and_delivered_and_never_while_undelivered(tmp_path):
     """F10-14: every job run leaves <state>/jobs/<name>/<stamp>/ and nothing pruned them, about 145 a day. A run the ledger
     still marks undelivered stays whatever its age (the daemon's restart sweep reads its stdout), so does one never ended."""

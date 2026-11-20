@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-20
 
-### sweep-built-trees (its pull request to come)
+### sweep-built-trees (#111)
 
 - The nightly sweep takes what a finished worker's run built to test a day after the worker finished, where it waited
   the folder's whole 30 days: each virtual environment (a folder holding a file named pyvenv.cfg, whatever the folder's
