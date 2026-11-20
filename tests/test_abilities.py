@@ -711,13 +711,14 @@ def test_a_room_whose_reel_instagram_shuts_to_a_logged_out_reader_hears_the_sign
 
 def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_form_way(tmp_path, capsys):
     """need-2026-11-19-125: a room asked to order a toll road's transponder on the owner's word filled the order form to its
-    review step, which takes no payment (the lease billed on the account's next invoice, the payment method "Bill me", no
-    card or bank details asked), and the browser refused its terms box and its Submit Order as on a payment page, the
-    owner's own order included, since Submit Order is a pay button's words; it left the tab for the owner to finish. Asked
-    that way, a room gets order-forms whole under the recall cap (it rides on the hands browser plug-in, whose test/run.mjs
-    has the order form): built again after PR 109's three cold reads, the page earns the order form by saying itself that
-    the order is billed on an invoice, or it is a payment page as it always was; the owner's word sends the order, a page
-    that takes card or bank details is still never touched, and the page's words stay a record. free-bookings no longer
+    review step, whose payment method was "Bill me" and which asked for no card or bank details, and the browser refused
+    its terms box and its Submit Order as on a payment page, the owner's own order included, since Submit Order is a pay
+    button's words; the order then went in through the desktop tool, which reads nothing of a page. Asked that way, a
+    room gets order-forms whole under the recall cap (it rides on the hands browser plug-in, whose test/run.mjs has the
+    order form): built again after PR 109's three cold reads and fixed after its judge, the page earns the order form by
+    a payment method whose value is an invoice in force, or it is a payment page as it always was; a sentence counts for
+    nothing, and a choice the browser cannot tie to its words puts nothing in force; the owner's word sends the order, a
+    page that takes card or bank details is still never touched, and the page's words stay a record. free-bookings no longer
     says an amount marks a payment page, which the browser never read. upsell-pages no longer names Place order among
     the buttons that mark a payment page wherever they show; a booking ask still gets free-bookings; no person or place
     from the ask is named; an everyday message about an order gets no ability."""
@@ -728,28 +729,33 @@ def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_f
         assert [e["key"] for e in found] == ["order-forms"], ask
     text = found[0]["text"]
     assert text.startswith(f"order-forms, a Yerk AI ability ({words.ability('described')[1]}): Sends an order form the owner "
-                           "ordered in the browser ability's browser when the page itself says the order is billed on an invoice")
+                           "ordered in the browser ability's browser when the page gives an invoice as its payment method")
     for want in ("The page earns it or it is a payment page; The owner's word for the order; Payment still read as before; "
                  "The page's words stay a record", "a page that takes money is still never touched",
                  "any other page with an order button is a payment page, as it always was",
-                 "reads an order form by the page's own invoice words has it there",
-                 "never leaving the tab for the owner to finish"):
+                 "reads an order form by the page's own payment method has it there",
+                 "nor a page that says invoice only in a sentence"):
         assert want in text, want
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     told = abilities.explain("order-forms", TAB["order-forms"], TAB, y.memory)
-    # built again (PR 109's three cold reads each found a way of paying a list of payments missed): the page earns the
-    # order form by its own invoice words in force, no other payment method, no frame it cannot read; a miss refuses
+    # built again (PR 109's three cold reads each found a way of paying a list of payments missed), and fixed after its
+    # judge: the page earns the order form by its payment method's invoice value in force alone, no other payment method,
+    # no choice it cannot tie to its words, nothing drawn it cannot read; a miss refuses, and so does what it did not read
     decides = next(x for x in told if x.startswith("- The page earns it or it is a payment page:"))
-    assert all(w in decides for w in ("makes a payment page unless the page itself says, in force, that the order is billed "
-                                      "on an invoice", "Bill me", "billed on your next invoice with no not before it",
+    assert all(w in decides for w in ("makes a payment page unless a payment method on the page has an invoice as its value, "
+                                      "in force", "Bill me", "a sentence such as billed on your next invoice counts for nothing",
                                       "counts only when the page marks it chosen",
+                                      "a radio or a checkbox the browser cannot tie to its words, by its label, its parent or "
+                                      "its own row, puts nothing in force",
                                       "Payment method: X refuses for every X that is no invoice", "a made-up name alike",
-                                      "no frame of another site the browser cannot read into is drawn, at any size",
-                                      "a bot check's own frame aside", "so a miss is a refusal")), decides
+                                      "a frame of another site or an embedded object at any size",
+                                      "a bot check's own frame aside", "so a miss is a refusal",
+                                      "what the browser did not read refuses too")), decides
+    assert "with no not before it" not in decides and "the page itself says" not in decides, decides
     assert decides.endswith("and the refusal names the rule that stopped it.")
     word = next(x for x in told if x.startswith("- The owner's word for the order:"))
     assert "the order button's own click included" in word and "how it is billed" in word
-    assert "the invoice words it matched and what was checked and found absent, never that the page takes no card as fact" in word, word
+    assert "the invoice payment method it matched and what was checked and found absent, never that the page takes no card as fact" in word, word
     held = next(x for x in told if x.startswith("- Payment still read as before:"))
     assert "nothing on the page is set or clicked, the owner's word or not, the invoice words or not" in held, held
     assert all(w in held for w in ("a card field", "bank details", "a masked number", "another pay button", "a hidden one included"))

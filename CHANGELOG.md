@@ -10,50 +10,60 @@ version changes.
 
 ### need-2026-11-19-125 (#109)
 
-- A room can send an order form you ordered now when the page itself says the order is billed on an invoice, such as
-  an order billed on your account's next invoice with "Bill me" as its payment method: it ticks the terms box and
-  presses Place order or Submit order on your word. The hands plug-in's browser read a button whose whole words are
-  Place order or Submit order as a pay button wherever it showed, so an order's review step that asked no payment was
-  a payment page, and its terms box and its Submit Order were refused, your word or not.
+- A room can send an order form you ordered now when the page gives an invoice as its payment method, such as "Payment
+  method: Bill me": it ticks the terms box and presses Place order or Submit order on your word. The hands plug-in's
+  browser read a button whose whole words are Place order or Submit order as a pay button wherever it showed, so an
+  order's review step that asked for no card or bank details was a payment page, and its terms box and its Submit
+  Order were refused, your word or not.
 - Such an order button still makes a payment page, as it always did, unless the page earns the exception, and every
-  list the exception uses is of what lets a page through, so a miss on one is a refusal: the page itself says, in
-  force, that the order is billed on an invoice (a payment method whose value is Bill me, Invoice, Invoice me, Pay by
-  invoice, Bill my account or Bill to my account, or a line of at most 200 characters such as "billed on your next
-  invoice" with no "not" before it; a radio, an option, a button or a link counts only when the page marks it chosen);
-  no payment method on the page names anything else, so "Payment method: X" refuses for every X that is no invoice, a
-  card, a bank, a wallet or a made-up name alike; none of the payment marks shows; and no frame of another site the
-  browser cannot read into is drawn, at any size from 10 by 10 pixels, in the page, in a box of its own site or in a
-  web component, a bot check's own frame aside (reCAPTCHA by its host and its path, never by Google's host alone). A
-  page that fails says why beside the order button: no line that says the order is billed on an invoice, a payment
-  method named that is no invoice, or a frame of another site with its host and its size.
-- The payment marks stay beside the invoice words as a second look: a card field, a payment frame, a saved card, a
-  payment service's address, another pay button, bank details (a bank account's number field, an IBAN, a sort code, a
-  bank word with its digits after it), a masked number (•••• 4242), and a card, wallet or balance the page names. The
-  first build rested on them alone, and this pull request's three cold reads each found one more way of paying they
-  did not name ("Visa 1234", "Chequing account ending 1234", a card form in a 300 by 44 frame of another site), each a
-  click that would have paid on your word, so the build was made again on the rule above.
+  list the exception uses is of what lets a page through, so a miss on one is a refusal: a payment method on the page
+  has an invoice as its value, in force (Bill me, Invoice, Invoice me, Pay by invoice, Bill my account or Bill to my
+  account; a radio, an option, a button or a link counts only when the page marks it chosen); no payment method on the
+  page names anything else, so "Payment method: X" refuses for every X that is no invoice, a card, a bank, a wallet or
+  a made-up name alike; none of the payment marks shows; and nothing the browser cannot read is drawn: no frame of
+  another site it cannot read into, at any size from 10 by 10 pixels, in the page, in a box of its own site or in a
+  web component, a bot check's own frame aside (reCAPTCHA by its host and its path, never by Google's host alone), and
+  no object or embed that is no image. A page that fails says why beside the order button: no payment method that is
+  an invoice, a payment method named that is no invoice, a choice not chosen that the browser cannot tie to its words,
+  a frame of another site or an embedded object with its host and its size, or more boxes or frames than it reads.
+- Only a payment method says invoice. A sentence such as "billed on your next invoice" counts for nothing: the build
+  before this one let a page through on one, and its judge found sentences no list of negations, questions and
+  conditions holds ("Nothing will be billed on your next invoice."). A page that says invoice only in a sentence is a
+  payment page, as before this pull request.
+- A choice is tied to its words, or its page says nothing: a radio's or a checkbox's words are those its label, its
+  aria-label or the words it names give it, else its parent's when the parent holds no other control and the words
+  drawn on its own row; a radio with no words at all and not chosen, or such a drawn checkbox, leaves nothing in its
+  page or box in force, so "Bill me" beside an unchosen radio with no label is no invoice. What the browser did not
+  read refuses too: a page or a box with no answer on its payment methods, and more boxes or frames than it returns.
+- The payment marks stay beside the invoice payment method as a second look: a card field, a payment frame, a saved
+  card, a payment service's address, another pay button, bank details (a bank account's number field, an IBAN, a sort
+  code, a bank word with its digits after it), a masked number (•••• 4242), and a card, wallet or balance the page
+  names. The first build rested on them alone, and this pull request's three cold reads each found one more way of
+  paying they did not name ("Visa 1234", "Chequing account ending 1234", a card form in a 300 by 44 frame of another
+  site), each a click that would have paid on your word, so the build was made again on the rule above.
 - On an order form each field set, click, typed value and file, the order button's own click included, waits for your
-  word in the room (the browser's `confirmed`). An open or a read of the page, and the refusal, say it is one, the
-  invoice words it matched and what it checked and found absent (never "it takes no card or bank details" as fact),
-  and ask the room to tell you what the page says the order costs and how it is billed. A button whose words make a
-  payment (Pay, Buy now, Checkout, Submit payment) still makes a payment page wherever it shows and is never clicked,
-  a hidden one included, and neither is an order button on any other page.
-- The plug-in's change is on its branch `need-2026-11-19-125` (2b2de89, over 0479c2e, e9d762d and 654ecaa): 121 of 121
-  of its offline tests green, fifteen running the page probe in Playwright's headless shell, among them the review
-  step in its own shape with the reCAPTCHA badge its site draws (an order form) and each way of paying above beside it
-  (a payment page). Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain order-forms` has the
-  ability, found by asks such as "submit the order" and "bill me"; `free-bookings` no longer says an amount on a page
-  marks a payment page, which the browser never read; `upsell-pages` no longer lists Place order among the buttons
-  that mark a payment page wherever they show. The README's Add-ons line names it beside `free-bookings`, at
-  11,973 of its 12,000 bytes, the private folder's last line no longer repeating the Install paragraph's pointer
-  to the guide.
+  word in the room (the browser's `confirmed`). An open or a read of the page, and the refusal, say it is one, that
+  the page gives an invoice as its payment method with the value it matched, and what it checked and found absent
+  (never "it takes no card or bank details" as fact), and ask the room to tell you what the page says the order costs
+  and how it is billed. A button whose words make a payment (Pay, Buy now, Checkout, Submit payment) still makes a
+  payment page wherever it shows and is never clicked, a hidden one included, and neither is an order button on any
+  other page.
+- The plug-in's change is on its branch `need-2026-11-19-125` (27b806e, over 2b2de89, 0479c2e, e9d762d and 654ecaa):
+  135 of 135 of its offline tests green, twenty-four running the page probe in Playwright's headless shell, among them
+  the review step in its own shape with the reCAPTCHA badge its site draws (an order form, by its payment method
+  alone) and each way of paying and each plain choice markup above beside it (a payment page). Its tool entries are
+  unchanged, so no budgets.toml line moves. `yerk explain order-forms` has the ability, found by asks such as "submit
+  the order" and "bill me"; `free-bookings` no longer says an amount on a page marks a payment page, which the browser
+  never read; `upsell-pages` no longer lists Place order among the buttons that mark a payment page wherever they
+  show. The README's Add-ons line names it beside `free-bookings`, at 11,987 of its 12,000 bytes, the private folder's
+  last line no longer repeating the Install paragraph's pointer to the guide.
 - Why: on 2026-11-19 a room asked to order an item to an address on your word filled the order form to its review
-  step, billed on the next invoice with "Bill me" as its payment method, and was refused its terms box and its Submit
-  Order as on a payment page. It filed the need (need 125 of 2026-11-19); on your word the order then went in through
-  the desktop tool, which reads nothing of a page, so the careful tool refused what the blind one clicked.
+  step, with "Bill me" as its payment method, and was refused its terms box and its Submit Order as on a payment page.
+  It filed the need (need 125 of 2026-11-19); on your word the order then went in through the desktop tool, which
+  reads nothing of a page, so the careful tool refused what the blind one clicked.
 
 **Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
-`need-2026-11-19-125` (2b2de89, 121 cases). A room sends such an order from its next process start after that. Nothing
+`need-2026-11-19-125` (27b806e, 135 cases). A room sends such an order from its next process start after that. Nothing
 in rooms.toml, yerkd.toml or budgets.toml changes.
 
 ### need-2026-11-19-124 (#108)
