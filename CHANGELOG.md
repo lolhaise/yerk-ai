@@ -30,6 +30,31 @@ version changes.
   trash, about 43 GB on that box, and the trash deletes it 7 days later; `yerk retention --dry-run` says the count and
   the bytes first. budgets.toml: `[code] lines` 33,415 to 33,435.
 
+### click-by-position-lands (its pull request to come)
+
+- A room's click by position, from a picture of the tab, lands now on a tab that has no window on the owner's screen,
+  as every tab the browser opens for a room is. Before, such a click was answered "browser clicked" while the page got
+  no press at all: a tab in the background does not paint, and the mouse events reached it as a move alone. A room
+  went on as if it had clicked, and `type` after it found no field with the focus.
+- The reply names what the click landed on: a control by its tag and its words (`BUTTON "Count it"`), anything else by
+  its tag alone, so a field's value or a key a page shows never comes back in it. A click the page did not get is said
+  as "browser clicked nothing", with the way on (the control by its label, or a new picture and the spot where it is
+  now; for a spot outside what the tab shows, a spot inside it): nothing is read after it, it counts as a failure, and
+  the same spot failing twice is not tried a third time. A click that cannot be known, a press into a frame of another
+  site or on a page that could not be read, is said as sent, never as clicked, with what the tab shows after it.
+- A click by label answers as before, and so does a click by position whose tool itself fails.
+- The plug-in's change is on its branch, with hands-mcp click-by-position-lands at e45658f (over 90848d3): 153 of 153
+  of its offline tests green, its stand-in for the browser's click tool printing what that tool prints and one row
+  reading the tool itself for the words the reply rests on. The same branch pins one more page of need 125's as a
+  payment page: a choice drawn by role and not shown, "Bill me" not chosen beside another one chosen, holds its words.
+- Why: on 2026-11-20, judging need 125, a click by position was answered "browser clicked" three times while the page
+  got no press, and the ledger held five refusals of `type` in two weeks, each "nothing on tab ... has focus" after a
+  click by position that had not landed.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`click-by-position-lands` (e45658f, 153 cases); the browser's own click tool that lands is live already. A room has
+it from its next process start after that.
+
 ## 2026-11-19
 
 ### need-2026-11-19-125 (#109)
@@ -82,7 +107,7 @@ version changes.
   Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain order-forms` has the ability, found by
   asks such as "submit the order" and "bill me"; `free-bookings` no longer says an amount on a page marks a payment
   page, which the browser never read; `upsell-pages` no longer lists Place order among the buttons that mark a payment
-  page wherever they show. The README's Add-ons line names it beside `free-bookings`, at 11,987 of its 12,000 bytes,
+  page wherever they show. The README's Add-ons line names it beside `free-bookings`, at 11,986 of its 12,000 bytes,
   the private folder's last line no longer repeating the Install paragraph's pointer to the guide.
 - Why: on 2026-11-19 a room asked to order an item to an address on your word filled the order form to its review
   step, with "Bill me" as its payment method, and was refused its terms box and its Submit Order as on a payment page.
