@@ -9,6 +9,8 @@ import os
 import re
 import shutil
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -439,6 +441,173 @@ def test_kept_fresh_h_the_background_read_starts_claude_code_through_nice_and_th
     usage.readings(accounts, tmp_path, True, NOW + usage.FRESH)
     assert argvs == [["nice", "-n", "19", usage.claude_bin(), *usage.ARGV], [usage.claude_bin(), *usage.ARGV]]
     assert usage.last(tmp_path)["five"]["seven_day"]["pct"] == 72.0
+
+
+# meter-reading-light: a reading runs inside bwrap with an empty tmpfs over the account's projects folder, so Claude Code's
+# start reads no transcript (measured 2026-11-20 on one box: 3 GB asked of read() a reading, about 1 MB with it hidden),
+# and bwrap's own failure reads once more without it. A stand-in bwrap and the stand-in claude, never the real ones.
+METERS = {"five_hour": {"pct": 30.0, "resets": None}, "seven_day": {"pct": 72.0, "resets": None}}
+STANDIN_BWRAP = """#!/usr/bin/python3
+import json, os, sys
+with open(os.environ["FAKE_BWRAP_RECORD"], "a") as f:
+    f.write(json.dumps({"argv": sys.argv, "stdin_null": os.path.samestat(os.fstat(0), os.stat(os.devnull))}) + "\\n")
+if os.environ.get("FAKE_BWRAP_SAYS"):
+    print(os.environ["FAKE_BWRAP_SAYS"], file=sys.stderr, flush=True)
+if os.environ.get("FAKE_BWRAP_EXIT"):
+    sys.exit(int(os.environ["FAKE_BWRAP_EXIT"]))
+os.execvp(sys.argv[sys.argv.index("--") + 1], sys.argv[sys.argv.index("--") + 1:])
+"""
+
+
+def hidden_account(tmp_path, monkeypatch, projects=True):
+    """An account whose config folder holds a projects folder (`projects`), its one-year token on file, the stand-in claude
+    printing METERS for it, and a stand-in bwrap first on PATH, found by name as read finds it: it records how it was run
+    and whether its stdin is /dev/null, says FAKE_BWRAP_SAYS on stderr, then exits FAKE_BWRAP_EXIT as bwrap's own failure
+    does, else runs what follows its `--`, hiding nothing. Returns the account, the stand-in's path, its record and every
+    subprocess.run call as (argv, its keywords), each run for real."""
+    (cfg := tmp_path / "cfg-a").mkdir()
+    if projects:
+        (cfg / "projects" / "-work").mkdir(parents=True)
+    (tmp_path / "usage").mkdir()
+    (tmp_path / "usage" / "cfg-a.txt").write_text("Current session: 30% used\nCurrent week (all models): 72% used\n")
+    (tmp_path / "a.token").write_text("sk-" + "ant-oat01-" + "x" * 40)
+    (bin_ := tmp_path / "bin").mkdir()
+    (bwrap := bin_ / "bwrap").write_text(STANDIN_BWRAP)
+    bwrap.chmod(0o755)
+    for k, v in {"YERK_CLAUDE": str(FAKE), "FAKE_CLAUDE_USAGE_DIR": str(tmp_path / "usage"), "FAKE_CLAUDE_RECORD": str(tmp_path / "claude.jsonl"),
+                 "FAKE_BWRAP_RECORD": str(tmp_path / "bwrap.jsonl"), "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(usage, "BWRAP", "bwrap")                       # conftest's no_bwrap undone: found by its name
+    monkeypatch.setattr(usage, "_bwrap_failed", [])                    # this process has not seen bwrap fail
+    calls, run = [], subprocess.run
+    monkeypatch.setattr(usage.subprocess, "run", lambda argv, **kw: calls.append((argv, kw)) or run(argv, **kw))
+    return Account("a", cfg, token_file=tmp_path / "a.token"), str(bwrap), tmp_path / "bwrap.jsonl", calls
+
+
+def ran(record):
+    return [json.loads(x) for x in record.read_text().splitlines()] if record.exists() else []
+
+
+def logged(caplog):
+    return [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "yerk.usage"]
+
+
+def test_meter_reading_light_k1_a_reading_runs_in_bwrap_with_the_projects_folder_hidden_and_the_config_folder_not(tmp_path, monkeypatch):
+    """meter-reading-light (K1) bwrap found and the config folder holding projects: the command run is exactly bwrap's
+    words, an empty tmpfs over that folder alone (never the config folder, whose login is read), then the command as it
+    was, `nice -n 19` inside it for the keeper; stdin /dev/null, the token not in its environment, the meters back."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    plain, nice = [str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV]
+    assert usage.read(a, tmp_path, nice=True) == METERS and usage.read(a, tmp_path) == METERS
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    assert [argv for argv, _ in calls] == [hide + nice, hide + plain]
+    assert all(kw["stdin"] is subprocess.DEVNULL and kw["cwd"] == tmp_path and "CLAUDE_CODE_OAUTH_TOKEN" not in kw["env"] for _, kw in calls)
+    assert [(r["argv"], r["stdin_null"]) for r in ran(record)] == [(hide + nice, True), (hide + plain, True)]
+    seen = ran(tmp_path / "claude.jsonl")                              # the stand-in claude, run by the stand-in bwrap
+    assert [(s["argv"], s["config_dir"]) for s in seen] == [(usage.ARGV, str(a.config_dir))] * 2
+    assert all("CLAUDE_CODE_OAUTH_TOKEN" not in s["env_keys"] for s in seen) and (a.config_dir / "projects" / "-work").is_dir()
+
+
+def test_meter_reading_light_k2_a_projects_folder_that_is_a_link_is_hidden_at_the_folder_it_names_never_the_link(tmp_path, monkeypatch):
+    """meter-reading-light (K2) The config folder's projects is a link to a folder elsewhere (the accounts of one box
+    sharing one), through a second link: the tmpfs goes over the folder the links name, never over a link."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch, projects=False)
+    (shared := tmp_path / "home" / "projects").mkdir(parents=True)
+    (tmp_path / "hop").symlink_to(shared)
+    (a.config_dir / "projects").symlink_to(tmp_path / "hop")
+    assert usage.read(a, tmp_path) == METERS
+    argv = ran(record)[0]["argv"]
+    assert argv[argv.index("--tmpfs") + 1] == os.path.realpath(shared) and calls[0][0][5] == os.path.realpath(shared)
+    assert os.path.realpath(shared) not in (str(a.config_dir / "projects"), str(tmp_path / "hop"))
+
+
+def test_meter_reading_light_k3_a_config_folder_with_no_projects_folder_is_read_with_the_plain_command(tmp_path, monkeypatch):
+    """meter-reading-light (K3) No projects in the config folder, a link there to nothing, or a file of that name: the
+    plain command, bwrap never run, and the meters back."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch, projects=False)
+    assert usage.read(a, tmp_path) == METERS
+    (a.config_dir / "projects").symlink_to(tmp_path / "gone")
+    assert usage.read(a, tmp_path, nice=True) == METERS
+    (a.config_dir / "projects").unlink()
+    (a.config_dir / "projects").write_text("")
+    assert usage.read(a, tmp_path) == METERS
+    assert [argv for argv, _ in calls] == [[str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV], [str(FAKE), *usage.ARGV]]
+    assert ran(record) == [] and len(ran(tmp_path / "claude.jsonl")) == 3
+
+
+def test_meter_reading_light_k4_with_no_bwrap_on_path_a_reading_is_the_plain_command_and_says_nothing(tmp_path, monkeypatch, caplog):
+    """meter-reading-light (K4) No bwrap on PATH, the projects folder there: the plain command, no warning, the meters
+    back, for the card's ask and the keeper's."""
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    (bare := tmp_path / "bare").mkdir()                                # PATH with no bwrap: the stand-in claude's python, nice
+    (bare / "python3").symlink_to(sys.executable)
+    (bare / "nice").symlink_to(shutil.which("nice"))
+    monkeypatch.setenv("PATH", str(bare))
+    assert shutil.which("bwrap") is None
+    assert usage.read(a, tmp_path) == METERS and usage.read(a, tmp_path, nice=True) == METERS
+    assert [argv for argv, _ in calls] == [[str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV]]
+    assert ran(record) == [] and logged(caplog) == [] and usage._bwrap_failed == []
+
+
+def test_meter_reading_light_k5_bwraps_own_failure_reads_plain_once_in_the_same_call_says_so_once_and_hides_no_more(tmp_path, monkeypatch, caplog):
+    """meter-reading-light (K5) The run in bwrap exits 1, its stderr's first line bwrap's own and no meters: the same call
+    runs the plain command once and returns its meters, one warning names bwrap's line, and the next call of this process
+    runs the plain command with no bwrap and says nothing more."""
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    line = "bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces."
+    monkeypatch.setenv("FAKE_BWRAP_SAYS", line)
+    monkeypatch.setenv("FAKE_BWRAP_EXIT", "1")
+    plain, nice = [str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV]
+    assert usage.read(a, tmp_path, nice=True) == METERS
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    assert [argv for argv, _ in calls] == [hide + nice, nice] and calls[1][1]["stdin"] is subprocess.DEVNULL
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in calls[1][1]["env"]
+    assert logged(caplog) == [(logging.WARNING, f"usage: the transcripts could not be hidden from a reading ({line}); reading without it")]
+    assert usage.read(a, tmp_path) == METERS                           # the next call: plain, bwrap not tried again
+    assert [argv for argv, _ in calls][2:] == [plain] and len(ran(record)) == 1 and len(logged(caplog)) == 1
+    assert len(ran(tmp_path / "claude.jsonl")) == 2
+
+
+def test_meter_reading_light_k6_claude_codes_own_failure_in_bwrap_is_todays_error_with_no_second_run_and_bwrap_stays(tmp_path, monkeypatch, caplog):
+    """meter-reading-light (K6) The run in bwrap prints no meters (Claude Code on a login with none), or fails as Claude
+    Code fails (exit 1, its own first line on stderr, a `bwrap:` line after it): today's {"error": ...}, no second run,
+    nothing said, and the next call still runs in bwrap. A `bwrap:` first line with the meters printed is the meters."""
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    (tmp_path / "usage" / "cfg-a.txt").unlink()                        # the cost lines, no meter
+    assert usage.read(a, tmp_path) == {"error": "no meters in what Claude Code printed"}
+    (failing := tmp_path / "claude-fails").write_text("#!/bin/sh\necho 'Error: Invalid API key' >&2\necho 'bwrap: not first' >&2\nexit 1\n")
+    failing.chmod(0o755)
+    monkeypatch.setenv("YERK_CLAUDE", str(failing))
+    assert usage.read(a, tmp_path, nice=True) == {"error": "no meters in what Claude Code printed"}
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    (tmp_path / "usage" / "cfg-a.txt").write_text("Current session: 30% used\nCurrent week (all models): 72% used\n")
+    monkeypatch.setenv("FAKE_BWRAP_SAYS", "bwrap: a word of its own, then the command run")
+    assert usage.read(a, tmp_path) == METERS
+    assert [argv for argv, _ in calls] == [hide + [str(FAKE), *usage.ARGV], hide + ["nice", "-n", "19", str(failing), *usage.ARGV],
+                                           hide + [str(FAKE), *usage.ARGV]]
+    assert len(ran(record)) == 3 and logged(caplog) == [] and usage._bwrap_failed == []
+
+
+def test_meter_reading_light_k7_a_reading_that_times_out_in_bwrap_is_no_answer_in_15_s_with_no_second_run(tmp_path, monkeypatch):
+    """meter-reading-light (K7) The run in bwrap times out: {"error": "no answer in 15 s"} as today, no second run, and
+    the next call still runs in bwrap; the same with the stand-ins run for real on a short timeout."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    asked = []
+
+    def slow(argv, **kw):
+        asked.append(argv)
+        raise subprocess.TimeoutExpired(argv, kw["timeout"])
+    with monkeypatch.context() as m:
+        m.setattr(usage.subprocess, "run", slow)
+        assert usage.read(a, tmp_path) == {"error": "no answer in 15 s"} and asked == [hide + [str(FAKE), *usage.ARGV]]
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE_SLOW", "3")
+    assert usage.read(a, tmp_path, timeout=0.5) == {"error": "no answer in 0.5 s"}
+    assert [argv for argv, _ in calls] == [hide + [str(FAKE), *usage.ARGV]] and len(ran(record)) == 1 and usage._bwrap_failed == []
 
 
 FABLE, OPUS = "claude-fable-5-2", "claude-opus-5-5"

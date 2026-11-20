@@ -13,13 +13,24 @@ so a card that asks nothing shows that reading where it is newer than the stream
 own week, which no stream reads, from the last reading whatever its age (status.reading).
 
 A rate limit's rest ends when its usage comes back early (back): a live reading taken after it began, the card's or
-the keeper's, with no meter binding its model full ends it, so the next pick takes the account again."""
+the keeper's, with no meter binding its model full ends it, so the next pick takes the account again.
+
+A reading runs with the account's transcripts hidden from it, where bwrap is found (hiding): Claude Code started for a
+reading reads transcripts in its config folder's projects folder, and the meters never need them, they come from the
+service. Measured 2026-11-20 on one box, one reading took 6.42 s and asked read() for 3,031,635,682 bytes, 644,719,616
+of them from the disk, with 847 files open, 836 of them transcripts in that folder (2,949 MB, the biggest 210 MB); the
+keeper reads each account every EVERY with nobody talking, and accounts sharing one projects folder each read it again.
+With that folder hidden, the same reading gave the same meters from 1,123,331 and 932,074 bytes, 222,208 and 1,024 of
+them from the disk, with 11 files open, in 4.05 and 3.77 s. Only that folder is hidden, from that one process: the
+config folder holds the login, and Claude Code writes its own files there."""
 from __future__ import annotations
 
 import contextlib
 import json
 import logging
+import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -48,6 +59,8 @@ WHEN = re.compile(r"^(?:([A-Za-z]{3}) (\d{1,2}), )?(\d{1,2})(?::(\d{2}))?\s*([ap
 _lock = threading.Lock()
 log = logging.getLogger("yerk.usage")
 _failed: dict[tuple[str, str], dict[str, Any]] = {}   # (state folder, account): a failed ask over a good kept reading, under _lock
+BWRAP = "bwrap"         # found on PATH (shutil.which); a test points it at its own stand-in
+_bwrap_failed: list[str] = []   # bwrap's own line once it failed here: this process reads with nothing hidden from then on
 
 
 def reset_at(text: str, now: float) -> float | None:
@@ -96,16 +109,35 @@ def parse(text: str, now: float) -> dict[str, Any]:
     return out
 
 
+def hiding(account: Account) -> list[str]:
+    """bwrap's words in front of a reading's command, so its process alone finds the account's config folder's projects
+    folder (where it is a link, the folder it names) an empty tmpfs, the rest of the box as it is; [] where no bwrap is
+    found, that folder is not there, or bwrap itself failed once in this process (read)."""
+    projects = os.path.realpath(account.config_dir / "projects")
+    if _bwrap_failed or not os.path.isdir(projects) or not (bwrap := shutil.which(BWRAP)):
+        return []
+    return [bwrap, "--dev-bind", "/", "/", "--tmpfs", projects, "--die-with-parent", "--"]
+
+
 def read(account: Account, cwd: Path, timeout: float = TIMEOUT, nice: bool = False) -> dict[str, Any]:
     """One account's meters from `claude -p /usage` on its config folder's own login, or {"error": why}; with `nice`
-    (the background read, keep) through `nice -n 19`, so it never competes with a room's turn."""
+    (the background read, keep) through `nice -n 19`, so it never competes with a room's turn; inside bwrap with the
+    account's transcripts hidden (hiding). A run there with no meters where bwrap itself failed (its stderr's first line
+    `bwrap: ...`) runs once more without it in the same call, said once, and this process hides nothing from then on;
+    any other failure is the error it is, with no second run."""
     if not account.config_dir.is_dir():
         return {"error": "no config folder"}                 # Claude Code would make one; it has no login to read
     env = {k: v for k, v in account_env(account).items() if k != TOKEN_ENV}
     now, argv = time.time(), ["nice", "-n", "19", claude_bin(), *ARGV] if nice else [claude_bin(), *ARGV]
+    hide = hiding(account)
     try:
-        p = subprocess.run(argv, env=env, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(hide + argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
         meters = parse(str(json.loads(p.stdout or "{}").get("result") or ""), now)
+        if hide and "five_hour" not in meters and "seven_day" not in meters and (said := (p.stderr or "").partition("\n")[0]).startswith("bwrap:"):
+            _bwrap_failed.append(said)                       # nothing ran: never dark for the wrapper
+            log.warning("usage: the transcripts could not be hidden from a reading (%s); reading without it", said)
+            p = subprocess.run(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
+            meters = parse(str(json.loads(p.stdout or "{}").get("result") or ""), now)
     except subprocess.TimeoutExpired:
         return {"error": f"no answer in {timeout:g} s"}
     except (OSError, ValueError, AttributeError) as e:

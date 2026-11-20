@@ -61,6 +61,27 @@ version changes.
 **Upgrading**: nothing to do. This block is the record of a change in the browser plug-in, which is outside this
 repo; a room has it from its next process start.
 
+### meter-reading-light (its pull request to come)
+
+- A meter reading no longer reads the account's transcripts. The daemon reads each account's meters every 15 minutes,
+  with nobody talking, and a card's live ask reads them too, each by Claude Code's own `/usage`; that Claude Code read
+  transcripts in the account's `projects` folder, which the meters never need (they come from the service). Measured
+  2026-11-20 on one box, one reading took 6.42 s and asked read() for 3,031,635,682 bytes, 644,719,616 of them from
+  the disk, with 847 files open, 836 of them transcripts (2,949 MB); where every account's config folder links one
+  shared `projects` folder, a round of four readings asked for about 12 GB. With the folder hidden, the same reading
+  gave the same two meter lines from 1,123,331 and 932,074 bytes, 222,208 and 1,024 of them from the disk, with 11
+  files open, in 4.05 and 3.77 s.
+- A reading now runs in bubblewrap (`bwrap`, which Claude Code's own sandbox uses) with an empty folder over the
+  account's `projects` folder, for that one process; where `projects` is a link, over the folder it names. Nothing else
+  is hidden: the config folder, whose login the reading reads and where Claude Code writes its own files, stays as it
+  is, and the real folder is never touched.
+- With no `bwrap` on the box, or no `projects` folder, a reading runs as before. Where bwrap itself fails (no meters,
+  and its own `bwrap:` line first), the same reading runs once more without it, the log says so once (`usage: the
+  transcripts could not be hidden from a reading (...); reading without it`), and that process reads without it from
+  then on (the daemon until its next start). Any other failure is said as before, with no second run.
+- A reading's Claude Code gets no input: run from a shell with a pipe on stdin, one waited 3 seconds for it.
+- **Upgrading**: nothing to change. budgets.toml: `[code] lines` 33,435 to 33,467.
+
 ## 2026-11-19
 
 ### need-2026-11-19-125 (#109)
