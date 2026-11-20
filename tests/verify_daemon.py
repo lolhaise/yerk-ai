@@ -3,9 +3,10 @@
 its first piece of work. yerkd's own main() runs Yerkd.run_discord on a scratch copy of the example layer and a scratch
 state folder, every long-lived task it starts running as on an install, and only the outside world replaced: Claude Code
 by fake_worker_claude.py (fake_claude.py for a room and the meters), Discord's client by an in-process one built on the
-the run's own and stand-ins on PATH for systemctl, systemd-run and ssh, and no network (a connect past loopback is
-refused and counted). It drives the daemon from outside, the way a person or a program does, prints one line a check,
-state first, and exits 0 only when every check passed. `.claude/skills/verify/SKILL.md` is the recipe around it.
+tests' (test_discord.Chan, test_slash.Bot and It), systemd by the worker tests' Units, a notify socket of the run's own
+and stand-ins on PATH for systemctl, systemd-run and ssh, no bwrap for a meter reading, and no network (a connect past
+loopback is refused and counted). It drives the daemon the way a person or a program does, prints one line a check,
+recipe around it.
 
     uv run python tests/verify_daemon.py                  # the fixed checks
     uv run python tests/verify_daemon.py --drive FILE.py  # and FILE's drive(run) before the stop (one changed feature)
@@ -275,6 +276,7 @@ class Run:
         put(page, "tailnet", lambda: "")
         put(page, "wsl", lambda: False)
         put(page, "POWERSHELL", str(self.root / "no-powershell"))
+        put(usage, "BWRAP", str(self.root / "no-bwrap"))          # a meter reading runs no bwrap of the box's (conftest's no_bwrap)
         put(Yerkd.keep_meters, "__defaults__", (SHORTER[0][3],))
         put(pipeline.Pipeline.watch, "__defaults__", (SHORTER[1][3],))
         put(workers, "PUMP_EVERY", SHORTER[2][3])

@@ -1787,4 +1787,11 @@ secs = 60
 # was what finished workers' runs built to test, each waiting the folder's 30 days), not folded to fit: retention.py 17
 # (DAYS' built and BUILT, 2; venv(), the pyvenv.cfg mark, 7; the one walk serving the pytest and built rules, 3; the
 # module's sentence, 5), config.py 3 (the setting's words). 33,435: main 131ef0a's 33,415 plus 20.
-lines = 33435
+# 2026-11-20: meter-reading-light raised it by 32, a meter reading hides the account's transcripts from its Claude Code
+# (measured that day on one box: one reading asked read() for 3 GB, 836 transcripts among its files, and the keeper reads
+# each account every 15 minutes with nobody talking; with them hidden, about 1 MB), not folded to fit: usage.py 32
+# (hiding, bwrap's words over the projects folder's real path where bwrap is found and the folder is there, 10; read's
+# second run without it on bwrap's own failure, said once and kept for the process, and its stdin /dev/null, 6; BWRAP
+# and the failure kept, 2; os and shutil, 2; the module's paragraph on what a reading costs and why, 9; read's
+# docstring, 3). 33,467: main 08d4604's 33,435 plus 32.
+lines = 33467
