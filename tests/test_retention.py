@@ -236,6 +236,187 @@ def test_a_finished_workers_pytest_trees_go_a_day_after_it_finished_and_the_rest
     assert r["kinds"]["pytest"] == [2, 15] and "error" not in r
 
 
+TREES = ("venv-3.12", "runs/suite-a/wt/.venv", "runs/suite-a/wt/yerk_ai/__pycache__", "runs/suite-a/wt/.mypy_cache",
+         "runs/suite-a/wt/.ruff_cache", "runs/suite-a/wt/.pytest_cache", "runs/suite-a/wt/web/node_modules")
+
+
+def builder(w, led=None, finished=NOW - 2 * DAY):
+    """A builder's folder: its record, a worktree's sources and a folder merely named venv, and what its run built (TREES): an
+    environment at the top and one three folders down in the worktree, each with its own cache, the four kinds of cache folder
+    and a node_modules. {path in the folder: bytes} of each built tree; with `led`, the worker's row, finished at `finished`."""
+    for name in ("BRIEF.md", "PROMPT.md", "REPORT.md", "TASKS.md", "worker.json", "exit.json", "stdout.jsonl"):
+        put(w / name, "r" * 3, days=3)
+    put(w / "runs" / "suite-a" / "wt" / ".git", "gitdir: /repo/.git/worktrees/wt\n", days=3)
+    put(w / "runs" / "suite-a" / "wt" / "yerk_ai" / "retention.py", "s" * 40, days=3)
+    put(w / "runs" / "suite-a" / "wt" / "venv" / "requirements.txt", "pytest\n", days=3)      # named venv, no pyvenv.cfg
+    for i, rel in enumerate(TREES):
+        if "venv" in rel:
+            put(w / rel / "pyvenv.cfg", "home = /usr/bin\n", days=3)
+            put(w / rel / "lib" / "python3.13" / "site-packages" / "pkg" / "__pycache__" / "m.pyc", "e" * (100 + i), days=3)
+        else:
+            put(w / rel / "sub" / "f.bin", "c" * (10 + i), days=3)
+    if led is not None:
+        led.worker_add(id=w.name, room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=finished)
+    return {rel: retention.size(retention.tree(w / rel)) for rel in TREES}
+
+
+def test_a_finished_workers_environments_caches_and_node_modules_go_a_day_after_it_finished_and_its_record_and_sources_stay(tmp_path):
+    """43 GB of the workers folder's 53 GB on Nov 20 was what a run built to test (130 environments, 2,494 cache folders),
+    each waiting the folder's 30 days. They go to the trash under workers/<id>/ at their own paths a day after the worker
+    finished; its record, its worktree's sources and a folder merely named venv stay."""
+    priv, state, projects, led = layer(tmp_path)
+    w = state / "workers" / "aaaaaa"
+    trees = builder(w, led)
+    r = retention.run(priv, state, now=NOW)
+    trash = state / "trash" / retention.day(NOW) / "workers" / "aaaaaa"
+    assert "error" not in r and not any((w / rel).exists() for rel in TREES)
+    assert all((trash / rel).is_dir() for rel in TREES) and (trash / "runs/suite-a/wt/.venv/pyvenv.cfg").read_text() == "home = /usr/bin\n"
+    assert all((w / n).exists() for n in ("BRIEF.md", "PROMPT.md", "REPORT.md", "TASKS.md", "worker.json", "exit.json", "stdout.jsonl"))
+    assert [(w / "runs/suite-a/wt" / p).read_text() for p in (".git", "yerk_ai/retention.py", "venv/requirements.txt")] == [
+        "gitdir: /repo/.git/worktrees/wt\n", "s" * 40, "pytest\n"]
+    assert r["kinds"]["built"] == [7, sum(trees.values())] and "pytest" not in r["kinds"] and "workers" not in r["kinds"]
+
+
+def test_a_worker_not_finished_and_one_finished_half_a_day_ago_keep_what_their_runs_built(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    builder(state / "workers" / "bbbbbb", led, finished=NOW - DAY / 2)
+    builder(state / "workers" / "cccccc", led, finished=None)
+    before = files(state / "workers")
+    r = retention.run(priv, state, now=NOW)
+    assert files(state / "workers") == before and "built" not in r["kinds"] and "error" not in r
+
+
+def test_a_link_to_an_environment_or_named_like_a_cache_stays_unfollowed_and_a_pyvenv_cfg_folder_or_link_marks_nothing(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    w, out = state / "workers" / "aaaaaa", tmp_path / "elsewhere"
+    put(out / "env" / "pyvenv.cfg", "home = /usr/bin\n")
+    put(out / "env" / "lib" / "x.py", "x")
+    put(out / "cache" / "__pycache__" / "y.pyc", "y")
+    put(w / "REPORT.md")
+    (w / "env-link").symlink_to(out / "env", target_is_directory=True)              # a link to an environment
+    (w / "wt").mkdir()
+    (w / "wt" / "__pycache__").symlink_to(out / "cache", target_is_directory=True)  # a link named like a cache
+    (w / "wt" / "node_modules").symlink_to(out / "env", target_is_directory=True)
+    put(w / "dir-cfg" / "pyvenv.cfg" / "inside.txt", "d")                         # a pyvenv.cfg that is a folder
+    put(w / "link-cfg" / "lib" / "z.py", "z")
+    (w / "link-cfg" / "pyvenv.cfg").symlink_to(out / "env" / "pyvenv.cfg")          # and one that is a link
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    before = files(w, out)
+    r = retention.run(priv, state, now=NOW)
+    assert files(w, out) == before and "built" not in r["kinds"] and "error" not in r
+    assert all((w / p).is_symlink() for p in ("env-link", "wt/__pycache__", "wt/node_modules", "link-cfg/pyvenv.cfg"))
+
+
+def test_an_environment_holding_caches_and_a_cache_folder_holding_an_environment_move_once_and_count_once(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    w = state / "workers" / "aaaaaa"
+    put(w / "venv-3.13" / "pyvenv.cfg", "home = /usr/bin\n")
+    for rel in ("lib/python3.13/site-packages/a/__pycache__/a.pyc", ".mypy_cache/3.13/a.json", "node_modules/x/i.js", ".pytest_cache/v/n"):
+        put(w / "venv-3.13" / rel, "e" * 10)
+    put(w / "wt" / ".mypy_cache" / "env" / "pyvenv.cfg", "home = /usr/bin\n")
+    put(w / "wt" / ".mypy_cache" / "env" / "__pycache__" / "b.pyc", "m" * 5)
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    sizes = [retention.size(retention.tree(p)) for p in (w / "venv-3.13", w / "wt" / ".mypy_cache")]
+    dry = retention.run(priv, state, dry=True, now=NOW)
+    r = retention.run(priv, state, now=NOW)
+    trash = state / "trash" / retention.day(NOW) / "workers" / "aaaaaa"
+    assert dry["kinds"]["built"] == r["kinds"]["built"] == [2, sum(sizes)] == [2, 16 + 40 + 16 + 5]
+    assert (trash / "venv-3.13" / "node_modules" / "x" / "i.js").exists() and (trash / "wt" / ".mypy_cache" / "env" / "__pycache__" / "b.pyc").exists()
+    assert sorted(p.name for p in trash.iterdir()) == ["venv-3.13", "wt"] and [p.name for p in (trash / "wt").iterdir()] == [".mypy_cache"]
+
+
+def test_a_pyvenv_cfg_at_the_top_of_a_workers_folder_moves_nothing_and_the_record_beside_it_stays(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    w = state / "workers" / "aaaaaa"
+    for rel in ("pyvenv.cfg", "REPORT.md", "TASKS.md", "stdout.jsonl", "bin/python", "lib/python3.13/site-packages/x.py"):
+        put(w / rel, "t")
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    before = files(w)
+    r = retention.run(priv, state, now=NOW)
+    assert files(w) == before and "built" not in r["kinds"] and "error" not in r
+
+
+def test_a_built_tree_a_process_holds_stays_that_sweep_and_goes_on_the_next_once_it_is_free(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    w = state / "workers" / "aaaaaa"
+    so = put(w / "wt" / ".venv" / "lib" / "x.so", "s" * 4)
+    put(w / "wt" / ".venv" / "pyvenv.cfg", "home = /usr/bin\n")
+    runs_in = put(w / "wt" / ".mypy_cache" / "3.13" / "m.json", "m" * 2).parent
+    free = put(w / "wt" / "yerk_ai" / "__pycache__" / "r.pyc", "r")
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    proc = tmp_path / "proc"
+    for d in (proc / "self" / "fd", proc / "4242" / "fd"):
+        d.mkdir(parents=True)
+    (proc / "4242" / "fd" / "3").symlink_to(so)                                   # an open file inside the environment
+    (proc / "4242" / "cwd").symlink_to(runs_in)                                    # a process running in a cache folder
+    r = retention.run(priv, state, now=NOW, proc=proc)
+    assert so.exists() and runs_in.is_dir() and not free.exists() and r["kinds"]["built"] == [1, 1]
+    for p in (proc / "4242" / "fd" / "3", proc / "4242" / "cwd"):
+        p.unlink()                                                                 # the process ended
+    r = retention.run(priv, state, now=NOW + DAY, proc=proc)
+    assert not (w / "wt" / ".venv").exists() and not (w / "wt" / ".mypy_cache").exists() and r["kinds"]["built"] == [2, 4 + 16 + 2]
+    assert (state / "trash" / retention.day(NOW + DAY) / "workers" / "aaaaaa" / "wt" / ".venv" / "lib" / "x.so").read_text() == "ssss"
+
+
+def test_built_days_come_from_yerkd_toml_and_a_value_not_a_positive_number_is_the_default(tmp_path):
+    priv, state, projects, led = layer(tmp_path, "[retention]\nbuilt = 3\n")
+    w = state / "workers" / "aaaaaa"
+    trees = builder(w, led)                                                        # finished two days ago
+    r = retention.run(priv, state, now=NOW)
+    assert all((w / rel).is_dir() for rel in TREES) and "built" not in r["kinds"]
+    r = retention.run(priv, state, now=NOW + 1.5 * DAY)                            # three and a half days
+    assert not any((w / rel).exists() for rel in TREES) and r["kinds"]["built"] == [7, sum(trees.values())]
+    for bad in ("x", True, 0, -2):
+        assert retention.keep({"retention": {"built": bad}})["built"] == 1, bad
+    (priv / "yerkd.toml").write_text("[retention]\nbuilt = -1\n")
+    v = state / "workers" / "bbbbbb"
+    builder(v, led, finished=NOW - 1.2 * DAY)
+    assert retention.run(priv, state, now=NOW)["kinds"]["built"][0] == 7 and not (v / "venv-3.12").exists()
+
+
+def test_a_dry_run_names_built_with_what_the_run_then_moves_and_retention_json_and_the_morning_line_carry_it(tmp_path, capsys):
+    priv, state, projects, led = layer(tmp_path)
+    nbytes = sum(builder(state / "workers" / "aaaaaa", led).values())
+    accounts, cool = load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json")
+    before = files(tmp_path)
+    assert retention.main(priv, state, dry=True, now=NOW) == 0 and files(tmp_path) == before
+    assert f"built: 7 would be moved to the trash, {words.size(nbytes)}" in capsys.readouterr().out
+    assert retention.main(priv, state, now=NOW) == 0
+    assert f"built: 7 moved to the trash, {words.size(nbytes)}" in capsys.readouterr().out
+    assert json.loads((state / retention.LAST).read_text())["kinds"]["built"] == [7, nbytes]
+    lines, _ = morning.build(priv, state, accounts, cool, led, {"started": NOW - DAY, "units": []}, NOW + 7200)
+    assert retention.line(state, NOW + 60) == ("", f"{words.PLAIN} swept: built {words.size(nbytes)}") and f"{words.PLAIN} swept: built {words.size(nbytes)}" in lines
+
+
+def test_past_its_30_days_the_whole_folder_goes_with_what_its_run_built_and_a_worker_outside_the_root_is_never_touched(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    trees = builder(state / "workers" / "aaaaaa", led, finished=NOW - 31 * DAY)
+    out = tmp_path / "elsewhere"
+    for wid, finished in (("dddddd", NOW - 2 * DAY), ("eeeeee", NOW - 99 * DAY)):    # outside the workers root
+        builder(out / wid, led, finished=finished)
+    (state / "workers" / "ffffff").symlink_to(out / "dddddd", target_is_directory=True)   # in the root, a link out of it
+    led.worker_add(id="ffffff", room="room-a", staging=str(state / "workers" / "ffffff"), finished=NOW - 2 * DAY)
+    before = files(out)
+    r = retention.run(priv, state, now=NOW)
+    gone = state / "trash" / retention.day(NOW) / "workers" / "aaaaaa"
+    assert not (state / "workers" / "aaaaaa").exists() and all(retention.size(retention.tree(gone / rel)) == n for rel, n in trees.items())
+    assert (gone / "REPORT.md").exists() and r["kinds"]["workers"][0] == 1 and "built" not in r["kinds"] and "error" not in r
+    assert files(out) == before and (state / "workers" / "ffffff").is_symlink()
+
+
+def test_pytest_trees_still_go_as_pytest_counted_apart_from_built(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    w = state / "workers" / "aaaaaa"
+    put(w / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "copy" / ".venv" / "pyvenv.cfg", "home = /usr/bin\n")
+    put(w / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "copy" / "__pycache__" / "a.pyc", "a" * 9)
+    put(w / "wt" / "__pycache__" / "b.pyc", "b" * 7)
+    led.worker_add(id="aaaaaa", room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=NOW - 2 * DAY)
+    r = retention.run(priv, state, now=NOW)
+    trash = state / "trash" / retention.day(NOW) / "workers" / "aaaaaa"
+    assert r["kinds"]["pytest"] == [1, 16 + 9] and r["kinds"]["built"] == [1, 7] and not (w / "tmp" / "pytest-of-owner").exists()
+    assert (trash / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "copy" / ".venv" / "pyvenv.cfg").exists() and (trash / "wt" / "__pycache__" / "b.pyc").exists()
+
+
 def test_a_job_runs_folder_goes_after_its_days_once_ended_and_delivered_and_never_while_undelivered(tmp_path):
     """F10-14: every job run leaves <state>/jobs/<name>/<stamp>/ and nothing pruned them, about 145 a day. A run the ledger
     still marks undelivered stays whatever its age (the daemon's restart sweep reads its stdout), so does one never ended."""
@@ -298,7 +479,8 @@ def test_a_failure_exits_1_and_the_morning_diff_opens_with_it(tmp_path, capsys):
 def test_the_days_come_from_yerkd_toml_and_explain_says_them(tmp_path, capsys):
     priv, state, projects, led = layer(tmp_path, '[retention]\nlogs = 3\nledger = "x"\nworkers = -1\ntrash = true\n')
     assert retention.keep({"retention": {"logs": 3, "ledger": "x", "workers": -1, "trash": True, "scratch_mb": 0}}) == {
-        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "pytest": 1, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
+        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "pytest": 1, "built": 1, "scratch": 2, "trash": 7,
+        "scratch_trash": 1, "scratch_mb": 500}
     assert cli.main(["explain", "retention", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"{words.DONE} retention: ") and "Here: logs 3 days, assembled 14 days, transcripts 30 days" in out
@@ -496,7 +678,9 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
     page cuts), 2 sends of 10.6 MB, 40 MB of the person's attachments, 40 KB of stream log and 4 KB assembled, a 10 MB
     transcript of a new session each day, a finished worker every third day, 1,610 ledger rows; the sweep at 04:20 the
     next morning. Everything but the memory tree and work/inbox, measured before and after every sweep, stays under one
-    turn and the last part closes, the case before the next run starts the example."""
+    bound fixed before the month starts, while the month writes more than twice that bound. Each worker is a builder and
+    leaves what a builder's run builds, at the box's size on Nov 20 (31.8 GB in 130 environments, 11.4 GB of cache folders
+    beside them): a 245 MB environment and 88 MB of cache folders in its worktree; on_disk counts a file's length, so sparse."""
     priv, state, projects, led = layer(tmp_path)
     (proc := tmp_path / "proc" / "self" / "fd").mkdir(parents=True)        # a /proc in which nothing holds a file open
     (state / "logs").mkdir()
@@ -505,11 +689,22 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
     t0 = time.mktime((2027, 1, 4, 0, 0, 0, 0, 0, -1))                     # a Monday, a month with no clock change
     RENDER, SEND, INBOX, TRANSCRIPT, WORKER, LOG, ASM, LEDGER = 60 * MB, 10_600_000, 40 * MB, 10 * MB, 3 * MB, 40_000, 4_000, 32 * MB
     DAILY, BURST = 5 * RENDER + 2 * SEND, 15 * RENDER
-    # Plain text with one more line for the check 0 while a (0 second, entry waits in the queue for), its turn and the
-    # the/next/ step and 0 the test reads (it_back, 0 as): plain text with one more 0 line for the, check while
-    # the. Sample item moved to the, next step and the test reads it back: 00 as, 00 plain, text with one; more
-    # the case before, 00 the next 0 run starts the example note (00, says the sample item moved). To The next step and the test.
-    bound = 5 * DAILY + BURST + 30 * TRANSCRIPT + 10 * WORKER + 31 * (LOG + ASM) + LEDGER + MB
+    BUILT = {".venv/pyvenv.cfg": 200, ".venv/lib/python3.13/site-packages/numpy/_core/_multiarray_umath.so": 245 * MB - 200,
+             ".mypy_cache/3.13/yerk_ai/daemon.data.json": 60 * MB, "yerk_ai/__pycache__/daemon.cpython-313.pyc": 20 * MB,
+             ".ruff_cache/0.17.1/package-cache": 4 * MB, ".pytest_cache/v/cache/nodeids": 4 * MB}
+    BUILD = sum(BUILT.values())                                           # 333 MB a builder
+    # The bound, one reason a term:
+    # 5 * DAILY: a day's scratch leaves its room by the sweep 3 days on (2 days, and the first sweep past them), and its
+    #   folder in trash/scratch/ is deleted 2 sweeps after that (scratch_trash, 1 day): on the disk 5 days at most, wherever it sits.
+    # BURST: day 10's page cuts are scratch too, on the disk those 5 days, once in the month.
+    # 30 * TRANSCRIPT: a session's transcript keeps 30 days, as long as the month: every one of them.
+    # 10 * WORKER: a worker's record and its transcript keep 30 days, as long as the month: all 10.
+    # 4 * BUILD: a builder's environment and caches leave its folder at the second sweep after its afternoon (built, 1 day),
+    #   and that sweep's trash folder is deleted 8 sweeps on (trash, 7 days): 10 days on the disk, so 4 of the workers of every
+    #   third day at once, wherever they sit.
+    # 31 * (LOG + ASM): a day's log raw, 14 gzipped and 8 of each in the trash (31, at most raw size each).
+    # LEDGER + MB: the ledger's rows, kept 90 days, longer than the month, and one MB for the tables beside them.
+    bound = 5 * DAILY + BURST + 30 * TRANSCRIPT + 10 * WORKER + 4 * BUILD + 31 * (LOG + ASM) + LEDGER + MB
     written, seen = 0, []
     for k in range(1, 31):
         day0, sid = t0 + (k - 1) * DAY, f"{k:08x}-0000-4000-8000-{k:012x}"
@@ -529,10 +724,12 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
         if k % 3 == 0:                                                     # a worker, finished the same afternoon
             folder = sparse(state / "workers" / f"w{k:05d}" / "REPORT.md", 2 * MB, day0 + 15 * 3600).parent
             sparse(projects / project_dir(folder.resolve()) / f"{sid}.jsonl", MB, day0 + 15 * 3600)
+            for rel, n in BUILT.items():                                   # what its run built, in its worktree
+                sparse(folder / "wt" / rel, n, day0 + 15 * 3600)
             led.worker_add(id=f"w{k:05d}", room="room-a", staging=str(folder), started=day0 + 14 * 3600, finished=day0 + 15 * 3600)
         led.many([(t, {**row, STAMP.get(t, "t"): day0 + 9 * 3600 + i, **({KEY[t]: f"{t}-{k}-{i}"} if t in KEY else {})})
                   for t, n, row in DAY_ROWS for i in range(n)])
-        written += DAILY + (BURST if k == 10 else 0) + TRANSCRIPT + (WORKER if k % 3 == 0 else 0) + LOG + ASM
+        written += DAILY + (BURST if k == 10 else 0) + TRANSCRIPT + (WORKER + BUILD if k % 3 == 0 else 0) + LOG + ASM
         late = on_disk(state, projects, skip={state / "memory", work / "inbox"})       # the day's end, before its sweep
         r = retention.run(priv, state, now=(sweep := day0 + DAY + 4 * 3600 + 20 * 60), proc=proc.parent.parent)
         early = on_disk(state, projects, skip={state / "memory", work / "inbox"})

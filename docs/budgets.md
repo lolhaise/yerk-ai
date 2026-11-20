@@ -793,7 +793,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-20: need-2026-11-19-126's fix raised it by 20, what PR 110's cold read found, not folded to fit: channels/discord.py 11 (said: in a room that answers more than one person, a line above each one's message naming who sent it, in its own channel and in a held group from the one it watches; the module's line on who is answered), move.py 6 (answers: rooms.toml's people and those added by asking, so `yerk room add` copies no overwrite of theirs into a new person's room and `yerk import` files them as a person), daemon.py 2 (one added and since listed in [watch] assistants said in the log), words.py 1 (PERSON_BY). 33,415: 33,395 plus 20.
 
-- `lines = 33415`
+2026-11-20: sweep-built-trees raised it by 20, the sweep's `built` kind (that morning 43 GB of the workers folder's 53 GB was what finished workers' runs built to test, each waiting the folder's 30 days), not folded to fit: retention.py 17 (DAYS' built and BUILT, 2; venv(), the pyvenv.cfg mark, 7; the one walk serving the pytest and built rules, 3; the module's sentence, 5), config.py 3 (the setting's words). 33,435: main 131ef0a's 33,415 plus 20.
+
+- `lines = 33435`
 
 ## Uncapped
 
