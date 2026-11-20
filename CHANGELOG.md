@@ -27,14 +27,17 @@ version changes.
   an invoice, a payment method named that is no invoice, a choice not chosen that the browser cannot tie to its words,
   a frame of another site or an embedded object with its host and its size, or more boxes or frames than it reads.
 - Only a payment method says invoice. A sentence such as "billed on your next invoice" counts for nothing: the build
-  before this one let a page through on one, and its judge found sentences no list of negations, questions and
-  conditions holds ("Nothing will be billed on your next invoice."). A page that says invoice only in a sentence is a
-  payment page, as before this pull request.
-- A choice is tied to its words, or its page says nothing: a radio's or a checkbox's words are those its label, its
-  aria-label or the words it names give it, else its parent's when the parent holds no other control and the words
-  drawn on its own row; a radio with no words at all and not chosen, or such a drawn checkbox, leaves nothing in its
-  page or box in force, so "Bill me" beside an unchosen radio with no label is no invoice. What the browser did not
-  read refuses too: a page or a box with no answer on its payment methods, and more boxes or frames than it returns.
+  before this one let a page through on one, even on sentences no list of negations, questions and conditions holds
+  ("Nothing will be billed on your next invoice."). A page that says invoice only in a sentence is a payment page, as
+  before this pull request.
+- A choice is tied to its words, or its page says nothing: a radio or a checkbox, the page's own or one drawn by role
+  (a radio, a checkbox, a switch or a menu's radio), holds its own words (its label, its aria-label, the words it
+  names, a role one's own words, else its parent's when the parent holds no other control) and the words drawn on its
+  row, so "Bill me" beside a choice not chosen is no invoice, whether the choice has no label, a label that says only
+  "Select", or is an empty box a component library draws; one with no words at all and not chosen leaves nothing in
+  its page or box in force. The cost, and it is wanted: a checkbox or a switch not chosen on Bill me's own row,
+  labelled or not, makes the page a payment page. What the browser did not read refuses too: a page or a box with no
+  answer on its payment methods, and more boxes or frames than it returns.
 - The payment marks stay beside the invoice payment method as a second look: a card field, a payment frame, a saved
   card, a payment service's address, another pay button, bank details (a bank account's number field, an IBAN, a sort
   code, a bank word with its digits after it), a masked number (•••• 4242), and a card, wallet or balance the page
@@ -48,22 +51,22 @@ version changes.
   and how it is billed. A button whose words make a payment (Pay, Buy now, Checkout, Submit payment) still makes a
   payment page wherever it shows and is never clicked, a hidden one included, and neither is an order button on any
   other page.
-- The plug-in's change is on its branch `need-2026-11-19-125` (27b806e, over 2b2de89, 0479c2e, e9d762d and 654ecaa):
-  135 of 135 of its offline tests green, twenty-four running the page probe in Playwright's headless shell, among them
-  the review step in its own shape with the reCAPTCHA badge its site draws (an order form, by its payment method
-  alone) and each way of paying and each plain choice markup above beside it (a payment page). Its tool entries are
-  unchanged, so no budgets.toml line moves. `yerk explain order-forms` has the ability, found by asks such as "submit
-  the order" and "bill me"; `free-bookings` no longer says an amount on a page marks a payment page, which the browser
-  never read; `upsell-pages` no longer lists Place order among the buttons that mark a payment page wherever they
-  show. The README's Add-ons line names it beside `free-bookings`, at 11,987 of its 12,000 bytes, the private folder's
-  last line no longer repeating the Install paragraph's pointer to the guide.
+- The plug-in's change is on its branch `need-2026-11-19-125` (902312e, over 27b806e, 2b2de89, 0479c2e, e9d762d and
+  654ecaa): 142 of 142 of its offline tests green, thirty-one running the page probe in Playwright's headless shell,
+  among them the review step in its own shape with the reCAPTCHA badge its site draws (an order form, by its payment
+  method alone) and each way of paying and each choice markup above, native or by role, beside it (a payment page).
+  Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain order-forms` has the ability, found by
+  asks such as "submit the order" and "bill me"; `free-bookings` no longer says an amount on a page marks a payment
+  page, which the browser never read; `upsell-pages` no longer lists Place order among the buttons that mark a payment
+  page wherever they show. The README's Add-ons line names it beside `free-bookings`, at 11,987 of its 12,000 bytes,
+  the private folder's last line no longer repeating the Install paragraph's pointer to the guide.
 - Why: on 2026-11-19 a room asked to order an item to an address on your word filled the order form to its review
   step, with "Bill me" as its payment method, and was refused its terms box and its Submit Order as on a payment page.
   It filed the need (need 125 of 2026-11-19); on your word the order then went in through the desktop tool, which
   reads nothing of a page, so the careful tool refused what the blind one clicked.
 
 **Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
-`need-2026-11-19-125` (27b806e, 135 cases). A room sends such an order from its next process start after that. Nothing
+`need-2026-11-19-125` (902312e, 142 cases). A room sends such an order from its next process start after that. Nothing
 in rooms.toml, yerkd.toml or budgets.toml changes.
 
 ### need-2026-11-19-126 (#110)

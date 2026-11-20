@@ -715,9 +715,10 @@ def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_f
     its terms box and its Submit Order as on a payment page, the owner's own order included, since Submit Order is a pay
     button's words; the order then went in through the desktop tool, which reads nothing of a page. Asked that way, a
     room gets order-forms whole under the recall cap (it rides on the hands browser plug-in, whose test/run.mjs has the
-    order form): built again after PR 109's three cold reads and fixed after its judge, the page earns the order form by
-    a payment method whose value is an invoice in force, or it is a payment page as it always was; a sentence counts for
-    nothing, and a choice the browser cannot tie to its words puts nothing in force; the owner's word sends the order, a
+    order form): built again after PR 109's three cold reads, and fixed where a sentence or a choice's caption still let a
+    page through, the page earns the order form by a payment method whose value is an invoice in force, or it is a payment
+    page as it always was; a sentence counts for nothing, a choice holds its own words and those drawn on its row, and one
+    the browser cannot tie to any words puts nothing in force; the owner's word sends the order, a
     page that takes card or bank details is still never touched, and the page's words stay a record. free-bookings no longer
     says an amount marks a payment page, which the browser never read. upsell-pages no longer names Place order among
     the buttons that mark a payment page wherever they show; a booking ask still gets free-bookings; no person or place
@@ -738,20 +739,24 @@ def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_f
         assert want in text, want
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     told = abilities.explain("order-forms", TAB["order-forms"], TAB, y.memory)
-    # built again (PR 109's three cold reads each found a way of paying a list of payments missed), and fixed after its
-    # judge: the page earns the order form by its payment method's invoice value in force alone, no other payment method,
-    # no choice it cannot tie to its words, nothing drawn it cannot read; a miss refuses, and so does what it did not read
+    # built again (PR 109's three cold reads each found a way of paying a list of payments missed), and fixed where a
+    # sentence or a choice's caption still let a page through: the page earns the order form by its payment method's
+    # invoice value in force alone, no other payment method, no choice not chosen holding that value on its row, no choice
+    # it cannot tie to any words, nothing drawn it cannot read; a miss refuses, and so does what it did not read
     decides = next(x for x in told if x.startswith("- The page earns it or it is a payment page:"))
     assert all(w in decides for w in ("makes a payment page unless a payment method on the page has an invoice as its value, "
                                       "in force", "Bill me", "a sentence such as billed on your next invoice counts for nothing",
                                       "counts only when the page marks it chosen",
-                                      "a radio or a checkbox the browser cannot tie to its words, by its label, its parent or "
-                                      "its own row, puts nothing in force",
+                                      "a radio, a checkbox or a switch, the page's own or drawn by role, holds its own words "
+                                      "and those drawn on its row",
+                                      "so one not chosen on the invoice's row takes it out of force, labelled or not",
+                                      "one the browser cannot tie to any words puts nothing in force",
                                       "Payment method: X refuses for every X that is no invoice", "a made-up name alike",
                                       "a frame of another site or an embedded object at any size",
                                       "a bot check's own frame aside", "so a miss is a refusal",
                                       "what the browser did not read refuses too")), decides
     assert "with no not before it" not in decides and "the page itself says" not in decides, decides
+    assert "by its label, its parent or its own row" not in decides, decides
     assert decides.endswith("and the refusal names the rule that stopped it.")
     word = next(x for x in told if x.startswith("- The owner's word for the order:"))
     assert "the order button's own click included" in word and "how it is billed" in word
