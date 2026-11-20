@@ -100,7 +100,7 @@ class Inbound:
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
 RESERVE = 33000                           # Claude Code compacts at its window less this (2.1.304's output reserve and buffer)
-FILING = ("remember", "schedule", "hold", "settings")   # Yerk AI's calls that file or set something, answering nothing
+FILING = ("remember", "schedule", "hold", "settings", "people")   # Yerk AI's calls that file or set something, answering nothing
 STUB_CHARS = 200                          # the stub rule's size line (Room.stub_check)
 # the note rule's signals (Room.note_check), as measured 2026-10-29 over 2,571 finals: one hit, the reply seen live
 SHAPE = re.compile(r"\b(?:in|to) (?:a|one|two|three) lines?\b|\bkeep it (?:to|short|tight|brief)\b|\b(?:one|two|three)[- ]liner\b|\bno need to\b|\b(?:and|then) move(?: on)?\b|\bstyle\b|\btone\b|\bregister\b|\bthe ask\b|\bthe one correction\b|\bnuance\b", re.I)

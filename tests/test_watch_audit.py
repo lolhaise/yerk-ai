@@ -184,3 +184,15 @@ def test_watch_audit_is_a_known_room_key_and_settings_md_says_what_it_does():
     page = (REPO / "docs" / "settings.md").read_text()
     assert "watch_audit" in config.ROOM_KEYS and "settings.md" not in owndocs.stale()
     assert f"- `watch_audit`: {config.ROOM_WORDS['watch_audit']}\n" in page and "never silent (default false" in page
+
+
+def test_a_held_group_in_a_room_answering_two_people_names_each_one_s_message(tmp_path, monkeypatch):
+    """need-2026-11-19-126's cold read: in a room the people tool gave a second person, each person's message in a group held
+    from the watched channel reads under the line naming who sent it, as in the room's own channel; the owner's as before."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.2)
+    link, room, watched = auditing(tmp_path, {}, people=frozenset({PERSON, 777}))
+    turns(link, said(watched, 1801, "first", PERSON, "Quuxa"), said(watched, 1802, "second", 777, "Corge"),
+          said(watched, 1803, "third", OWNER, "Examplia"), answer="ok.")
+    [got] = room.got
+    by = [words.PERSON_BY.format(who=f"{name} (@handle-{i})", n=2) for name, i in (("Quuxa", PERSON), ("Corge", 777))]
+    assert got.sender == "person" and got.text.split("\n")[1:6] == [by[0], "first", by[1], "second", "third"]

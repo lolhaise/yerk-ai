@@ -1180,6 +1180,23 @@ NEXT_REPLY, THIS_ROOM = "next reply: {model}, {effort} thinking{on}", "this room
 ON, PINNED, NOT_AN_ACCOUNT = ", on account {account}", "{name}: on account {account}", "not an account: {account}\nthe accounts: {accounts}"
 CARRIED, RECAPPED = "the same session goes on", "a new session starts, with a recap\nmemory stays"   # the next message, after a switch
 OWNER_ONLY = "not changed: this room keeps the model, thinking level and account it has, and answers on them"   # see WORKERS_OWNER_ONLY
+# who a room answers besides the owner (the people tool): the owner's own ask, kept in the daemon's override over rooms.toml
+PEOPLE_ADDED, PEOPLE_ALREADY = "added: {who}, answered here from their next message on", "not changed: {who} is answered here already"
+PEOPLE_DROPPED, PEOPLE_NOW = "dropped: {who}, not answered here from their next message on", "answered here: the owner{also}"
+PEOPLE_ONE, PEOPLE_LISTED = ", {who} (added {day})", ", {n} more in rooms.toml"
+PEOPLE_OWNER_ROOM = ("not added: this room reads the owner's whole memory, so it answers the owner alone\n"
+                     "a person is answered in a room whose privacy is family or shared")
+PEOPLE_SHELL = ("not added: this room's shell or read folder reaches past what a person may see\n"
+                "a person is answered in a room with neither, or with shell = \"trusted\"")
+PEOPLE_LAYER = "not added: this room has no layer of its own\na person is answered in a room whose files are in a layer of its own"
+PEOPLE_NOT_MESSAGE = ("not added: \"{given}\" is not a message; name one of theirs in this room by its id, the [m:ID] that ends "
+                      "its line in the day log, or its link")
+PEOPLE_NOT_HERE = "not added: that message is outside this room's own channel; a person is added by a message of theirs here"
+PEOPLE_BOT = "not added: that message is a bot's, a webhook's or another assistant's, never answered as a person"
+PEOPLE_THE_OWNER = "not changed: that message is the owner's, and the owner is answered in every room"
+PEOPLE_NO_ONE, PEOPLE_IN_TOML = "not changed: no one added here is {given}; added: {who}", "not changed: {who} is in rooms.toml, which only the owner edits"
+PEOPLE_OPS, PEOPLE_NOT_SAID, PEOPLE_NONE = "op is add or drop, or none for who is answered here", TEXTING_NOT_SAID, "none"
+PERSON_BY = "[sent by {who}, one of the {n} people this room answers]"   # above each one's message, in a room with more than one
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 # bare /model under the room's line, and its suggestions as the owner types (Yerkd.model_menu, model_picks)

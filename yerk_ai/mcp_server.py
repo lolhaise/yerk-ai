@@ -2,8 +2,8 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-four tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, github_state, page, texts, texting, attachments, zoom, show), local-only HTTP, preloaded in
+"""Yerk AI's own MCP server, the tools every room is given beyond Claude Code's own, served over HTTP on this machine only: twenty-five tools (send,
+hold, recall, read_memory, remember, worker, schedule, settings, transcribe, voice_note, seen, render, watch, need, text, email, delete, github_state,
 page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, watch, text, email, github_state and attachments are here and not
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
@@ -86,6 +86,7 @@ class Daemon(Protocol):
     async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]: ...
     async def tool_zoom(self, room: str, path: str, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]: ...
     async def tool_show(self, room: str, path: str, screen: str = "") -> dict[str, Any]: ...
+    async def tool_people(self, room: str, op: str, person: str = "", said: str = "") -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -258,6 +259,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         goes back to the room's own. It applies from the next reply on, in the same conversation unless the line says
         a new session starts; with none it says what the room runs now. Say its `line`."""
         return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort, account))
+
+    @mcp.tool()
+    async def people(op: str = "", person: str = "", said: str = "", *, ctx: Context) -> str:
+        """Who this room answers in its channel besides the owner, and the owner's change to it ("answer them here too"): op
+        `add` with `person` one of their messages in this channel, by the id in the [m:ID] that ends its day-log line or by
+        its link, answers them from their next message on; `drop` with their handle or id stops one so added; no op says who
+        is answered. `said` is the owner's own words in this turn asking it, three or more. Say its `line`."""
+        return json.dumps(await daemon.tool_people(caller_room(ctx), op, person, said))
 
     @mcp.tool()
     async def transcribe(path: str, owner_yes: bool = False, *, ctx: Context) -> str:
