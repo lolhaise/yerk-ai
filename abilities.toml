@@ -472,7 +472,8 @@ how = [
   "Drawn by the browser itself, so a tab with no window on the owner's screen is shot: Page.captureScreenshot over the browser's developer protocol, where a desktop screenshot sees nothing.",
   "Saved in the room's own work folder, to open with Read and send with send: a new name for each shot, never one reused; the path comes back, never the picture, and a file that is not a PNG is never named.",
   "A read, under every browser call's guards: no owner's word and no payment check; only the room's own tabs, owner rooms only, the brake's lease.",
-  "A tab that never paints is named, with the way past it: the active tab of a minimized window never paints, so after its wait the room is told to open the page again in a background tab and shoot that one.",
+  "Back in under a second from any of the room's tabs, the one a minimized window shows too, and the window is never shown for it; a tab that gives no picture in 25 seconds is named, with the way past it: open the page again in a new tab and shoot that one.",
+  "A picture's numbers are the click's: it is the page's own pixels at most, its longer edge 2000 at most, which Read shows unshrunk, so a spot read off it goes to a click by position as read, and the plug-in turns it into the page's point.",
 ]
 tier = "free"
 needs = "the browser ability with a shot action in its plug-in"
