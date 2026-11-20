@@ -8,6 +8,39 @@ version changes.
 
 ## 2026-11-19
 
+### need-2026-11-19-125 (its pull request to come)
+
+- A room can send an order form you ordered now when the page takes no card or bank details, such as an order billed
+  later on your account's invoice: it ticks the terms box and presses Place order or Submit order on your word. The hands
+  plug-in's browser read a button whose whole words are Place order or Submit order as a pay button wherever it showed,
+  so an order's review step that asked no payment was a payment page, and its terms box and its Submit Order were
+  refused, your word or not.
+- Such an order button makes a payment page now only beside something that takes card or bank details: a card field, a
+  payment frame, a saved card, a payment service's address, another pay button, bank details (a routing, transit,
+  institution or bank account number field, an IBAN, a sort code, a saved bank account) or a masked number, as a saved
+  card or account shows one (•••• 4242). With none of them the page is an order form: each field set, click, typed value
+  and file there, the order button's own click included, waits for your word in the room (the browser's `confirmed`),
+  and an open or a read of the page says it is one and to tell you what the page says the order costs and how it is
+  billed when the room asks.
+- A button whose words make a payment (Pay, Buy now, Checkout, Submit payment) still makes a payment page wherever it
+  shows and is never clicked, a hidden one included, and neither is an order button on any other page. Bank details
+  with no order button mark nothing, as before.
+- The plug-in's change is on its branch `need-2026-11-19-125` (654ecaa): 99 of 99 of its offline tests green, two running
+  the page probe in Playwright's headless shell, the new one against an order's review step whose Submit Order read as
+  a pay button on its main a049bf2. Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain
+  order-forms` has the ability, found by asks such as "submit the order" and "bill me"; `upsell-pages` no longer lists
+  Place order among the buttons that mark a payment page wherever they show. The README's Add-ons line names it beside
+  `free-bookings`, at 11,965 of its 12,000 bytes, the private folder's last line no longer repeating the Install
+  paragraph's pointer to the guide.
+- Why: on 2026-11-19 a room asked to order an item to an address on your word filled the order form to its review step,
+  billed on the next invoice with "Bill me" as its payment method, and was refused its terms box and its Submit Order as
+  on a payment page. It filed the need (need 125 of 2026-11-19) and left the tab open for you to finish, rather than work
+  around the wall.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`need-2026-11-19-125` (654ecaa). A room sends such an order from its next process start after that. Nothing in
+rooms.toml, yerkd.toml or budgets.toml changes.
+
 ### need-2026-11-19-124 (#108)
 
 - An owner room reads Yerk's own fetched docs pages and the doctor's findings now. Its Read, Grep and Glob reached its

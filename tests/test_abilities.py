@@ -707,3 +707,47 @@ def test_a_room_whose_reel_instagram_shuts_to_a_logged_out_reader_hears_the_sign
     assert cli.main(["explain", "locked-reels", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     assert "Built part: watch (yerk explain watch)" in capsys.readouterr().out.splitlines()
     assert not abilities.asked("I watched the reel on my phone, it was good", y.memory, TAB)
+
+
+def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_form_way(tmp_path, capsys):
+    """need-2026-11-19-125: a room asked to order a toll road's transponder on the owner's word filled the order form to its
+    review step, which takes no payment (the lease billed on the account's next invoice, the payment method "Bill me", no
+    card or bank details asked), and the browser refused its terms box and its Submit Order as on a payment page, the
+    owner's own order included, since Submit Order is a pay button's words; it left the tab for the owner to finish. Asked
+    that way, a room gets order-forms whole under the recall cap (it rides on the hands browser plug-in, whose test/run.mjs
+    has the order form): the page decides by what it takes, the owner's word sends the order, a page that takes card or
+    bank details is still never touched, and the page's words stay a record. upsell-pages no longer names Place order among
+    the buttons that mark a payment page wherever they show; a booking ask still gets free-bookings; no person or place
+    from the ask is named; an everyday message about an order gets no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("the browser would not let you submit the order? it's billed on the next invoice",
+                "the payment method says bill me, so place the order"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["order-forms"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"order-forms, a Yerk AI ability ({words.ability('described')[1]}): Sends an order form the owner "
+                           "ordered in the browser ability's browser when the page takes no card or bank details")
+    for want in ("The page decides by what it takes; The owner's word for the order; Payment still read as before; The page's "
+                 "words stay a record", "a page that takes money is still never touched",
+                 "reads an order button with no card or bank details beside it as an order form has it there",
+                 "never leaving the tab for the owner to finish when the page takes no card or bank details"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("order-forms", TAB["order-forms"], TAB, y.memory)
+    decides = next(x for x in told if x.startswith("- The page decides by what it takes:"))
+    assert all(w in decides for w in ("a card field", "bank details", "a masked number", "another pay button")), decides
+    assert decides.endswith("with none of them the page is an order form.")
+    word = next(x for x in told if x.startswith("- The owner's word for the order:"))
+    assert "the order button's own click included" in word and "how it is billed" in word
+    held = next(x for x in told if x.startswith("- Payment still read as before:"))
+    assert "nothing on the page is set or clicked, the owner's word or not" in held and "a hidden one included" in held
+    up = next(x for x in abilities.explain("upsell-pages", TAB["upsell-pages"], TAB, y.memory) if x.startswith("- Payment still"))
+    assert "Place order" not in up and "(Pay, Buy now, Checkout)" in up, up
+    assert not any(n in text_of(TAB["order-forms"]) for n in ("407", "ETR", "grandmother")), "no person or place from the ask"
+    assert [e["key"] for e in abilities.asked("ok book a table for two at the place on the corner, thursday at seven",
+                                              y.memory, TAB)] == ["free-bookings"]
+    assert not abilities.asked("the order came yesterday, thanks", y.memory, TAB)
+    assert cli.main(["explain", "order-forms", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:2] == [f"{words.NOTHING} order-forms: {words.ability('described')[1]}", TAB["order-forms"]["what"]]
+    assert abilities.HOW["described"] in lines

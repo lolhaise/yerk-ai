@@ -50,7 +50,7 @@ Everything of yours lives in one folder outside the repository, named by `--priv
 ~/.local/state/yerk/           0700: the session table, the ledger, the index, logs, workers, the trash
 ```
 
-Every key of those files, with its default, is in [docs/settings.md](docs/settings.md); the long form is in [docs/GUIDE.md](docs/GUIDE.md), The private folder.
+Every key of those files, with its default, is in [docs/settings.md](docs/settings.md).
 
 ## A room's turn
 
@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room does past Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, tools in `allow`; a fix to one lands in its own repository (`plugin-builds`). One ships here, the web plug-in `plugins/web`: pages (Bookings as a guest, a Commons answer), PDF or Word files (`web-documents`), search and research (`research-ids`), in a worker too (`worker-web`) ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`), gets age-locked reels (`locked-reels`).
+What a room does past Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, tools in `allow`; a fix to one lands in its own repository (`plugin-builds`). One ships here, the web plug-in `plugins/web`: pages (Bookings as a guest, a Commons answer), PDF or Word files (`web-documents`), search and research (`research-ids`), in a worker too (`worker-web`) ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`) and orders billed later (`order-forms`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`), gets age-locked reels (`locked-reels`).
 
 ## The docs
 
