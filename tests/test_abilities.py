@@ -285,7 +285,8 @@ def test_a_room_asked_for_a_picture_of_its_tab_hears_the_shot_way_never_the_desk
     assert text.startswith(f"tab-shots, a Yerk AI ability ({words.ability('described')[1]}): Saves a picture of what one of the room's tabs")
     for want in ("One browser action, shot", "Drawn by the browser itself, so a tab with no window on the owner's screen is shot",
                  "Saved in the room's own work folder, to open with Read and send with send", "the owner's screen is never shot",
-                 "A tab that never paints is named, with the way past it", "whose browser plug-in carries the shot action"):
+                 "Back in under a second from any of the room's tabs", "the window is never shown for it",
+                 "A picture's numbers are the click's", "whose browser plug-in carries the shot action"):
         assert want in text, want
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("take a screenshot of my whole screen", y.memory, TAB)] == ["pc-control"]
