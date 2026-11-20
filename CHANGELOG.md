@@ -91,7 +91,7 @@ repo; a room has it from its next process start.
 **Upgrading**: nothing to do. This block is the record of a change in the browser plug-in, which is outside this
 repo; a room has it from its next process start.
 
-### meter-reading-light (its pull request to come)
+### meter-reading-light (#114)
 
 - A meter reading no longer reads the account's transcripts. The daemon reads each account's meters every 15 minutes,
   with nobody talking, and a card's live ask reads them too, each by Claude Code's own `/usage`; that Claude Code read
