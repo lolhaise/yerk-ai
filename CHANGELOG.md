@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-20
 
-### shot-fits-click (its pull request to come)
+### shot-fits-click (#113)
 
 - A spot a room reads off a picture of its tab is where a click by position on that tab lands, on a screen drawn at any
   scale. A picture was the screen's own pixels (2560 by 1239 for a page of 2048 by 991 drawn at 1.25, twice the page on
@@ -18,7 +18,9 @@ version changes.
   one screen. A picture is now the page's own pixels at most, its longer edge 2000 at most, which Read shows with no
   shrink, and the plug-in divides a spot read off it by the picture's scale before anything reads or clicks the
   point. By hand that day, through the browser's tool on a fresh tab: a button read off such a picture at 1543,701,
-  divided by its scale, is 1580,718, the button's own middle, and the press there landed.
+  divided by its scale, is 1580,718, the button's own middle, and the press there landed. Then through the
+  plug-in itself, at 1.25 and on a screen drawn at 2: each button clicked at the spot read off the picture, and
+  hit.
 - The reply to a picture gives its size beside its path, and every reply to a click by position names the spot as the
   room gave it, never the page's. A spot outside the picture, or a click on a tab that is another size now than when
   its picture was taken, clicks nothing and says to take a new picture. A tab never pictured, and a click by label,
@@ -27,14 +29,14 @@ version changes.
   tab's first picture waited 25 seconds and failed. The browser's window is never shown on the owner's screen for one:
   the plug-in showed it for a retry after that wait, and that is gone. A tab that gives no picture in 25 seconds is
   named with the way on: open the page again in a new tab and shoot that one.
-- The plug-in's change is on hands-mcp's branch `shot-fits-click` at e999392 (over 7acb28e), not on its main yet:
-  167 of 167 of its offline tests green, its stand-in for the browser's tool printing what that tool prints and one
-  row reading the tool itself for the words the plug-in rests on. Its tool entries are 10,409 bytes, one fewer, so no
-  budget line moves.
+- The plug-in's change is live on its main since 2026-11-20, by a fast-forward to hands-mcp `shot-fits-click` at
+  ccdaaa9 (over 7acb28e): 167 of 167 of its offline tests green, its stand-in for the browser's tool printing what
+  that tool prints and one row reading the tool itself for the words the plug-in rests on. Its tool entries are
+  10,409 bytes, one fewer, so no budget line moves.
 - Why: the change before this one said a picture's pixels are not the click's and left that for a change of its own.
 
 **Upgrading**: nothing to do. This block is the record of a change in the browser plug-in, which is outside this
-repo; a room has it from its next process start once the plug-in's main carries it.
+repo; a room has it from its next process start.
 
 ### sweep-built-trees (#111)
 
