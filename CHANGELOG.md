@@ -30,30 +30,36 @@ version changes.
   trash, about 43 GB on that box, and the trash deletes it 7 days later; `yerk retention --dry-run` says the count and
   the bytes first. budgets.toml: `[code] lines` 33,415 to 33,435.
 
-### click-by-position-lands (its pull request to come)
+### click-by-position-lands (#112)
 
-- A room's click by position, from a picture of the tab, lands now on a tab that has no window on the owner's screen,
-  as every tab the browser opens for a room is. Before, such a click was answered "browser clicked" while the page got
-  no press at all: a tab in the background does not paint, and the mouse events reached it as a move alone. A room
-  went on as if it had clicked, and `type` after it found no field with the focus.
-- The reply names what the click landed on: a control by its tag and its words (`BUTTON "Count it"`), anything else by
-  its tag alone, so a field's value or a key a page shows never comes back in it. A click the page did not get is said
-  as "browser clicked nothing", with the way on (the control by its label, or a new picture and the spot where it is
-  now; for a spot outside what the tab shows, a spot inside it): nothing is read after it, it counts as a failure, and
-  the same spot failing twice is not tried a third time. A click that cannot be known, a press into a frame of another
-  site or on a page that could not be read, is said as sent, never as clicked, with what the tab shows after it.
+- A room's click by position says what it did. The reply names what the click landed on: a control by its tag and
+  its words (`BUTTON "Count it"`), anything else by its tag alone, so a field's value or a key a page shows never
+  comes back in it. A click the page did not get is said as "browser clicked nothing", with the way on (the control
+  by its label, or a new picture and the spot where it is now; for a spot outside what the tab shows, a spot inside
+  it): nothing is read after it, it counts as a failure, and the same spot failing twice is not tried a third time.
+  A click that cannot be known, a press into a frame of another site or on a page that could not be read, is said as
+  sent, never as clicked, with what the tab shows after it.
+- It lands on a tab that has not been drawn yet. Every tab the browser opens for a room has no window on the owner's
+  screen, and such a tab, opened and clicked by position with no picture taken of it first, took the mouse's move and
+  no press, while the reply said "browser clicked". Once a picture had been taken of the tab the click did land, after
+  5 seconds. It lands now either way, in under a second: measured 2026-11-20 on test pages that report each press
+  they get.
 - A click by label answers as before, and so does a click by position whose tool itself fails.
-- The plug-in's change is on its branch, with hands-mcp click-by-position-lands at e45658f (over 90848d3): 153 of 153
-  of its offline tests green, its stand-in for the browser's click tool printing what that tool prints and one row
-  reading the tool itself for the words the reply rests on. The same branch pins one more page of need 125's as a
-  payment page: a choice drawn by role and not shown, "Bill me" not chosen beside another one chosen, holds its words.
-- Why: on 2026-11-20, judging need 125, a click by position was answered "browser clicked" three times while the page
-  got no press, and the ledger held five refusals of `type` in two weeks, each "nothing on tab ... has focus" after a
-  click by position that had not landed.
+- Not in this change, and the reason a click from a picture can still miss: a picture's pixels are not the click's.
+  On a screen drawn at 1.25 or at 2 times, the picture is that much larger than the page a click measures, so a spot
+  read off the picture is clicked that much too far from the top left corner. The reply now shows it, by naming what
+  was hit; the fix is a change of its own.
+- The plug-in's change is live on its main since 2026-11-20, by a fast-forward to hands-mcp
+  `click-by-position-lands` at 7acb28e (over 902312e): 154 of 154 of its offline tests green, its stand-in for the
+  browser's click tool printing what that tool prints and one row reading the tool itself for the words the reply
+  rests on. Its tool entries are byte for byte as they were, so no budget line moves. The same branch pins one more
+  page of need 125's as a payment page: a choice drawn by role and not shown, "Bill me" not chosen beside another
+  one chosen, holds its words.
+- Why: on 2026-11-20, judging need 125, a click by position on a page opened and not pictured was answered
+  "browser clicked" three times while the page got no press.
 
-**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
-`click-by-position-lands` (e45658f, 153 cases); the browser's own click tool that lands is live already. A room has
-it from its next process start after that.
+**Upgrading**: nothing to do. This block is the record of a change in the browser plug-in, which is outside this
+repo; a room has it from its next process start.
 
 ## 2026-11-19
 
