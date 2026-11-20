@@ -2,6 +2,7 @@
 private layer. The cases: the channel (its overwrites copied from the room it is made like), the voice, the block (loaded and
 through the people guard before anything changes), the one history import (roles, attachments, a second run only tops up),
 room's own layer behind the wall; and --dry-run writing and sending nothing."""
+import json
 import os
 import tomllib
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,7 @@ import yerk_ai.move as move
 from yerk_ai import cli, context, memory
 from yerk_ai.config import REPO, rooms, toml_value
 
-GUILD, OWNER, BOT, BEN, MEMBER_A, MEMBER_B, OLD = 100, 1, 2, 3, 5, 6, 30
+GUILD, OWNER, BOT, BEN, AUNT, COUSIN, UNCLE, OLD = 100, 1, 2, 3, 5, 6, 8, 30
 PERSON = tomllib.loads((REPO / "examples" / "rooms" / "person.toml").read_text())
 HOME_OWS = [{"id": str(OWNER), "type": 1, "allow": "536988752", "deny": "0"}, {"id": str(GUILD), "type": 0, "allow": "0", "deny": "1024"},
             {"id": str(BOT), "type": 1, "allow": "536988736", "deny": "0"}, {"id": str(BEN), "type": 1, "allow": "117824", "deny": "0"}]
@@ -58,6 +59,7 @@ class FakeHTTP:
         self.msgs, self.calls, self.forbidden = msgs, [], set()
         self.channels = [{"id": "10", "name": "home", "type": 0}, {"id": "20", "name": "aunt-room", "type": 0}]
         self.hooks: dict[str, list] = {}
+        self.let_in: list[dict] = []                # more member overwrites on aunt-room's channel
 
     async def get_all_guild_channels(self, guild):
         self.calls.append(("channels", guild))
@@ -65,8 +67,8 @@ class FakeHTTP:
 
     async def get_channel(self, cid):
         self.calls.append(("channel", cid))
-        return {"id": cid, "permission_overwrites": HOME_OWS + ([{"id": str(MEMBER_A), "type": 1, "allow": "117824", "deny": "0"}]
-                                                              if cid == "20" else [])}
+        return {"id": cid, "permission_overwrites": HOME_OWS + ([{"id": str(AUNT), "type": 1, "allow": "117824", "deny": "0"},
+                                                               *self.let_in] if cid == "20" else [])}
 
     async def create_channel(self, guild, kind, **kw):
         self.calls.append(("create_channel", guild, kind, kw))
@@ -256,6 +258,19 @@ def test_a_person_room_gets_a_layer_of_its_own_behind_the_wall(layer, capsys):
     lines = day_lines(priv)
     assert any("person@cousin-handle: hi from the cousin" in x for x in lines) and all(" [c:room] " in x for x in lines)
     assert sorted(p.name for p in (lay / "cousin-attachments").iterdir()) == ["1003-1-image.png", "1003-image.png"]
+
+
+def test_a_person_room_made_like_one_that_answers_someone_by_asking_never_lets_them_in(layer):
+    """need-2026-11-19-126's cold read: aunt-room answers UNCLE by asking (the people tool keeps them in the daemon's override,
+    never in rooms.toml), let into its channel by a member overwrite as the aunt is; the cousin's new room copies the rest of
+    that channel's overwrites and never theirs, as it never copies the aunt's."""
+    priv, state, fake = layer
+    (state / "rooms" / "aunt-room").mkdir(parents=True)
+    (state / "rooms" / "aunt-room" / "override.json").write_text(json.dumps({"people": [{"id": str(UNCLE), "name": "uncle"}]}))
+    fake.let_in = [{"id": str(UNCLE), "type": 1, "allow": "117824", "deny": "0"}]
+    assert run(priv, state, "cousin", "--from", f"discord:{OLD}", "--person", str(COUSIN)) == 0
+    ows = [c for c in fake.sent() if c[0] == "create_channel"][0][3]["permission_overwrites"]
+    assert ows == HOME_OWS + [{"id": str(COUSIN), "type": 1, "allow": "117824", "deny": "0"}]   # neither the aunt nor the uncle
 
 
 def test_a_person_room_whose_copies_reach_the_private_folder_changes_nothing(layer, capsys):

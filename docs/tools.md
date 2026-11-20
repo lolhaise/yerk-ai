@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 24 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 25 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -156,6 +156,19 @@ a new session starts; with none it says what the room runs now. Say its `line`.
 - `model`: string, default ""
 - `effort`: string, default ""
 - `account`: string, default ""
+
+## people
+
+```text
+Who this room answers in its channel besides the owner, and the owner's change to it ("answer them here too"): op
+`add` with `person` one of their messages in this channel, by the id in the [m:ID] that ends its day-log line or by
+its link, answers them from their next message on; `drop` with their handle or id stops one so added; no op says who
+is answered. `said` is the owner's own words in this turn asking it, three or more. Say its `line`.
+```
+
+- `op`: string, default ""
+- `person`: string, default ""
+- `said`: string, default ""
 
 ## transcribe
 

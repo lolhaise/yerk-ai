@@ -66,6 +66,34 @@ version changes.
 `need-2026-11-19-125` (27b806e, 135 cases). A room sends such an order from its next process start after that. Nothing
 in rooms.toml, yerkd.toml or budgets.toml changes.
 
+### need-2026-11-19-126 (#110)
+
+- A room with people answers one more person in its channel when the owner asks there. Who a room answers was
+  rooms.toml's `people` alone, which no room reads or writes, so a person's room asked by the owner to answer a second
+  person in its channel, whose message was filed as "other" with no reply, had no way to, and answered that person's
+  question inside its reply to the owner.
+- The new `people` tool, in every room: with no op it says who the room answers; `add` answers a person who wrote in
+  the room's own channel, named by one of their messages (its id, the `[m:ID]` that ends its day-log line, or its
+  link), from their next message on, in the channel the room watches too; `drop` answers one so added no more, by
+  handle or id. Each change only on the owner's own words of that turn (`said`), never a person's.
+- Never the owner, Yerk itself, a bot, a webhook or another assistant; never in a room where rooms.toml's `people` is
+  refused at the start (an owner room, which reads the owner's whole memory; a shell or a read folder outside a trusted
+  room; a room with no layer of its own): each said in words, before any message is read.
+- Kept in the daemon's own override file under the state folder, beside the model and thinking level set from the
+  room, over rooms.toml, which is never written. Every start joins them to rooms.toml's list; one the start may no
+  longer join (the room since made an owner room, the person since listed in `[watch] assistants`) is joined nowhere,
+  said in the log, and the start goes on. One listed in rooms.toml is the owner's to edit there.
+- In a room that answers more than one person, a line above each person's message names who sent it, by the name the
+  server shows them by and their handle, so a person's room never answers its second person as its first; the owner's
+  messages, and a room with one person, read as before.
+- `yerk room add` never lets one a room answers by asking into a new person's room made like it, as it never lets in
+  rooms.toml's people; `yerk import` files their old lines behind that room's wall as a person's, never as "other".
+- `yerk explain room-people` has it, found by asks such as "answer them too"; the README's line on who a room answers
+  says so.
+- **Upgrading**: nothing to change; each room is handed the tool at its next process start. budgets.toml: Yerk AI's
+  tools 28,600 to 29,300 for the tool (about 779 as sent), the session start's total 132,862 to 133,562, and
+  `[code] lines` 33,260 to 33,415.
+
 ### need-2026-11-19-124 (#108)
 
 - An owner room reads Yerk's own fetched docs pages and the doctor's findings now. Its Read, Grep and Glob reached its

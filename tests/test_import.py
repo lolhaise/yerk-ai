@@ -3,6 +3,7 @@ private layer. The cases: one chat's whole history filed under discord:<id> with
 only tops up), --dry-run writing nothing and printing every line it would file, attachments named with their size and saved only
 with --files, the server's inventory (every chat, a covered one marked, one the bot cannot read and its threads not asked for)
 of every chat no room covers past one that fails, and a person's old channel filed behind her room's wall."""
+import json
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -10,7 +11,7 @@ import pytest
 from discord.utils import time_snowflake
 
 import yerk_ai.move as move
-from test_move import BEN, MEMBER_B, OWNER, message, tree
+from test_move import BEN, COUSIN, OWNER, UNCLE, message, tree
 from yerk_ai import cli, memory
 
 GUILD, KID = 100, 7
@@ -230,6 +231,18 @@ def test_a_persons_old_channel_is_filed_behind_her_rooms_wall(server, capsys):
     assert memory.allowed_text(cousin, path, text, daily=daily) == text.rstrip("\n")             # her room reads it
     assert memory.allowed_text(kid, path, text, daily=daily) is None                               # another person room does not
     assert memory.allowed_text(memory.Reader("home", "discord:10", owner=True), path, text, daily=daily) == text
+
+
+def test_one_her_room_answers_by_asking_is_filed_as_a_person_there_too(server):
+    """need-2026-11-19-126's cold read: one the owner had cousin-room answer by asking (the people tool keeps them in the
+    daemon's override in the state folder, never in rooms.toml) is filed as a person in the import behind its wall, as the
+    daemon files their live lines, never as other."""
+    priv, state, fake = server
+    (state / "rooms" / "cousin-room").mkdir(parents=True)
+    (state / "rooms" / "cousin-room" / "override.json").write_text(json.dumps({"people": [{"id": str(UNCLE), "name": "uncle-handle"}]}))
+    fake.chats["60"].append({**msg(9, COUSIN, "and from the uncle"), "author": {"id": str(UNCLE), "username": "uncle-handle"}})
+    assert run(priv, state, "discord:60") == 0
+    assert [x.split(" ", 4)[3] for x in day_lines(priv)] == ["owner@owner-handle:", "person@cousin-handle:", "person@uncle-handle:"]
 
 
 def test_a_class_that_names_no_room_or_a_source_it_does_not_take_stops_before_anything_is_read(server, capsys):

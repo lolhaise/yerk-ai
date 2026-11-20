@@ -10,8 +10,10 @@
   its files, there or in the room's own channel, are saved to the room's inbox as a person's are (_keep).
 - One read past those channels: the message whose link `watch` or `attachments` is handed, in an owner's room anywhere
   in its own server, read once for the files attached to it (pull, files), which are saved as a person's files are.
-- Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
-  are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
+- Only the owner, the people a room lists (`people` in rooms.toml, and those the owner had it answer by asking, the
+  people tool), and in test mode the listed webhooks, are answered; in a room that answers more than one person, a line
+  above each one's message names who sent it (said). Webhook senders pass a loop guard (lifted/loopguard.py) so a
+  runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
   files are staged in the room's inbox under their own names, a ledger row each; a file that
   cannot be fetched gets a visible "could not fetch NAME" and the turn still runs. Every notice
@@ -285,6 +287,24 @@ class DiscordChannel:
         for cid in (channel_id, watch) if watch else (channel_id,):
             self.rooms[cid], self.people[cid] = room, people
 
+    def answer(self, room: str, people: frozenset[int]) -> None:
+        """The people `room` answers besides the owner from its next message on, in both channels add_room gave it (the
+        people tool's change, Yerkd.tool_people)."""
+        for cid in (c for c, r in self.rooms.items() if r.name == room):
+            self.people[cid] = people
+
+    async def author(self, room: str, cid: int | None, mid: int) -> tuple[int, str]:
+        """Who wrote message `mid` in `room`'s own channel (`cid`, from a link, must be it), for the people tool: their user
+        id and handle, (0, "") for the owner; watch.Failed in words for a message elsewhere, not there, unread, or by a bot,
+        a webhook or another assistant."""
+        if cid not in (None, self.names[room]):
+            raise watch.Failed(words.PEOPLE_NOT_HERE)
+        m = await self._read(room, self.names[room], mid, False, words.PEOPLE_NOT_HERE)
+        a, me = m.author, self.client.user
+        if getattr(m, "webhook_id", None) or getattr(a, "bot", False) or a.id in self.assistants or me is not None and a.id == me.id:
+            raise watch.Failed(words.PEOPLE_BOT)
+        return (0, "") if a.id == self.owner else (int(a.id), str(getattr(a, "name", "") or ""))
+
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
         await self.client.start(self.token)
@@ -323,17 +343,26 @@ class DiscordChannel:
         return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
 
     def inbound_text(self, room: Room, m: Any, files: list[dict[str, Any]]) -> str:
-        """What the room reads of a message it takes: message_text, and from the channel it watches, a line above it naming who
+        """What the room reads of a message it takes: said, and from the channel it watches, a line above it naming who
         the message was sent to there (`watch_assistant`, the channel's name as the client sees it, else its id), so the room
         reads along and answers NO_REPLY unless the sender's words ask it something; with `watch_audit` true, so it grades that
         assistant's answer, never NO_REPLY, naming the sender and who reads the room (_readers). Never in its own channel."""
-        text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state))
+        text = self.said(room.name, m, files)
         if m.channel.id == self.names[room.name]:
             return text
         (who, where), audit = self._there(room, m.channel), getattr(room, "conf", {}).get("watch_audit") is True
         line = (words.SENT_THERE_AUDIT if audit else words.SENT_THERE).format(who=who, channel=where, quiet=words.NO_REPLY,
                                                                              sender=shown(m.author), readers=self._readers(m.channel))
         return f"{line}\n{text}"
+
+    def said(self, room: str, m: Any, files: list[dict[str, Any]]) -> str:
+        """message_text, under a line naming who sent it when a person did in a room that answers more than one (the people
+        tool adds one), so the room never takes one's words for another's: the name the server shows them by, and their handle."""
+        text, ids = message_text(m, files, self.reply_line(room, m), addons.reads(self.state)), self.people.get(m.channel.id, ())
+        if len(ids) < 2 or self.sender_of(m) != "person":
+            return text
+        handle, name = str(getattr(m.author, "name", "") or m.author.id), " ".join(shown(m.author).split())
+        return f"{words.PERSON_BY.format(who=f'{name} (@{handle})' if name != handle else f'@{handle}', n=len(ids))}\n{text}"
 
     def _readers(self, ch: Any) -> str:
         """Who reads the room that watches `ch`: the owner alone, else the owner and its people, each by the name the server
@@ -564,7 +593,7 @@ class DiscordChannel:
             asyncio.ensure_future(self._release(h, ahead, mine))
 
     async def _release(self, h: Hold, ahead: asyncio.Future[None] | None, mine: asyncio.Future[None]) -> None:
-        """The group as one turn, in its place in the order chain: the sent-to line once, each message as message_text
+        """The group as one turn, in its place in the order chain: the sent-to line once, each message as said
         renders it, then the answer line. The turn's id is its first message's; the rest follow that row (`then`)."""
         room = h.room
         try:
@@ -577,8 +606,8 @@ class DiscordChannel:
             (first, _, extra, _), ids = group[0], [str(m.id) for m, *_ in group]
             await self._meet(room, first.channel)            # a watch_audit room's readers, by name, before its line is written
             text = "\n".join([self.inbound_text(room, first, staged[0]) + extra,
-                              *(message_text(m, f, self.reply_line(room.name, m), addons.reads(self.state)) + x
-                                for (m, _, x, _), f in zip(group[1:], staged[1:])), self._answer_line(h, first.channel, kept)])
+                              *(self.said(room.name, m, f) + x for (m, _, x, _), f in zip(group[1:], staged[1:])),
+                              self._answer_line(h, first.channel, kept)])
             note = f"one turn with {', '.join(ids)}" if len(ids) > 1 else ""
 
             def then(state: str, reply: list[str], chars: int) -> None:   # the room's thread, as the turn ends: the rest as its first
