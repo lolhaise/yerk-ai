@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory,
+from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, logins, mcp_server, memory,
                mentions, needs, pictures, pipeline, render, shape, status, taste, texts, transcribe, usage, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
@@ -307,6 +307,13 @@ class Yerkd:
         [session]'s; 0 leaves it to the model. Clamped to 100,000 to 1,000,000: Claude Code drops a value outside, silently."""
         w = int(self.room_confs[name].get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
         return min(max(w, 100000), 1000000) if w else 0
+
+    async def login_save(self, room: str, name: str, site: str, user: str, password: str) -> dict[str, Any]:
+        """/login (need 127): the owner's own login saved as NAME.login in the private folder's secrets, which no room
+        reads; the log line names the login and its site, never the user's password."""
+        r = await asyncio.to_thread(logins.save, self.private, name, site, user, password)
+        log.info("room %s: /login %s %s", room, "saved" if r["ok"] else "refused", f"{r['name']} for {r['site']}" if r["ok"] else "")
+        return r
 
     def secrets_at(self) -> tuple[list[Path], list[Path]]:
         """(folders, files) no room reads or sends: both secrets folders; every room's token files, each account's token

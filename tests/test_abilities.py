@@ -259,6 +259,23 @@ def test_a_room_asked_to_keep_a_key_a_page_shows_hears_the_keep_way_never_the_re
     assert not abilities.asked("the key works now, thanks", y.memory, TAB)
 
 
+def test_a_room_handed_a_login_hears_the_login_way_never_to_type_it_or_file_it(tmp_path):
+    """need-2026-11-20-127: the owner sent a room a new site's login in pictures and said it needs to know their login; it
+    could file no secret, and a password typed through a tool call lands in its transcript. Asked that way, a room gets
+    logins whole: the owner's own /login, the daemon's file no room reads, and the browser typing it by name, unseen."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("these pictures are the example site's account, you need to know my login", y.memory, TAB)
+    assert [e["key"] for e in found] == ["logins"]
+    text = found[0]["text"]
+    assert text.startswith(f"logins, a Yerk AI ability ({words.ability('on')[1]}): Saves a login the owner hands over")
+    for want in ("with /login in any room", "never a room's session as a message would", "NAME.login in the private folder's secrets",
+                 "type takes login and part, user or password", "in no tool call's arguments and no reply",
+                 "Only on the login's own site over https", "never typed out, filed in memory or copied by the room"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert "logins" not in [e["key"] for e in abilities.asked("the login code came, thanks", y.memory, TAB)]
+
+
 def test_a_room_whose_form_never_takes_a_set_value_hears_the_typing_way(tmp_path):
     """need-2026-11-09-75: a room drove a quote form to its last text field, and the browser's `set` put the value there
     (the field showed it) while the page's React form never had it, so its Next stayed disabled. Asked that way, a room

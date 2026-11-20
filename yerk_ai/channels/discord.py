@@ -113,7 +113,8 @@ def commands() -> list[dict[str, Any]]:
     def pick(name: str, values: list[str] | None) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
                  **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {"autocomplete": True} if values is None else {})}]
-    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"]), "fast": pick("fast", ["on", "off"])}
+    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"]), "fast": pick("fast", ["on", "off"]),
+            "login": [{"type": 3, "name": n, "description": words.CHOICE[n], "required": True} for n in ("name", "site", "user", "password")]}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -932,6 +933,9 @@ class DiscordChannel:
                        else d.fast_command(room, args.get("fast", "")) if name == "fast"
                        else d.tool_settings(room, "", args.get("effort", ""), by_owner=True))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
+        if name == "login":      # need 127: an interaction, never a message, so no room's session sees the password
+            r = await d.login_save(room, args.get("name", ""), args.get("site", ""), args.get("user", ""), args.get("password", ""))
+            return f"{words.DONE if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))
             return f"{words.DONE if r['ok'] else words.PLAIN} {r['line']}"
