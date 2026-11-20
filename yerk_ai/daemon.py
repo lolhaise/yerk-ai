@@ -34,7 +34,7 @@ from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence,
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
-from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, fast_on, flag, load_toml,
+from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, added, assistants, budgets, discord_id, fast_on, flag, load_toml,
                      models, override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted,
                      uncapped, write_private)
 from .engine import FAST_MODELS, RoomSpec, SessionTable, fast_probe
@@ -53,7 +53,7 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
               "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
-              "mcp__yerk__attachments", "mcp__yerk__zoom", "mcp__yerk__texting", "mcp__yerk__show"]
+              "mcp__yerk__attachments", "mcp__yerk__zoom", "mcp__yerk__texting", "mcp__yerk__show", "mcp__yerk__people"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -134,6 +134,9 @@ class Yerkd:
         self.owner_names = (me,) if me and me != "me" else ()
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
+        self.listed = {n: people(n, c) for n, c in self.room_confs.items()}   # rooms.toml's; tool_people's join them
+        for n in (n for n in self.room_confs if added(state, n)):
+            self.join_added(n)
         for n in (n for n, c in self.room_confs.items() if trusted(c)):
             self.walled(n)                         # a trusted room's wall that cannot be built stops the start here
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
@@ -1012,6 +1015,88 @@ class Yerkd:
         with self.rooms[room].lock:
             return next((m for m in self.rooms[room].inflight
                          if len(want.split()) >= 3 and m.sender == "owner" and want in " ".join(m.text.split()).casefold()), None)
+
+    async def tool_people(self, room: str, op: str, person: str = "", said: str = "") -> dict[str, Any]:
+        """The `people` tool: who `room` answers besides the owner, with no op; on the owner's own words of this turn (`said`,
+        owner_said), one more from their next message on, a person who wrote in its own channel, by that message (`add`, the
+        adapter's author), or one so added no more (`drop`, by handle or id). Kept in the daemon's override over rooms.toml,
+        which is never written, and joined to its `people` at each start (join_added); never where rooms.toml's `people`
+        would be refused (unpeopled)."""
+        kept, op, given = added(self.state, room), op.strip().lower(), person.strip()
+        def who(p: dict[str, str]) -> str:
+            return f"@{p['name']}" if p.get("name") else p["id"]
+        if room not in self.rooms or not op:
+            ids = people(room, self.room_confs.get(room, {}))
+            also = "".join(words.PEOPLE_ONE.format(who=who(p), day=p.get("day", "")) for p in kept if int(p["id"]) in ids)
+            n = len(ids - {int(p["id"]) for p in kept})
+            return {"ok": True, "line": words.PEOPLE_NOW.format(also=also + (words.PEOPLE_LISTED.format(n=n) if n else ""))}
+        if op not in ("add", "drop"):
+            return {"ok": False, "line": words.PEOPLE_OPS}
+        if op == "add" and (why := self.unpeopled(room)):
+            return {"ok": False, "line": why}
+        if (m := self.owner_said(room, said)) is None:
+            return {"ok": False, "line": words.PEOPLE_NOT_SAID}
+        if op == "drop":
+            listed, low = self.listed[room], given.lstrip("@").casefold()
+            hit = next((p for p in kept if low in (p["id"], p.get("name", "").casefold())), None)
+            if (int(hit["id"]) if hit else discord_id(given)) in listed:       # in rooms.toml too: the owner's file to edit
+                return {"ok": False, "line": words.PEOPLE_IN_TOML.format(who=who(hit) if hit else given)}
+            if hit is None:
+                return {"ok": False, "line": words.PEOPLE_NO_ONE.format(given=given, who=", ".join(map(who, kept)) or words.PEOPLE_NONE)}
+            self.joined(room, [p for p in kept if p is not hit])
+            log.info("people: room %s answers %s no more, on the owner's m:%s", room, hit["id"], m.id)
+            return {"ok": True, "line": words.PEOPLE_DROPPED.format(who=who(hit))}
+        at = watch.message(given) or ((None, int(given)) if re.fullmatch(r"\d{1,20}", given) else None)
+        if at is None:
+            return {"ok": False, "line": words.PEOPLE_NOT_MESSAGE.format(given=words.no_paths(given)[:120])}
+        if (author := getattr(self.channels.get(room), "author", None)) is None:
+            return {"ok": False, "line": words.WATCH_NO_DISCORD}
+        try:
+            uid, handle = await author(room, *at)
+        except watch.Failed as e:
+            return {"ok": False, "line": str(e)}
+        if not uid:
+            return {"ok": False, "line": words.PEOPLE_THE_OWNER}
+        p = {"id": str(uid), "name": handle, "day": f"{(now := datetime.now(self.memory.tz)):%b} {now.day}", "by": f"m:{m.id}"}
+        if uid in people(room, self.room_confs[room]):
+            return {"ok": True, "line": words.PEOPLE_ALREADY.format(who=who(p))}
+        self.joined(room, [*kept, p])
+        log.info("people: room %s answers %s too, on the owner's m:%s", room, uid, m.id)
+        return {"ok": True, "line": words.PEOPLE_ADDED.format(who=who(p))}
+
+    def unpeopled(self, room: str) -> str:
+        """Why `room` can answer no one but the owner, as the start refuses rooms.toml's `people` (config.people, context.walls),
+        in the people tool's words; "" when it can."""
+        conf = {**self.room_confs[room], "people": [*self.listed.get(room, ()), 1]}     # 1: one more person, any id
+        try:
+            people(room, conf)
+            context.walls(self.private, self.state, self.memory.scope.roots, {**self.room_confs, room: conf})
+        except SystemExit as e:
+            return words.PEOPLE_OWNER_ROOM if "privacy" in str(e) else words.PEOPLE_SHELL if "Bash" in str(e) else words.PEOPLE_LAYER
+        return ""
+
+    def joined(self, room: str, kept: list[dict[str, str]]) -> None:
+        """`kept`, the people the owner had `room` answer by asking, into its override, and with rooms.toml's (`listed`) its
+        `people` from the next message on: its conf, which its Room reads, and the adapter's (answer)."""
+        over = {**override(self.state, room), "people": kept}
+        (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
+        write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
+        self.join_added(room)
+        if (answer := getattr(self.channels.get(room), "answer", None)) is not None:
+            answer(room, people(room, self.room_confs[room]))
+
+    def join_added(self, room: str) -> None:
+        """The people the owner had `room` answer by asking (tool_people), joined to rooms.toml's in its conf: at the start, and
+        after each change. None on a room that can answer no one but the owner now (unpeopled: rooms.toml changed since) and no
+        [watch] assistant, said in the log; the file keeps them for the owner's next word."""
+        try:
+            bots = assistants(self.conf)
+        except SystemExit:                       # not a list of ids: the Discord start stops on it in its own words
+            bots = frozenset()
+        ids, conf, why = [i for p in added(self.state, room) if (i := int(p["id"])) not in bots], self.room_confs[room], self.unpeopled(room)
+        if ids and why:
+            log.warning("people: room %s answers none of the %d the owner added: %s", room, len(ids), why.splitlines()[0])
+        conf["people"] = [*sorted(self.listed[room]), *(i for i in dict.fromkeys(ids) if i not in self.listed[room] and not why)]
 
     def texting_read(self, file: Path, op: str, key: str, day: str) -> dict[str, Any]:
         """`sheet`: a person's sheet and standing release; `log`: their texts and decisions on `day` (YYYY-MM-DD, default

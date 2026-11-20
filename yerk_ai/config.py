@@ -513,6 +513,13 @@ def override(state: Path, name: str) -> dict[str, Any]:
         return {}
 
 
+def added(state: Path, name: str) -> list[dict[str, str]]:
+    """The people the owner had a room answer by asking (the people tool), from its override: each {"id", "name", "day",
+    "by"} whose id is a Discord user id; [] when none."""
+    raw = override(state, name).get("people")
+    return [{k: str(v) for k, v in p.items()} for p in raw if isinstance(p, dict) and discord_id(p.get("id"))] if isinstance(raw, list) else []
+
+
 def room_settings(conf: dict[str, Any], state: Path, name: str, listed: dict[str, str]) -> dict[str, tuple[str, str]]:
     """A room's model and effort, each with where it comes from: the room's override over rooms.toml. A value
     off the models list (`listed`) or the levels is ignored, logged once: a stale or planted file never runs."""

@@ -285,6 +285,24 @@ class DiscordChannel:
         for cid in (channel_id, watch) if watch else (channel_id,):
             self.rooms[cid], self.people[cid] = room, people
 
+    def answer(self, room: str, people: frozenset[int]) -> None:
+        """The people `room` answers besides the owner from its next message on, in both channels add_room gave it (the
+        people tool's change, Yerkd.tool_people)."""
+        for cid in (c for c, r in self.rooms.items() if r.name == room):
+            self.people[cid] = people
+
+    async def author(self, room: str, cid: int | None, mid: int) -> tuple[int, str]:
+        """Who wrote message `mid` in `room`'s own channel (`cid`, from a link, must be it), for the people tool: their user
+        id and handle, (0, "") for the owner; watch.Failed in words for a message elsewhere, not there, unread, or by a bot,
+        a webhook or another assistant."""
+        if cid not in (None, self.names[room]):
+            raise watch.Failed(words.PEOPLE_NOT_HERE)
+        m = await self._read(room, self.names[room], mid, False, words.PEOPLE_NOT_HERE)
+        a, me = m.author, self.client.user
+        if getattr(m, "webhook_id", None) or getattr(a, "bot", False) or a.id in self.assistants or me is not None and a.id == me.id:
+            raise watch.Failed(words.PEOPLE_BOT)
+        return (0, "") if a.id == self.owner else (int(a.id), str(getattr(a, "name", "") or ""))
+
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
         await self.client.start(self.token)

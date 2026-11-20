@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 132862`
+- `total = 133562`
 
 ## [session_start.claude_code]
 
@@ -128,9 +128,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-19, worker-preamble-tools: the `worker` and `schedule` tools' words on what a worker has where the install gives workers recall and read_memory ([workers] yerk_tools; the `worker` tool's: it reads this room's memory with them; the `schedule` tool's: they are among the room's tools an agent job's worker has), since a worker given both was told it had no Yerk AI tools and read the memory only when its brief named one: worker 1,796 to 1,893 and schedule 2,727 to 2,789 as this tree builds them, all 24 from 26,611 to 26,770 (159 more, measured on main f0abcba and on this tree the same way), about 28,490 as sent, 90 over the line; so 28,600, no part could pay, the total rose by the 200 (to 132,562 on main's 132,362). The hands plug-in's tool entries do not change.
 
+2026-11-19, need-2026-11-19-126: the `people` tool (who a room answers in its channel besides the owner, and on the owner's own words of the turn one more, a person who wrote there, named by that message, or one so added no more, since the owner asked a person's room to answer a second person in its channel, whose message was filed as "other" with no reply, and no tool changed who a room answers) is 748 as this tree builds it, all 25 from 26,770 to 27,518 (measured on main 3af751c and on this tree the same way), about 779 as sent (31 over, as each of Yerk AI's entries goes), on the about 28,490 the rooms send, so about 29,269, 669 over the line; so 29,300, no part could pay, the total rose by the 700 (to 133,562 on main's 132,862). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 28600`
+- `yerk_tools = 29300`
 - `deferred_tool_names = 3581`
 - `mcp__hands__ = 10470`
 - `mcp__web-ladder__web_image = 913`
@@ -787,7 +789,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: need-2026-11-19-124 raised it by 10, an owner room's Read, Grep and Glob reach Yerk's fetched docs pages and the doctor's findings (that morning a room asked to check a worker's re-pinned docs sentences against the fetched page, with the doctor's findings read first, had its Grep of both refused), not folded to fit: daemon.py 10 (docs_reads, a rule on the docs root and one on doctor.json, a sealed room's on the fetched pages alone, its docstring; spec_for hands them to every owner room, after need-2026-11-19-123's worker_reads). 33,260: main 9e9aba7's 33,250 plus 10.
 
-- `lines = 33260`
+2026-11-19: need-2026-11-19-126 raised it by 135, the `people` tool, a room with people answering one more person in its channel on the owner's own words of the turn (that evening a person's room asked to answer a second person there, whose message was filed as "other" with no reply, found who a room answers in rooms.toml alone, which no room reads, and no tool to change it), not folded to fit: daemon.py 85 (tool_people: the list, add by a message of theirs, drop by handle or id, on owner_said, one rooms.toml lists too left to it; unpeopled, rooms.toml's own refusals through config.people and context.walls; joined, the override written and the room's conf and the adapter's answered set from the next message; join_added at every start, never stopping it, no assistant joined; the allow line), channels/discord.py 18 (answer, author: the message read in the room's own channel, the owner, a bot, a webhook and another assistant told apart), words.py 16, mcp_server.py 9 (the tool and its line in the header), config.py 7 (added, the override's people). 33,395: main 3af751c's 33,260 plus 135.
+
+- `lines = 33395`
 
 ## Uncapped
 
