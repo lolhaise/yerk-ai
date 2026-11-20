@@ -181,6 +181,9 @@ def test_a_room_asked_to_open_a_page_in_the_browser_on_the_pc_hears_the_plug_in_
     told = abilities.explain("browser", TAB["browser"], TAB, y.memory)
     assert next(x for x in told if x.startswith("- A relaunch before each call:")).endswith(
         "is said to be down in one line with its reason, never a stack trace's first line.")
+    assert next(x for x in told if x.startswith("- The computer the owner names:")).endswith(
+        "only when the owner names it, or when the tool's own reply says to call the other one (its video action's reply for a "
+        "browser not signed in to Instagram).")
     assert not abilities.asked("the tracker is open on my pc already, I logged the hours myself", y.memory, TAB)
 
 
@@ -702,6 +705,7 @@ def test_a_room_whose_reel_instagram_shuts_to_a_logged_out_reader_hears_the_sign
     assert hooks.render_recall([e for e in found if e["key"] == "locked-reels"], [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     told = "\n".join(abilities.explain("locked-reels", TAB["locked-reels"], TAB, y.memory))
     for want in ("never yt-dlp's advice on cookies", "no cookie is read or copied", "never shown to the room",
+                 "the room calls the video action again there; the owner signs one in only when neither is",
                  "never through a link the room's shell left there"):
         assert want in told, want
     assert "(yerk explain locked-reels)" in " ".join(TAB["watch"]["how"])

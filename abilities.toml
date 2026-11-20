@@ -409,7 +409,7 @@ how = [
   "A tool server attached to that profile, so a room or a worker can open, read, click and type.",
   "A brake: the owner's stop word ends it at once, and a run lifts the brake for itself with a lease that runs out on its own.",
   "A relaunch before each call: a browser that quit with its last tab leaves a port that takes a connection and resets it, so the tool starts it again inside the call's lease, and one that will not come back is said to be down in one line with its reason, never a stack trace's first line.",
-  "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it.",
+  "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it, or when the tool's own reply says to call the other one (its video action's reply for a browser not signed in to Instagram).",
   "A field typed as keys type it, by the browser action type in place of set, for a React or Angular form that never sees a value a script sets and keeps its Next button disabled: found by set's label rules, cleared with a real Backspace, typed through the browser's own text input (Input.insertText) a character at a time while short, read back, and the focus taken off it so its checks run.",
 ]
 tier = "free"
@@ -836,7 +836,7 @@ how = [
   "Read as the post's own player reads it: the page asks Instagram's web API for the post, the call yt-dlp makes with a signed-in session, and takes each part's biggest video file, so the session never leaves the browser: no cookie is read or copied, and the file's long signed address is never shown to the room.",
   "Saved in the room's own work folder, under a folder for the post: each video streamed under a new temporary name and kept only as a video under 300 MB, what watch takes; the folder walked a part at a time, never through a link the room's shell left there.",
   "Then watch on that path: the frames and the transcript as for any video file (yerk explain video-file), the transcript beside the file, so a second watch pays nothing again; the account and the caption come back as the post's own words, a record.",
-  "Misses in words: a browser not signed in to Instagram (the owner signs it in, or names the other computer's), a post the signed-in account cannot see, a post of photos only, Instagram's ask to wait, and a file the server refuses or that is not a video.",
+  "Misses in words: a browser not signed in to Instagram (the reply names the other computer's browser and the room calls the video action again there; the owner signs one in only when neither is), a post the signed-in account cannot see, a post of photos only, Instagram's ask to wait, and a file the server refuses or that is not a video.",
 ]
 tier = "key"
 keys = ["openai"]
