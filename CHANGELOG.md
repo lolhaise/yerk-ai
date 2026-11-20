@@ -8,6 +8,24 @@ version changes.
 
 ## 2026-11-20
 
+### video-other-browser (#115)
+
+- A room whose browser is not signed in to Instagram on the computer it asked now reads a locked reel in the other
+  computer's browser by itself. The browser plug-in's video action (kept outside this repository; on the owner's box
+  hands-mcp main at e3b605e since 2026-11-20) answers a browser that is not signed in with the other computer's browser
+  to call, and says to ask the owner to sign one in only when neither is. Before, it sent the room to the owner first,
+  though a room on a box where one of two browsers is signed in settles that with one more call. Shown that day on the
+  owner's box with one link: one computer's browser answered that it is not signed in and named the other, and the
+  other saved the video.
+- Here, the manifest says the same. The browser entry's line on the computer the owner names gains the one case a read
+  moves without the owner naming it, a tool's own reply that says to call the other one; a browser that is down is
+  still told to the owner, never read around. The locked-reels entry says that miss the same way. Two cases pin the new
+  words.
+- The same plug-in change holds each guard of the video action by a case of its own, fetches a file only over https
+  from a host Instagram's own files come from and follows a redirect only to one, closes the tab it opened on every way
+  out, and says how many of a post's videos past its first 10 were not saved.
+- Nothing in the harness's code changes, so no budget line moves.
+
 ### shot-fits-click (#113)
 
 - A spot a room reads off a picture of its tab is where a click by position on that tab lands, on a screen drawn at any
