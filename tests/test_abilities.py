@@ -736,9 +736,13 @@ def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_f
     told = abilities.explain("order-forms", TAB["order-forms"], TAB, y.memory)
     decides = next(x for x in told if x.startswith("- The page decides by what it takes:"))
     assert all(w in decides for w in ("a card field", "bank details", "a masked number", "another pay button")), decides
+    # PR 109's cold read: a saved card or wallet the strict words missed, and a box the browser cannot read into
+    assert all(w in decides for w in ("Visa 1234", "Mastercard (4242)", "PayPal", "Apple Pay", "a gift card's balance",
+                                      "a false alarm only keeps the refusal", "a box of another site")), decides
     assert decides.endswith("with none of them the page is an order form.")
     word = next(x for x in told if x.startswith("- The owner's word for the order:"))
     assert "the order button's own click included" in word and "how it is billed" in word
+    assert "names what was checked and found absent rather than saying the page takes no card as fact" in word, word
     held = next(x for x in told if x.startswith("- Payment still read as before:"))
     assert "nothing on the page is set or clicked, the owner's word or not" in held and "a hidden one included" in held
     up = next(x for x in abilities.explain("upsell-pages", TAB["upsell-pages"], TAB, y.memory) if x.startswith("- Payment still"))

@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-19
 
-### need-2026-11-19-125 (its pull request to come)
+### need-2026-11-19-125 (#109)
 
 - A room can send an order form you ordered now when the page takes no card or bank details, such as an order billed
   later on your account's invoice: it ticks the terms box and presses Place order or Submit order on your word. The hands
@@ -17,17 +17,23 @@ version changes.
   refused, your word or not.
 - Such an order button makes a payment page now only beside something that takes card or bank details: a card field, a
   payment frame, a saved card, a payment service's address, another pay button, bank details (a routing, transit,
-  institution or bank account number field, an IBAN, a sort code, a saved bank account) or a masked number, as a saved
-  card or account shows one (•••• 4242). With none of them the page is an order form: each field set, click, typed value
-  and file there, the order button's own click included, waits for your word in the room (the browser's `confirmed`),
-  and an open or a read of the page says it is one and to tell you what the page says the order costs and how it is
-  billed when the room asks.
+  institution or bank account number field, an IBAN, a sort code, a saved bank account), a masked number, as a saved
+  card or account shows one (•••• 4242), a card, wallet or balance the page names however it writes it ("Visa 1234",
+  "Visa ending 4242", "Mastercard (4242)", a card on file, PayPal, Apple Pay, a pay-later service, a gift card's balance
+  applied, store credit), read in its words and a logo's alt and read wide, since a false alarm only keeps the refusal,
+  or a box of another site the browser cannot read into (a bot-check's own frame aside). With none of them the page is an
+  order form: each field set, click, typed value and file there, the order button's own click included, waits for your
+  word in the room (the browser's `confirmed`), and an open or a read of the page says it is one, names what it checked
+  and found absent (never "it takes no card or bank details" as fact), and asks the room to tell you what the page says
+  the order costs and how it is billed. The review step that was refused, "Bill me" and an invoice, is still an order
+  form.
 - A button whose words make a payment (Pay, Buy now, Checkout, Submit payment) still makes a payment page wherever it
   shows and is never clicked, a hidden one included, and neither is an order button on any other page. Bank details
   with no order button mark nothing, as before.
-- The plug-in's change is on its branch `need-2026-11-19-125` (654ecaa): 99 of 99 of its offline tests green, two running
-  the page probe in Playwright's headless shell, the new one against an order's review step whose Submit Order read as
-  a pay button on its main a049bf2. Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain
+- The plug-in's change is on its branch `need-2026-11-19-125` (e9d762d, over 654ecaa): 100 of 100 of its offline tests
+  green, two running the page probe in Playwright's headless shell, the new one against an order's review step whose
+  Submit Order read as a pay button on its main a049bf2, and, since this pull request's cold read, against that step
+  beside each saved card or wallet shape above, which 654ecaa read as an order form and clicked on your word. Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain
   order-forms` has the ability, found by asks such as "submit the order" and "bill me"; `upsell-pages` no longer lists
   Place order among the buttons that mark a payment page wherever they show. The README's Add-ons line names it beside
   `free-bookings`, at 11,965 of its 12,000 bytes, the private folder's last line no longer repeating the Install
@@ -38,7 +44,7 @@ version changes.
   around the wall.
 
 **Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
-`need-2026-11-19-125` (654ecaa). A room sends such an order from its next process start after that. Nothing in
+`need-2026-11-19-125` (e9d762d). A room sends such an order from its next process start after that. Nothing in
 rooms.toml, yerkd.toml or budgets.toml changes.
 
 ### need-2026-11-19-124 (#108)
