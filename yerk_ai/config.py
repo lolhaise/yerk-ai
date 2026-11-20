@@ -329,6 +329,9 @@ YERKD_WORDS = {
                   "jobs": "days a job run's folder keeps after the run ended, and a run still undelivered keeps it",
                   "workers": "days a finished worker's folder keeps",
                   "pytest": "days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days",
+                  "built": "days what a finished worker's run built keeps in its folder: each virtual environment (a folder holding "
+                           "pyvenv.cfg) and each folder named __pycache__, .mypy_cache, .ruff_cache, .pytest_cache or node_modules; "
+                           "the rest of its folder keeps `workers` days",
                   "scratch": "days a room's scratch, its work folder but inbox/ and any top folder holding a file named KEEP, keeps",
                   "scratch_mb": "megabytes a room's scratch keeps, its oldest files out first", "trash": "days the trash keeps what left",
                   "scratch_trash": "days the trash keeps a room's scratch"},

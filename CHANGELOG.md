@@ -6,6 +6,30 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-20
+
+### sweep-built-trees (#111)
+
+- The nightly sweep takes what a finished worker's run built to test a day after the worker finished, where it waited
+  the folder's whole 30 days: each virtual environment (a folder holding a file named pyvenv.cfg, whatever the folder's
+  name: `.venv`, `venv-3.12`, `venv-3.13`) and each folder named `__pycache__`, `.mypy_cache`, `.ruff_cache`,
+  `.pytest_cache` or `node_modules`, anywhere in the worker's folder, each moved whole into the trash under
+  `workers/<id>/` at its own path, where the trash's own days delete it. On the box that measured it, that was 43 GB of
+  the workers folder's 53 GB: 133 environments (32 GB) and 2,513 cache folders (11 GB). The rest of the folder (its
+  brief, prompt, report, tasks, exit record and stream, a worktree's sources) waits its 30 days as before, and a worker
+  still running, or finished less than a day ago, keeps everything. A tree a process holds open or runs in stays that
+  night and goes on the next.
+- A link is never followed or moved, a `pyvenv.cfg` that is a link or a folder marks nothing, and the worker's own
+  folder is never taken this way, whatever it holds. A worker's folder that is itself a link out of the workers folder
+  is no longer walked for its pytest temp trees either.
+- `yerk retention --dry-run`, retention.json and the morning line name the new kind `built`; pytest temp trees keep
+  their own kind and their own days. One walk finds both and goes into neither: on that box's folder, 142,364 folders
+  and 515,464 entries where the pytest walk alone listed 258,183 and 1,617,360.
+- **Upgrading**: nothing to change. `[retention] built` in yerkd.toml sets the days (default 1). The first sweep after
+  the deploy moves every environment and cache folder of each worker finished between 1 and 30 days before into the
+  trash, about 43 GB on that box, and the trash deletes it 7 days later; `yerk retention --dry-run` says the count and
+  the bytes first. budgets.toml: `[code] lines` 33,415 to 33,435.
+
 ## 2026-11-19
 
 ### need-2026-11-19-125 (#109)
