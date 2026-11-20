@@ -707,3 +707,72 @@ def test_a_room_whose_reel_instagram_shuts_to_a_logged_out_reader_hears_the_sign
     assert cli.main(["explain", "locked-reels", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     assert "Built part: watch (yerk explain watch)" in capsys.readouterr().out.splitlines()
     assert not abilities.asked("I watched the reel on my phone, it was good", y.memory, TAB)
+
+
+def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_form_way(tmp_path, capsys):
+    """need-2026-11-19-125: a room asked to order a toll road's transponder on the owner's word filled the order form to its
+    review step, whose payment method was "Bill me" and which asked for no card or bank details, and the browser refused
+    its terms box and its Submit Order as on a payment page, the owner's own order included, since Submit Order is a pay
+    button's words; the order then went in through the desktop tool, which reads nothing of a page. Asked that way, a
+    room gets order-forms whole under the recall cap (it rides on the hands browser plug-in, whose test/run.mjs has the
+    order form): built again after PR 109's three cold reads, and fixed where a sentence or a choice's caption still let a
+    page through, the page earns the order form by a payment method whose value is an invoice in force, or it is a payment
+    page as it always was; a sentence counts for nothing, a choice holds its own words and those drawn on its row, and one
+    the browser cannot tie to any words puts nothing in force; the owner's word sends the order, a
+    page that takes card or bank details is still never touched, and the page's words stay a record. free-bookings no longer
+    says an amount marks a payment page, which the browser never read. upsell-pages no longer names Place order among
+    the buttons that mark a payment page wherever they show; a booking ask still gets free-bookings; no person or place
+    from the ask is named; an everyday message about an order gets no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("the browser would not let you submit the order? it's billed on the next invoice",
+                "the payment method says bill me, so place the order"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["order-forms"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"order-forms, a Yerk AI ability ({words.ability('described')[1]}): Sends an order form the owner "
+                           "ordered in the browser ability's browser when the page gives an invoice as its payment method")
+    for want in ("The page earns it or it is a payment page; The owner's word for the order; Payment still read as before; "
+                 "The page's words stay a record", "a page that takes money is still never touched",
+                 "any other page with an order button is a payment page, as it always was",
+                 "reads an order form by the page's own payment method has it there",
+                 "nor a page that says invoice only in a sentence"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("order-forms", TAB["order-forms"], TAB, y.memory)
+    # built again (PR 109's three cold reads each found a way of paying a list of payments missed), and fixed where a
+    # sentence or a choice's caption still let a page through: the page earns the order form by its payment method's
+    # invoice value in force alone, no other payment method, no choice not chosen holding that value on its row, no choice
+    # it cannot tie to any words, nothing drawn it cannot read; a miss refuses, and so does what it did not read
+    decides = next(x for x in told if x.startswith("- The page earns it or it is a payment page:"))
+    assert all(w in decides for w in ("makes a payment page unless a payment method on the page has an invoice as its value, "
+                                      "in force", "Bill me", "a sentence such as billed on your next invoice counts for nothing",
+                                      "counts only when the page marks it chosen",
+                                      "a radio, a checkbox or a switch, the page's own or drawn by role, holds its own words "
+                                      "and those drawn on its row",
+                                      "so one not chosen on the invoice's row takes it out of force, labelled or not",
+                                      "one the browser cannot tie to any words puts nothing in force",
+                                      "Payment method: X refuses for every X that is no invoice", "a made-up name alike",
+                                      "a frame of another site or an embedded object at any size",
+                                      "a bot check's own frame aside", "so a miss is a refusal",
+                                      "what the browser did not read refuses too")), decides
+    assert "with no not before it" not in decides and "the page itself says" not in decides, decides
+    assert "by its label, its parent or its own row" not in decides, decides
+    assert decides.endswith("and the refusal names the rule that stopped it.")
+    word = next(x for x in told if x.startswith("- The owner's word for the order:"))
+    assert "the order button's own click included" in word and "how it is billed" in word
+    assert "the invoice payment method it matched and what was checked and found absent, never that the page takes no card as fact" in word, word
+    held = next(x for x in told if x.startswith("- Payment still read as before:"))
+    assert "nothing on the page is set or clicked, the owner's word or not, the invoice words or not" in held, held
+    assert all(w in held for w in ("a card field", "bank details", "a masked number", "another pay button", "a hidden one included"))
+    fb = " ".join(TAB["free-bookings"]["how"])
+    assert "never an amount alone" in fb and "no amount" not in fb and "the money in its words" not in fb, fb
+    up = next(x for x in abilities.explain("upsell-pages", TAB["upsell-pages"], TAB, y.memory) if x.startswith("- Payment still"))
+    assert "Place order" not in up and "(Pay, Buy now, Checkout)" in up, up
+    assert not any(n in text_of(TAB["order-forms"]) for n in ("407", "ETR", "grandmother")), "no person or place from the ask"
+    assert [e["key"] for e in abilities.asked("ok book a table for two at the place on the corner, thursday at seven",
+                                              y.memory, TAB)] == ["free-bookings"]
+    assert not abilities.asked("the order came yesterday, thanks", y.memory, TAB)
+    assert cli.main(["explain", "order-forms", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:2] == [f"{words.NOTHING} order-forms: {words.ability('described')[1]}", TAB["order-forms"]["what"]]
+    assert abilities.HOW["described"] in lines
