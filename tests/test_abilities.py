@@ -739,6 +739,9 @@ def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_f
     # PR 109's cold read: a saved card or wallet the strict words missed, and a box the browser cannot read into
     assert all(w in decides for w in ("Visa 1234", "Mastercard (4242)", "PayPal", "Apple Pay", "a gift card's balance",
                                       "a false alarm only keeps the refusal", "a box of another site")), decides
+    # its second cold read: a saved bank account however the page writes it, a bank word with its digits after it
+    assert all(w in decides for w in ("Chequing account ending 1234", "RBC Chequing (1234)",
+                                      "a pre-authorized debit from an account ending in 1234", "never the words alone")), decides
     assert decides.endswith("with none of them the page is an order form.")
     word = next(x for x in told if x.startswith("- The owner's word for the order:"))
     assert "the order button's own click included" in word and "how it is billed" in word
