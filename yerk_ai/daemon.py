@@ -1088,15 +1088,17 @@ class Yerkd:
     def join_added(self, room: str) -> None:
         """The people the owner had `room` answer by asking (tool_people), joined to rooms.toml's in its conf: at the start, and
         after each change. None on a room that can answer no one but the owner now (unpeopled: rooms.toml changed since) and no
-        [watch] assistant, said in the log; the file keeps them for the owner's next word."""
+        [watch] assistant, each said in the log; the file keeps them for the owner's next word."""
         try:
             bots = assistants(self.conf)
         except SystemExit:                       # not a list of ids: the Discord start stops on it in its own words
             bots = frozenset()
-        ids, conf, why = [i for p in added(self.state, room) if (i := int(p["id"])) not in bots], self.room_confs[room], self.unpeopled(room)
+        ids, conf, why = [int(p["id"]) for p in added(self.state, room)], self.room_confs[room], self.unpeopled(room)
         if ids and why:
             log.warning("people: room %s answers none of the %d the owner added: %s", room, len(ids), why.splitlines()[0])
-        conf["people"] = [*sorted(self.listed[room]), *(i for i in dict.fromkeys(ids) if i not in self.listed[room] and not why)]
+        elif gone := sorted(set(ids) & bots):
+            log.warning("people: room %s answers %s no more: [watch] assistants lists them", room, ", ".join(map(str, gone)))
+        conf["people"] = [*sorted(self.listed[room]), *(i for i in dict.fromkeys(ids) if i not in self.listed[room] | bots and not why)]
 
     def texting_read(self, file: Path, op: str, key: str, day: str) -> dict[str, Any]:
         """`sheet`: a person's sheet and standing release; `log`: their texts and decisions on `day` (YYYY-MM-DD, default

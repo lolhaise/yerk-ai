@@ -1196,6 +1196,7 @@ PEOPLE_BOT = "not added: that message is a bot's, a webhook's or another assista
 PEOPLE_THE_OWNER = "not changed: that message is the owner's, and the owner is answered in every room"
 PEOPLE_NO_ONE, PEOPLE_IN_TOML = "not changed: no one added here is {given}; added: {who}", "not changed: {who} is in rooms.toml, which only the owner edits"
 PEOPLE_OPS, PEOPLE_NOT_SAID, PEOPLE_NONE = "op is add or drop, or none for who is answered here", TEXTING_NOT_SAID, "none"
+PERSON_BY = "[sent by {who}, one of the {n} people this room answers]"   # above each one's message, in a room with more than one
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 # bare /model under the room's line, and its suggestions as the owner types (Yerkd.model_menu, model_picks)

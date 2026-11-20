@@ -25,11 +25,16 @@ version changes.
   room, over rooms.toml, which is never written. Every start joins them to rooms.toml's list; one the start may no
   longer join (the room since made an owner room, the person since listed in `[watch] assistants`) is joined nowhere,
   said in the log, and the start goes on. One listed in rooms.toml is the owner's to edit there.
+- In a room that answers more than one person, a line above each person's message names who sent it, by the name the
+  server shows them by and their handle, so a person's room never answers its second person as its first; the owner's
+  messages, and a room with one person, read as before.
+- `yerk room add` never lets one a room answers by asking into a new person's room made like it, as it never lets in
+  rooms.toml's people; `yerk import` files their old lines behind that room's wall as a person's, never as "other".
 - `yerk explain room-people` has it, found by asks such as "answer them too"; the README's line on who a room answers
   says so.
 - **Upgrading**: nothing to change; each room is handed the tool at its next process start. budgets.toml: Yerk AI's
   tools 28,600 to 29,300 for the tool (about 779 as sent), the session start's total 132,862 to 133,562, and
-  `[code] lines` 33,260 to 33,395.
+  `[code] lines` 33,260 to 33,415.
 
 ### need-2026-11-19-124 (#108)
 

@@ -92,6 +92,31 @@ def test_the_owner_s_ask_answers_a_person_who_wrote_here_from_their_next_message
     assert line == words.PEOPLE_NOW.format(also=words.PEOPLE_ONE.format(who="@newcomer", day=kept[0]["day"]) + words.PEOPLE_LISTED.format(n=1))
 
 
+def test_a_room_answering_two_people_is_told_which_of_them_sent_each_message(tmp_path):
+    """The cold read: with the newcomer added, the listed person's message and theirs reached the room alike, "from person"
+    and the text, so a person's room (its persona, card and open items all its one person's) would answer the newcomer as
+    that person. Now in a room that answers more than one, a line above each person's message names who sent it, by the
+    name the server shows them by and their handle; the owner's and a one-person room's read as before."""
+    y, dc, ch, room, taken = start(tmp_path)
+    run(dc.on_message(Msg(ch, 600, "only me here so far", author=LISTED, name="listed")))
+    asked(room)
+    assert tool(y, "add", "501")["ok"]
+    run(dc.on_message(Msg(ch, 601, "what did I ask you?", author=NEWCOMER, name="newcomer")))
+    shown = Msg(ch, 602, "what did I ask you?", author=LISTED, name="listed")
+    shown.author.display_name = "Her  Name"
+    run(dc.on_message(shown))
+    run(dc.on_message(Msg(ch, 603, "the owner's word", author=OWNER)))
+    assert [(m.sender, m.text) for m in taken] == [
+        ("person", "only me here so far"),
+        ("person", f"{words.PERSON_BY.format(who='@newcomer', n=2)}\nwhat did I ask you?"),
+        ("person", f"{words.PERSON_BY.format(who='Her Name (@listed)', n=2)}\nwhat did I ask you?"),
+        ("owner", "the owner's word")]
+    asked(room, "stop answering the newcomer here")
+    assert tool(y, "drop", "@newcomer", "stop answering the newcomer")["ok"]
+    run(dc.on_message(Msg(ch, 604, "just me again", author=LISTED, name="listed")))
+    assert taken[-1].text == "just me again"
+
+
 def test_a_restart_answers_them_still_and_a_drop_on_the_owner_s_word_ends_it(tmp_path):
     """The next start joins the added person to rooms.toml's list before the adapter takes the room; `drop` by handle ends it
     at once; one rooms.toml lists is the owner's file to edit, and an unknown one is named with who was added."""
@@ -206,9 +231,11 @@ def test_a_start_never_stops_on_the_file_and_joins_no_one_where_rooms_toml_now_f
     toml.write_text(toml.read_text().replace('privacy = "owner"\npeople = []', 'privacy = "family"\npeople = [31]'))
     with (tmp_path / "private" / "yerkd.toml").open("a") as f:
         f.write(f"\n[watch]\nassistants = [{NEWCOMER}]\n")
+    caplog.clear()
     y3 = Yerkd(tmp_path / "private", tmp_path / "state")
     assert people("her-room", y3.room_confs["her-room"]) == frozenset({LISTED})
     assert [p["id"] for p in override(tmp_path / "state", "her-room")["people"]] == [str(NEWCOMER)]
+    assert f"answers {NEWCOMER} no more: [watch] assistants lists them" in caplog.text      # said in the log, as the changelog says
 
 
 def test_every_room_is_handed_the_tool_and_settings_keeps_the_people_it_did_not_change(tmp_path):

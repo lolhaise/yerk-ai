@@ -791,7 +791,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-19: need-2026-11-19-126 raised it by 135, the `people` tool, a room with people answering one more person in its channel on the owner's own words of the turn (that evening a person's room asked to answer a second person there, whose message was filed as "other" with no reply, found who a room answers in rooms.toml alone, which no room reads, and no tool to change it), not folded to fit: daemon.py 85 (tool_people: the list, add by a message of theirs, drop by handle or id, on owner_said, one rooms.toml lists too left to it; unpeopled, rooms.toml's own refusals through config.people and context.walls; joined, the override written and the room's conf and the adapter's answered set from the next message; join_added at every start, never stopping it, no assistant joined; the allow line), channels/discord.py 18 (answer, author: the message read in the room's own channel, the owner, a bot, a webhook and another assistant told apart), words.py 16, mcp_server.py 9 (the tool and its line in the header), config.py 7 (added, the override's people). 33,395: main 3af751c's 33,260 plus 135.
 
-- `lines = 33395`
+2026-11-20: need-2026-11-19-126's fix raised it by 20, what PR 110's cold read found, not folded to fit: channels/discord.py 11 (said: in a room that answers more than one person, a line above each one's message naming who sent it, in its own channel and in a held group from the one it watches; the module's line on who is answered), move.py 6 (answers: rooms.toml's people and those added by asking, so `yerk room add` copies no overwrite of theirs into a new person's room and `yerk import` files them as a person), daemon.py 2 (one added and since listed in [watch] assistants said in the log), words.py 1 (PERSON_BY). 33,415: 33,395 plus 20.
+
+- `lines = 33415`
 
 ## Uncapped
 
