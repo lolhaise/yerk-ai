@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-11-21
 
+### need-2026-11-21-134 (#121)
+
+- A room relaying a worker's result can check the branch, head and commits the worker names, a plug-in's branch too.
+  The `worker` tool's report now reads each worktree in the worker's folder with git: the repository's own checkout and
+  the branch it is on (the base), the worktree's branch (none when detached) and head, how many commits each side has
+  that the other lacks, the newest ten its base lacks with each one's short sha, subject and age, and how many of its
+  files are not committed. `yerk worker report <id> --json` shows the same.
+- Before, a room asked to check a plug-in worker's branch had its Read of the worktree's HEAD and its Grep of the
+  plug-in's refs refused. A linked worktree's `.git` is only a pointer into its repository's own `.git`, which no room's
+  rules open, and a commit there is compressed, so a read rule would not have shown the commits either. A plug-in kept
+  outside Yerk has no GitHub for `github_state` to read. The room checked the worktree's files instead.
+- The read writes nothing: no fetch, no ref, no lock, no index, and no fsmonitor or signature program runs. It runs off
+  the daemon's loop. A worktree git cannot read gives git's own first line of why, and the rest of the report still
+  comes. The plug-in's `.git` stays closed to a room's Read; no new rule is written.
+- The mechanics' line on checking a worker's claim says the report names each worktree with its branch, head and
+  commits. New ability entry `worker-branch` (`yerk explain worker-branch`), found by asks such as "the worker's
+  branch". The README and the GUIDE say it beside the worker reads.
+- **Upgrading**: nothing to change. The mechanics stay inside their 8,900, and budgets.toml's `[code] lines` rises from
+  33,625 to 33,661.
+
 ### need-2026-11-21-133 (#120)
 
 - A room can click the second or third of several buttons that share one label in the browser, and scroll a tab. On a

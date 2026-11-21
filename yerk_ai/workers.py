@@ -87,6 +87,7 @@ EXIT, TASKS, REPORT = "exit.json", "TASKS.md", "REPORT.md"
 # a worker's git worktrees in its folder, by the names every need brief gives them (needs.py): `wt`, Yerk's, and
 # `<plug-in>-wt`, a plug-in's; an owner room's Read, Grep and Glob reach them, and the worker's own files too except in a sealed room (Yerkd.worker_reads)
 WORKTREES = ("wt", "*-wt")
+COMMITS = 10                                   # the newest commits the report reads on a worktree's branch (branch)
 TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
@@ -701,8 +702,8 @@ class Workers:
             return await self.stop(str(req.get("id", "")))
         if action == "list":
             return {"ok": True, "workers": listing(self.ledger)}
-        if action == "report":
-            return report(self.ledger, str(req.get("id", "")))
+        if action == "report":                           # its git reads off the loop
+            return await asyncio.to_thread(report, self.ledger, str(req.get("id", "")))
         return {"ok": False, "error": f"no action {action!r}; actions: start, list, stop, report"}
 
     def _account(self, name: str, model: str = "") -> Account | None:
@@ -1095,18 +1096,52 @@ def worktrees(folder: Path) -> list[str]:
     return [str(p.parent) for p in sorted(folder.glob("*/.git")) if p.is_file() and any(fnmatch(p.parent.name, w) for w in WORKTREES)]
 
 
+def branch(tree: Path, now: float | None = None) -> dict[str, Any]:
+    """A worktree's branch as git has it, so a room checks a worker's claim on its commits (need 134 of 2026-11-21: a plug-in
+    worktree's .git is a pointer into the plug-in's own .git, which no room reads, and a commit there is compressed, so a
+    relay read neither its head nor its commits): its repository's own checkout (`repo`) and the branch that is on (`base`),
+    its branch (None when detached) and head, how many commits each side has that the other lacks, the newest COMMITS of
+    those its base lacks (of its own history when that checkout is on no branch), each sha, subject and age, and how many
+    of its files are not committed. Read only: no fetch, no ref, lock or index written, no fsmonitor or signature program
+    run; a worktree git cannot read is git's first line of why."""
+    now = time.time() if now is None else now
+
+    def git(*a: str) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false",
+                                   "-C", str(tree), *a], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError) as e:
+            return subprocess.CompletedProcess([], 127, "", str(e))
+    if (h := git("rev-parse", "--verify", "HEAD^{commit}")).returncode:
+        return {"worktree": str(tree), "error": words.BRANCH_UNREAD.format(why=(h.stderr.strip().splitlines() or ["?"])[0][:160])}
+    head, first = h.stdout.strip(), git("worktree", "list", "--porcelain").stdout.split("\n\n", 1)[0].splitlines()
+    base = next((x.removeprefix("branch refs/heads/") for x in first if x.startswith("branch refs/heads/")), "")
+    out: dict[str, Any] = {"worktree": str(tree), "repo": next((x[9:] for x in first if x.startswith("worktree ")), ""), "base": base,
+                           "branch": git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() or None, "head": head[:7]}
+    if base and len(n := git("rev-list", "--left-right", "--count", f"refs/heads/{base}...{head}", "--").stdout.split()) == 2:
+        out["only_on_base"], out["not_on_base"] = int(n[0]), int(n[1])
+    log_ = git("log", "-n", str(COMMITS), "--format=%H%x1f%ct%x1f%s", f"refs/heads/{base}..{head}" if base else head, "--")
+    out["commits"] = [{"sha": c[0][:7], "subject": words.line(c[2], 120), "when": words.since(now - int(c[1]))}
+                      for c in (x.split("\x1f", 2) for x in log_.stdout.splitlines()) if len(c) == 3 and c[1].isdigit()]
+    st = git("status", "--porcelain", "--untracked-files=normal")
+    out["not_committed"] = len(st.stdout.splitlines()) if st.returncode == 0 else None
+    return out
+
+
 def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
-    """A worker's report: its path, first line and text (at most `limit` characters), and its worktrees."""
+    """A worker's report: its path, first line and text (at most `limit` characters), its worktrees and each one's branch
+    as git has it (branch)."""
     if (row := ledger.worker_get(wid)) is None:
         return {"ok": False, "error": f"no worker {wid!r}"}
     try:
         text = Path(row["report"]).read_text(errors="replace")
     except OSError:
         text = ""
+    trees = worktrees(Path(row["staging"])) if row["staging"] else []
     return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"], "job": row.get("job") or "",
             "first_line": first_line(Path(row["report"])), "text": text[:limit], "trimmed": len(text) > limit,
             "unit": row["unit"], "exit_detail": row["exit_detail"], "staging": row["staging"], "account": row["account"],
-            "model": row["model"], "worktrees": worktrees(Path(row["staging"])) if row["staging"] else []}
+            "model": row["model"], "worktrees": trees, "branches": [branch(Path(t)) for t in trees]}
 
 
 def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = None, full: bool = False) -> list[str]:
