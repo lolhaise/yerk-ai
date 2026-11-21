@@ -155,6 +155,7 @@ DIED = {"exit-code": "it ended with an error", "signal": "it was killed", "core-
 # only past one
 OOM_LOST = ("one of its processes ran out of memory", "{n} of its processes ran out of memory")
 REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report: `yerk worker report {id}`"
+BRANCH_UNREAD = "git could not read it: {why}"   # a worktree in a worker's folder whose git is gone (workers.branch)
 RELAY_ASK = ("[tell the room the outcome in your own voice{under}, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
 # A room whose privacy is not owner hears what it can do instead and no person as the switch (seen live: a room

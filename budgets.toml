@@ -436,6 +436,11 @@ skills = 0
 # folder and the checkout, and had its Grep of both refused) took the mechanics file to 8,733, 8,857 with a checkout's
 # path of 130 characters, on main's code line for need-2026-11-19-123; so 8,900. No part was measured again to pay for
 # it, so the total rose by the 200, to 132,862 on main's 132,662.
+# 2026-11-21, need-2026-11-21-134: the code line's clause (the `worker` report names each worktree with its branch, head
+# and commits, read with git; that afternoon a room relaying a plug-in worker's result, its branch, head and commits named,
+# had its Read of the worktree's HEAD in the plug-in's own .git refused, a linked worktree's .git being only a pointer
+# there, and checked the worktree's files instead) took the mechanics file to 8,774, 8,898 with a checkout's path of 130
+# characters; inside the 8,900, so the line and the total stay.
 [session_start.appended]
 mechanics = 8900
 persona = 11800
@@ -1835,4 +1840,12 @@ secs = 60
 # comment), daemon.py 5 (tool_seen's refusal before anything is written, its log line with the line's number and kind
 # alone, its docstring), pictures.py 3 (the module's sentence), cli.py 1 (--scrub's help), mcp_server.py 1 (the clause
 # from words.py). 33,625: main 948dcdb's 33,548 plus 77.
-lines = 33625
+# 2026-11-21: need-2026-11-21-134 raised it by 36, a worker's branch, head and commits read with git for the `worker`
+# report (that afternoon a room relaying a plug-in worker's result, its branch, head and commits named, had its Read of the
+# worktree's HEAD in the plug-in's own .git and its Grep of that .git's refs refused, a linked worktree's .git being only a
+# pointer there and a commit there compressed, and checked the worktree's files instead), not folded to fit: workers.py 35
+# (branch, a worktree's branch as git has it: its def and docstring on the wall and what it reads, 8; its git, read only
+# with no fsmonitor or signature program run, 6; the read, its head, base and branch, the counts each side lacks, the
+# newest COMMITS and the files not committed, 16 with its clock; the two lines before report; COMMITS 1; report's branches
+# and its docstring, 2), words.py 1 (BRANCH_UNREAD). 33,661: main 0911b5e's 33,625 plus 36.
+lines = 33661
