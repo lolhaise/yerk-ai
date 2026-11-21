@@ -970,10 +970,10 @@ asked_as = ["has the branch reached github", "was the branch pushed", "is the pr
 # where a room's Glob was refused, and the room has no shell.
 [abilities.red-checks]
 state = "built"
-what = "Says why a check on a pull request of Yerk's own repository is red: the github_state tool gives each red check its own words on GitHub (the box CI's words name the first failing test and the counts, cut at 140 characters) and reads the box CI's own record of that head, so an owner's room asked whether a worker's tests hold on the box names every failing test and the lines that say what failed, never only that a check is red, with no shell and no read outside its folders."
+what = "Says why a check on a pull request of Yerk's own repository is red: the github_state tool gives each red check its own words on GitHub (the box CI's words name the first failing test and the counts, cut at 140 characters) and reads the box CI's own record of that head, so an owner's room asked whether a worker's tests hold on the box names the failing tests the record names and the lines that say what failed, with their counts where more failed than it names, never only that a check is red, with no shell and no read outside its folders."
 how = [
   "Where: [needs] ci_log in yerkd.toml names the folder the box's CI keeps one record per commit it tests in, <full sha>.txt; the daemon reads the red head's record only, a file read and no call, the sha GitHub's own, so no other file opens.",
-  "What: from the record's newest run (its last line naming the commit whole, since a run again appends), the lines that say failed, failure, error or timed out, the first twelve, and every test they name as pytest does (tests/test_x.py::test_y), whole and once; a status cut mid-name adds none.",
+  "What: from the record's newest run (after its last line naming the commit whole, since a run again appends), the lines that say failed, failure, error or timed out, the first twelve, and every test they name as pytest does (tests/test_x.py::test_y), once, a parameter the record cut left off so the name is the test's own; a record names a step's first failing tests, so the counts in its lines say when more failed; a status cut mid-name adds none.",
   "Missing: no folder named, no record of the head, or a record that names no failure each come back as one line beside GitHub's words, the first naming the setting for the owner.",
 ]
 tier = "key"

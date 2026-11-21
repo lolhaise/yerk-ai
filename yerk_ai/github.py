@@ -25,7 +25,7 @@ SLUG = re.compile(r"github\.com[:/]+([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 PR = re.compile(r"(?:#|pr\s*#?\s*|https?://github\.com/([\w.-]+/[\w.-]+)/pull/)?(\d+)/?", re.I)   # 12, #12, PR 12, its address
 BRANCH = re.compile(r"(?!-)(?!.*\.\.)(?!.*\.lock$)[\w.-]+(?:/[\w.-]+)*")         # git's own rules, kept narrow: no option, no range
 SAYS = re.compile(r"\b(?:failed|failure|errors?|timed out)\b", re.I)  # a record's line on what failed; one of its steps is "failures"
-TEST = re.compile(r"[\w./-]+\.py::[^\s,]+")                           # a test as pytest names it: tests/test_x.py::test_y
+TEST = re.compile(r"[\w./-]+\.py::[\w:.]+(?:\[[^\s,\[\]]*\])?")      # a test as pytest names it; a parameter cut short is left off
 LINES, WIDE = 12, 600                                                # a record's lines said, and each one's width
 
 
@@ -124,16 +124,16 @@ def here(tree: Path, branch: str, theirs: str) -> dict[str, Any] | None:
 
 
 def record(folder: Path, sha: str) -> dict[str, Any] | str:
-    """The box CI's own record of commit `sha`, <full sha>.txt in `folder` ([needs] ci_log), from its last line naming the
-    commit whole, where the newest run starts (a run again appends): the tests its lines that say what failed name, whole
-    and in order, and those lines; words when the folder holds no record of it or the record says no failure."""
+    """The box CI's own record of commit `sha`, <full sha>.txt in `folder` ([needs] ci_log), after its last line naming the
+    commit whole, the newest run's header (a run again appends): the tests its lines that say what failed name, in order,
+    one cut inside its parameter as the test alone, and those lines; words when there is no record or it says no failure."""
     try:
         text = (folder / f"{sha}.txt").read_text(errors="replace").splitlines() if re.fullmatch(r"[0-9a-f]{40}", sha) else []
     except OSError:
         text = []
     if not text:
         return words.GITHUB_CI_NONE.format(head=sha[:7])
-    said = [x for x in text[max((i for i, x in enumerate(text) if sha in x), default=0):] if SAYS.search(x)]
+    said = [x for x in text[max((i + 1 for i, x in enumerate(text) if sha in x), default=0):] if SAYS.search(x)]
     if not said:
         return words.GITHUB_CI_CLEAN.format(head=sha[:7])
     return {"failing": list(dict.fromkeys(t for x in said for t in TEST.findall(x) if not t.endswith("..."))),
