@@ -23,9 +23,11 @@ from .config import write_private
 DIR = "rules"                      # <memory>/rules/<slug>.md, one lesson each; the folder is the mark of a converted store
 INDEX = "rules.md"                 # the index (memory.RULES), what a session start loads
 RETIRED = "retired.tsv"            # slug, day, the slug that replaced it ("" for none): a retired lesson's tombstone
-NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite, what is missing (a reason, an exception or both; a row of three, a
-                                   # reason): a lesson converted with no reason on file, as the owner's side says, or with no
-                                   # exception to its absolute, as its rule gives none
+NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite, what is missing (a reason, MISSING's, joined by "and"; a row of three,
+                                   # a reason): a lesson converted with no reason on file, as the owner's side says, or carried as
+                                   # they wrote it where only a change to their words would pass the gate
+MISSING = {"no_exception": "an exception", "whole": "a cite for his quote", "own": "tags round his sentence",
+           "uncited": "a cite for its example"}   # what a listed lesson lacks, by the proposals record's list it came from
 CITES = "rules-cites.tsv"          # an old store cite (rules.md:N, rules-topics.md:N), the slug its rule became
 SNAPSHOT = "converted.json"        # in the backup folder: the lessons as converted, news's look for a session from before
 BACKUP = "rules-backup-"           # <memory>/rules-backup-<day>/: the originals, copied before a conversion writes
@@ -200,6 +202,12 @@ def no_exception(root: Path) -> dict[str, tuple[str, str]]:
     """slug -> (day, the old cite) of each lesson NO_REASON lists for its exception: its absolute carried as the owner wrote it, since its
     rule gives none and no exception is ever added to a rule of the owner's."""
     return {k: (d, c) for k, (d, c, what) in listed(root).items() if "exception" in what}
+
+
+def listed_for(root: Path, key: str) -> dict[str, tuple[str, str]]:
+    """slug -> (day, the old cite) of each lesson NO_REASON lists as lacking MISSING[key]: the owner's quote kept whole ("whole"), their own
+    sentence kept ("own"), an example kept as its words ("uncited"), an exception ("no_exception")."""
+    return {k: (d, c) for k, (d, c, what) in listed(root).items() if MISSING[key] in what}
 
 
 def unlist(root: Path, slug: str) -> None:

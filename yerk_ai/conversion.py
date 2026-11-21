@@ -20,7 +20,8 @@ import re
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
@@ -39,10 +40,31 @@ HELD = re.compile("\x02(\\d+)\x03([.!?]?)")  # a held bracket, its own last stop
 LIFTED = "an absolute rule missing its scope or exception: "    # the gate's absolute finding (words.LESSON_NAMES), its head
 SCOPED = 'It holds for the job "{job}".'   # the scope code writes into an absolute that has none, from the rule's job
 UNLIFTED = "no exception, as the rule gives none"   # a listed item: a lesson whose absolute has no exception since its rule has none
+WHOLE = "his quote kept whole"       # a listed item: a lesson keeping a quote of the rule whole where the gate asks a cite in its place
+OWN = "his own sentence kept"        # a listed item: a lesson keeping the owner's sentence that holds "landed" or "bounced" beside a quote
+UNCITED = "an example kept as its words"   # a listed item: an example no line passes for, or its cite refused, that the gate asks a cite of
+EXCUSES = {UNLIFTED: "no_exception", WHOLE: "whole", OWN: "own", UNCITED: "uncited"}   # each kind and its list in the record
+WHYS = {UNLIFTED: "its absolute carried as he wrote it and named, since no exception is ever added to a rule of his; not counted in the verdict",
+        WHOLE: "his quote carried whole, word for word, where the gate asks a cite in its place, and named; not counted in the verdict",
+        OWN: "his own sentence carried word for word where the gate reads an exchange outside example tags, and named; not counted in the verdict",
+        UNCITED: "an example of his kept as its words, since no day-log line passes for it or its cite was refused, where the gate asks "
+                 "a cite, and named, since no wrong line is written to pass it; not counted in the verdict"}
+HEADS = {UNLIFTED: "no exception, as the rule gives none, carried as he wrote it", WHOLE: "his quote kept whole, carried as he wrote it where the "
+         "gate asks a cite in its place", OWN: "his own sentence kept, carried word for word where the gate reads an exchange outside "
+         "example tags", UNCITED: "an example kept as its words, since no day-log line passes or its cite was refused, where the gate asks "
+         "a cite (no wrong line is written to pass it)"}
+REFUSED_CITE = "cite refused"        # a listed item: the line code cites an example to, refused by the model with its why
+RECORDS = "what the day log already records: "    # the gate's on-record finding (words.LESSON_NAMES), its head
+UNTAGGED = "an example outside <example> tags: "   # the gate's exchange finding (shape.NAMES), its head
+SEALS = re.compile(r"\b(?:no (?:case|exception|one|go-ahead)[^.;]{0,24}lifts? (?:it|this|that)|nothing lifts (?:it|this|that)|lifts? it\b|"
+                   r"even when asked|with no exceptions?|no exceptions?\b)", re.I)    # words that lift or seal a never: never added
 FINDINGS = "findings.tsv"          # in <memory>/rules-proposals/: cite<TAB>a finding of the owner's side on an earlier conversion
 NAMED = re.compile(r"\b(?:(\d{4})-(\d{2})-(\d{2})|(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (\d{1,2})(?:,? (\d{4}))?)"
                    r"(?:,? (?:at )?(\d{1,2}):(\d)([\dx]))?\b", re.I)        # a day a passage names, and its time: Nov 9 2026 14:05, Oct 28
-HIS = re.compile(r"(?:\its(?:turn|and|the|last part)(?:['’]closes)?\the(?:\Case+\before+){0,3}|\the example note)\Says*$", re.I)    # the queue for its
+HIS = ("he", "him", "his")               # [curate] OWNER_WORDS unset: the rules' pronouns for the owner, read with "the owner" and their names
+OWNER_WORDS = "owner_words"        # [curate] in yerkd.toml: the pronouns the rules use for the owner, in HIS's place (unset: HIS)
+FILING = 120                       # seconds after a rule's trailer time that a day-log line may be stamped and count as its filing's
+NO_DAY = "no such day"             # the day `named` gives for one that is none (Nov 31): it names no line, so it cites nothing
 CLOCK = re.compile(r"^- (\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}) ")
 STAMPED = re.compile(r"(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?)([+-]\d{2}:\d{2})?")
 SHAPE = re.compile(r"^\s*(?:landed|bounced)\s+shape\b", re.I)     # an example that describes a shape, never a message of the log
@@ -124,7 +146,8 @@ def filed_at(filed: str) -> datetime | None:
 
 def named(text: str, filed: datetime | None) -> tuple[str, int | None]:
     """The day a passage names outside its quotes (Nov 9 2026 14:05, Oct 28, 2026-11-09), as YYYY-MM-DD, a year it leaves out the
-    last one not after the filing; and its time as minutes of the day (14:4x as 14:45), or None. ("", None) when it names none."""
+    last one not after the filing; and its time as minutes of the day (14:4x as 14:45), or None. ("", None) when it names none,
+    (NO_DAY, None) when the day it names is none."""
     if not (m := NAMED.search(shape.QUOTED.sub(" ", text))):
         return "", None
     if m[1]:
@@ -134,8 +157,8 @@ def named(text: str, filed: datetime | None) -> tuple[str, int | None]:
         y = int(m[6]) if m[6] else (filed or datetime.now()).year - bool(filed and (mon, d) > (filed.month, filed.day))
     try:
         day = datetime(y, mon, d).date().isoformat()
-    except ValueError:
-        return "", None
+    except ValueError:                   # Nov 31: a day that is none names no line
+        return NO_DAY, None
     return day, (int(m[7]) * 60 + int(m[8]) * 10 + (5 if m[9].lower() == "x" else int(m[9]))) if m[7] else None
 
 
@@ -165,16 +188,18 @@ def before(text: str, filed: datetime | None) -> tuple[str, int | None]:
 
 def pick(words: str, daily: Path, filed: str = "", his: bool = False, when: str = "", place: tuple[str, int | None] | None = None) -> str:
     """The day-log line a passage means, as daily/<day>.md:<line>; "" when no line passes. Of the lines that hold its words:
-    never one written after the rule was filed (its trailer's time); on the day `when` names, when it names one, and with a time
-    the line nearest it; for words given as the owner's, a line of their own; else the earliest. shape.on_record, the gate's, is not this."""
+    never one written after the rule was filed (its trailer's time, a line stamped FILING seconds after it being the filing's
+    own); on the day `when` names, when it names one (none, when that day is none), and with a time the line nearest it; for
+    words given as the owner's, a line of their own; else the earliest. shape.on_record, the gate's, is not this."""
     want, cut = flat(words), filed_at(filed)
     day, near = place or named(when, cut)
+    end = cut + timedelta(seconds=FILING) if cut else None    # the trailer carries the message's time, its day-log line a later stamp
     best: tuple[int, str, int] | None = None
-    for p in sorted(daily.glob("*.md")) if want and daily.is_dir() else ():
-        if not memory.DAYLOG.search(p.name) or (day and p.stem != day) or (cut and p.stem > cut.date().isoformat()):
+    for p in sorted(daily.glob("*.md")) if want and daily.is_dir() and day != NO_DAY else ():
+        if not memory.DAYLOG.search(p.name) or (day and p.stem != day) or (end and p.stem > end.date().isoformat()):
             continue
         for i, (text, role, at) in enumerate(log_lines(p), 1):
-            if want not in text or (his and role not in OWNER) or (cut and at and at > cut):
+            if want not in text or (his and role not in OWNER) or (end and at and at > end):
                 continue
             if near is None:
                 return f"daily/{p.name}:{i}"
@@ -183,30 +208,55 @@ def pick(words: str, daily: Path, filed: str = "", his: bool = False, when: str 
     return f"daily/{best[1]}:{best[2]}" if best else ""
 
 
-def given_his(before: str) -> bool:
-    """Next run starts the: example, note, says, the sample item moved to the next step and the test reads it, back "as plain text"."""
-    return bool(HIS.search(re.split(r"[.!?]\s", before)[-1][-48:]))
+@lru_cache(maxsize=16)
+def his_words(names: tuple[str, ...] = (), said_by: tuple[str, ...] = HIS) -> re.Pattern[str]:
+    """The words that give a quote as the owner's, a few words before it in its sentence: `said_by` (OWNER_WORDS, else HIS), the
+    (OWNER_NAMES), or "in reply to"."""
+    said = "|".join(re.escape(" ".join(w.split())) for w in (*said_by, "the owner", *names) if w.strip())
+    return re.compile(rf"(?:\b(?:{said})(?:['’]s)?\b(?:\W+\w+){{0,3}}|\bin reply to)\W*$", re.I)
+
+
+def owner_names(conf: dict[str, Any]) -> tuple[str, ...]:
+    """[curate] OWNER_NAMES of a yerkd.toml: the names the private layer gives for the owner, a list or one name; none when unset."""
+    v = dict(conf.get("curate") or {}).get(OWNER_NAMES) or ()
+    return tuple(str(x).strip() for x in ([v] if isinstance(v, str) else v) if str(x).strip())
+
+
+def owner_words(conf: dict[str, Any]) -> tuple[str, ...]:
+    """[curate] OWNER_WORDS of a yerkd.toml: the pronouns the rules use for the owner, a list or one word; HIS when unset."""
+    sentence, or "in reply to"."""
+    return tuple(str(x).strip() for x in ([v] if isinstance(v, str) else v) if str(x).strip())
+
+
+def words_of(text: str) -> str:
+    """Words as a quote or a sentence is matched word for word: lower case, each run of letters and digits, the rest aside."""
+    return " ".join(re.findall(r"[^\W_]+", text.lower()))
 
 
 def quoted(rule: dict[str, Any], made: list[dict[str, Any]], daily: Path, most: int, also: list[str] | None = None) -> tuple[list[dict[str, str]], list[str]]:
-    """The rule's quotes in its lessons, never swapped for a pointer: each quoted run of a lesson must be a run of a quote of the
-    rule (a fault otherwise), and a quote of the rule past `most` words that a lesson keeps a run of is a listed item with the
-    line `pick` finds for it (its words given as his when the rule gives them so, the day and time the rule names before it), or kept.
-    `also`: the reasons on file for it (REASONS), his words too, a run of which a lesson may quote."""
+    """The owner's quotes in the rule's lessons, each whole: each quoted run of a lesson (its examples and code's scope sentence aside)
+    is, word for word, a whole quote of the rule or a whole reason on file (`also`, REASONS: the owner's words too); a part of one (cut,
+    split into pieces, joined across an ellipsis) is a fault, and so is a quote that is neither. A quote of the rule past `most`
+    words that a lesson keeps is a listed item with the line `pick` finds for it (its words given as the owner's when the rule gives
+    them so, the day and time the rule names before it), or kept; never a pointer."""
     said = rule["said"]
     theirs = [(m[1], m.start()) for m in shape.QUOTED.finditer(said)] + [(x, len(said)) for x in also or []]
     done, faults, seen_ = list[dict[str, str]](), list[str](), set[str]()
     for i, x in enumerate(made, 1):
         for m in shape.QUOTED.finditer(shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}").replace(SCOPED.format(job=rule["job"]), " ")):
-            parts = [flat(y).strip(" .,;:!?") for y in ELIDED.split(m[1]) if y.strip(" .,;:!?")]
-            of = [(q, at) for q, at in theirs if parts and all(y in flat(q) for y in parts)]
-            if not of:
-                faults.append(f'lesson {i} quotes words that are no run of a quote of the rule: "{m[1]}"')
+            if not (have := words_of(m[1])):
+                continue
+            if not (of := [(q, at) for q, at in theirs if words_of(q) == have]):
+                parts = [y for y in (words_of(y) for y in ELIDED.split(m[1])) if y]
+                whole = next((q for q, _ in theirs if all(f" {y} " in f" {words_of(q)} " for y in parts)), "")
+                faults.append(f'lesson {i} cuts his quote: "{m[1]}" is part of "{whole}", which goes in whole, word for word' if whole
+                              else f'lesson {i} quotes words that are no whole quote of the rule: "{m[1]}"')
                 continue
             q, at = of[0]
             if len(q.split()) > most and q not in seen_ and at < len(said):
                 seen_.add(q)
-                line = pick(q, daily, rule.get("filed", ""), given_his(said[:at]), place=before(said[:at], filed_at(rule.get("filed", ""))))
+                line = pick(q, daily, rule.get("filed", ""), given_his(said[:at], names, by),
+                            place=before(said[:at], filed_at(rule.get("filed", ""))))
                 done.append({"kind": "quote cited", "said": q, "as": m[1], "at": line} if line else {
                     "kind": "quote kept", "said": q, "as": m[1], "why": "no day-log line passes: none before the rule was filed, on the day "
                     "it names, of his own where the words are his"})
@@ -224,18 +274,86 @@ def absolute(job: str, text: str, read: Any) -> tuple[str, list[dict[str, str]]]
 
 
 def unlifted(rule: dict[str, Any], text: str, read: Any) -> bool:
-    """A lesson's absolute with no exception because its rule has none: the rule's own absolute has no exception written in and
-    every absolute word of the lesson is one the rule says. A lesson missing an exception its rule gives is not this."""
-    miss = shape.lesson(rule["job"], rule["said"], None, {}, read=read).get("absolute") or []
-
+    """A lesson's absolute with no exception because its rule gives none where it says it: each absolute word of the lesson is
+    one the rule says (outside its quotes and examples), and each sentence of the rule holding that word gives no exception, as
+    the gate reads that sentence alone. An exception in another sentence of the rule changes nothing; a never whose own sentence
+    gives the exception, and an absolute the rule does not have, still count."""
     def strong(said: str) -> set[str]:
         return {w.lower() for w in shape.ABSOLUTE.findall(shape.QUOTED.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)))}
-    return any("no exception" in x for x in miss) and strong(text) <= strong(rule["said"])
+    sents = [(y, strong(y)) for y in shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"])))]
+    return bool(mine := strong(text)) and all(any(w in have for _, have in sents) and all(any(
+        "no exception" in g for g in shape.lesson(rule["job"], y, None, {}, read=read).get("absolute") or []) for y, have in sents if w in have)
+        for w in mine)
 
 
 def open_finding(g: str) -> bool:
     """The gate's absolute finding for an exception alone, its scope written in."""
     return g.startswith(LIFTED) and "with no exception written in" in g.split(";")[0] and "no scope" not in g.split(";")[0]
+
+
+def own_sentences(rule: dict[str, Any], text: str) -> bool:
+    """A lesson in which each sentence holding what the gate's exchange finding names (a quote of three words or more, "landed" or
+    "bounced") is a sentence of the rule, word for word, one of them holding "landed" or "bounced": the owner's own sentence kept, never
+    bent to pass the gate. A sentence the model wrote holding one (one that opens with someone asks, says or wrote and holds a
+    quote) is not this, nor a lesson holding a thumbs mark outside its examples."""
+    def sentences(said: str) -> list[str]:
+        return shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)).replace(SCOPED.format(job=rule["job"]), " ").strip())
+    theirs = {words_of(y) for y in sentences(rule["said"])}
+    held = [y for y in sentences(text) if shape.MARKED.search(y) or any(len(m[1].split()) >= 3 for m in shape.QUOTED.finditer(y))]
+    return (any(shape.MARKED.search(y) for y in held) and all(words_of(y) in theirs for y in held)
+            and not shape.THUMBS.search(shape.EXAMPLE_TAGS.sub(" ", text)))
+
+
+def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Path, str] | None = None) -> set[str]:
+    """What the gate's on-record finding on a lesson names, when each passage it names is the owner's own: WHOLE for a quote past the gate's
+    words that the day log holds being, word for word, a whole quote of the rule; UNCITED for an example being one of the rule's
+    own kept as its words. None when it names anything else (a quote of the model's own choosing, a gloss past its words)."""
+    lim = dict(budgets().get("shape") or {})
+    cap, gloss = shape.threshold(lim, "lesson_quote_words", 8), shape.threshold(lim, *shape.GLOSS)
+    said, his = (re.sub(r"`[^`]*`", "code", shape.one(y)) for y in (text, rule["said"]))     # each as the gate reads a lesson
+    theirs, mine = {words_of(m[1]) for m in shape.QUOTED.finditer(his)}, {y.strip() for y in shape.INSIDE.findall(his)}
+    out = set[str]()
+    for ex in shape.INSIDE.findall(said):
+        if m := shape.SHOWN.match(ex.strip()):
+            if len(m[2].split()) > gloss:
+                return set()
+            continue
+        quote = re.sub(r"^\s*(?:landed|bounced)\b[,:]?\s*", "", ex.strip(), flags=re.I)
+        if len(quote.split()) > cap and shape.on_record(quote.strip(shape.QUOTES_ALL), daily, seen):
+            if ex.strip() not in mine:
+                return set()
+            out.add(UNCITED)
+    for m in shape.QUOTED.finditer(shape.TRAILER.sub("", shape.EXAMPLE_TAGS.sub(" ", said)).strip()):
+        if len(m[1].split()) > cap and shape.on_record(m[1], daily, seen):
+            if words_of(m[1]) not in theirs:
+                return set()
+            out.add(WHOLE)
+    return out
+
+
+def excused(rule: dict[str, Any], x: dict[str, Any], read: Any, daily: Path | None = None, seen: dict[Path, str] | None = None) -> dict[str, list[str]]:
+    """Each gate finding on lesson `x` that only a change to a sentence or a quote of the owner's could meet -> the kinds it is listed as:
+    UNLIFTED (a never whose rule gives no exception where it says it), WHOLE (the owner's quote kept whole), OWN (their own sentence kept),
+    UNCITED (an example of his kept as its words). Never sent to the model; each such lesson is carried as he wrote it and
+    listed for the owner's side, and every other finding on it still counts."""
+    text, out = f"{x['summary']} {x['body']}", dict[str, list[str]]()
+    for g in x["gate"]:
+        if open_finding(g) and unlifted(rule, text, read):
+            out[g] = [UNLIFTED]
+        elif g.startswith(RECORDS) and (k := recorded(rule, text, daily, seen)):
+            out[g] = sorted(k)
+        elif g.startswith(UNTAGGED) and own_sentences(rule, text):
+            out[g] = [OWN]
+    return out
+
+
+def of_record(m: dict[str, Any]) -> dict[str, Any]:
+    """A rule as a proposals file's record holds it: its cite, job, words (its line's, trailer and marks out) and filing, so the
+    apply works each excuse out again from the rule's own words."""
+    head, colon, said = m["text"][2:].partition(": ")
+    tm = memory.TRAILER.search(m["text"])
+    return {"cite": m["cite"], "job": m["job"], "text": m["text"], "filed": f"{tm[1]}{tm[2] or ''}" if tm else "",
+            "said": re.sub(r" \[(?:rooms|on): [^\]]*\]", "", shape.TRAILER.sub("", said if colon else m["text"][2:])).strip()}
 
 
 def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dict[str, str]]) -> list[str]:
@@ -281,7 +399,7 @@ def examples(rule: dict[str, Any], daily: Path) -> list[dict[str, str]]:
         mark, text = (m[0].capitalize() + ", ") if (m := shape.MARKED.search(ex)) else "", ex.strip()
         bare = HEAD.sub("", text).strip(shape.QUOTES_ALL + ",:;.")
         day = named(text, filed_at(rule.get("filed", "")))[0]
-        pieces = [(y, his) for y, his in [(bare, False), *((y, given_his(text[:m.start()])) for m in shape.QUOTED.finditer(text)
+        pieces = [(y, his) for y, his in [(bare, False), *((y, given_his(text[:m.start()], *said_as(rule))) for m in shape.QUOTED.finditer(text)
                                                          for y in ELIDED.split(m[1]))] if len(y.split()) >= 4 or (day and y.strip())]
         if (m := shape.SHOWN.match(text)) and len(m[2].split()) > most:      # cited, its gloss past the gate's room
             out.append({"kind": "example cited", "said": text, "as": f"<example>{mark}{m[1]}</example>",
@@ -335,7 +453,7 @@ def reason_rows(s: memory.Settings) -> dict[str, list[str]]:
 
 
 STALE = ("a findings row", "an exception added", "a quote swapped for a pointer", "an example cited by the old search",
-         "an example left out for length", "a fault the code finds", "another cause")    # why `--from` redoes a rule, the head's count
+         "an example left out for length", "a quote of his cut", "a fault the code finds", "another cause")    # why `--from` redoes a rule, the head's count
 LOOPED = "the owner's side's finding comes back"   # a listed item: a rule redone with its findings shown and still dropped, kept
 
 
@@ -355,6 +473,7 @@ def stale(s: memory.Settings, r: dict[str, Any], m: dict[str, Any], found: dict[
     shown_, text = examples(r, s.daily), " ".join(f"{x['summary']} {x['body']}" for x in m["lessons"])
     was = {d.get("said"): d for d in m["done"] if str(d["kind"]).startswith("example")}
     most = shape.threshold(dict(budgets().get("shape") or {}), "lesson_quote_words", 8)
+    cut = quoted(r, m["lessons"], s.daily, most, [w for _, w in supplied_reasons(s).get(r["cite"], [])])[1]
     return [y for y, hit in zip(STALE, (
         bool(found.get(r["cite"])) and m.get("found") != found[r["cite"]],
         any(d["kind"] == "exception added" for d in m["done"]),
@@ -362,7 +481,14 @@ def stale(s: memory.Settings, r: dict[str, Any], m: dict[str, Any], found: dict[
         any((was.get(x["said"]) or {}).get("kind") == "example cited" and (was[x["said"]].get("at"), was[x["said"]]["as"]) != (x.get("at"), x["as"])
             for x in shown_) or any(x not in {y["said"] for y in shown_} for x in was if (was[x] or {}).get("kind") == "example cited"),
         any(d["kind"] == "example left out" and "would pass its length" in str(d.get("why")) for d in m["done"]),
-        bool(checks(r, m["lessons"], m["done"], shown_) or quoted(r, m["lessons"], s.daily, most, [w for _, w in supplied_reasons(s).get(r["cite"], [])])[1]))) if hit]
+        any(" cuts his quote: " in f for f in cut),
+        bool(checks(r, m["lessons"], m["done"], [{**x, "as": f"<example>{x['said']}</example>"} if x["said"] in refusals(m["done"]) else x
+                                                 for x in shown_]) or [f for f in cut if " cuts his quote: " not in f]))) if hit]
+
+
+def refusals(done: list[dict[str, Any]]) -> set[str]:
+    """The examples whose cite the model refused (REFUSED_CITE), by their words: each placed as its words."""
+    return {str(d.get("said")) for d in done if d["kind"] == REFUSED_CITE}
 
 
 def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: Callable[[dict[str, Any]], list[str]],
@@ -386,7 +512,7 @@ def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: C
         bad = stale(s, r, m, found)
         looped = bool(found.get(r["cite"])) and m.get("found") == found[r["cite"]] and any(   # the reviewer: a finding of theirs holds
             d["kind"] == "reviewer dropped" and re.search(r"\bfindings?\b", str(d.get("why"))) for d in m["done"])
-        if not made or any(refused(x["gate"], NONE in rows.get(r["cite"], []), unlifted(r, f"{x['summary']} {x['body']}", read)) for x in made) \
+        if not made or any(refused(x["gate"], NONE in rows.get(r["cite"], []), excused(r, x, read, s.daily)) for x in made) \
                 or accounted(r, made, m["done"]) or (any(d["kind"] in ("still failing", "reviewer dropped") for d in m["done"]) and not looped):
             bad = bad or [STALE[-1]]
         if bad:
@@ -434,7 +560,7 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
     on = rule.get("keeps") or every
     shown_, faults = examples(rule, s.daily), list[str]()
     out_ = {n: str(x.get("why") or "") for x in (prop or {}).get("left_out", []) if isinstance(x, dict) and isinstance(n := x.get("example"), int)}
-    made, names, glosses = list[dict[str, Any]](), dict[int, list[int]](), dict[int, str]()
+    made, names, glosses, nocite = list[dict[str, Any]](), dict[int, list[int]](), dict[int, str](), dict[int, str]()
     for i, (summary, body, _, exs) in enumerate(parts):
         def theirs(m: re.Match[str], i: int = i) -> str:    # an <example> the model wrote that is one of the rule's: named
             words = re.findall(r"[a-z0-9]+", m[1].lower())     # its words, or the line code cites it to, whatever its mark
@@ -450,6 +576,8 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
                 continue
             names.setdefault(n, []).append(i)
             glosses[n] = g or glosses.get(n, "")
+            if isinstance(e, dict) and e.get("cite") is False:      # the model refuses the line code cites it to: placed as its words
+                nocite[n] = str(e.get("why") or "") or "no why given"
         body2, added = absolute(rule["job"], f"{summary} {body}".strip(), read)
         body = body2[len(summary):].strip()
         slug = lessons.slug_of(rule["job"], taken)
@@ -464,6 +592,9 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
     if len(made) == 1 and not names and not out_:
         names = {n: [0] for n in range(1, len(shown_) + 1)}
     for n, x in enumerate(shown_, 1):
+        if n in nocite and x.get("at"):
+            done.append({"kind": REFUSED_CITE, "said": x["said"], "at": x["at"], "why": nocite[n]})
+            x = shown_[n - 1] = {"kind": "example kept", "said": x["said"], "as": f"<example>{x['said']}</example>", "why": "its cite refused"}
         at = list(dict.fromkeys(names.get(n, [])))
         if len(at) > 1:
             faults.append(f"example {n} is named in {len(at)} lessons ({', '.join(str(k + 1) for k in at)}): name it in the one whose step it shows")
@@ -494,26 +625,30 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
     elif prop:                          # a split rule's lesson refused only for a reason, whose part the rule gives none
         done += [{"kind": "no reason on file", "said": x["summary"], "why": "listed for the owner's side: the rule gives this lesson's part no "
                   "reason and a reason is never invented; " + row} for x, (_, _, w, _) in zip(made, parts) if x["gate"]
-                 and all(g.startswith(WANTING) or (open_finding(g) and unlifted(rule, f"{x['summary']} {x['body']}", read)) for g in x["gate"])
+                 and all(g.startswith(WANTING) or g in excused(rule, x, read, s.daily, seen) for g in x["gate"])
                  and any(g.startswith(WANTING) for g in x["gate"]) and not (isinstance(w, dict) and w.get("said"))]
     return {**{k: rule[k] for k in ("cite", "file", "line", "text", "job")}, "lessons": made, "done": done,
             "missing": accounted(rule, made, done), "faults": faults + wrong + checks(rule, made, done, shown_)}
 
 
 def checks(rule: dict[str, Any], made: list[dict[str, Any]], done: list[dict[str, Any]], shown_: list[dict[str, str]]) -> list[str]:
-    """What code finds wrong in a rule's lessons, each a finding sent back: an <example> no example of the rule is; an example of
-    the rule in no lesson (left out with the model's why aside) or in two; the caution the model named not the rule's own sentence,
-    or in no lesson (a rewritten item never accounts for it)."""
-    out, tags = list[str](), [[m[0] for m in shape.INSIDE.finditer(x["body"])] for x in made]
+    """What code finds wrong in a rule's lessons, each a finding sent back: an <example> no example of the rule is, or one of them
+    a second time; an example of the rule in no lesson (left out with the model's why aside), each example counted once, by its
+    place, so two with the same cited form are two; the caution the model named not the rule's own sentence, or in no lesson (a
+    rewritten item never accounts for it); words that lift or seal a never which the rule does not say (SEALS)."""
+    out, placed = list[str](), set[int]()
     like = [re.compile(re.escape(x["as"][:-len("</example>")]) + (r"(?:, [^<]*)?</example>" if x.get("at") else "</example>")) for x in shown_]
-    for i, have in enumerate(tags, 1):
-        out += [f'lesson {i} holds an example the rule does not give: "{m[1].strip()}"' for y in have
-                if not any(rx.fullmatch(y) for rx in like) and (m := shape.INSIDE.match(y))]
+    for i, x in enumerate(made, 1):
+        for m in shape.INSIDE.finditer(x["body"]):
+            if (n := next((n for n, rx in enumerate(like) if n not in placed and rx.fullmatch(m[0])), None)) is not None:
+                placed.add(n)
+            else:
+                out.append(f'lesson {i} holds an example of the rule a second time: "{m[1].strip()}"' if any(rx.fullmatch(m[0]) for rx in like)
+                           else f'lesson {i} holds an example the rule does not give: "{m[1].strip()}"')
     gone = {d["said"] for d in done if d["kind"] == "example left out" and "would pass its length" not in str(d.get("why"))}
-    for n, (x, rx) in enumerate(zip(shown_, like), 1):
-        k = sum(any(rx.fullmatch(y) for y in have) for have in tags)
-        out += [f'example {n} of the rule is in no lesson: "{x["said"]}"'] if not k and x["said"] not in gone else []
-        out += [f"example {n} of the rule is in {k} lessons: it goes in the one whose step it shows"] if k > 1 else []
+    out += [f'example {n} of the rule is in no lesson: "{x["said"]}"' for n, x in enumerate(shown_, 1) if n - 1 not in placed and x["said"] not in gone]
+    out += [f'lesson {i} adds words to a never that the rule does not say: "{m[0]}"' for i, x in enumerate(made, 1)
+            for m in SEALS.finditer(shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}")) if flat(m[0]) not in flat(rule["said"])]
     for d in (d for d in done if d["kind"] == "caution to review"):
         if flat(d.get("said", "")) not in flat(rule["said"]):
             out.append(f'the caution is not the rule\'s own sentence, word for word: "{d.get("said", "")}"')
@@ -522,20 +657,23 @@ def checks(rule: dict[str, Any], made: list[dict[str, Any]], done: list[dict[str
     return out
 
 
-def refused(gate: list[str], none: bool, open_: bool = False) -> bool:
+def refused(gate: list[str], none: bool, ok: Any = ()) -> bool:
     """A lesson's gate findings refuse it: any finding, but for a rule whose cite has a NONE row, a finding besides a reason's, and
-    for a lesson whose absolute has no exception since its rule gives none (`open_`, unlifted), a finding besides that one."""
-    return bool(gate) and not all((none and g.startswith(WANTING)) or (open_ and open_finding(g)) for g in gate)
+    a finding besides each one `ok` holds (excused: one only a change to the owner's words could meet, listed); `ok` True, as run 4 gave
+    it, is a lesson whose never is unlifted: its exception finding alone."""
+    ok = {g for g in gate if open_finding(g)} if ok is True else () if ok is False else ok
+    return bool(gate) and not all((none and g.startswith(WANTING)) or g in ok for g in gate)
 
 
-def findings(m: dict[str, Any], none: bool = False, rule: dict[str, Any] | None = None, read: Any = None) -> list[str]:
+def findings(m: dict[str, Any], none: bool = False, rule: dict[str, Any] | None = None, read: Any = None, daily: Path | None = None,
+             seen: dict[Path, str] | None = None) -> list[str]:
     """What still fails in one rule's lessons, word for word: each lesson's gate refusal, each sentence of the rule not accounted
     for and each reason refused. A refusal for no reason goes back too, since a reason a reader sees ("which slows the page")
     is none to the gate; the prompt says to give none where none is on file. `none`: the rule has a NONE row, so a lesson
-    refused for a reason alone stays as it is."""
-    open_ = [bool(rule) and unlifted(rule or {}, f"{x['summary']} {x['body']}", read) for x in m["lessons"]]   # never asked to add one
-    return [f'lesson {i} ("{x["summary"]}"): {g}' for i, (x, o) in enumerate(zip(m["lessons"], open_), 1) if refused(x["gate"], none, o)
-            for g in x["gate"] if not (o and open_finding(g))] + [f'not accounted for: "{x}"' for x in m["missing"]] + \
+    refused for a reason alone stays as it is. A finding only a change to the owner's words could meet (excused) is never sent."""
+    ok = [excused(rule, x, read, daily, seen) if rule else {} for x in m["lessons"]]
+    return [f'lesson {i} ("{x["summary"]}"): {g}' for i, (x, o) in enumerate(zip(m["lessons"], ok), 1) if refused(x["gate"], none, o)
+            for g in x["gate"] if g not in o] + [f'not accounted for: "{x}"' for x in m["missing"]] + \
         [f'reason refused: "{d["said"]}" ({d["why"]})' for d in m["done"] if d["kind"] == "reason refused"] + list(m.get("faults") or [])
 
 
@@ -642,12 +780,11 @@ def render(rec: dict[str, Any]) -> str:
               f"with no model call; {rec['from']['redone']:,} redone."] if rec.get("from") else []),
            *([f"Redone, by why (a rule may have more than one): {', '.join(f'{k} {v:,}' for k, v in rec['from']['why'].items())}."]
              if (rec.get("from") or {}).get("why") else []),
-           *([f"Listed as no exception, as the rule gives none, carried as he wrote it and not counted in the verdict: "
-              f"{len(rec['no_exception'])} lesson{'s' * (len(rec['no_exception']) != 1)}, {', '.join(f'{lessons.DIR}/{x}.md' for x in rec['no_exception'])}."]
-             if rec.get("no_exception") else []),
-           *([f"Examples kept as their words, since no day-log line passes, that the gate asks a cite of (no wrong line is written to pass "
-              f"it): {len(rec['uncited'])}, in {', '.join(f'{lessons.DIR}/{x}.md' for x in rec['uncited'])}; listed for the owner's side."]
-             if rec.get("uncited") else []),
+           *(f"Listed as {HEADS[k]} and not counted in the verdict: {len(rec[key])} lesson{'s' * (len(rec[key]) != 1)}, "
+             f"{', '.join(f'{lessons.DIR}/{x}.md' for x in rec[key])}." for k, key in EXCUSES.items() if rec.get(key)),
+           *(f"Cites the model refused, each example placed as its words and listed with the model's why: {n}, in "
+             f"{', '.join(r['cite'] for r in rec['rules'] if any(d['kind'] == REFUSED_CITE for d in r['done']))}."
+             for n in [sum(d["kind"] == REFUSED_CITE for r in rec["rules"] for d in r["done"])] if n),
            *([f"The index it would write: {rec['index'][0]:,} lines and {rec['index'][1]:,} bytes, against code-memory's "
               f"{rec['index'][2]:,} and {rec['index'][3]:,}."] if rec.get("index") else []), ""]
     for r in rec["rules"]:
@@ -678,14 +815,15 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
     supplied, weights, rows = supplied_reasons(s), memory.rarities([r["text"] for r in rules]), reason_rows(s)
     for r in rules:
-        r["keeps"] = keeps(r["text"], weights)
+        r["keeps"], r["his"] = keeps(r["text"], weights), owner_names(conf)
     found, redone = finding_rows(s), dict[str, list[str]]()
     kept = carried(s, rules, earlier, lambda x: (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, read,
                                                                  seen) or {}).get("fix", []), rows, found, read, redone) if earlier else {}
     taken |= {x["slug"] for m in kept.values() for x in m["lessons"]}
     off = [r for r in rules if r["cite"] not in kept and (memory.unshaped(r["job"], r["said"], acronyms, s, read, seen) or found.get(r["cite"]))]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)),
-                       lambda r, x: findings(build(s, r, x, read, seen, set(taken), acronyms, supplied), NONE in rows.get(r["cite"], []), r, read),
+                       lambda r, x: findings(build(s, r, x, read, seen, set(taken), acronyms, supplied), NONE in rows.get(r["cite"], []), r, read,
+                                             s.daily, seen),
                        supplied, {r["cite"]: notes(s, r, found) for r in off})
     made = []
     for r in rules:
@@ -703,26 +841,24 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
         m["loads"], m["reasons"], m["found"] = loads.get(r["cite"], 0), rows.get(r["cite"], []), found.get(r["cite"], [])
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
     path = s.root / curate.PROPOSALS / FILE.format(day=day)
-    listed, unlift = dict[str, str](), dict[str, str]()   # slug -> its rule's cite: no reason on file, as the owner's side says; no
-    bare = list[dict[str, Any]]()                           # exception, as the rule gives none; refused only for a reason, counted
+    listed, kinds = dict[str, str](), {k: dict[str, str]() for k in EXCUSES}   # slug -> its rule's cite: no reason on file, as the
+    bare = list[dict[str, Any]]()                           # owner's side says; each excused kind; refused only for a reason, counted
     for r, m in zip(rules, made):
-        m["done"], none = [d for d in m["done"] if d["kind"] not in (LISTED, UNLIFTED)], NONE in rows.get(m["cite"], [])
+        m["done"], none = [d for d in m["done"] if d["kind"] not in (LISTED, *EXCUSES)], NONE in rows.get(m["cite"], [])
         for x in (x for x in m["lessons"] if x["gate"]):
-            if refused(x["gate"], none, open_ := unlifted(r, f"{x['summary']} {x['body']}", read)):
-                bare += [x] * (all(g.startswith(WANTING) or (open_ and open_finding(g)) for g in x["gate"]) and any(
+            if refused(x["gate"], none, ok := excused(r, x, read, s.daily, seen)):
+                bare += [x] * (all(g.startswith(WANTING) or g in ok for g in x["gate"]) and any(
                     d["kind"] == "no reason on file" and d.get("said", x["summary"]) == x["summary"] for d in m["done"]))
                 continue
             if none and any(g.startswith(WANTING) for g in x["gate"]):
                 listed[x["slug"]] = m["cite"]
                 m["done"].append({"kind": LISTED, "said": x["summary"], "why": f"{lessons.DIR}/{x['slug']}.md, a {NONE} row in {curate.PROPOSALS}/"
                                   f"{REASONS}: carried as it stands and named, since a reason is never invented; not counted in the verdict"})
-            if open_ and any(open_finding(g) for g in x["gate"]):
-                unlift[x["slug"]] = m["cite"]
-                m["done"].append({"kind": UNLIFTED, "said": x["summary"], "why": f"{lessons.DIR}/{x['slug']}.md: its absolute carried as he wrote "
-                                  "it and named, since no exception is ever added to a rule of his; not counted in the verdict"})
-    uncited = {x["slug"]: m["cite"] for m in made for x in m["lessons"] if any("an example the day log holds at" in g for g in x["gate"])}
+            for k in dict.fromkeys(k for g in x["gate"] for k in ok.get(g, [])):
+                kinds[k][x["slug"]] = m["cite"]
+                m["done"].append({"kind": k, "said": x["summary"], "why": f"{lessons.DIR}/{x['slug']}.md: " + WHYS[k]})
     why = [f"{n} lesson{'s' * (n != 1)} the gate refuses" for n in [sum(bool(x["gate"]) for m in made for x in m["lessons"]) - len(bare)
-                                                                    - len(set(listed) | set(unlift))] if n]
+                                                                    - len(set(listed).union(*kinds.values()))] if n]
     why += [f"{n} lesson{'s' * (n != 1)} refused only for a reason no file holds, each listed (a row in {curate.PROPOSALS}/{REASONS} "
             "supplies one)" for n in [len(bare)] if n]
     why += [f"{n} original{'s' * (n != 1)} not accounted for" for n in [sum(bool(m["missing"]) for m in made)] if n]
@@ -736,7 +872,7 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     why += [f"the index it would write is past code-memory's limits: {' and '.join(over)}"] if over else []
     rec = {"day": day, "path": str(path), "store": {n: sha(s.root / n) for n in (memory.RULES, memory.TOPIC_RULES)}, "read": list(read),
            "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size], "no_reason": listed,
-           "no_exception": unlift, "uncited": uncited, **({"from": {"path": str(earlier), "kept": len(kept), "redone": len(rules) - len(kept), "why": {
+           **{key: kinds[k] for k, key in EXCUSES.items()}, **({"from": {"path": str(earlier), "kept": len(kept), "redone": len(rules) - len(kept), "why": {
                k: n for k in STALE if (n := sum(k in v for c, v in redone.items() if c not in kept))}}} if earlier else {})}
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     write_private(path, render(json.loads(json.dumps(rec, sort_keys=True))))      # as an apply will read it back
@@ -767,11 +903,16 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
     seen, rows, listed = dict[Path, str](), reason_rows(s), dict(rec.get("no_reason") or {})    # a listed lesson passes for its
-    unlift = dict(rec.get("no_exception") or {})       # reason alone while its rule's NONE row is there, for its exception alone
-    if off := [x["slug"] for m in rec["rules"] for x in m["lessons"] if refused(
-               (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen) or {}).get("fix", []),
-               x["slug"] in listed and NONE in rows.get(listed[x["slug"]], []), x["slug"] in unlift)]:
-        raise RuntimeError(f"{off[0]} no longer passes the gate: run the dry run again; nothing applied")
+    lists = {k: dict(rec.get(key) or {}) for k, key in EXCUSES.items()}    # reason alone while its rule's NONE row is there, and for
+    for m in rec["rules"]:                             # each excused finding alone, worked out again from the rule's own words
+        for x in m["lessons"]:
+            gate = (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen) or {}).get("fix", [])
+            ok = excused(of_record(m), {**x, "gate": gate}, rec["read"], s.daily, seen)
+            if bad := [k for k, v in lists.items() if x["slug"] in v and k not in {k for y in ok.values() for k in y}]:
+                raise RuntimeError(f"{x['slug']} is listed as {bad[0]}, which its rule's words do not bear: run the dry run again; nothing applied")
+            if refused(gate, x["slug"] in listed and NONE in rows.get(listed[x["slug"]], []),
+                       {g for g, y in ok.items() if any(x["slug"] in lists[k] for k in y)}):
+                raise RuntimeError(f"{x['slug']} no longer passes the gate: run the dry run again; nothing applied")
     backup = s.root / f"{lessons.BACKUP}{rec['day']}"
     with memory.daily_lock(s.daily):
         backup.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -784,9 +925,10 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
         for x, _ in made:
             write_private(s.root / lessons.DIR / f"{x.slug}.md", x.text())
         write_private(s.root / lessons.CITES, "".join(f"{a}\t{first[b]}\n" for a, b in rec["ends"].items() if b in first))
-        if listed or unlift:           # one list, each row saying what is missing
-            write_private(s.root / lessons.NO_REASON, "".join(f"{x}\t{rec['day']}\t{listed.get(x) or unlift[x]}\t" + " and ".join(
-                ["a reason"] * (x in listed) + ["an exception"] * (x in unlift)) + "\n" for x in dict.fromkeys([*listed, *unlift])))
+        if every := dict.fromkeys([*listed, *(x for v in lists.values() for x in v)]):     # one list, each row saying what is missing
+            write_private(s.root / lessons.NO_REASON, "".join(f"{x}\t{rec['day']}\t{listed.get(x) or next(v[x] for v in lists.values() if x in v)}\t"
+                                                              + " and ".join(["a reason"] * (x in listed) + [lessons.MISSING[key] for k, key in
+                                                                                                             EXCUSES.items() if x in lists[k]]) + "\n" for x in every))
         lessons.keep(s.root, rec["day"], [(x, [m["text"]]) for x, m in made])
         write_private(s.root / memory.RULES, lessons.index_text([x for x, _ in made]))
         (s.root / memory.TOPIC_RULES).unlink(missing_ok=True)

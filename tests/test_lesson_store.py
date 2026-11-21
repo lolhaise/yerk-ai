@@ -744,7 +744,7 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
                 {"summary": "Put the week in bold.", "body": ""}],
              "rewritten": [{"said": "Post the rota on Monday, since the team plans from it; put the week in bold.", "as": "the two lessons"}]},
             {"cite": "tree/rules.md:8", "lessons": [
-                {"summary": "Keep replies short.", "body": 'Do so since in his words "the long answers bury the plan".', "reason": {
+                {"summary": "Keep replies short.", "body": f'Do so since in his words "{said}".', "reason": {
                     "said": "the long answers bury the plan", "from": f"daily/{day.name}:{n}"}},
                 {"summary": "Put the day first.", "body": "Do it since he plans from it.", "reason": {"said": "he plans from it"}}],
              "rewritten": [{"said": one, "as": "Keep replies short."}, {"said": two.split(";")[0], "as": "Put the day first."}],
@@ -754,8 +754,8 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
     rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
     rota, web, ledger = rec["rules"][:3]
     assert web["missing"] == [] and rota["missing"] == []          # a cited quote inside a listed sentence, a mark, the wrapper
-    assert web["lessons"][0]["body"] == 'Do so since in his words "the long answers bury the plan".'    # a run of his, never a pointer
-    assert {"kind": "quote cited", "said": said, "as": "the long answers bury the plan", "at": f"daily/{day.name}:{n}"} in web["done"]
+    assert web["lessons"][0]["body"] == f'Do so since in his words "{said}".'    # the owner's quote whole, never a pointer (S3)
+    assert {"kind": "quote cited", "said": said, "as": said, "at": f"daily/{day.name}:{n}"} in web["done"]
     assert rota["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:3</example>") and rota["lessons"][0]["gate"] == []
     assert any(d["kind"] == "example cited" and "its gloss of 10 words left out" in d.get("why", "") for d in rota["done"])
     assert {"kind": "no reason on file", "said": "Put the week in bold.", "why": "listed for the owner's side: the rule gives this lesson's part no "
@@ -905,20 +905,24 @@ def test_r4_his_quote_is_kept_as_a_run_of_his_own_words_never_a_pointer(tmp_path
     (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", f'Never post the example ledger, since he said "{said}".'))
     rule = f'Never post the example ledger, since he said "{said}".'
 
+    got: dict = {}
+
     def run(body: str) -> tuple[dict, list[str]]:
         p = {**prop, "lessons": [{**prop["lessons"][0], "body": body}], "rewritten": [{"said": rule, "as": body}]}
         asked: list[str] = []
-        rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+        got["rec"] = rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
         return rec["rules"][2], [x for x in asked if x.startswith("The gate refused")]
-    ledger, backs = run('Never post it, since he said "the bank reads it every month".')
-    assert ledger["lessons"][0]["body"] == 'Never post it, since he said "the bank reads it every month".' and not backs   # his words in place
-    assert {"kind": "quote cited", "said": said, "as": "the bank reads it every month", "at": f"daily/{day.name}:{n}"} in ledger["done"]
-    ledger, backs = run(f'Never post it, since he said "{said}".')      # past 8 words and on record: the gate's finding goes back
-    assert "the words at" not in ledger["lessons"][0]["body"] and backs and f"a quote the day log holds at daily/{day.name}:{n}" in backs[0]
-    ledger, backs = run('Never post it, since he said "holds my accounts".')         # a run of his reason on file is his words too
+    ledger, backs = run('Never post it, since he said "the bank reads it every month".')     # a part of the owner's quote: cut, sent back (S3)
+    assert ledger["faults"] == [f'lesson 1 cuts his quote: "the bank reads it every month" is part of "{said}", which goes in whole, word '
+                                'for word'] and backs and not got["rec"]["ready"]
+    ledger, backs = run(f'Never post it, since he said "{said}".')      # whole, past 8 words and on record: carried as they wrote it (S3)
+    assert ledger["lessons"][0]["body"] == f'Never post it, since he said "{said}".' and not backs and got["rec"]["ready"]
+    assert {"kind": "quote cited", "said": said, "as": said, "at": f"daily/{day.name}:{n}"} in ledger["done"]
+    assert got["rec"]["whole"] == {"example-ledger": "tree/rules.md:9"} and any(d["kind"] == conversion.WHOLE for d in ledger["done"])
+    ledger, backs = run('Never post it, since he said "holds my accounts".')         # the owner's reason on file, whole, is their words too
     assert ledger["faults"] == [] and not backs
-    ledger, backs = run('Never post it, since he said "the bank reads the ledger".')       # not a run of his quote
-    assert ledger["faults"] == ['lesson 1 quotes words that are no run of a quote of the rule: "the bank reads the ledger"'] and backs
+    ledger, backs = run('Never post it, since he said "the bank reads the ledger".')       # no quote of the owner's
+    assert ledger["faults"] == ['lesson 1 quotes words that are no whole quote of the rule: "the bank reads the ledger"'] and backs
 
 
 def test_r5_the_model_sees_the_examples_numbered_and_each_lands_where_it_names_never_counted_against_the_body(tmp_path):

@@ -132,14 +132,16 @@ def score(path: Path, rules: bool = False, topics: dict[str, str] | None = None,
     store's index is scored as its lessons, each whole on a line (lessons.Lesson.whole), since a summary's reason is in its body."""
     rx = {k: re.compile(v, re.I) for k, v in (topics or TOPICS).items()}
     out: dict[str, Any] = {"lines": 0, "topics": set(), **{k: [] for k in COUNTS}}
-    text = "\n".join(x.whole for x in lessons.store(path.parent)) if rules and lessons.converted(path.parent) else \
-        path.read_text(encoding="utf-8", errors="replace")
+    have = lessons.store(path.parent) if rules and lessons.converted(path.parent) else None
+    own = lessons.listed_for(path.parent, "own") if have else {}      # the owner's own sentence kept: no exchange count, named apart
+    text = "\n".join(x.whole for x in have) if have is not None else path.read_text(encoding="utf-8", errors="replace")
     for n, raw, ex in lines(text, rules):
         if ex:
             continue
         out["lines"] += 1
         for k in offenses(raw, rules, acronyms):
-            out[k].append((n, raw.strip()))
+            if not (k == "untagged" and have and n <= len(have) and have[n - 1].slug in own):
+                out[k].append((n, raw.strip()))
         said = QUOTED.sub(" ", TRAILER.sub("", raw) if rules else raw)          # code in backticks names a topic too
         out["topics"] |= {t for t, r in rx.items() if r.search(said)}
     return out
@@ -545,6 +547,8 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
     that missing reason or exception (its scope written in) is no finding, and it is named apart."""
     found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
     listed, named, unlifted, open_ = lessons.no_reason(m.root), list[str](), list[str](), lessons.no_exception(m.root)
+    kept = {k: lessons.listed_for(m.root, k) for k in ("whole", "own", "uncited")}    # his words carried as he wrote them
+    apart: dict[str, list[str]] = {k: [] for k in kept}
     for at, job, text, layout in rows_of(m):
         missed = lesson(job, text, m.daily, limits, seen, read) | layout
         if (c := lessons.CITE.search(at)) and c[1] in listed:
@@ -554,6 +558,12 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
             if all("no scope" not in x for x in missed.get("absolute", [])):
                 missed.pop("absolute", None)
             unlifted.append(at)
+        if c and (got := [k for k in kept if c[1] in kept[k]]):     # an on-record finding naming the owner's quote or example alone is none
+            heads = tuple(h for k, h in (("whole", "a quote the day log holds"), ("uncited", "an example the day log holds")) if k in got)
+            if heads and all(x.startswith(heads) for x in missed.get("on record", [])):
+                missed.pop("on record", None)
+            for k in got:
+                apart[k].append(at)
         counted += [at] * any(k in COUNT_ONLY for k in missed)
         if bad := [k for k in missed if k not in COUNT_ONLY]:
             found.append((at, bad))
@@ -561,7 +571,7 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
     return {"lessons": found, "index": over, "size": [len(rows), have, most, size], "moved": pinned(docs, read), "style limits": counted,
-            "read": list(read or EVERY), "listed": named, **({"unlifted": unlifted} if unlifted else {})}
+            "read": list(read or EVERY), "listed": named, **({"unlifted": unlifted} if unlifted else {}), **{k: v for k, v in apart.items() if v}}
 
 
 def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None, whole: bool = False) -> list[str]:
@@ -609,6 +619,10 @@ def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
     if n := len(r.get("unlifted") or ()):
         out += ["", f"Listed as no exception, as its rule gives none ({lessons.NO_REASON}), its missing exception no finding: {n} "
                 f"lesson{'s' * (n != 1)}, {', '.join(r['unlifted'])}."]
+    for k, what in (("whole", "his quote kept whole, as he wrote it, the cite the gate asks in its place"), ("own", "his own sentence kept, word "
+                    "for word, the example tags the gate asks round it"), ("uncited", "an example kept as its words, the cite the gate asks of it")):
+        if n := len(r.get(k) or ()):
+            out += ["", f"Listed as {what} no finding ({lessons.NO_REASON}): {n} lesson{'s' * (n != 1)}, {', '.join(r[k])}."]
     out += ["", f"Pages read, those of every model a room runs: {', '.join(r.get('read') or EVERY)}."]
     if r["lessons"]:
         out += ["", f"## Lessons out of the shape: {len(r['lessons'])}", "", *[f"- {c}: {', '.join(k)}" for c, k in r["lessons"]]]
