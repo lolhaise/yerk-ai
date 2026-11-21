@@ -37,6 +37,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
+from . import words
 from .memory import READ_LINES
 from .shape import PINS
 
@@ -306,14 +307,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         saved to this room's inbox first; a message in a channel this room does not read is refused."""
         return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes, path))
 
-    @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:
         """After you Read a picture sent to you and before your answer: file what you read on it, so a later recall finds
         it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in reading order (a chat
-        screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows, a person in it "the
-        owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only by that text, else "a man" or
-        "a woman". Saved beside it as NAME.seen.txt."""
+        screenshot keeps who said what as shown), SEEN_LEFT_OUT; "" if none; `shows` one or two lines of what it shows, a
+        person in it "the owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only
+        by that text, else "a man" or "a woman". Saved beside it as NAME.seen.txt."""
         return json.dumps(await daemon.tool_seen(caller_room(ctx), path, text, shows))
+    mcp.tool(description=inspect.cleandoc(seen.__doc__ or "").replace("SEEN_LEFT_OUT", words.SEEN_LEFT_OUT))(seen)
 
     @mcp.tool()
     async def need(asked: str, tried: str, needed: str, shadow: str = "", *, ctx: Context) -> str:

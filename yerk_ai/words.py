@@ -399,6 +399,12 @@ TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own w
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
 SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
 SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
+# a secret a picture shows (logins-notes-doctor): the `seen` tool's description and the backfill's rule carry the clause,
+# and a line of `text` or `shows` holding a key, a password or token line or a saved login's password is refused, unquoted
+LEFT_OUT = "[left out]"
+SEEN_LEFT_OUT = (f"except a password, a passphrase, a key or a token it shows, which is written {LEFT_OUT} in its place, "
+                 "never its value")
+SEEN_SECRET = "not filed: line {n} of `{part}` holds a secret ({kind}); call seen again with " + LEFT_OUT + " in place of its value"
 # a document rendered (render.py): why no PDF or page count came back
 RENDER_NOT_HERE = "{name} is outside this room's folders; render reads the files sent to it and this room's own work"
 RENDER_NO_FILE = "there is no file {name} in this room's folders"
@@ -1054,6 +1060,8 @@ DOCTOR_OK, DOCTOR, NO_RUN = "doctor: clean", "doctor: {n} found, {first}", "no r
 SECRET_LINES = "secret-shaped lines: {n} in {files}, first {first} ({kind}); `yerk doctor --scrub`, then rotate the key"
 ONE_TIME_CODES = ("one-time codes: {n} in {files}, first {first}; a code works once and soon expires, so there is nothing to "
                   "change, and `yerk doctor --scrub` takes it out if you want it gone")
+SAVED_PASSWORDS = ("saved passwords: {n} in {files}, first {first}; `yerk doctor --scrub`, and since the password is out, "
+                   "change it on its site and save the new one with /login")
 DOCS_CHANGED, SHAPE = "docs changed: {slug}", "rule shape: {counts}"         # docs, the weekly rule-shape line
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"

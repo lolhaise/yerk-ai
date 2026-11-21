@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import addons, backup, deploy, docs, emails, files, hooks, jobs, memindex, memory, pictures, retention, status, texts, words
+from . import addons, backup, deploy, docs, emails, files, hooks, jobs, logins, memindex, memory, pictures, retention, status, texts, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, uncapped, write_private
@@ -35,7 +35,8 @@ CGROUP, STUCK = Path("/sys/fs/cgroup"), 3               # where a process's memo
 # token lines. Said by file:line and kind, never the value; `yerk doctor --scrub` swaps each value (group v, else the whole
 # match) for MARK, which no shape matches, and the owner rotates (a key in a log is already out). A one-time code is its own
 # finding, orange: it works once, so nothing is rotated. Its digits stand alone, a whole word: the tail of a longer
-# reference ("confirmation code starting Q4821", 2026-11-14 on, red each day) is no code.
+# reference ("confirmation code starting Q4821", 2026-11-14 on, red each day) is no code. A line holding a saved login's
+# password (logins.passwords) is a kind of its own before any shape, red: that password is out, so it is changed.
 SECRETS = {"key": re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
                              r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
                              r"|[MN][A-Za-z0-9]{23,25}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}"),
@@ -43,7 +44,8 @@ SECRETS = {"key": re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|gh[
                                        r"(?:code|pin)|otp|passcode|your (?:code|pin) is)\b\D{0,12}\b(?P<v>\d{4,8})\b"),
            "password line": re.compile(r"(?i)\bpass(?:word|phrase)\s*(?:is|:|=)\s*(?=\S*[\d!#$%^&*])(?P<v>\S{6,})"),
            "token line": re.compile(r"(?i)\b(?:token|api[ _-]?key|secret|bearer)\s*[:=]\s*[\"'`]?(?P<v>[\w.-]{16,})")}
-MARK, CODE = "[scrubbed]", "one-time code"
+MARK, CODE, SAVED = "[scrubbed]", "one-time code", "saved password"
+SHAPES = sorted(SECRETS.items(), key=lambda x: x[0] == CODE)     # a one-time code's shape last
 TEXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".eml")
 SPENT = 2 * DAY                                         # a one-time code is dead this long after its own line's date
 
@@ -76,22 +78,37 @@ def used(path: Path) -> int:
     return total
 
 
-def scan(f: Path, now: float | None = None) -> list[tuple[int, str]]:
+def kind(line: str, values: tuple[str, ...] = (), code: bool = True) -> str:
+    """The secret `line` holds, "" for none: SAVED when it holds one of `values` (a saved login's password), else its first
+    shape, a one-time code's last and only with `code` (a dead code is no hit, and the `seen` tool files a code as it is)."""
+    if any(v in line for v in values):
+        return SAVED
+    return next((k for k, rx in SHAPES if (code or k != CODE) and rx.search(line)), "")
+
+
+def first_secret(parts: dict[str, str], values: tuple[str, ...]) -> tuple[str, int, str] | None:
+    """(part, line from 1, kind) of the first line of `parts` (the `seen` tool's `text` and `shows`, as the room sent them)
+    holding a key, a password line, a token line or one of `values`; None when none does, a one-time code's line too."""
+    return next(((part, n, k) for part, said in parts.items() for n, line in enumerate(said.splitlines(), 1)
+                 if (k := kind(line, values, code=False))), None)
+
+
+def scan(f: Path, now: float | None = None, values: tuple[str, ...] = (), since: float | None = None) -> list[tuple[int, str]]:
     """(line, kind) of each secret-shaped line of `f`, by its first shape, a one-time code's last (a line with a key, a
-    password or a token on it too is that one's). With `now`, wherever `f` sits: a one-time code is dead, and no hit, on a
-    line whose own date is more than two days old, its entry's `- YYYY-MM-DD HH:MM` (the lines under an entry share it),
+    password or a token on it too is that one's), and of each line holding one of `values`, kind SAVED before any shape.
+    With `now`, wherever `f` sits: a one-time code is dead, and no hit, on a line whose own date is more than two days
+    old, its entry's `- YYYY-MM-DD HH:MM` (the lines under an entry share it), else `since` (a room inbox file's own time),
     else the end of its month file (imports/mail/YYYY-MM.md) or of its day log's day (daily/YYYY-MM-DD.md); with no date it
     is said. PR 66's cold read scanned a live tree on 2026-10-21: 194 of its 213 hits were old mail's verification codes."""
     month, day = dated(f.stem, "%Y-%m"), dated(f.stem, "%Y-%m-%d")
     last = (month.replace(day=28) + timedelta(days=4)).replace(day=1) if month else day + timedelta(days=1) if day else None
-    end, shapes = last.timestamp() if last else None, sorted(SECRETS.items(), key=lambda x: x[0] == CODE)
+    end = since if since is not None else last.timestamp() if last else None
     out, at = list[tuple[int, str]](), None
     for n, line in enumerate(f.read_bytes().decode(errors="replace").split("\n"), 1):     # by b"\n", as rewrite numbers them
         if line.startswith("- "):                           # an entry's first line: its own time, or none
             at = d.timestamp() if (d := dated(line[2:18], "%Y-%m-%d %H:%M")) else None
-        dead = now is not None and now - (at or end or now) > SPENT
-        if kind := next((k for k, rx in shapes if not (dead and k == CODE) and rx.search(line)), ""):
-            out.append((n, kind))
+        if k := kind(line, values, code=not (now is not None and now - (at or end or now) > SPENT)):
+            out.append((n, k))
     return out
 
 
@@ -132,22 +149,37 @@ def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
     return rewrite(path, backup, fix, dry)
 
 
-def leaked(private: Path, m: memory.Settings, now: float) -> dict[Path, list[tuple[int, str]]]:
-    """Each file with a secret-shaped line and its (line, kind) hits: the day logs, notes and fact files, and the text an
-    import saved (a dead one-time code is no hit, wherever it sits: a day log's as much as an import's)."""
+def leaked(private: Path, m: memory.Settings, now: float, values: tuple[str, ...] | None = None) -> dict[Path, list[tuple[int, str]]]:
+    """Each file with a secret-shaped line, or a line holding a saved login's password (`values`, else logins.passwords),
+    and its (line, kind) hits: the day logs, notes and fact files, the text an import saved, and every room's inbox for the
+    text kinds the index reads there (memory.INBOXES' folders, memindex.kinds: a picture's notes among them), each inbox
+    file dated by its own time (a dead one-time code is no hit, wherever it sits: a day log's as much as an import's)."""
+    values = logins.passwords(private) if values is None else values
     roots = [m.root] + [private / d for d in ("attachments", "imports") if (private / d).is_dir()]
-    found = ((f, scan(f, now)) for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file()))
+    files: dict[Path, float | None] = {p: None for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file()}
+    files.update({Path(p): ns / 1e9 for p, (_, ns) in (memindex.Scope(m.uploads).files() if m.uploads else {}).items()})
+    found = ((f, scan(f, now, values, files[f])) for f in sorted(files))
     return {f: hits for f, hits in found if hits}
 
 
-def unshaped(line: bytes) -> bytes:
-    """The line with each secret-shaped value swapped for MARK until no shape is left in it, the rest of its bytes and its
-    newline as they were: the file keeps its line count and a second scrub finds nothing."""
+def label(f: Path, private: Path, state: Path) -> str:
+    """A file as a finding names it: by its path under the private folder, a room's under the state folder, else its name."""
+    rooms = state.resolve() / "rooms"
+    return str(f.relative_to(private) if f.is_relative_to(private) else f.relative_to(rooms.parent) if f.is_relative_to(rooms) else f.name)
+
+
+def unshaped(line: bytes, values: tuple[str, ...] = ()) -> bytes:
+    """The line with each secret-shaped value, then each of `values` it holds (the longest first), swapped for MARK until
+    none is left in it, the rest of its bytes and its newline as they were: the file keeps its line count and a second
+    scrub finds nothing."""
     text = line.decode(errors="surrogateescape")
     for _ in range(64):                                     # a value a pass; MARK matches no shape, so this ends
-        if not (mo := next((x for rx in SECRETS.values() if (x := rx.search(text))), None)):
+        if mo := next((x for rx in SECRETS.values() if (x := rx.search(text))), None):
+            a, b = mo.span("v") if "v" in mo.re.groupindex else mo.span()
+        elif v := next((v for v in values if v in text), ""):
+            a, b = text.index(v), text.index(v) + len(v)
+        else:
             break
-        a, b = mo.span("v") if "v" in mo.re.groupindex else mo.span()
         text = text[:a] + MARK + text[b:]
     return text.encode(errors="surrogateescape")
 
@@ -155,17 +187,18 @@ def unshaped(line: bytes) -> bytes:
 def scrub(private: Path, state: Path, dry: bool = False, now: float | None = None) -> list[str]:
     """`yerk doctor --scrub`: each file the secrets check names copied first into <private>/backups/scrub-<day>/ (the
     example layer's into the state folder's, as the crash repair's), then the value on each line it named swapped for
-    MARK; a line per file, by file and line, never the value; "would scrub" when `dry`, nothing written."""
+    MARK (a saved login's password too, logins.passwords); a line per file, by file and line, never the value; "would
+    scrub" when `dry`, nothing written."""
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
-    m, out = memory.settings(private, state, dict(conf.get("memory", {}))), list[str]()
+    m, out, values = memory.settings(private, state, dict(conf.get("memory", {}))), list[str](), logins.passwords(private)
     keep = (state if private.resolve().is_relative_to(REPO) else private) / "backups" / f"scrub-{retention.day(now)}"
     with memory.daily_lock(m.daily) if m.daily.is_dir() else suppress():      # capture's appends wait for the rename
-        for f, hits in leaked(private, m, now).items():
+        for f, hits in leaked(private, m, now, values).items():
             at, n, kinds = {h[0] for h in hits}, iter(range(1, 1 << 62)), ", ".join(dict.fromkeys(h[1] for h in hits))
-            name = f.relative_to(private) if f.is_relative_to(private) else f.name
+            name = label(f, private, state)
             try:
-                done = rewrite(f, keep, lambda x: unshaped(x) if next(n) in at else None, dry)
+                done = rewrite(f, keep, lambda x: unshaped(x, values) if next(n) in at else None, dry)
             except OSError as e:
                 out.append(f"{RED} {name}: not scrubbed, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
                 continue
@@ -364,13 +397,13 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                 found.append(f"{RED} {what}: other users can read {len(seen)} of its files and folders, first "
                              f"{'the folder itself' if seen[0][0] == '.' else seen[0][0]} ({seen[0][1]:o}); `chmod 700 {root}`")
 
-    def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: said, scrubbed by command
+    def leaks() -> None:             # memory, imports and every room's inbox: said, scrubbed by command
         hits = [(f, n, kind) for f, hs in leaked(private, m, now).items() for n, kind in hs]
-        for dot, said in ((RED, words.SECRET_LINES), (ORANGE, words.ONE_TIME_CODES)):   # a key, password or token; a code
-            if mine := [h for h in hits if (h[2] == CODE) == (dot == ORANGE)]:
+        for dot, said, of in ((RED, words.SECRET_LINES, ""), (RED, words.SAVED_PASSWORDS, SAVED), (ORANGE, words.ONE_TIME_CODES, CODE)):
+            if mine := [h for h in hits if (h[2] if h[2] in (SAVED, CODE) else "") == of]:   # a key, password or token; a saved one; a code
                 (f, n, kind), files = mine[0], len({h[0] for h in mine})
                 found.append(f"{dot} " + said.format(n=len(mine), files=f"{files} file{'s' * (files > 1)}", kind=kind,
-                                                     first=f"{f.relative_to(private) if f.is_relative_to(private) else f.name}:{n}"))
+                                                     first=f"{label(f, private, state)}:{n}"))
 
     now_sizes: dict[str, int] = {}
 

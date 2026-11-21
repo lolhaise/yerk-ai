@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-11-20
 
+### logins-notes-doctor-2026-11-20 (#117)
+
+- A room files a picture's words with a password, a passphrase, a key or a token the picture shows written `[left out]`
+  in its place, never its value. The `seen` tool's description and the backfill's rule say it in the same words.
+  Before, both told a room to keep every word on a picture verbatim, so a login sent as screenshots would sit in a
+  note that recall shows again.
+- The daemon refuses such a note before anything is written: a line of its words, or of what it shows, that holds a
+  key, a password line or a token line (the doctor's shapes), or the password of a login saved with `/login`. The
+  answer names the line's number and the kind and asks for the note again with `[left out]` in the value's place; it
+  never repeats the value or the line. A saved password is looked for when it is 8 characters or more with a digit or a
+  symbol in it, or 16 or more of any kind, since a shorter or plain one would be found in ordinary text. A one-time code
+  is filed as it is.
+- `yerk doctor` reads every room's inbox for the text kinds the index reads there, the notes on pictures among them;
+  before, it read only the memory tree and the private folder's attachments and imports. A finding there names the file
+  by its path under the state folder and its line. A one-time code in one is dated by the file's own time and is dead
+  two days after it.
+- In every file it reads, a line that holds a saved login's password is red, a kind of its own, `saved password`, named
+  by file and line, never by value. The finding says to scrub it and, since the password is out, to change it on its
+  site and save the new one with `/login`. `yerk doctor --scrub` swaps the value for `[scrubbed]` on that line, the file
+  copied first, as for a shaped line.
+- **Upgrading**: budgets.toml's `yerk_tools` rises from 29,300 to 29,400 for the `seen` entry's 119 more characters,
+  and the session-start total rises from 133,708 to 133,808. `[code] lines` rises from 33,548 to 33,625. Each raise has
+  its dated reason in the file. The first doctor run after the deploy reads the inboxes, so a note filed before this
+  that holds a secret is named then; `yerk doctor --scrub` takes its value out.
+
 ### need-2026-11-20-127 (#116)
 
 - A login you hand over is saved as a secret, and a room signs in with it without ever seeing the password. `/login`

@@ -226,9 +226,9 @@ saved to this room's inbox first; a message in a channel this room does not read
 ```text
 After you Read a picture sent to you and before your answer: file what you read on it, so a later recall finds
 it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in reading order (a chat
-screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows, a person in it "the
-owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only by that text, else "a man" or
-"a woman". Saved beside it as NAME.seen.txt.
+screenshot keeps who said what as shown), except a password, a passphrase, a key or a token it shows, which is written [left out] in its place, never its value; "" if none; `shows` one or two lines of what it shows, a
+person in it "the owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only
+by that text, else "a man" or "a woman". Saved beside it as NAME.seen.txt.
 ```
 
 - `path`: string, required

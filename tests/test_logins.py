@@ -102,3 +102,37 @@ def test_the_command_takes_four_required_parts_and_no_room_reads_the_file(y, tmp
     assert all(len(o["description"]) <= 100 for o in login["options"]) and len(login["description"]) <= 100
     folders, _ = y.secrets_at()                                                  # the wall stands: every room's Read denies it
     assert (y.private / "secrets").resolve() in folders
+
+
+TWO = ("pw-Fake-7-Mn4Vb8Rt", "pw-Fake-8-Hj3Kd9Pq")      # two saved logins' passwords (logins-notes-doctor), placeholders
+ELSEWHERE = "pw-Fake-6-Zt5Gw1Lc"                        # the one a link's target holds
+
+
+def y7_plant(private):
+    """Two logins saved, then beside them in the secrets folder: a link named x.login to a login of the same shape, a file
+    that is not JSON, one with no password, and a password of each kind that does not count (7 with a digit, 15 letters)."""
+    for name, pw in zip(("example", "example-two"), TWO):
+        assert logins.save(private, name, "example.com", "example-user", pw)["ok"]
+    folder, shape = private / "secrets", {"site": "example.com", "user": "example-user", "saved": "2026-11-20"}
+    (elsewhere := private.parent / "elsewhere.json").write_text(json.dumps({**shape, "password": ELSEWHERE}))
+    (folder / "x.login").symlink_to(elsewhere)
+    (folder / "broken.login").write_text("{not json")
+    (folder / "nopass.login").write_text(json.dumps(shape))
+    for name, pw in (("short", "Fake7pw"), ("plain", "Placeholderword")):
+        (folder / f"{name}.login").write_text(json.dumps({**shape, "password": pw}))
+
+
+def test_y7_the_reader_skips_a_link_a_file_not_json_one_with_no_password_and_one_that_does_not_count_and_two_give_two(tmp_path):
+    """Y7: logins.passwords, the one reader the `seen` tool and the doctor look for a saved password with, reads a plain
+    NAME.login of the shape save writes, never through a link, and keeps a password only when it can be looked for by
+    value: 8 characters or more with a digit or a symbol, or 16 or more of any kind. Its end spaces are off (T4 keeps them
+    in the file), as text holds what shows."""
+    private = tmp_path / "private"
+    assert logins.passwords(private) == ()                                      # no secrets folder: none
+    y7_plant(private)
+    assert logins.passwords(private) == TWO
+    assert logins.save(private, "example-two", "example.com", "example-user", f"  {TWO[1]} ")["ok"]
+    assert logins.passwords(private) == TWO                                     # the same value, its end spaces off
+    for name, pw in (("eight", "Fake7pwd"), ("sixteen", "Placeholderwords")):  # the lines: each counts
+        assert logins.save(private, name, "example.com", "example-user", pw)["ok"]
+    assert logins.passwords(private) == (*TWO, "Placeholderwords", "Fake7pwd")
