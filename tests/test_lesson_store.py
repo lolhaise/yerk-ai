@@ -809,3 +809,214 @@ def test_r3_a_cite_names_the_line_it_means_or_there_is_none(tmp_path):
     done, faults = conversion.quoted(quote, [{"summary": 'Check the mat, since "the hall key sits under the blue mat".', "body": ""}], daily, 4)
     assert faults == [] and done == [{"kind": "quote cited", "said": "the hall key sits under the blue mat", "as": "the hall key sits under the blue mat",
                                       "at": "daily/2025-11-03.md:4"}]     # the owner's, on the day and near the time the rule names before it
+
+
+def one_rule_model(prop: dict, asked: list[str] | None = None, verdict: str = "KEEP"):
+    """The model pass's stand-in for one rule: `prop` as its proposal each time, `verdict` its knock-down; `asked` gathers prompts."""
+    def model(prompt: str, tools: str) -> str:
+        (asked if asked is not None else []).append(prompt := prompt.lstrip())
+        return f"{verdict} {prop['cite']}" if prompt.startswith("You check the lessons") else json.dumps(prop)
+    return model
+
+
+def test_r1_no_exception_is_added_and_a_never_whose_rule_gives_none_is_listed_not_counted_and_passed_by_the_apply(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    asked: list[str] = []
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(prop, asked), read=FABLE2))
+    ledger = rec["rules"][2]
+    assert "go-ahead" not in json.dumps([[x["summary"], x["body"]] for x in ledger["lessons"]]) and not any(d["kind"] == "exception added" for d in ledger["done"])
+    assert [g.split(":")[0] for g in ledger["lessons"][0]["gate"]] == ["an absolute rule missing its scope or exception"]
+    assert rec["ready"] and rec["no_exception"] == {"example-ledger": "tree/rules.md:9"} and rec["no_reason"] == {}
+    assert ("Listed as no exception, as the rule gives none, carried as he wrote it and not counted in the verdict: 1 lesson, "
+            "rules/example-ledger.md.") in path.read_text().splitlines()
+    assert any(d["kind"] == conversion.UNLIFTED for d in ledger["done"]) and not [p for p in asked if p.startswith("The gate refused")]
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)              # passed by the apply for that finding alone
+    assert (m.root / lessons.NO_REASON).read_text() == f"example-ledger\t{rec['day']}\ttree/rules.md:9\tan exception\n"
+    assert lessons.no_exception(m.root) == {"example-ledger": (rec["day"], "tree/rules.md:9")} and lessons.no_reason(m.root) == {}
+
+
+def test_r1_a_lesson_missing_an_exception_its_rule_gives_or_an_absolute_the_rule_lacks_still_counts(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    rows = (m.root / memory.RULES).read_text()
+    for rule, summary in (("Never post the example ledger unless the owner asks.", "Keep the example ledger in the owner's room."),
+                          ("Never post the example ledger.", "Always keep the example ledger in the owner's room.")):   # "always" is not the owner's
+        (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", rule))
+        p = {**prop, "lessons": [{**prop["lessons"][0], "summary": summary}],
+             "rewritten": [{"said": rule, "as": f"{summary} Never post it."}]}
+        rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2))
+        assert not rec["ready"] and rec["why"][0] == "1 lesson the gate refuses" and rec["no_exception"] == {}, rule
+
+
+def test_r1_the_daily_run_files_nothing_for_a_lesson_listed_for_its_exception_and_its_report_names_it(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs, shape
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {"model": "claude-fable-5-2"}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"                      # a room on Fable 5.2: the absolute check binds
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    from test_lesson_shape import docs_with, every_pin
+    docs_with(state, **every_pin())
+    (m.root / lessons.DIR).mkdir(parents=True)
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Keep the example ledger in the owner's room.",
+                                       "Never post it, since it holds the accounts."))
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\tan exception\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    at = next(a for a, *_ in shape.rows_of(m) if "/example-ledger.md" in a)
+    assert (f"Listed as no exception, as its rule gives none (rules-no-reason.tsv), its missing exception no finding: 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta reason\n")    # listed for another cause
+    out = doctor.lessons(private, state, m, 1000.0, dry=True)
+    assert len(out) == 1 and "absolute" in out[0] and at in out[0]
+
+
+def test_r2_the_rules_caution_stays_in_a_lesson_word_for_word_or_goes_back(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    caution = "The example till may close early."
+    rows = (m.root / memory.RULES).read_text()
+    (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", f"Never post the example ledger. {caution}"))
+    whole = [{"said": f"Never post the example ledger. {caution}", "as": "Keep the example ledger in the owner's room. Never post it."}]
+    for body, said, fault in ((prop["lessons"][0]["body"], caution, f'the rule\'s caution is in no lesson: "{caution}"'),
+                              (prop["lessons"][0]["body"], "The till may close.", 'the caution is not the rule\'s own sentence, word for word: '
+                               '"The till may close."'), (f"{prop['lessons'][0]['body']} {caution}", caution, "")):
+        p = {**prop, "lessons": [{**prop["lessons"][0], "body": body}], "rewritten": whole, "caution": said}
+        asked: list[str] = []
+        rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+        ledger = rec["rules"][2]
+        item = next(d for d in ledger["done"] if d["kind"] == "caution to review")
+        if fault:            # a rewritten item holding the caution's sentence never accounts for it
+            assert ledger["faults"] == [fault] and not rec["ready"] and "1 rule with a fault the code finds, each listed" in rec["why"]
+            assert any(fault in x for x in asked if x.startswith("The gate refused")) and f"- fault: {fault}" in (
+                m.root / "rules-proposals" / f"lessons-{rec['day']}.md").read_text()
+        else:
+            assert ledger["faults"] == [] and rec["ready"] and item["why"].startswith("left in place in rules/example-ledger.md")
+
+
+def test_r4_his_quote_is_kept_as_a_run_of_his_own_words_never_a_pointer(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    said = "the example ledger holds my accounts and the bank reads it every month"
+    day.write_text(day.read_text() + memory.format_line(datetime_at(NOW - 2000), "example-room", "r1", "owner", "", said, "private", "q1") + "\n")
+    n = len(day.read_text().splitlines())
+    rows = (m.root / memory.RULES).read_text()
+    (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", f'Never post the example ledger, since he said "{said}".'))
+    rule = f'Never post the example ledger, since he said "{said}".'
+
+    def run(body: str) -> tuple[dict, list[str]]:
+        p = {**prop, "lessons": [{**prop["lessons"][0], "body": body}], "rewritten": [{"said": rule, "as": body}]}
+        asked: list[str] = []
+        rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+        return rec["rules"][2], [x for x in asked if x.startswith("The gate refused")]
+    ledger, backs = run('Never post it, since he said "the bank reads it every month".')
+    assert ledger["lessons"][0]["body"] == 'Never post it, since he said "the bank reads it every month".' and not backs   # his words in place
+    assert {"kind": "quote cited", "said": said, "as": "the bank reads it every month", "at": f"daily/{day.name}:{n}"} in ledger["done"]
+    ledger, backs = run(f'Never post it, since he said "{said}".')      # past 8 words and on record: the gate's finding goes back
+    assert "the words at" not in ledger["lessons"][0]["body"] and backs and f"a quote the day log holds at daily/{day.name}:{n}" in backs[0]
+    ledger, backs = run('Never post it, since he said "the bank reads the ledger".')       # not a run of his quote
+    assert ledger["faults"] == ['lesson 1 quotes words that are no run of a quote of the rule: "the bank reads the ledger"'] and backs
+
+
+def test_r5_the_model_sees_the_examples_numbered_and_each_lands_where_it_names_never_counted_against_the_body(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    ex = ['Bounced: "the example ledger went to the hall board"', 'Landed: "the example ledger stayed in the owner room"']
+    rows = (m.root / memory.RULES).read_text()
+    (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", "Never post the example ledger. Keep its copy at home. "
+                                                    + " ".join(f"<example>{x}</example>" for x in ex)))
+    two = [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, since it holds my accounts. " + "Keep it shut. " * 38,
+            "reason": prop["lessons"][0]["reason"]}, {"summary": "Keep the example ledger's copy at home.", "body": "Do so since it holds my accounts."}]
+    whole = [{"said": "Never post the example ledger.", "as": "the first lesson"}, {"said": "Keep its copy at home.", "as": "the second"}]
+
+    def run(lessons_: list[dict], **more) -> tuple[dict, dict, list[str]]:
+        asked: list[str] = []
+        p = {**prop, "lessons": lessons_, "rewritten": whole, **more}
+        rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+        return rec, rec["rules"][2], asked
+    rec, ledger, asked = run([{**two[0], "examples": [1, {"n": 2, "gloss": "a gloss"}]}, two[1]])
+    assert f"Example 1: {ex[0]}\nExample 2: {ex[1]}" in asked[0] and f"Example 2: {ex[1]}" in next(x for x in asked if x.startswith("You check"))
+    body = ledger["lessons"][0]["body"]
+    assert len(body) > 600 and body.endswith(f"<example>{ex[0]}</example> <example>{ex[1]}</example>") and ledger["faults"] == []
+    assert ledger["lessons"][0]["gate"] == [] or all(conversion.open_finding(g) for g in ledger["lessons"][0]["gate"])
+    _, ledger, _ = run([{**two[0], "examples": [1, 3]}, {**two[1], "examples": [1]}])
+    assert ledger["faults"] == ["lesson 1 names example 3, which the rule does not have: it has 2",
+                                "example 1 is named in 2 lessons (1, 2): name it in the one whose step it shows",
+                                f'example 2 of the rule is in no lesson: "{ex[1]}"']
+    _, ledger, _ = run([{**two[0], "examples": [1], "body": two[0]["body"] + " <example>Landed: an example of the model's own</example>"}, two[1]],
+                       left_out=[{"example": 2, "why": "it shows nothing the lesson does not say"}])
+    assert ledger["faults"] == ["lesson 1 holds an example the rule does not give: \"Landed: an example of the model's own\""]
+    out = next(d for d in ledger["done"] if d["kind"] == "example left out")
+    assert out["said"] == ex[1] and out["why"] == "it shows nothing the lesson does not say"       # the model's why, never for length
+
+
+def test_r6_r7_the_prompts_say_each_lesson_is_read_alone_a_whys_own_sentence_and_his_words_kept():
+    from yerk_ai import curate, shape
+    lessons_, again, down = (curate.prompt(x, {}, "") for x in ("Lessons", "Lessons again", "Knock down lessons"))
+    assert "Where the rule gives no exception, write none" in lessons_ and "owner's go-ahead as its exception" not in lessons_ + again
+    assert "The rule's examples are not shown to you" not in lessons_ and 'Write the words "landed" and "bounced" nowhere' not in lessons_
+    assert "a room may be given one lesson of a rule and not its siblings" in lessons_.replace("A room", "a room")
+    assert "is a sentence of its own in each lesson it backs, opening `Why:`" in lessons_ and "never joined to one step" in lessons_
+    assert '"asks" stays "asks", three verbs stay three' in lessons_ and "never make an instruction into an example" in lessons_
+    assert "no exception where the rule gives none" in again and "each lesson read alone" in again
+    assert "each lesson, read alone, says what its part of the rule says, and together they say all of it" in down
+    assert "a lesson that leans on a sibling for a word" in down and "a word of his reworded where his own would fit" in down
+    assert "no reason" not in shape.lesson("example hall", "Book the example hall early. Why: the hall fills by the Friday before.")
+
+
+def test_r8_a_findings_row_redoes_its_rule_shows_the_model_its_findings_and_a_rule_that_comes_back_with_them_is_listed_not_looped(tmp_path):
+    import shutil
+
+    from yerk_ai import conversion
+    m, asked = shop_store(tmp_path), set[str]()
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2)
+    shutil.copy(first, earlier := tmp_path / "earlier.md")
+    (m.root / "rules-proposals" / "findings.tsv").write_text("# cite, finding\ntree/rules.md:10\tlesson 1 leans on its sibling for a word\n")
+    prompts: list[str] = []
+
+    def model(prompt: str, tools: str) -> str:
+        prompts.append(prompt.lstrip())
+        return shop_model(asked, {"tree/rules.md:10"})(prompt, tools)
+    asked.clear()
+    rec = conversion.loaded(second := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2, earlier=earlier))
+    assert asked == {"tree/rules.md:8", "tree/rules.md:10"} and rec["from"]["why"]["a findings row"] == 1     # :10 never kept with a row
+    assert ("The owner's side read an earlier conversion of this rule and found:\n- lesson 1 leans on its sibling for a word" in prompts[0]
+            and next(p for p in prompts if p.startswith("You check")).count("leans on its sibling") == 1)
+    key = next(r for r in rec["rules"] if r["cite"] == "tree/rules.md:10")
+    assert key["found"] == ["lesson 1 leans on its sibling for a word"] and any(d["kind"] == "reviewer dropped" for d in key["done"])
+    asked.clear()                                           # redone with its findings shown and dropped again: listed, not looped on
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2, earlier=second))
+    key = next(r for r in rec["rules"] if r["cite"] == "tree/rules.md:10")
+    assert "tree/rules.md:10" not in asked and any(d["kind"] == conversion.LOOPED for d in key["done"]) and not rec["ready"]
+
+
+def test_r8_from_redoes_a_rule_whose_lessons_hold_what_the_code_no_longer_writes(tmp_path):
+    import shutil
+
+    from yerk_ai import conversion
+    m, asked, key = shop_store(tmp_path), set[str](), "tree/rules.md:10"
+    shutil.copy(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2), earlier := tmp_path / "e.md")
+
+    def again(change) -> tuple[set[str], dict]:
+        change(rec := conversion.loaded(earlier), next(r for r in rec["rules"] if r["cite"] == key))
+        (path := tmp_path / "rewritten.md").write_text(conversion.render(rec))
+        asked.clear()
+        out = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2, earlier=path))
+        return set(asked), out["from"]["why"]
+
+    def added(rec, r):
+        r["done"].append({"kind": "exception added", "said": "Only the owner's go-ahead lifts it.", "from": "an earlier run"})
+
+    def pointer(rec, r):
+        r["lessons"][0]["body"] += " Since the words at daily/2025-11-09.md:3."
+
+    def old_cite(rec, r):
+        r["done"].append({"kind": "example cited", "said": "a placeholder example", "at": "daily/2025-11-09.md:3", "as": "<example>Landed, daily/2025-11-09.md:3</example>"})
+
+    def for_length(rec, r):
+        r["done"].append({"kind": "example left out", "said": "a placeholder example", "why": "the lesson's body would pass its length with it"})
+    for change, why in ((added, "an exception added"), (pointer, "a quote swapped for a pointer"), (old_cite, "an example cited by the old search"),
+                        (for_length, "an example left out for length")):
+        got, whys = again(change)
+        assert key in got and whys.get(why) == 1, why

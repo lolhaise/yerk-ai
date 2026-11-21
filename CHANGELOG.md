@@ -37,9 +37,9 @@ version changes.
 - `yerk curate --lessons` converts an existing store. Its dry run writes one proposals file,
   `<memory>/rules-proposals/lessons-<day>.md`, and nothing else: each original rule by its cite, the lessons made of it,
   each one's result from the gate a filing passes (on the pages every room reads and the Claude Fable 5.2 page, whatever
-  model the rooms run, since the owner's order of 2026-11-09 names that page), and each change as a listed item (a quote replaced by its day-log cite,
-  a quote kept, a sentence left out or rewritten and why, a reason added and its line, the scope and the owner's go-ahead
-  written into an absolute, a rule with no reason on file, a caution to review). A rule already in the shape is split as it
+  model the rooms run, since the owner's order of 2026-11-09 names that page), and each change as a listed item (a quote of the rule kept as a run of its own words,
+  with its day-log line, a sentence left out or rewritten and why, a reason added and its line, the scope written into an
+  absolute, a never whose rule gives no exception carried as written, a rule with no reason on file, the rule's caution). A rule already in the shape is split as it
   stands; the rest go through curate's propose and knock-down model pass. The dry run is not ready while the index it would
   write is past either of code-memory's limits, and says by how much. A frozen trigger test refuses a split that loses
   an owner message of the last 14 days that loads its rule today. `yerk curate --lessons-apply FILE` takes that exact file
@@ -54,8 +54,8 @@ version changes.
   listed with its findings, never split as it stands in silence. The first proposal, each knock-down and each round back
   run in calls of 8 rules side by side: on a copy of a store of the owner's size, 16 rules to a call ran 9 minutes, and
   a round's failing rules in one call came to 189,352 characters and ran 11 minutes.
-- Code cites each `<example>` of a rule in a lesson as the day-log line that holds it, keeps one no line holds, and lists
-  one no body has room for; a quote is read whole across the sentence ends inside it, so its halves no longer read as
+- The model sees each rule's examples, numbered, and names the lesson each goes in; code puts it there as the day-log
+  line it means, or as its words when no line passes, never counted toward the body's length; a quote is read whole across the sentence ends inside it, so its halves no longer read as
   sentences left out. Every lesson keeps the words its rule loads on today as its `on:` words, so a split cannot lose a
   trigger: each smallest set of its trigger words that loads it today, or each word alone where a set would not do. On a
   copy of a store of the owner's size, over its last 14 days of owner messages, that loads 2.7 times as many lessons'
@@ -70,10 +70,19 @@ version changes.
   the model listed overlap (a quote left out inside a sentence listed whole), when all that is left is a store mark
   (landed, bounced) the prompt asks written nowhere, or when it is the `<examples>` wrapper round a rule's examples. A
   cited example whose gloss passes the gate's six words keeps its cite alone and lists the gloss, and an `<example>` the
-  model writes is cited as the rule's are. `Lessons` and `Lessons again` say to keep a quote the rule rests on in its
-  lesson (code cites it), to write in only the scope and the exception the rule gives (code writes the owner's go-ahead
-  in), to borrow no other part's reason and to write no caution the rule does not give, the things the knock-down
+  model writes that the rule does not give goes back to it. `Lessons` and `Lessons again` say to keep a quote the rule
+  rests on in its lesson, to write in only the scope and the exception the rule gives and none where it gives none, to borrow no other part's reason and to write no caution the rule does not give, the things the knock-down
   dropped most proposals for.
+- Nothing the owner said is changed and nothing is added that he did not say. An absolute whose rule gives no exception
+  gets none: its lesson is carried as he wrote it, listed apart, not counted in the verdict, passed by the apply for that
+  finding alone and written to `rules-no-reason.tsv`, whose rows now say what is missing (a reason, an exception); the
+  daily run files nothing for it and names it apart. A cite names the line it means or there is none: never a line
+  written after the rule was filed, the day and time a passage names, his own line for his words, else the earliest. A
+  quote of his stays in its lesson as a run of 8 or fewer of his words, never a pointer, and the rule's caution stays in
+  a lesson word for word. Each lesson is written to be read alone, and a reason for the whole rule is a `Why:` sentence
+  of its own in each lesson it backs. `<memory>/rules-proposals/findings.tsv` (`cite<TAB>finding`) sends a rule back:
+  `--from` redoes it with the findings shown, redoes a rule whose lessons hold what the code no longer writes, and says
+  how many it redid for each reason.
 
 - A final that restates a lesson's cite (`rules/<slug>.md`, with or without its line, as a filing's own result gives it)
   is a filing report too, as one restating `rules.md:N` is; `rules.md` and `rules-topics.md` still need their line, since

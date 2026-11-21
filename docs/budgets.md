@@ -827,7 +827,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 raised it by 48 more, "no reason on file" said by the owner's side (a `none` row in reasons.tsv), not folded to fit: conversion.py 22 (a lesson refused for a reason alone listed and left out of the verdict and the rounds back; the apply's pass for it and its sidecar; undo), lessons.py 17 (rules-no-reason.tsv read, and a slug taken off it by a filing or a retire), shape.py 9 (the daily run leaves its missing reason out and names it). 34,716: 34,668 plus 48.
 
-- `lines = 34716`
+2026-11-21: lesson-store-2026-11-21 raised it by 255 more, run 4: nothing he said changed and nothing added he did not say, not folded to fit: conversion.py 235 (the picker that cites the line a passage means or none; no exception added, a never whose rule gives none listed apart; the caution checked in a lesson; quotes kept as runs of his words; the examples shown numbered and placed where the model names; the faults code finds; findings.tsv and what --from redoes and why), lessons.py 13 (one list saying what is missing), shape.py 7 (the daily run leaves a listed exception out and names it). 34,971: 34,716 plus 255.
+
+- `lines = 34971`
 
 ## Uncapped
 
