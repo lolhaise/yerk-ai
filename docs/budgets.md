@@ -198,6 +198,8 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-19, need-2026-11-19-124: the docs line's where and who (`doctor.json`, the doctor's last findings, beside the two docs folders; all three in Yerk's state folder, a room's work folder's path before `rooms/`; `read_memory` reads the docs, an owner room's Read and Grep all three, a sealed room's the Claude docs; that morning a room asked to check a worker's re-pinned docs sentences against the fetched page and the doctor's findings looked for the page in its work folder and the checkout, and had its Grep of both refused) took the mechanics file to 8,733, 8,857 with a checkout's path of 130 characters, on main's code line for need-2026-11-19-123; so 8,900. No part was measured again to pay for it, so the total rose by the 200, to 132,862 on main's 132,662.
 
+2026-11-21, need-2026-11-21-134: the code line's clause (the `worker` report names each worktree with its branch, head and commits, read with git; that afternoon a room relaying a plug-in worker's result, its branch, head and commits named, had its Read of the worktree's HEAD in the plug-in's own .git refused, a linked worktree's .git being only a pointer there, and checked the worktree's files instead) took the mechanics file to 8,774, 8,898 with a checkout's path of 130 characters; inside the 8,900, so the line and the total stay.
+
 - `mechanics = 8900`
 - `persona = 11800`
 - `rulebook = 14000`
@@ -220,7 +222,9 @@ What the UserPromptSubmit hook adds to each message: `typical` caps the parts ev
 
 2026-11-19, need-2026-11-19-124: 5,750 to 5,850, the recall part's 100 below.
 
-- `cap = 5850`
+2026-11-21, need-2026-11-21-135: 5,850 to 5,950, the recall part's 100 below.
+
+- `cap = 5950`
 
 ## [per_message.parts]
 
@@ -247,7 +251,9 @@ Paid only when a message hits: the people and things it names, then the room's o
 
 2026-11-19, need-2026-11-19-124: 2,200. With need-2026-11-19-123's worker-folder in, the answer to "what can you do" sat 4 characters under 2,100 on main 9e9aba7 (2,096); harness-docs's name (an owner room's Read, Grep and Glob on the fetched docs pages and the doctor's findings) takes it 10 over, 2,110, and the census rides whole or not at all; so 100 more again, room for about six names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
 
-- `recall = 2200`
+2026-11-21, need-2026-11-21-135: 2,300. With need-2026-11-21-134's worker-branch in, the answer to "what can you do" sat 11 characters under 2,200 on main ff00415 (2,189); red-checks's name (why a check on a pull request is red, from the box CI's own record) takes it 1 over, 2,201, and the census rides whole or not at all; so 100 more again, room for about seven names. Each need's branch fit alone: the two met when main was folded in at the deeper check. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+
+- `recall = 2300`
 
 Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 
@@ -807,9 +813,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-20: logins-notes-doctor-2026-11-20 raised it by 77, a password a picture shows is never filed and the doctor knows a saved login by its value (need 127's deeper check: the owner had sent the login as screenshots, the `seen` tool told a room to file every word verbatim, the doctor read none of the 1,832 notes the rooms had filed, and a saved password has no shape to find), not folded to fit: doctor.py 33 (kind and first_secret, the one line check the scan and `seen` share; scan's values and an inbox file's own time; leaked over every room's inbox; label, a room's file by its path under the state folder; unshaped's values; the saved-password finding; the scrub's values), logins.py 26 (passwords, the one reader: a plain NAME.login of save's shape, never a link, a password that can be looked for by value; LOOKED and LONG; the module's two lines), words.py 8 (LEFT_OUT, the clause, the refusal, the finding, their comment), daemon.py 5 (tool_seen's refusal before anything is written, its log line with the line's number and kind alone, its docstring), pictures.py 3 (the module's sentence), cli.py 1 (--scrub's help), mcp_server.py 1 (the clause from words.py). 33,625: main 948dcdb's 33,548 plus 77.
 
-2026-11-21: need-2026-11-21-135 raised it by 35, a red check's why in github_state (that afternoon a room asked whether a worker's tests held on the box heard from github_state on its pull request only that one check was red, no test named; the box CI keeps its record of each commit in a folder of its own and the journal, where the room's Glob was refused, and the room has no shell), not folded to fit: github.py 23 (record, the head's record from its newest run, the tests named failing and the lines that say what failed, or a line on why there are none, 17; SAYS, TEST, LINES and WIDE, 3; row's and look's docstrings, 2; the module's clause, 1), words.py 7 (GITHUB_NEXT's red and ci, 2; the three lines on a record not read and their comment, 5), daemon.py 3 ([needs] ci_log read and handed to look, its docstring's sentence), config.py 2 (the setting's words). 33,660: main 0911b5e's 33,625 plus 35.
+2026-11-21: need-2026-11-21-134 raised it by 36, a worker's branch, head and commits read with git for the `worker` report (that afternoon a room relaying a plug-in worker's result, its branch, head and commits named, had its Read of the worktree's HEAD in the plug-in's own .git and its Grep of that .git's refs refused, a linked worktree's .git being only a pointer there and a commit there compressed, and checked the worktree's files instead), not folded to fit: workers.py 35 (branch, a worktree's branch as git has it: its def and docstring on the wall and what it reads, 8; its git, read only with no fsmonitor or signature program run, 6; the read, its head, base and branch, the counts each side lacks, the newest COMMITS and the files not committed, 16 with its clock; the two lines before report; COMMITS 1; report's branches and its docstring, 2), words.py 1 (BRANCH_UNREAD). 33,661: main 0911b5e's 33,625 plus 36.
 
-- `lines = 33660`
+2026-11-21: need-2026-11-21-135 raised it by 35, a red check's why in github_state (that afternoon a room asked whether a worker's tests held on the box heard from github_state on its pull request only that one check was red, no test named; the box CI keeps its record of each commit in a folder of its own and the journal, where the room's Glob was refused, and the room has no shell), not folded to fit: github.py 23 (record, the head's record from its newest run, the tests named failing and the lines that say what failed, or a line on why there are none, 17; SAYS, TEST, LINES and WIDE, 3; row's and look's docstrings, 2; the module's clause, 1), words.py 7 (GITHUB_NEXT's red and ci, 2; the three lines on a record not read and their comment, 5), daemon.py 3 ([needs] ci_log read and handed to look, its docstring's sentence), config.py 2 (the setting's words). 33,696: main ff00415's 33,661 (need 134's 36 in it) plus 35, counted on the merged tree; README.md, which both changed, merged by hand with both mentions inside its size.
+
+- `lines = 33696`
 
 ## Uncapped
 

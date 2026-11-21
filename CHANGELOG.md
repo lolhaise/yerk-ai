@@ -34,8 +34,31 @@ version changes.
   github_state test reads `red` with each check's words.
 - **Upgrading**: yerkd.toml takes `[needs] ci_log = "<folder>"`, the folder your box's CI writes its record of each
   commit in, read at the daemon's start; without it github_state gives GitHub's words for each red check and one line
-  naming the setting. budgets.toml's `[code] lines` rises from 33,625 to 33,660, with its dated note; an install that
-  keeps its own budgets.toml raises it the same way.
+  naming the setting. budgets.toml: `[code] lines` 33,661 to 33,696, and the per-message recall line 2,200 to 2,300
+  with its cap 5,850 to 5,950 (with this entry's name and need-2026-11-21-134's `worker-branch` both in, "what can
+  you do" came to 2,201 and rides whole or not at all; a message's recall on a hit may run 100 characters longer),
+  each with its dated note; an install that keeps its own budgets.toml raises them the same way.
+
+### need-2026-11-21-134 (#121)
+
+- A room relaying a worker's result can check the branch, head and commits the worker names, a plug-in's branch too.
+  The `worker` tool's report now reads each worktree in the worker's folder with git: the repository's own checkout and
+  the branch it is on (the base), the worktree's branch (none when detached) and head, how many commits each side has
+  that the other lacks, the newest ten its base lacks with each one's short sha, subject and age, and how many of its
+  files are not committed. `yerk worker report <id> --json` shows the same.
+- Before, a room asked to check a plug-in worker's branch had its Read of the worktree's HEAD and its Grep of the
+  plug-in's refs refused. A linked worktree's `.git` is only a pointer into its repository's own `.git`, which no room's
+  rules open, and a commit there is compressed, so a read rule would not have shown the commits either. A plug-in kept
+  outside Yerk has no GitHub for `github_state` to read. The room checked the worktree's files instead.
+- The read writes nothing: no fetch, no ref, no lock, no index, and no fsmonitor or signature program runs. It runs off
+  the daemon's loop. A worktree git cannot read gives git's own first line of why, and the rest of the report still
+  comes. The plug-in's `.git` stays closed to a room's Read; no new rule is written.
+- The mechanics' line on checking a worker's claim says the report names each worktree with its branch, head and
+  commits. New ability entry `worker-branch` (`yerk explain worker-branch`), found by asks such as "the worker's
+  branch". The README and the GUIDE say it beside the worker reads.
+- **Upgrading**: nothing to change. The mechanics stay inside their 8,900, and budgets.toml's `[code] lines` rises from
+  33,625 to 33,661.
+- The deeper check, on the worker the need came from: its branch had been landed by the time its result was relayed, so its base lacked no commit and the report listed none. A branch its base already holds lists its own newest ten and says so (`on_base`). Tests for what the read promises and no test held: a stale index left as it was, no fsmonitor program run, each git call's guards and its 20 seconds, ten commits, a subject and a why cut, a folder with a .git of its own never read. A clean filter the repository's config names can still run on a changed file, and the docstring says so.
 
 ### need-2026-11-21-133 (#120)
 

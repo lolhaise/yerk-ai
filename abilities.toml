@@ -1824,6 +1824,16 @@ needs = "an owner room with Read, Grep or Glob in its tools that is not sealed; 
 free_path = "this is the free path"
 asked_as = ["read the worker's folder", "read a worker's folder", "read the worker's patch", "read a worker's patch", "the worker's files"]
 
+# need-2026-11-21-134: a room relaying a plug-in worker's result, its branch, head and commits named, had its Read of the
+# worktree's HEAD in the plug-in's own .git and its Grep of that .git's refs refused, and checked the worktree's files instead.
+[abilities.worker-branch]
+state = "built"
+what = "Reads a worker's branch, its head and its commits before its result is told: the `worker` tool's report reads each git worktree in the worker's folder with git, Yerk's `wt` and a plug-in's `<plug-in>-wt` alike, and gives the repository's own checkout and the branch that is on (its base), the worktree's branch (none when detached) and head, how many commits each side has that the other lacks, the newest ten of those its base lacks, or of its own when its base already holds them all (`on_base`, a branch landed since), each with its sha, subject and age, and how many of its files are not committed, so a room relaying a worker that names its branch, head and commits checks them there, never on the report's word. A linked worktree's .git is only a pointer into its repository's own .git, which no room's Read opens and whose commits are compressed, and a plug-in kept outside Yerk has no GitHub for `github_state` to read, so the daemon runs git itself: read only (no fetch, no ref, lock or index written), off its loop, and a worktree git cannot read is git's own line of why. The owner's rooms only, as every worker call."
+tier = "free"
+needs = "an owner room, and a worker whose worktree is `wt` or `<name>-wt` in its folder; nothing to set"
+free_path = "this is the free path"
+asked_as = ["the worker's branch", "a worker's branch", "the worker's commits", "a worker's commits", "the worker's head", "a worker's head"]
+
 [abilities.rule-shape]
 state = "built"
 what = "Checks how its own rules are written: the doctor scores every rule file a room loads (the mechanics, its persona, rulebook and voice, the rules file) against the prompting guide, counting negatives with no why, shouted words, examples outside example tags, alarm marks on an instruction and topics said in two files. A count past budgets.toml [shape] is a finding, a rule filed in the last day that misses the shape is named by its cite, each room's report is docs/shape/<room>.md, the morning diff carries the totals, and `yerk docs shape` prints the report with each count's exact rule."
