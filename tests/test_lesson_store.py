@@ -1,5 +1,5 @@
 """Checks the rule store (lessons.py), which keeps the rules the rooms follow as lessons in the Claude docs' shape. The cases: one lesson per file
-with its class, then its one-line summary, then its body; rules.md the index of their summaries; a lesson replaced in place and a
+under rules/, its front matter first with its class, then its one-line summary, then its body; rules.md the index, a line a job and its lessons'
 files; a lesson replaced in place and a retired one's tombstone; the index at a session start, each body where a topic rule loaded, every body on
 a session from before a conversion told nothing about it. Every value here is a placeholder."""
 import json
@@ -31,8 +31,22 @@ def test_a_rule_is_one_lesson_file_its_class_first_its_summary_then_its_body_and
     assert body.splitlines() == ["Open web pages with the example browser.", "Since it draws what a page shows, a fetch misses parts of it."]
     assert memory.rule(m, "example-room", "m2", "dates", DATES, log=log)["cite"] == "rules/dates.md"
     rows = (m.root / memory.RULES).read_text().splitlines()
-    assert rows[:3] == ["---", "class: shared", "---"] and rows[-2:] == [
-        "- Open web pages with the example browser. (rules/open-web-pages.md)", f"- {DATES} (rules/dates.md)"]
+    assert rows[:3] == ["---", "class: shared", "---"] and rows[-2:] == ["- open web pages (rules/open-web-pages.md)", "- dates (rules/dates.md)"]
+
+
+def test_the_index_is_a_line_a_job_its_lessons_files_no_summary_read_back_in_its_order(tmp_path):
+    m, log = store(tmp_path)
+    memory.rule(m, "example-room", "m1", "book the hall", HALL, log=log)
+    memory.rule(m, "example-room", "m2", "dates", DATES, log=log)
+    memory.rule_lesson(m, "example-room", "m3", "book the hall", HALL.replace("week", "month"), log, (), slug="book-the-hall-2")
+    assert (m.root / memory.RULES).read_text().splitlines()[-2:] == [          # a second lesson of a job goes on its job's line
+        "- book the hall (rules/book-the-hall.md, rules/book-the-hall-2.md)", "- dates (rules/dates.md)"]
+    assert [x.slug for x in lessons.store(m.root)] == ["book-the-hall", "book-the-hall-2", "dates"]
+    assert lessons.ROW.match("- book the hall (rules/book-the-hall.md, rules/book-the-hall-2.md)")[1] == "book the hall"
+    capped, _ = context.rules_text({}, m.root / memory.RULES, None, "example-room")         # a capped start: the job lines alone
+    assert capped.splitlines()[1:] == ["- book the hall (rules/book-the-hall.md, rules/book-the-hall-2.md)", "- dates (rules/dates.md)"]
+    memory.retire(m, log, "example-room", "m4", "rules/book-the-hall.md", "the hall closed")
+    assert "- book the hall (rules/book-the-hall-2.md)" in (m.root / memory.RULES).read_text().splitlines()
 
 
 def test_a_lesson_is_replaced_in_place_its_old_words_kept_in_the_day_log_and_a_retired_one_leaves_a_tombstone(tmp_path):
@@ -75,6 +89,39 @@ def test_an_index_near_code_memorys_limits_is_filed_and_the_filing_says_to_short
     assert "191 lines of 200" in r["index"] and "merging lessons" in r["index"] and "docs/claude/code-memory.md" in r["index"]
 
 
+def test_an_uncapped_installs_index_near_its_limits_is_a_measurement_never_a_filings_word_to_trim(tmp_path):
+    import dataclasses
+
+    from yerk_ai import shape
+    from yerk_ai.config import budgets
+    m, log = store(tmp_path)
+    (tmp_path / "yerkd.toml").write_text("[limits]\nuncapped = true\n")
+    m = dataclasses.replace(m, private=tmp_path)
+    for i in range(186):
+        r = memory.rule(m, "example-room", f"m{i}", f"job number {i}", DATES)
+    assert r["ok"] and len((m.root / memory.RULES).read_text().splitlines()) == 191 and "index" not in r    # no word to merge or retire
+    found = shape.store(m, budgets()["shape"])
+    sized = [x for x in shape.store_findings(found, budgets()["shape"], whole=True) if x.startswith(shape.SIZED)]
+    assert sized == [f"{shape.SIZED} rules.md is 191 lines of 200 and {(m.root / memory.RULES).stat().st_size:,} bytes of 25,000, "
+                     "code-memory's limits for a capped start; a measurement, since this install is uncapped and nothing is trimmed to fit"]
+    assert not [x for x in shape.store_findings(found, budgets()["shape"]) if x.startswith(shape.SIZED)]     # capped: as built
+
+
+def test_a_final_restating_a_lessons_cite_is_a_filing_report():
+    from yerk_ai import words
+    assert words.FILING_REPORT.search("The hall is booked.\n\nThe rule is at rules/book-the-hall.md:6 now.")
+    assert words.FILING_REPORT.search("The hall is booked (memory/rules/book-the-hall-2.md:1).")
+    assert words.FILING_REPORT.search("Kept, rules.md:115.") and not words.FILING_REPORT.search("The rules/ folder holds the hall's.")
+
+
+def test_a_converted_store_moves_no_held_rules_and_says_why(tmp_path):
+    m, log = store(tmp_path)
+    (m.root / memory.OVERFLOW).write_text("- dates: Take a date from a file. (example-room, 2026-01-02 09:00:00+00:00) [m:1]\n")
+    n, why = memory.move_held(m, {})
+    assert n == 0 and why.startswith("nothing moved: the store is converted") and (m.root / memory.OVERFLOW).is_file()
+    assert not (m.root / memory.TOPIC_RULES).exists()
+
+
 def test_an_unconverted_store_keeps_its_one_line_rules(tmp_path):
     m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
     r = memory.rule(m, "example-room", "m1", "open web pages", WEB)
@@ -89,10 +136,28 @@ def test_a_session_start_loads_the_index_or_every_lesson_whole_uncapped_and_a_ro
     hall.write_text(hall.read_text().replace("job: book the hall\n", "job: book the hall\nrooms: hall-room\n"))
     rules = m.root / memory.RULES
     capped, _ = context.rules_text({}, rules, None, "example-room")
-    assert capped.splitlines()[1:] == ["- Open web pages with the example browser. (rules/open-web-pages.md)"]   # kept to its room
+    assert capped.splitlines()[1:] == ["- open web pages (rules/open-web-pages.md)"]   # kept to its room
     whole, _ = context.rules_text({}, rules, "hall-room", "hall-room")
     assert whole.splitlines()[1:] == [f"- {WEB} (rules/open-web-pages.md)", f"- {HALL} (rules/book-the-hall.md)"]
     assert context.rules_text({"sealed": True}, rules, "hall-room") == ("", "")
+
+
+def test_the_morning_diff_counts_an_uncapped_rooms_lessons_as_that_room_is_sent_them(tmp_path):
+    import shutil
+
+    from yerk_ai import morning
+    from yerk_ai.config import rooms
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "yerkd.toml").write_text("[limits]\nuncapped = true\n")
+    m = memory.settings(private, state)
+    (m.root / lessons.DIR).mkdir(parents=True)
+    memory.rule(m, "example-room", "m1", "open web pages", WEB)
+    memory.rule(m, "example-room", "m2", "book the hall", HALL)
+    hall = m.root / "rules" / "book-the-hall.md"
+    hall.write_text(hall.read_text().replace("job: book the hall\n", "job: book the hall\nrooms: example-room\n"))
+    sent = context.rules_text(rooms(private)["example-room"], m.root / memory.RULES, "example-room", "example-room")[0]
+    assert HALL in sent and morning.sizes(private, state)["example-room"]["rules"] == context.chars(sent)   # its own lesson, whole
 
 
 def test_a_lessons_body_rides_on_a_message_naming_its_words_once_and_never_when_the_start_carries_it(tmp_path):
@@ -230,10 +295,24 @@ def test_the_dry_run_writes_one_proposals_file_and_changes_nothing_else(tmp_path
     assert ledger["lessons"][0]["body"] == 'It holds for the job "example ledger". Only the owner\'s go-ahead lifts it.'
     assert [d["kind"] for d in ledger["done"]] == ["scope added", "exception added", "no reason on file", "still failing"]
     assert "after 2 rounds back to the model: no proposal came back for it; split as it stands" in text
-    assert rec["ready"] is False and "the gate refuses" not in text and "- no reason on file (listed for Ben" in text
+    assert rec["ready"] is False and "the gate refuses" not in text and "- no reason on file (listed for the owner's side" in text
     assert rec["why"] == ["1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"]
     assert rec["ends"]["tree/rules.md:6"] == "tree/rules.md:7"                         # the replaced line leads to its live rule
     assert "lost by the split" not in text and "1 owner message of the last 14 days load it" in text
+
+
+def test_the_dry_run_reads_the_fable_5_2_page_whatever_the_rooms_run_and_is_not_ready_while_its_index_is_past_a_limit(tmp_path, monkeypatch):
+    from yerk_ai import conversion, shape
+    m = old_store(tmp_path)
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: ""))
+    assert rec["read"] == list(FABLE2) and rec["index"] == [9, len(lessons.index_text([conversion.lesson_of(x) for r in rec["rules"]
+                                                                                       for x in r["lessons"]]).encode()), 200, 25_000]
+    assert not [x for x in rec["why"] if "index" in x]
+    monkeypatch.setattr(shape, "index_limits", lambda docs=None: (6, 150))
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: ""))
+    assert rec["ready"] is False and rec["why"][-1] == (f"the index it would write is past code-memory's limits: 9 lines, 3 past 6 and "
+                                                        f"{rec['index'][1]:,} bytes, {rec['index'][1] - 150:,} past 150")
+    assert f"The index it would write: 9 lines and {rec['index'][1]:,} bytes, against code-memory's 6 and 150." in path.read_text()
 
 
 def test_an_apply_takes_the_exact_file_keeps_the_originals_and_an_old_cite_finds_its_lesson_and_undo_puts_them_back(tmp_path):
@@ -401,7 +480,7 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
     assert web["lessons"][0]["body"] == f"Do so since in his words the words at daily/{day.name}:{n}."
     assert rota["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:3</example>") and rota["lessons"][0]["gate"] == []
     assert any(d["kind"] == "example cited" and "its gloss of 10 words left out" in d.get("why", "") for d in rota["done"])
-    assert {"kind": "no reason on file", "said": "Put the week in bold.", "why": "listed for Ben: the rule gives this lesson's part no "
+    assert {"kind": "no reason on file", "said": "Put the week in bold.", "why": "listed for the owner's side: the rule gives this lesson's part no "
             "reason and a reason is never invented; a row in rules-proposals/reasons.tsv supplies one"} in rota["done"]
     assert {"kind": "reason supplied", "said": "the bank reads", "from": f"daily/{day.name}:{n + 2}, named in rules-proposals/reasons.tsv"} in ledger["done"]
     assert rec["why"][0] == "1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"

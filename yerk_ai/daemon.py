@@ -1697,10 +1697,12 @@ class Yerkd:
     def move_held(self) -> str:
         """At a start: rules-overflow.md's rules into rules-topics.md, once (memory.move_held), and the machine-room line saying so."""
         try:
-            n = memory.move_held(self.memory, context.books(self.private, self.room_confs))
+            n, why = memory.move_held(self.memory, context.books(self.private, self.room_confs))
         except OSError:
             log.exception("rules: %s did not move to %s; it stays as it was", memory.OVERFLOW, memory.TOPIC_RULES)
             return ""
+        if why:                                          # a converted store: logged, never a machine-room line at every start
+            log.info("rules: %s", why)
         return f"{words.DONE} " + words.TOPICS_MOVED.format(n=n, s="s" * (n != 1)) if n else ""
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False, went: bool = False) -> list[tuple[str, str]]:

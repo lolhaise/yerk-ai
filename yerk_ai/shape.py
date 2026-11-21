@@ -534,6 +534,9 @@ def rows_of(m: Settings) -> list[tuple[str, str, str, dict[str, list[str]]]]:
     return out
 
 
+SIZED = "rule index size:"        # an uncapped install's daily line for its index's size: a measurement, it files no need
+
+
 def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: Any = None) -> dict[str, Any]:
     """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
     cite with its checks, each style limit counted apart (COUNT_ONLY), and RULES, the index a session start loads, against the
@@ -547,15 +550,18 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
     p, (most, size) = m.root / RULES, index_limits(docs)
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
-    return {"lessons": found, "index": over, "moved": pinned(docs, read), "style limits": counted, "read": list(read or EVERY)}
+    return {"lessons": found, "index": over, "size": [len(rows), have, most, size], "moved": pinned(docs, read), "style limits": counted,
+            "read": list(read or EVERY)}
 
 
-def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None) -> list[str]:
+def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None, whole: bool = False) -> list[str]:
     """The doctor's daily lines for the store: a pin its page moved off, the index past code-memory's limits, and the lessons that
     miss the shape past lesson_findings (zero), a line per page whose checks they miss, the first named with its checks and the
-    sentence of that page its first check enforces. A style limit is counted in the report, never a line here."""
+    sentence of that page its first check enforces. A style limit is counted in the report, never a line here. `whole`, an
+    uncapped install: the index's size is a measurement, never a finding, said last as a line of its own (SIZED) from
+    lessons.NEAR of a limit, since nothing of the owner's is trimmed to fit."""
     out = [f"docs moved: {slug} no longer says the sentence the {k} check enforces: \"{said}\"" for k, slug, said in r["moved"]]
-    if r["index"]:
+    if r["index"] and not whole:
         out.append(f"rule index {RULES}: {' and '.join(r['index'])}, the code-memory limit a session start loads, {sentence('index', docs)}")
     if len(r["lessons"]) > threshold(limits, "lesson_findings", 0):
         on: dict[str, list[tuple[str, list[str]]]] = {}
@@ -566,6 +572,10 @@ def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None 
             at, bad = rows[0]
             out.append(f"rule shape: {len(rows)} lesson{'s' * (len(rows) != 1)} out of {slug}'s shape, first {at}: "
                        f"{', '.join(bad)}; {said(bad[0], docs)}")
+    lines, have, most, size = r.get("size") or [0, 0, 1, 1]
+    if whole and (lines >= lessons.NEAR * most or have >= lessons.NEAR * size):
+        out.append(f"{SIZED} {RULES} is {lines} lines of {most} and {have:,} bytes of {size:,}, code-memory's limits for a capped "
+                   "start; a measurement, since this install is uncapped and nothing is trimmed to fit")
     return out
 
 

@@ -2,7 +2,7 @@
 It turns an existing rules.md and rules-topics.md into lesson files and their index (lessons.py), as prompting-fable-5-2 says of
 rules that built up: "rewrite absolute rules with their scope and reason", with the originals copied first. The dry run writes one
 proposals file, <memory>/rules-proposals/lessons-<day>.md, and changes nothing else: for each original rule by its cite, its words,
-filing's own, memory.unshaped, on the pages of every model a room runs), and each thing done to it as a listed item; the JSON
+the lessons made of it with each one's gate (the filing's own, memory.unshaped, on READ), and each thing done to it as a listed item;
 block at its end is what an apply reads. Meaning never changes: a rule already in the shape is split as it stands (its first
 sentence the summary); one out of it goes to curate's model pass ("Lessons", then "Knock down lessons" in curate.md); code alone
 cites a quote the day log holds, writes the owner's go-ahead into an absolute and checks that every sentence of the original
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import curate, lessons, memory, shape
-from .config import budgets, load_toml, models, rooms, write_private
+from .config import budgets, load_toml, write_private
 from .mentions import OLD
 
 FILE = "lessons-{day}.md"          # in <memory>/rules-proposals/
@@ -39,6 +39,9 @@ ROUNDS = 2                         # the times a rule still failing goes back to
 CHUNK = 8                          # rules a call of the first proposal, a knock-down or a round back reads; the calls run side by
                                    # side (16 to a call ran 9 minutes on a store of the owner's size; a round's rules in one call, 11)
 REASONS = "reasons.tsv"            # in <memory>/rules-proposals/: cite, the daily/<day>.md:<line> holding it, the reason, a row
+# The conversion's pages: the ones every room reads and the Claude Fable 5.2 page, whatever model the rooms run that minute,
+# since the owner's order of 2026-11-09 names that page; the doctor's daily run follows the rooms (shape.run_by).
+READ = ("claude-fable-5-2",)
 WANTING = ("no reason given", "a negative with no why", "a hard style limit with no reason")   # what a reason on file would meet
 WRAP = re.compile(r"\s*</?examples(?:\s[^>]*)?>", re.I)    # the wrapper left round a rule's examples once code takes them out
 
@@ -262,9 +265,9 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
             done.append({"kind": "triggers trimmed", "said": ", ".join(on[len(x["on"]):]), "why": f"the front matter holds {lessons.FRONT_MAX} characters"})
     row = f"{curate.PROPOSALS}/{REASONS} names one for it" if rule["cite"] in supplied else f"a row in {curate.PROPOSALS}/{REASONS} supplies one"
     if not any(x["kind"] in ("reason added", "reason supplied") for x in done) and "no reason" in shape.lesson(rule["job"], rule["said"], None, {}, read=read):
-        done.append({"kind": "no reason on file", "why": "listed for Ben: a reason is never invented; " + row})
+        done.append({"kind": "no reason on file", "why": "listed for the owner's side: a reason is never invented; " + row})
     elif prop:                          # a split rule's lesson refused only for a reason, whose part the rule gives none
-        done += [{"kind": "no reason on file", "said": x["summary"], "why": "listed for Ben: the rule gives this lesson's part no "
+        done += [{"kind": "no reason on file", "said": x["summary"], "why": "listed for the owner's side: the rule gives this lesson's part no "
                   "reason and a reason is never invented; " + row} for x, (*_, w) in zip(made, parts) if x["gate"]
                  and all(g.startswith(WANTING) for g in x["gate"]) and not (isinstance(w, dict) and w.get("said"))]
     return {**{k: rule[k] for k in ("cite", "file", "line", "text", "job")}, "lessons": made, "done": done,
@@ -363,7 +366,9 @@ def render(rec: dict[str, Any]) -> str:
     out = [f"# Lessons proposed from the rule store, {rec['day']}", "",
            f"Store read: {', '.join(f'{k} {v[:12]}' for k, v in sorted(rec['store'].items()))}. Pages read: {', '.join(rec['read'])}.",
            f"Apply: `yerk curate --lessons-apply {rec['path']}`. Undo after it: `yerk curate --lessons-undo {rec['day']}`.",
-           f"Ready to apply: {'yes' if rec['ready'] else 'no: ' + '; '.join(rec['why'])}.", ""]
+           f"Ready to apply: {'yes' if rec['ready'] else 'no: ' + '; '.join(rec['why'])}.",
+           *([f"The index it would write: {rec['index'][0]:,} lines and {rec['index'][1]:,} bytes, against code-memory's "
+              f"{rec['index'][2]:,} and {rec['index'][3]:,}."] if rec.get("index") else []), ""]
     for r in rec["rules"]:
         out += [f"## {r['cite']}", "", f"Original: {r['text']}", ""]
         for x in r["lessons"]:
@@ -382,11 +387,10 @@ def render(rec: dict[str, Any]) -> str:
 
 def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = None,
             model: Callable[[str, str], str] | None = None, read: Any = None) -> Path:
-    """The dry run: the proposals file written, nothing else. Its path. `read`: the pages the gate reads, else those of every
-    model a room runs (shape.pages), since every room loads the store."""
+    """The dry run: the proposals file written, nothing else. Its path. `read`: the pages the gate reads, else READ's."""
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
-    read = shape.pages(shape.run_by(rooms(private), state, models(conf))) if read is None else read
+    read = shape.pages(READ) if read is None else read
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
     supplied, weights = supplied_reasons(s), memory.rarities([r["text"] for r in rules])
@@ -413,8 +417,12 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
             "supplies one)" for n in [len(bare)] if n]
     why += [f"{n} original{'s' * (n != 1)} not accounted for" for n in [sum(bool(m["missing"]) for m in made)] if n]
     why += [f"{n} original{'s' * (n != 1)} losing a trigger" for n in [len(lost)] if n]
+    index, (most, size) = lessons.index_text([lesson_of(x) for m in made for x in m["lessons"]]), shape.index_limits(s.docs)
+    lines, have = len(index.splitlines()), len(index.encode())
+    over = [f"{n:,} {unit}, {n - cap:,} past {cap:,}" for n, cap, unit in ((lines, most, "lines"), (have, size, "bytes")) if n > cap]
+    why += [f"the index it would write is past code-memory's limits: {' and '.join(over)}"] if over else []
     rec = {"day": day, "path": str(path), "store": {n: sha(s.root / n) for n in (memory.RULES, memory.TOPIC_RULES)}, "read": list(read),
-           "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why}
+           "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size]}
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     write_private(path, render(json.loads(json.dumps(rec, sort_keys=True))))      # as an apply will read it back
     return path

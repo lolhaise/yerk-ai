@@ -34,9 +34,12 @@ STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "ru
 
 def sizes(private: Path, state: Path) -> dict[str, dict[str, int]]:
     """Each room's session-start parts in characters before any trim (`yerk map`'s raw numbers), so a
-    part past its budget still shows its growth; Claude Code's as the room last sent them (context.sent)."""
-    b, rules = budgets(), memory.settings(private, state).root / memory.RULES
-    return {name: {**context.sent(private, state, name, b)[0], **{p.name: p.raw for p in context.session_start(private, conf, b, rules=rules)}}
+    part past its budget still shows its growth; Claude Code's as the room last sent them (context.sent). The install's own
+    budgets and each room's name, so an uncapped install's converted store counts the lessons that room is sent, whole."""
+    b = budgets(load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {})
+    rules = memory.settings(private, state).root / memory.RULES
+    return {name: {**context.sent(private, state, name, b)[0],
+                   **{p.name: p.raw for p in context.session_start(private, conf, b, rules=rules, room_name=name)}}
             for name, conf in rooms(private).items()}
 
 

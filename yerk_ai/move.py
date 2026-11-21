@@ -203,8 +203,8 @@ async def add(a: argparse.Namespace) -> int:
     also = [(priv / Path(str(x)).expanduser()).resolve() for x in block.get("also") or []]
     if saved in also and saved not in s.scope.roots:            # a room's also outside them stops yerkd's start (memory.Settings.only)
         print(f"yerkd.toml [memory] also, by hand before the deploy, or yerkd does not start: add \"{saved}\"")
-    b, now = budgets(), datetime.now(timezone.utc)
-    start = context.session_start(priv, block, b, rules=s.root / memory.RULES)
+    b, now = budgets(conf), datetime.now(timezone.utc)          # the install's: an uncapped one's start carries its lessons whole
+    start = context.session_start(priv, block, b, rules=s.root / memory.RULES, room_name=room)
     bad = context.violations(start, context.per_message(room, block, "owner", now, now - timedelta(minutes=27), b), b)
     print(f"map: {'; '.join(bad) if bad else 'under budget'} (`yerk map {room}` after the deploy shows each part)")
     print(f"deploy, detached at a quiet moment: setsid nohup yerk deploy > {state}/deploy-{a.room}.log 2>&1 < /dev/null &")

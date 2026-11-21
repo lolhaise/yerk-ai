@@ -25,7 +25,7 @@ from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
 
 from . import lessons, memindex, mentions, words
-from .config import REPO, load_toml, room_id, write_private
+from .config import REPO, flag, load_toml, room_id, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
 READ_MAX = 400                                       # read_memory: lines per call
@@ -549,14 +549,18 @@ def cue(line: str, corpus: list[str], n: int = 3) -> list[str]:
     return picked(line) or [w for t, w in sorted(triggers(line).items(), key=lambda kv: -weight.get(kv[0], one))][:n]
 
 
-def move_held(s: Settings, books: dict[str, str]) -> int:
+def move_held(s: Settings, books: dict[str, str]) -> tuple[int, str]:
     """Once, at yerkd's first start with rules-on-demand: OVERFLOW's rules appended to TOPIC_RULES in their order (one there already
     by its job and message, from a start cut off, not twice), each marking its job's line before it superseded, each kept to the rooms
     a [rooms: ...] mark already on its line names (the owner's hand edit before the move), else to those `scoped` gives the room that
-    filed it; then OVERFLOW renamed to OVERFLOW.moved beside it, the backup, so no later start finds one, and one log line. The count."""
+    filed it; then OVERFLOW renamed to OVERFLOW.moved beside it, the backup, so no later start finds one, and one log line. The count,
+    and why nothing moved where a file was there: a converted store (lessons.py) reads no TOPIC_RULES, so it moves nothing."""
     held, path = s.root / OVERFLOW, s.root / TOPIC_RULES
     if not held.is_file():
-        return 0
+        return 0, ""
+    if lessons.converted(s.root):
+        return 0, (f"nothing moved: the store is converted ({lessons.DIR}/ is there) and reads no {TOPIC_RULES}, so {OVERFLOW} "
+                   "stays as it is")
     with daily_lock(s.daily):
         rows, out = live_rules(held), path.read_text().splitlines() if path.is_file() else [*TOPIC_HEAD]
         corpus, there = [*live_rules(s.root / RULES), *live_rules(path), *rows], {(topic(x), m[1]) for x in out if (m := MARK.search(x))}
@@ -570,7 +574,7 @@ def move_held(s: Settings, books: dict[str, str]) -> int:
         os.replace(held, held.with_name(OVERFLOW + ".moved"))
     log.info("rules: %d rule(s) moved from %s to %s, each loading when its topic comes up; the old file kept as %s.moved",
              len(rows), OVERFLOW, TOPIC_RULES, OVERFLOW)
-    return len(rows)
+    return len(rows), ""
 
 
 def later(s: Settings) -> dict[str, str]:
@@ -808,13 +812,25 @@ def split_summary(body: str) -> tuple[str, str]:
     return first.strip(), rest[0].strip() if rest else ""
 
 
+def uncapped_install(s: Settings) -> bool:
+    """The install's [limits] uncapped (config.uncapped). Nothing of the owner's is trimmed to fit there, so an index near its
+    limits is a measurement the doctor's daily run says, never a filing's word to merge or retire lessons: a room told that
+    would trim the owner's rules by itself."""
+    try:
+        f = s.private / "yerkd.toml" if s.private else None
+        return bool(f and f.is_file() and flag(dict(load_toml(f).get("limits") or {}).get("uncapped")))
+    except (OSError, ValueError):
+        return False
+
+
 def rule_lesson(s: Settings, room: str, mid: str, job: str, body: str, log: DailyLog | None, on: tuple[str, ...],
                 also: tuple[tuple[Path, int, str], ...] = (), slug: str = "") -> dict[str, Any]:
     """memory.rule on a converted store (lessons.py): the job's lesson replaced in place (`slug`, else its job's first live lesson),
-    its old words a note in the room's day log, where its history stays; else a new lesson after the last. Each of `also` (another
-    lesson on the same thing, curate.same) still holding its words is retired, replaced by this one. The index's limits are a
-    reminder, never a refusal, as code-memory's own are: a filing that takes rules.md near or past them is filed, and its result
-    (`index`) says to shorten the index by merging or dropping stale lessons."""
+    its old words a note in the room's day log, where its history stays; else a new lesson, on its job's index line (a new job's
+    line after the last). Each of `also` (another lesson on the same thing, curate.same) still holding its words is retired,
+    replaced by this one. The index's limits are a reminder, never a refusal, as code-memory's own are: on a capped install a
+    filing that takes rules.md near or past them is filed, and its result (`index`) says to shorten the index by merging or
+    dropping stale lessons; an uncapped one's result says nothing of it (uncapped_install)."""
     from . import shape
     summary, rest = split_summary(body)
     at = datetime.now(timezone.utc).astimezone(s.tz)
@@ -837,7 +853,7 @@ def rule_lesson(s: Settings, room: str, mid: str, job: str, body: str, log: Dail
         log.capture(room, f"{mid}.l{hashlib.sha1(new.whole.encode()).hexdigest()[:8]}", NOTE,
                     f"lesson {was.cite} \"{job}\" replaced in place, it said: {was.whole[2:]}", when=at)
     most, size = shape.index_limits(s.docs)
-    near = lessons.near(s.root, most, size)
+    near = [] if uncapped_install(s) else lessons.near(s.root, most, size)
     return {"ok": True, "job": job, "cite": new.cite, "replaced": [*([was.cite] if was else []), *gone],
             **({"index": words.INDEX_NEAR.format(said=" and ".join(near), sentence=shape.sentence("index", s.docs))} if near else {})}
 

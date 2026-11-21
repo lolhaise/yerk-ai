@@ -3,7 +3,8 @@ rules.md, which a room loads when its session starts. It follows the Claude docs
 (code-memory). Each lesson is `<memory>/rules/<slug>.md`: front matter first, `class:` its first key and the block under
 files" (code-memory). Each lesson is `<memory>/rules/<slug>.md`: front matter first, `class:` its first key and the block under FRONT_MAX
 characters, since memory.file_class reads that much of a file and a file with no class is private, hidden from every room that is not the owner's;
-reason and its cited examples. rules.md is the index: one line per live lesson, its summary and its file, in the order filed.
+then the summary, one imperative line a room can follow with the body unread; then the body, its reason and its cited examples. rules.md is the
+index: one line per job, the job and its lessons' files, in the order filed, no summary, so a store whose rules split into several lessons each
 stays under code-memory's limits (a capped start loads it). A lesson is replaced in place ("update an existing note rather than creating a
 duplicate") and its slug never changes; a retired one's file is deleted and a row goes to RETIRED (slug, day, replaced by), so a cite to it still
 leads to the lesson that replaced it, and CITES, written by the conversion (curate.lessons), maps every rules.md:N and rules-topics.md:N cite from
@@ -25,15 +26,17 @@ RETIRED = "retired.tsv"            # slug, day, the slug that replaced it ("" fo
 CITES = "rules-cites.tsv"          # an old store cite (rules.md:N, rules-topics.md:N), the slug its rule became
 SNAPSHOT = "converted.json"        # in the backup folder: the lessons as converted, news's look for a session from before
 BACKUP = "rules-backup-"           # <memory>/rules-backup-<day>/: the originals, copied before a conversion writes
-HEAD = ["---", "class: shared", "---", "# Rules: one line per lesson, its summary and its file under rules/", ""]
+HEAD = ["---", "class: shared", "---", "# Rules: one line per job, its lessons' files under rules/", ""]
 FRONT_MAX = 400                    # memory.file_class's read
-SUMMARY_MAX = 140                  # shape.LESSON's summary check, the index line's words
-NEAR = 0.9                         # an index at this share of a code-memory limit is near it: the filing says to shorten it
+SUMMARY_MAX = 140                  # shape.LESSON's summary check, a lesson's first line
+NEAR = 0.9                         # an index at this share of a code-memory limit is near it: a capped install's filing says to
+                                   # shorten it, an uncapped one's daily run says its size (a measurement)
 FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 CITE = re.compile(r"(?<![\w./-])(?:[\w.-]+/)*rules/([a-z0-9]+(?:-[a-z0-9]+)*)\.md(?::\d+)?")    # a lesson's cite
 OLD_CITE = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*rules(?:-topics)?\.md:\d+)")       # a cite into the store from before
-ROW = re.compile(r"^- (.*) \(rules/([a-z0-9]+(?:-[a-z0-9]+)*)\.md\)$")              # an index line
+FILE = r"rules/[a-z0-9]+(?:-[a-z0-9]+)*\.md"
+ROW = re.compile(rf"^- (.*) \(({FILE}(?:, {FILE})*)\)$")          # an index line: a job, its lessons' files
 LESSON_MARK = "# lessons"          # news's text of a converted store opens with it, a heading the diff never tells
 
 
@@ -51,10 +54,6 @@ class Lesson:
     @property
     def cite(self) -> str:
         return f"{DIR}/{self.slug}.md"
-
-    @property
-    def index_line(self) -> str:
-        return f"- {self.summary} ({self.cite})"
 
     @property
     def whole(self) -> str:
@@ -116,7 +115,7 @@ def parse(path: Path) -> Lesson | None:
 def order(root: Path) -> list[str]:
     """The live slugs in the index's order, then a lesson file the index does not list (one written by hand), by name."""
     rows = (root / INDEX).read_text(encoding="utf-8", errors="replace").splitlines() if (root / INDEX).is_file() else []
-    listed = list(dict.fromkeys(m[2] for x in rows if (m := ROW.match(x))))
+    listed = list(dict.fromkeys(slug for x in rows if (m := ROW.match(x)) for slug in CITE.findall(m[2])))
     there = {p.stem for p in (root / DIR).glob("*.md")} if converted(root) else set()
     return [x for x in listed if x in there] + sorted(there - set(listed))
 
@@ -126,8 +125,16 @@ def store(root: Path) -> list[Lesson]:
     return [x for s in order(root) if (x := parse(root / DIR / f"{s}.md")) is not None]
 
 
+def index_rows(lessons: list[Lesson]) -> list[str]:
+    """The index's lines: one a job, at its first lesson's place, the job and its lessons' files in their order, no summary."""
+    jobs: dict[str, list[str]] = {}
+    for x in lessons:
+        jobs.setdefault(x.job or x.slug, []).append(x.cite)
+    return [f"- {job} ({', '.join(files)})" for job, files in jobs.items()]
+
+
 def index_text(lessons: list[Lesson]) -> str:
-    return "\n".join([*HEAD, *(x.index_line for x in lessons)]) + "\n"
+    return "\n".join([*HEAD, *index_rows(lessons)]) + "\n"
 
 
 def retired(root: Path) -> dict[str, tuple[str, str]]:
@@ -170,8 +177,8 @@ def live_slug(root: Path, cite: str) -> str:
 
 
 def put(root: Path, lesson: Lesson) -> Lesson | None:
-    """`lesson` written: its file replaced in place, or a new file and its index line after the last; the index's line for it
-    rewritten from its summary. The lesson it replaced, None for a new one. The caller holds the writers' lock."""
+    """`lesson` written: its file replaced in place, or a new file, listed on its job's index line, or a new job's line after the
+    last. The lesson it replaced, None for a new one. The caller holds the writers' lock."""
     (root / DIR).mkdir(mode=0o700, parents=True, exist_ok=True)
     path, have = root / DIR / f"{lesson.slug}.md", store(root)
     was = next((x for x in have if x.slug == lesson.slug), None)
@@ -181,7 +188,7 @@ def put(root: Path, lesson: Lesson) -> Lesson | None:
 
 
 def drop(root: Path, slug: str, day: str, by: str = "") -> Lesson | None:
-    """A lesson retired: its file deleted, its index line gone, a row in RETIRED (by: the slug that replaced it). The lesson."""
+    """A lesson retired: its file deleted and off its job's index line, a row in RETIRED (by: the slug that replaced it). The lesson."""
     was = parse(path := root / DIR / f"{slug}.md")
     if was is None:
         return None

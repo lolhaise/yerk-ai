@@ -13,16 +13,20 @@ version changes.
 - The rule store can now be kept the way the Claude docs keep a memory: "Store one lesson per file with a one-line summary
   at the top." Each lesson is `<memory>/rules/<slug>.md`: its front matter first (`class:` its first key, the block under
   400 characters so every room's class read finds it), then its summary, one imperative line a room can follow with the
-  body unread, then the body with its reason and cited examples. `rules.md` becomes the index, one line per live lesson,
-  its summary and its file, in the order filed.
+  body unread, then the body with its reason and cited examples. `rules.md` becomes the index, one line per job, the job
+  and its lessons' files, in the order filed, with no summary, so a store whose rules split into several lessons each
+  stays under code-memory's limits.
 - On a converted store, `remember` with `job` replaces its job's lesson in place (the docs' "update an existing note
   rather than creating a duplicate"), its old words a note in the day log, or adds a new lesson; a slug never changes and
   never names two lessons. `retire` deletes the lesson's file and writes a row to `retired.tsv` (slug, day, replaced by),
-  so a cite to it still leads on to the lesson that replaced it. A filing that takes the index near or past code-memory's
-  200 lines or 25KB is filed, and its result says to shorten the index by merging or retiring lessons; the daily run keeps
-  naming an index past them. Nothing is refused for the index's size.
-- A session start loads the index; on an uncapped install it carries every lesson whole, so a room knows what it knew. A
-  lesson's body rides on its words where a topic rule did. A room kept to a lesson by its rooms mark, a sealed room and a
+  so a cite to it still leads on to the lesson that replaced it. On a capped install, a filing that takes the index near or
+  past code-memory's 200 lines or 25KB is filed, and its result says to shorten the index by merging or retiring lessons;
+  the daily run keeps naming an index past them. On an uncapped install the index's size is a measurement and never an
+  instruction: a filing's result says nothing of it, since a room told to retire lessons to make room would trim the
+  owner's rules by itself, and the daily run says the size as a line of its own from 90% of a limit, filing no need for
+  it. Nothing is refused for the index's size.
+- A session start loads the index; on an uncapped install it carries every lesson whole, so a room knows what it knew. On
+  a capped one it carries the job lines, and a lesson, summary and body, rides on its words where a topic rule did. A room kept to a lesson by its rooms mark, a sealed room and a
   person's room see what they saw. A session that began before a conversion is told nothing about it, only a lesson changed
   since, since the docs say to make such changes "in new conversations only".
 - Recall reads each lesson as one chunk with its front matter out, so a room's name in a lesson's scope never matches a
@@ -31,10 +35,12 @@ version changes.
   the live lesson. `read_memory` on an old cite reads the lesson its rule became.
 - `yerk curate --lessons` converts an existing store. Its dry run writes one proposals file,
   `<memory>/rules-proposals/lessons-<day>.md`, and nothing else: each original rule by its cite, the lessons made of it,
-  each one's result from the gate a filing passes, and each change as a listed item (a quote replaced by its day-log cite,
+  each one's result from the gate a filing passes (on the pages every room reads and the Claude Fable 5.2 page, whatever
+  model the rooms run, since the owner's order of 2026-11-09 names that page), and each change as a listed item (a quote replaced by its day-log cite,
   a quote kept, a sentence left out or rewritten and why, a reason added and its line, the scope and the owner's go-ahead
   written into an absolute, a rule with no reason on file, a caution to review). A rule already in the shape is split as it
-  stands; the rest go through curate's propose and knock-down model pass. A frozen trigger test refuses a split that loses
+  stands; the rest go through curate's propose and knock-down model pass. The dry run is not ready while the index it would
+  write is past either of code-memory's limits, and says by how much. A frozen trigger test refuses a split that loses
   an owner message of the last 14 days that loads its rule today. `yerk curate --lessons-apply FILE` takes that exact file
   and refuses unless every lesson passes the gate, every original is accounted for, the trigger test passes and the store
   is byte for byte the one the dry run read; it copies the originals to `<memory>/rules-backup-<day>/` first.
@@ -55,7 +61,8 @@ version changes.
   rules as load today, where each word alone would load 7.8 times as many.
 - A rule with no reason on file stays listed, and so does each lesson of a split rule whose part the rule's words give
   no reason (its other parts have one); the verdict counts those lessons apart from the gate's other refusals.
-  `<memory>/rules-proposals/reasons.tsv` is where the owner's side supplies one: a row a reason, so a rule may have one
+  `<memory>/rules-proposals/reasons.tsv` is where the owner's side supplies one (the proposals file lists each rule or part
+  "for the owner's side"): a row a reason, so a rule may have one
   for each such part, tab-separated, its cite, the `daily/<day>.md:N` line that holds the reason and the reason in that
   line's words; the dry run hands each to the model and lists it as supplied.
 - The accounting no longer reads a listed sentence as not accounted for when it holds a quote code cites, when the parts
@@ -66,6 +73,11 @@ version changes.
   lesson (code cites it), to write in only the scope and the exception the rule gives (code writes the owner's go-ahead
   in), to borrow no other part's reason and to write no caution the rule does not give, the things the knock-down
   dropped most proposals for.
+
+- A final that restates a lesson's cite (`rules/<slug>.md:N`) is a filing report too, as one restating `rules.md:N` is.
+  The morning diff and `yerk room add` measure each room's session start with the install's own budgets and the room's
+  name, so an uncapped install's converted store counts the lessons that room is sent, whole. A rules-overflow.md found on
+  a converted store is left as it is, since that store reads no rules-topics.md, and the start logs why.
 
 **Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then

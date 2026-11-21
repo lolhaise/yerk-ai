@@ -819,7 +819,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 took main f427a72 in a merge: 34,544 is main's ceiling of 33,625 plus this branch's own 919 lines (the 758, 120, 24 and 17 above), recounted after the merge; nothing of either side was folded.
 
-- `lines = 34544`
+2026-11-21: lesson-store-2026-11-21 raised it by 49, the index a line a job and the owner's side's open calls settled, not folded to fit: memory.py 16 (a filing on an uncapped install told nothing of the index's size; a held rules file left as it is on a converted store, and why), shape.py 10 (an uncapped install's index size, a measurement line), conversion.py 8 (the index it would write against code-memory's limits; the Fable 5.2 page always read), lessons.py 7 (the job lines), doctor.py 3, morning.py 3, daemon.py 2. 34,593: 34,544 plus 49.
+
+- `lines = 34593`
 
 ## Uncapped
 
