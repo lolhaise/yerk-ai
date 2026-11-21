@@ -1030,3 +1030,296 @@ def test_r8_from_redoes_a_rule_whose_lessons_hold_what_the_code_no_longer_writes
                         (for_length, "an example left out for length")):
         got, whys = again(change)
         assert key in got and whys.get(why) == 1, why
+
+
+# Run 5 (2026-11-21): the owner's words win over the gate's shape; each row's tests, placeholder words and a placeholder name only.
+NAME = "Quilla"                  # a placeholder for a name the private layer gives the owner ([curate] owner_names)
+
+
+def ledger_with(m, rule: str) -> None:
+    """The ledger rule, tree/rules.md:9, given `rule` as its words (its trailer kept)."""
+    rows = (m.root / memory.RULES).read_text()
+    (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", rule, 1))
+
+
+def test_s1_a_quote_is_his_by_the_general_words_and_the_names_the_install_gives(tmp_path):
+    from yerk_ai import config, conversion
+    daily = picker_logs(tmp_path)
+    assert conversion.given_his("Lock up, since he wrote ") and not conversion.given_his(f"Lock up, since {NAME} wrote ")
+    assert conversion.given_his(f"Lock up, since {NAME} wrote ", (NAME,)) and conversion.given_his("as the owner's note says ")
+    assert conversion.owner_names({"curate": {"owner_names": [NAME, " "]}}) == (NAME,) == conversion.owner_names({"curate": {"owner_names": NAME}})
+    assert conversion.owner_names({}) == () and "owner_names" in config.YERKD_WORDS["curate"]
+    said = "the hall key sits under the blue mat"
+    for lead, his, at in (("he wrote", (), "daily/2025-11-03.md:4"), (f"{NAME} wrote", (NAME,), "daily/2025-11-03.md:4"),
+                          (f"{NAME} wrote", (), "daily/2025-11-03.md:3")):      # the owner's line by the words that give it as theirs, no time named
+        rule = {"said": f'Lock up, since {lead} "{said}".', "filed": FILED, "job": "hall key", "his": his}
+        done, faults = conversion.quoted(rule, [{"summary": f'Lock up, since "{said}".', "body": ""}], daily, 4)
+        assert faults == [] and done[0]["at"] == at, lead
+
+
+def test_s2_a_never_is_read_with_its_own_sentence_and_listed_when_that_sentence_gives_no_exception(tmp_path):
+    from yerk_ai import conversion
+    two = "Never post the example ledger. Lock the example till unless the owner asks."
+    lesson_ = "Keep the example ledger in the owner's room. Never post it, since it holds my accounts."
+    rule = {"job": "example ledger", "said": two}
+    assert conversion.unlifted(rule, lesson_, FABLE2)                         # another sentence's exception changes nothing
+    assert not conversion.unlifted({**rule, "said": "Never post the example ledger unless the owner asks."}, lesson_, FABLE2)   # its own
+    assert not conversion.unlifted(rule, "Always keep the example ledger in the owner's room.", FABLE2)       # an absolute not the owner's
+    assert not conversion.unlifted({**rule, "said": 'Lock the example till. He said "never post the example ledger".'}, lesson_, FABLE2)
+    m, prop = ledger_store(tmp_path)
+    ledger_with(m, two)
+    p = {**prop, "left_out": [{"said": "Lock the example till unless the owner asks.", "why": "a placeholder's other step"}]}
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2))
+    assert rec["ready"] and rec["no_exception"] == {"example-ledger": "tree/rules.md:9"}
+
+
+def test_s2b_a_lesson_giving_his_never_an_exception_or_a_seal_goes_back_and_from_never_keeps_it(tmp_path):
+    from yerk_ai import conversion
+    rule = {"job": "example ledger", "said": "Never post the example ledger. Lock the example till unless the owner asks."}
+
+    def faults(text: str) -> list[str]:
+        return conversion.checks(rule, [{"summary": text, "body": ""}], [], [])
+    fault = 'lesson 1 gives its never an exception the rule does not: carry it as he wrote it (its words: "{}")'
+    assert faults("Never post the example ledger. No case lifts it.") == [fault.format("No case lifts it")]
+    assert faults("Never post the example ledger unless the owner asks.") == [fault.format("unless")]     # the owner's "unless" is another sentence's
+    assert faults("Never post the example ledger, even when asked.") == [fault.format("even when asked")]
+    assert faults("Never post the example ledger. Lock the example till unless the owner asks.") == []     # the owner's own sentences, kept
+    m, prop = ledger_store(tmp_path)
+    p = {**prop, "lessons": [{**prop["lessons"][0], "body": prop["lessons"][0]["body"] + " No case lifts it."}]}
+    asked: list[str] = []
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+    assert rec["rules"][2]["faults"] == [fault.format("No case lifts it")] and not rec["ready"]
+    assert any(fault.format("No case lifts it") in x for x in asked if x.startswith("The gate refused"))
+    asked.clear()
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(prop, asked), read=FABLE2,
+                                               earlier=path))
+    assert any("=== tree/rules.md:9 (job" in x for x in asked) and rec["from"]["why"].get("a fault the code finds") == 1 and rec["ready"]
+
+
+def test_s3_his_quote_goes_in_whole_never_cut_split_or_joined_and_one_past_the_gate_is_carried_and_listed(tmp_path):
+    from yerk_ai import conversion, curate
+    daily = picker_logs(tmp_path)
+    said = "the hall key sits under the blue mat"
+    rule = {"said": f'Check the mat, since he said "{said}".', "filed": FILED, "job": "hall key"}
+
+    def run(text: str, also: list[str] | None = None) -> tuple[list[dict], list[str]]:
+        return conversion.quoted(rule, [{"summary": text, "body": ""}], daily, 4, also)
+    cut = 'lesson 1 cuts his quote: "{}" is part of "' + said + '", which goes in whole, word for word'
+    assert run('Check the mat, since "the hall key" "sits under the blue mat".')[1] == [cut.format("the hall key"), cut.format(
+        "sits under the blue mat")]                                                         # chopped into adjacent runs
+    assert run('Check the mat, since "the hall key ... the blue mat".')[1] == [cut.format("the hall key ... the blue mat")]   # an ellipsis
+    assert run('Check the mat, since "the hall key sits under the mat".')[1] == [
+        'lesson 1 quotes words that are no whole quote of the rule: "the hall key sits under the mat"']
+    assert run(f'Check the mat, since "{said}".') == ([{"kind": "quote cited", "said": said, "as": said, "at": "daily/2025-11-03.md:4"}], [])
+    assert run('Check the mat, since "the spare lamp sits in the store".', ["the spare lamp sits in the store"])[1] == []   # a reason on
+    rota = "the example rota goes up on monday for the team"                    # file, whole, that the rule never quotes, is the owner's
+    his = {"said": f'Post the rota, since he said "{rota}".', "job": "example rota"}
+    assert conversion.recorded(his, f'Post the rota, since "{rota}".', daily) == {conversion.WHOLE}           # the owner's, whole: carried
+    assert conversion.recorded({**his, "said": "Post the rota early."}, f'Post the rota, since "{rota}".', daily) == set()   # the model's
+    lessons_, again = (curate.prompt(x, {}, "") for x in ("Lessons", "Lessons again"))
+    assert "run of 8 or fewer" not in lessons_ + again and "two words or fewer" not in lessons_
+    assert "whole, word for word, in quotes, in the sentence that carries it" in lessons_ and "never cut, split into pieces" in again
+
+
+def test_s3_from_redoes_a_rule_whose_lessons_cut_his_quote(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    said = "the example ledger holds my accounts and the bank reads it every month"
+    day.write_text(day.read_text() + memory.format_line(datetime_at(NOW - 2000), "example-room", "r1", "owner", "", said, "private", "q1") + "\n")
+    rule = f'Never post the example ledger, since he said "{said}".'
+    ledger_with(m, rule)
+
+    def run(body: str, earlier=None) -> tuple[dict, list[str], object]:
+        asked: list[str] = []
+        p = {**prop, "lessons": [{**prop["lessons"][0], "body": body}], "rewritten": [{"said": rule, "as": body}]}
+        path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2, earlier=earlier)
+        return conversion.loaded(path), asked, path
+    rec, _, first = run('Never post it, since he said "the bank reads it every month".')
+    assert not rec["ready"] and rec["rules"][2]["faults"][0].startswith("lesson 1 cuts his quote")
+    rec, asked, _ = run(f'Never post it, since he said "{said}".', earlier=first)
+    assert rec["from"]["why"]["a quote of his cut"] == 1 and any("=== tree/rules.md:9 (job" in x for x in asked) and rec["ready"]
+    assert rec["whole"] == {"example-ledger": "tree/rules.md:9"} and ("Listed as his quote kept whole, carried as he wrote it where the gate asks "
+                                                                       "a cite in its place and not counted in the verdict: 1 lesson, rules/example-ledger.md.") in conversion.render(rec)
+
+
+def test_s4_his_own_sentence_holding_bounced_beside_a_quote_is_carried_and_listed_and_a_sentence_of_the_models_still_counts(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    his = 'It bounced when he wrote "post the example ledger on the board".'
+    ledger_with(m, f"Never post the example ledger. {his}")
+    whole = [{"said": "Never post the example ledger.", "as": "Keep the example ledger in the owner's room. Never post it."}]
+
+    def run(body: str, summary: str = prop["lessons"][0]["summary"]) -> tuple[dict, list[str], str]:
+        asked: list[str] = []
+        p = {**prop, "lessons": [{**prop["lessons"][0], "summary": summary, "body": body}], "rewritten": whole}
+        path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2)
+        return conversion.loaded(path), [x for x in asked if x.startswith("The gate refused")], path.read_text()
+    rec, backs, text = run(f"Never post it, since it holds my accounts. {his}")
+    ledger = rec["rules"][2]
+    assert any(g.startswith(conversion.UNTAGGED) for g in ledger["lessons"][0]["gate"]) and rec["ready"] and not backs
+    assert rec["own"] == {"example-ledger": "tree/rules.md:9"} and any(d["kind"] == conversion.OWN for d in ledger["done"])
+    assert ("Listed as his own sentence kept, carried word for word where the gate reads an exchange outside example tags and not counted in "
+            "the verdict: 1 lesson, rules/example-ledger.md.") in text.splitlines()
+    rec, backs, _ = run('Never post it, since it holds my accounts. He wrote "post the example ledger on the board" and it bounced.')
+    assert not rec["ready"] and rec["own"] == {} and backs and "an example outside <example> tags" in backs[0]     # a sentence of its own
+    rec, backs, _ = run(f"Never post it, since it holds my accounts. {his}", "Keep the example ledger in the owner's room, " + "next to the "
+                        "till and the rota " * 5 + "there.")                       # the listed lesson's other finding still counts
+    assert not rec["ready"] and rec["own"] == {} and backs and "no one-line summary first" in backs[0]
+    assert "outside <example> tags" not in backs[0] and "an absolute rule" not in backs[0]       # the excused findings never sent
+
+
+def test_s5_a_cite_the_model_refuses_is_placed_as_its_words_and_listed_and_an_example_kept_so_is_listed_not_counted(tmp_path):
+    from yerk_ai import conversion, curate
+    m, prop = ledger_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    late = "the example ledger went up on the hall board by the door"         # written the day after the rule was filed: no line passes
+    (m.daily / "2025-11-11.md").write_text("# 2025-11-11\n\n" + memory.format_line(datetime_at(NOW + 86400), "example-room", "r1", "owner", "",
+                                                                                   late, "private", "q2") + "\n")
+    one, two = 'Bounced: "the example ledger, post it?"', f'Bounced: "{late}"'
+    ledger_with(m, f"Never post the example ledger. <example>{one}</example> <example>{two}</example>")
+    why = "the line asks it, it shows no bounce"
+    p = {**prop, "lessons": [{**prop["lessons"][0], "examples": [{"n": 1, "cite": False, "why": why}, 2]}]}
+    asked: list[str] = []
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+    ledger = rec["rules"][2]
+    assert f"Example 1: {one} (code cites it as daily/{day.name}:5, which reads: the example ledger, post it?)" in asked[0]
+    assert ledger["lessons"][0]["body"].endswith(f"<example>{one}</example> <example>{two}</example>") and ledger["faults"] == []
+    assert {"kind": "cite refused", "said": one, "at": f"daily/{day.name}:5", "why": why} in ledger["done"]
+    assert rec["ready"] and rec["uncited"] == {"example-ledger": "tree/rules.md:9"} and "Cites the model refused" in path.read_text()
+    lessons_, down = curate.prompt("Lessons", {}, ""), curate.prompt("Knock down lessons", {}, "")
+    assert '"cite": false' in lessons_ and "a cite kept whose line is not what the example shows" in down
+
+
+def test_s5_a_day_that_is_none_cites_nothing_a_day_with_no_year_is_the_last_one_and_a_one_word_piece_is_never_searched(tmp_path):
+    from yerk_ai import conversion
+    daily = picker_logs(tmp_path)
+    assert conversion.named("Bounced, Nov 31: the rota", None) == (conversion.NO_DAY, None)
+    assert conversion.pick("the rota went out late again", daily, FILED, when="Bounced, Nov 31: the rota") == ""
+    ex = {"said": 'Post the rota early. <example>Bounced, Nov 31: "the rota went out late again"</example> <example>Bounced: "late"</example>',
+          "filed": FILED}
+    assert [x["kind"] for x in conversion.examples(ex, daily)] == ["example kept", "example kept"]     # a one-word piece, no day named
+    assert conversion.named("Bounced, Dec 30: the rota", conversion.filed_at("example-room, 2026-01-05 09:00:00-05:00")) == ("2025-12-30", None)
+    assert conversion.named("Bounced, Nov 3: the rota", conversion.filed_at(FILED)) == ("2025-11-03", None)
+
+
+def test_s5_a_line_stamped_inside_the_filings_120_seconds_is_its_own_and_one_past_them_is_not(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    from yerk_ai import conversion
+    daily, tz = tmp_path / "daily", timezone(timedelta(hours=-5))
+    daily.mkdir()
+    rows = [(9, 2, 0, "the spare lamp note inside the filing"), (9, 2, 1, "the spare lamp note past the filing")]   # FILED is 09:00:00
+    (daily / "2025-11-05.md").write_text("# 2025-11-05\n\n" + "\n".join(memory.format_line(datetime(2025, 11, 5, h, mi, sec, tzinfo=tz),
+                                         "example-room", "r1", "owner", "", x, "private", f"f{sec}") for h, mi, sec, x in rows) + "\n")
+    assert conversion.FILING == 120 and conversion.pick("the spare lamp note inside the filing", daily, FILED) == "daily/2025-11-05.md:3"
+    assert conversion.pick("the spare lamp note past the filing", daily, FILED) == ""
+
+
+def test_s6_each_example_is_counted_once_by_its_place_and_two_of_one_cited_form_are_two():
+    from yerk_ai import conversion
+    form = "<example>Bounced, daily/2025-11-03.md:3</example>"
+    shown_ = [{"kind": "example cited", "said": x, "at": "daily/2025-11-03.md:3", "as": form} for x in ("Bounced: first", "Bounced: second")]
+    rule = {"job": "example hall", "said": "Book the example hall early."}
+
+    def faults(*bodies: str) -> list[str]:
+        return conversion.checks(rule, [{"summary": "Book the example hall early.", "body": b} for b in bodies], [], shown_)
+    assert faults(form, form) == [] and faults(f"{form} {form}", "") == []          # one in each of two lessons, or both in one
+    assert faults(form, "") == ['example 2 of the rule is in no lesson: "Bounced: second"']
+    assert faults(form, f"{form} {form}") == ['lesson 2 holds an example of the rule a second time: "Bounced, daily/2025-11-03.md:3"']
+
+
+def test_s7_the_apply_works_each_excuse_out_again_from_the_rules_words_and_refuses_a_list_they_do_not_bear(tmp_path):
+    import pytest
+
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(prop), read=FABLE2))
+    assert rec["ready"] and rec["no_exception"] == {"example-ledger": "tree/rules.md:9"}
+
+    def tried(change) -> str:
+        change(r := conversion.loaded(path))
+        (bad := tmp_path / "changed.md").write_text(conversion.render(r))
+        with pytest.raises(RuntimeError) as e:
+            conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, bad)
+        return str(e.value)
+
+    def gives(r: dict) -> None:          # the rule as the record holds it gives its never an exception: the list no longer holds
+        x = next(x for x in r["rules"] if x["cite"] == "tree/rules.md:9")
+        x["text"] = x["text"].replace("Never post the example ledger.", "Never post the example ledger unless the owner asks.")
+    assert tried(lambda r: r["whole"].update({"example-ledger": "tree/rules.md:9"})) == (
+        "example-ledger is listed as his quote kept whole, which its rule's words do not bear: run the dry run again; nothing applied")
+    assert tried(gives).startswith("example-ledger is listed as no exception, as the rule gives none, which its rule's words do not bear")
+    assert tried(lambda r: r.update({"no_exception": {}})) == "example-ledger no longer passes the gate: run the dry run again; nothing applied"
+    assert not lessons.converted(m.root)
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)                # the file as the dry run wrote it
+    assert lessons.no_exception(m.root) == {"example-ledger": (rec["day"], "tree/rules.md:9")}
+
+
+def test_findings_never_send_a_listed_nevers_exception_finding_and_send_its_lessons_other_findings(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    text = "Never post the example ledger in the hall."                  # its scope, no exception, no reason
+    gate = memory.unshaped("example ledger", text, None, m, FABLE2)["fix"]
+    sent = conversion.findings({"lessons": [{"summary": text, "body": "", "gate": gate}], "missing": [], "done": []}, False,
+                               {"job": "example ledger", "said": text}, FABLE2)
+    assert any(conversion.open_finding(g) for g in gate) and len(gate) > 1
+    assert sent == [f'lesson 1 ("{text}"): {g}' for g in gate if not conversion.open_finding(g)]
+
+
+def test_s3_s5_the_daily_run_files_nothing_for_his_quote_listed_and_keeps_an_absolute_with_no_scope_listed_for_its_exception(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs, shape
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {"model": "claude-fable-5-2"}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    from test_lesson_shape import docs_with, every_pin
+    docs_with(state, **every_pin())
+    said = "the example ledger holds my accounts and the bank reads it every month"
+    m.daily.mkdir(parents=True, exist_ok=True)
+    (m.daily / "2025-11-09.md").write_text("# 2025-11-09\n\n" + memory.format_line(datetime_at(NOW - 3000), "example-room", "r1", "owner", "",
+                                                                                   said, "private", "d1") + "\n")
+    (m.root / lessons.DIR).mkdir(parents=True)
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Keep the example ledger in the owner's room.", f'Do so since he said "{said}".'))
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta cite for his quote\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    at = next(a for a, *_ in shape.rows_of(m) if "/example-ledger.md" in a)
+    assert (f"Listed as his quote kept whole, as he wrote it, the cite the gate asks in its place no finding (rules-no-reason.tsv): 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta reason\n")      # listed for another cause
+    assert any("on record" in x for x in doctor.lessons(private, state, m, 1000.0, dry=True))
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Never post the example ledger, since it holds the accounts.", ""))
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\tan exception\n")   # its absolute has no scope
+    out = doctor.lessons(private, state, m, 1000.0, dry=True)
+    assert len(out) == 1 and "absolute" in out[0]
+
+
+def test_r8_a_rule_dropped_again_for_another_cause_than_its_findings_is_redone(tmp_path):
+    import shutil
+
+    from yerk_ai import conversion
+    m, asked = shop_store(tmp_path), set[str]()
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2)
+    shutil.copy(first, earlier := tmp_path / "earlier.md")
+    (m.root / "rules-proposals" / "findings.tsv").write_text("tree/rules.md:10\tlesson 1 leans on its sibling for a word\n")
+    second = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, {"tree/rules.md:10"}), read=FABLE2, earlier=earlier)
+    key = next(r for r in conversion.loaded(second)["rules"] if r["cite"] == "tree/rules.md:10")
+    assert any(d["kind"] == "reviewer dropped" and "it adds a case" in d["why"] for d in key["done"])     # dropped for another cause
+    asked.clear()
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2, earlier=second))
+    key = next(r for r in rec["rules"] if r["cite"] == "tree/rules.md:10")
+    assert "tree/rules.md:10" in asked and not any(d["kind"] == conversion.LOOPED for d in key["done"])      # redone, never listed
+
+
+def test_s4_the_daily_count_reads_no_exchange_in_a_lesson_listed_for_his_own_sentence(tmp_path):
+    from yerk_ai import shape
+    private = tmp_path / "private"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, tmp_path / "state")
+    (m.root / lessons.DIR).mkdir(parents=True)
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Keep the example ledger in the owner's room.",
+                                       'Do so since it holds my accounts. It bounced when he wrote "post the example ledger on the board".'))
+    assert len(shape.score(m.root / memory.RULES, rules=True)["untagged"]) == 1
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ttags round his sentence\n")
+    assert shape.score(m.root / memory.RULES, rules=True)["untagged"] == []

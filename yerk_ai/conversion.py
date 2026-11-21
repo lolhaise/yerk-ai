@@ -273,6 +273,16 @@ def absolute(job: str, text: str, read: Any) -> tuple[str, list[dict[str, str]]]
     return f"{text} {said}", [{"kind": "scope added", "said": said, "from": "its job"}]
 
 
+def sealed(rule: dict[str, Any], text: str) -> bool:
+    """A lesson holding a never of the rule's whose own sentences in the rule give it no exception (the gate's EXCEPTION, read in
+    each such sentence alone, its quotes and examples out): one it must carry as he wrote it, with no exception added (S2b)."""
+    def strong(said: str) -> set[str]:
+        return {w.lower() for w in shape.ABSOLUTE.findall(shape.QUOTED.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)))}
+    sents = [(y, strong(y)) for y in shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"])))]
+    return any(any(w in have for _, have in sents) and not any(shape.EXCEPTION.search(shape.QUOTED.sub(" ", y)) for y, have in sents if w in have)
+               for w in strong(text))
+
+
 def unlifted(rule: dict[str, Any], text: str, read: Any) -> bool:
     """A lesson's absolute with no exception because its rule gives none where it says it: each absolute word of the lesson is
     one the rule says (outside its quotes and examples), and each sentence of the rule holding that word gives no exception, as
@@ -635,7 +645,8 @@ def checks(rule: dict[str, Any], made: list[dict[str, Any]], done: list[dict[str
     """What code finds wrong in a rule's lessons, each a finding sent back: an <example> no example of the rule is, or one of them
     a second time; an example of the rule in no lesson (left out with the model's why aside), each example counted once, by its
     place, so two with the same cited form are two; the caution the model named not the rule's own sentence, or in no lesson (a
-    rewritten item never accounts for it); words that lift or seal a never which the rule does not say (SEALS)."""
+    rewritten item never accounts for it); an exception or a seal (SEALS) given to a never whose own sentence in the rule gives
+    none, or a seal anywhere, that the rule does not say."""
     out, placed = list[str](), set[int]()
     like = [re.compile(re.escape(x["as"][:-len("</example>")]) + (r"(?:, [^<]*)?</example>" if x.get("at") else "</example>")) for x in shown_]
     for i, x in enumerate(made, 1):
@@ -647,8 +658,12 @@ def checks(rule: dict[str, Any], made: list[dict[str, Any]], done: list[dict[str
                            else f'lesson {i} holds an example the rule does not give: "{m[1].strip()}"')
     gone = {d["said"] for d in done if d["kind"] == "example left out" and "would pass its length" not in str(d.get("why"))}
     out += [f'example {n} of the rule is in no lesson: "{x["said"]}"' for n, x in enumerate(shown_, 1) if n - 1 not in placed and x["said"] not in gone]
-    out += [f'lesson {i} adds words to a never that the rule does not say: "{m[0]}"' for i, x in enumerate(made, 1)
-            for m in SEALS.finditer(shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}")) if flat(m[0]) not in flat(rule["said"])]
+    his = f" {words_of(shape.QUOTED.sub(' ', WRAP.sub(' ', shape.EXAMPLE_TAGS.sub(' ', rule['said']))))} "
+    for i, x in enumerate(made, 1):     # S2b: an exception, or a seal, that the owner's never does not give in its own sentence
+        bare = shape.QUOTED.sub(" ", shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}"))
+        for y in shape.SENTENCES.split(bare):       # one the rule's own words, in their order, is the owner's, kept
+            if (said := [*SEALS.finditer(y), *(shape.EXCEPTION.finditer(y) if sealed(rule, bare) else ())]) and f" {words_of(y)} " not in his:
+                out.append(f'lesson {i} gives its never an exception the rule does not: carry it as he wrote it (its words: "{said[0][0]}")')
     for d in (d for d in done if d["kind"] == "caution to review"):
         if flat(d.get("said", "")) not in flat(rule["said"]):
             out.append(f'the caution is not the rule\'s own sentence, word for word: "{d.get("said", "")}"')

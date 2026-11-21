@@ -37,7 +37,7 @@ version changes.
 - `yerk curate --lessons` converts an existing store. Its dry run writes one proposals file,
   `<memory>/rules-proposals/lessons-<day>.md`, and nothing else: each original rule by its cite, the lessons made of it,
   each one's result from the gate a filing passes (on the pages every room reads and the Claude Fable 5.2 page, whatever
-  model the rooms run, since the owner's order of 2026-11-09 names that page), and each change as a listed item (a quote of the rule kept as a run of its own words,
+  model the rooms run, since the owner's order of 2026-11-09 names that page), and each change as a listed item (a quote of the rule kept whole, word for word,
   with its day-log line, a sentence left out or rewritten and why, a reason added and its line, the scope written into an
   absolute, a never whose rule gives no exception carried as written, a rule with no reason on file, the rule's caution). A rule already in the shape is split as it
   stands; the rest go through curate's propose and knock-down model pass. The dry run is not ready while the index it would
@@ -78,11 +78,24 @@ version changes.
   finding alone and written to `rules-no-reason.tsv`, whose rows now say what is missing (a reason, an exception); the
   daily run files nothing for it and names it apart. A cite names the line it means or there is none: never a line
   written after the rule was filed, the day and time a passage names, his own line for his words, else the earliest. A
-  quote of his stays in its lesson as a run of 8 or fewer of his words, never a pointer, and the rule's caution stays in
+  quote of his goes into its lesson whole, word for word, never cut and never a pointer, and the rule's caution stays in
   a lesson word for word. Each lesson is written to be read alone, and a reason for the whole rule is a `Why:` sentence
   of its own in each lesson it backs. `<memory>/rules-proposals/findings.tsv` (`cite<TAB>finding`) sends a rule back:
   `--from` redoes it with the findings shown, redoes a rule whose lessons hold what the code no longer writes, and says
   how many it redid for each reason.
+- His words win over the gate's shape. Where a finding of the gate on a lesson can only be met by changing a sentence or
+  a quote of his, the lesson is carried as he wrote it, listed for the owner's side, and the model is never sent that
+  finding: a never whose own sentence in the rule gives no exception (an exception in another sentence changes nothing),
+  a quote of his kept whole past the gate's 8 words, a sentence of his holding "landed" or "bounced" beside a quote, and
+  an example of his kept as its words. Each is named in the dry run's head and not counted in its verdict; the apply
+  works each excuse out again from the rule's words in the file and refuses a list they do not bear, then passes that
+  finding alone and writes the lesson to `rules-no-reason.tsv` with what it lacks; the daily run files nothing for it and
+  names it apart. A part of his quote (cut, split into pieces, joined across an ellipsis), an exception or a seal ("no
+  case lifts it") given to a never whose own sentence gives none, and an example placed twice are each a fault sent back,
+  and `--from` redoes a rule whose lessons cut his quote. The model may refuse the line code cites an example to, with
+  its why, and the example goes in as its words; a day named that is none cites nothing; a day-log line stamped up to
+  120 seconds after a rule's trailer time is its filing's own. Each example is counted once, by its place. The words
+  that give a quote as his are he, him, his, the owner, "in reply to" and the names `[curate] owner_names` gives.
 
 - A final that restates a lesson's cite (`rules/<slug>.md`, with or without its line, as a filing's own result gives it)
   is a filing report too, as one restating `rules.md:N` is; `rules.md` and `rules-topics.md` still need their line, since

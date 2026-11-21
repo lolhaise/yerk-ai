@@ -1889,4 +1889,11 @@ secs = 60
 # examples shown numbered and placed where the model names; the faults code finds; findings.tsv and what --from redoes
 # and why), lessons.py 13 (one list saying what is missing), shape.py 7 (the daily run leaves a listed exception out and
 # names it). 34,975: 34,716 plus 259.
-lines = 34975
+# 2026-11-21: lesson-store-2026-11-21 raised it by 181 more, run 5: his words win over the gate's shape, not folded to fit:
+# conversion.py 157 (the words that give a quote as his read from [curate] owner_names, no name in the code; a never read
+# with its own sentence; an exception or a seal added to his never a fault; his quote whole, a part of it a fault; each
+# finding only a change to their words could meet worked out, listed apart and never sent to the model, and worked out
+# again by the apply from the rule's words; a cite the model refuses; a day that is none; the filing's 120 seconds; each
+# example counted by its place), lessons.py 8 (what each listed lesson lacks), shape.py 14 (the daily run and its count
+# file nothing for his words listed, and name them), config.py 2 (the key's line). 35,156: 34,975 plus 181.
+lines = 35156
