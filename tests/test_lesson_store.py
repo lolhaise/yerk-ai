@@ -1066,6 +1066,8 @@ def test_s2_a_never_is_read_with_its_own_sentence_and_listed_when_that_sentence_
     assert not conversion.unlifted({**rule, "said": "Never post the example ledger unless the owner asks."}, lesson_, FABLE2)   # its own
     assert not conversion.unlifted(rule, "Always keep the example ledger in the owner's room.", FABLE2)       # an absolute not the owner's
     assert not conversion.unlifted({**rule, "said": 'Lock the example till. He said "never post the example ledger".'}, lesson_, FABLE2)
+    both = {**rule, "said": "Never post the example ledger. Never lock the example till unless the owner asks."}   # one word, two sentences
+    assert conversion.unlifted(both, lesson_, FABLE2) and not conversion.unlifted(both, "Never lock the example till, since it holds the cash.", FABLE2)
     m, prop = ledger_store(tmp_path)
     ledger_with(m, two)
     p = {**prop, "left_out": [{"said": "Lock the example till unless the owner asks.", "why": "a placeholder's other step"}]}

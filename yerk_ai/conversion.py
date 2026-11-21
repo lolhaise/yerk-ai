@@ -276,26 +276,36 @@ def absolute(job: str, text: str, read: Any) -> tuple[str, list[dict[str, str]]]
 
 
 def sealed(rule: dict[str, Any], text: str) -> bool:
-    """A lesson holding a never of the rule's whose own sentences in the rule give it no exception (the gate's EXCEPTION, read in
-    each such sentence alone, its quotes and examples out): one it must carry as he wrote it, with no exception added (S2b)."""
-    def strong(said: str) -> set[str]:
-        return {w.lower() for w in shape.ABSOLUTE.findall(shape.QUOTED.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)))}
-    sents = [(y, strong(y)) for y in shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"])))]
-    return any(any(w in have for _, have in sents) and not any(shape.EXCEPTION.search(shape.QUOTED.sub(" ", y)) for y, have in sents if w in have)
-               for w in strong(text))
+    """A lesson holding a never of the rule's whose own sentence in the rule (own_sentence) gives it no exception (the gate's
+    EXCEPTION, read in that sentence alone, its quotes out): one it must carry as the owner wrote it, with no exception added (S2b)."""
+    return any((y := own_sentence(rule, w, mine)) and not shape.EXCEPTION.search(shape.QUOTED.sub(" ", y)) for w, mine in nevers(text))
+
+
+def strong(said: str) -> set[str]:
+    """The absolute words of a passage, lower case, its quotes and examples out."""
+    return {w.lower() for w in shape.ABSOLUTE.findall(shape.QUOTED.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)))}
+
+
+def nevers(text: str) -> list[tuple[str, str]]:
+    """(absolute word, the lesson's sentence holding it) for each absolute of a lesson."""
+    return [(w, y) for y in shape.SENTENCES.split(shape.EXAMPLE_TAGS.sub(" ", text)) for w in sorted(strong(y))]
+
+
+def own_sentence(rule: dict[str, Any], w: str, mine: str) -> str:
+    """The sentence of the rule a lesson's absolute `w` comes from: of the rule's sentences holding the word (outside quotes and
+    examples), the one whose words are nearest those of the lesson's sentence `mine`; "" when the rule has no such word."""
+    have = [y for y in shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"]))) if w in strong(y)]
+    near = set(words_of(mine).split())
+    return max(have, key=lambda y: len(near & set(words_of(y).split())) / max(1, len(near | set(words_of(y).split()))), default="")
 
 
 def unlifted(rule: dict[str, Any], text: str, read: Any) -> bool:
     """A lesson's absolute with no exception because its rule gives none where it says it: each absolute word of the lesson is
-    one the rule says (outside its quotes and examples), and each sentence of the rule holding that word gives no exception, as
-    the gate reads that sentence alone. An exception in another sentence of the rule changes nothing; a never whose own sentence
-    gives the exception, and an absolute the rule does not have, still count."""
-    def strong(said: str) -> set[str]:
-        return {w.lower() for w in shape.ABSOLUTE.findall(shape.QUOTED.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)))}
-    sents = [(y, strong(y)) for y in shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"])))]
-    return bool(mine := strong(text)) and all(any(w in have for _, have in sents) and all(any(
-        "no exception" in g for g in shape.lesson(rule["job"], y, None, {}, read=read).get("absolute") or []) for y, have in sents if w in have)
-        for w in mine)
+    one the rule says (outside its quotes and examples), and the sentence of the rule it comes from (own_sentence) gives no
+    exception, as the gate reads that sentence alone. An exception in another sentence of the rule changes nothing, one that
+    holds the same word too; a never whose own sentence gives the exception, and an absolute the rule does not have, still count."""
+    return bool(pairs := nevers(text)) and all((y := own_sentence(rule, w, mine)) and any(
+        "no exception" in g for g in shape.lesson(rule["job"], y, None, {}, read=read).get("absolute") or []) for w, mine in pairs)
 
 
 def open_finding(g: str) -> bool:
