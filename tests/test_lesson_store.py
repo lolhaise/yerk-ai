@@ -611,6 +611,86 @@ def test_the_apply_lists_each_lesson_carried_with_no_reason_and_a_replacement_or
     assert memory.retire(m, log, "example-room", "m10", "rules/open-web-pages.md", "the browser went")["ok"] and lessons.no_reason(m.root) == {}
 
 
+def test_a_dry_run_from_an_earlier_file_redoes_each_rule_that_file_can_no_longer_vouch_for(tmp_path):
+    import shutil
+
+    from yerk_ai import conversion
+    m, asked, key = shop_store(tmp_path), set[str](), "tree/rules.md:10"
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2)
+    shutil.copy(first, earlier := tmp_path / "earlier.md")
+
+    def again(change=None) -> set[str]:
+        """The cites asked of the model on a run from `earlier`, or from a copy of it whose record `change` rewrote."""
+        path = earlier
+        if change:
+            change(rec := conversion.loaded(earlier))
+            (path := tmp_path / "rewritten.md").write_text(conversion.render(rec))
+        asked.clear()
+        conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2, earlier=path)
+        return set(asked)
+
+    def its(rec: dict) -> dict:
+        return next(r for r in rec["rules"] if r["cite"] == key)
+
+    def long(rec: dict) -> None:                 # the file says its lesson passed; the gate as an apply reads it today refuses it
+        its(rec)["lessons"][0]["body"] += " " + " ".join(f"Keep copy {i} of it with the owner, since it opens the hall." for i in range(12))
+
+    def other(rec: dict) -> None:                # the file's lesson no longer holds the rule's own sentence, and lists nothing
+        its(rec)["lessons"][0].update(summary="Keep the example shelf tidy.", body="Sweep it, since it holds the stock.")
+        its(rec)["done"] = [d for d in its(rec)["done"] if d["kind"] != "rewritten"]
+
+    def lost(rec: dict) -> None:                 # the file says the rule lost a trigger
+        rec["lost"] = {key: ["example key"]}
+    assert key not in again()                                                   # as the file stands, the rule is kept
+    assert [key in again(change) for change in (long, other, lost)] == [True, True, True]
+    (m.root / lessons.RETIRED).write_text("example-key\t2025-11-01\t\n")        # its lesson's slug retired since
+    assert key in again()
+    (m.root / lessons.RETIRED).unlink()
+    rows = (m.root / memory.RULES).read_text()
+    (m.root / memory.RULES).write_text(rows.replace("- example key: Never lend", "- example lamp: Never lend"))
+    assert key in again() and "tree/rules.md:6" not in asked                    # its job renamed, its words the same: its line changed
+
+
+def test_a_none_rows_lesson_is_not_sent_back_for_its_reason_so_a_later_dry_run_keeps_it_and_the_apply_needs_the_row(tmp_path):
+    import shutil
+
+    import pytest
+
+    from yerk_ai import conversion
+    m, prompts = old_store(tmp_path), list[str]()
+    (m.root / "rules-proposals").mkdir()
+    (m.root / "rules-proposals" / "reasons.tsv").write_text("tree/rules.md:9\tnone\n")
+    prop = {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it."}],
+            "rewritten": [{"said": "Never post the example ledger.", "as": "Keep the example ledger in the owner's room. Never post it."}]}
+
+    def model(prompt: str, tools: str) -> str:
+        prompts.append(prompt.lstrip())
+        return "KEEP tree/rules.md:9" if prompts[-1].startswith("You check the lessons") else json.dumps(prop)
+    rec = conversion.loaded(first := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
+    ledger = rec["rules"][2]
+    assert rec["ready"] and ledger["lessons"][0]["gate"] and not any(d["kind"] == "still failing" for d in ledger["done"])
+    assert prompts and not any(p.startswith("The gate refused") for p in prompts)      # its missing reason is not asked for again
+    shutil.copy(first, earlier := tmp_path / "earlier.md")
+    prompts.clear()
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2, earlier=earlier))
+    assert prompts == [] and rec["from"]["kept"] == len(rec["rules"]) and rec["ready"]   # kept with the rest, no model call
+    assert rec["no_reason"] == {"example-ledger": "tree/rules.md:9"}                    # and still listed
+    (m.root / "rules-proposals" / "reasons.tsv").write_text("# the row was taken back\n")
+    with pytest.raises(RuntimeError, match="example-ledger no longer passes the gate"):
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)                  # its pass holds only while the row is there
+    assert not (m.root / lessons.DIR).exists()
+
+
+def test_the_command_hands_its_from_file_to_the_dry_run(tmp_path, monkeypatch):
+    from yerk_ai import cli, conversion
+    got: list[object] = []
+    monkeypatch.setattr(conversion, "dry_run", lambda private, state, s, **kw: got.append(kw) or tmp_path / "proposals.md")
+    args = ["--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state")]
+    assert cli.main(["curate", "--lessons", "--from", str(tmp_path / "earlier.md"), *args]) == 0
+    assert cli.main(["curate", "--lessons", *args]) == 0
+    assert got == [{"earlier": tmp_path / "earlier.md"}, {"earlier": None}]
+
+
 def datetime_at(t: float):
     from datetime import datetime, timezone
     return datetime.fromtimestamp(t, timezone.utc)
