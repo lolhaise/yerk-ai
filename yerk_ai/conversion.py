@@ -188,12 +188,13 @@ def given_his(before: str) -> bool:
     return bool(HIS.search(re.split(r"[.!?]\s", before)[-1][-48:]))
 
 
-def quoted(rule: dict[str, Any], made: list[dict[str, Any]], daily: Path, most: int) -> tuple[list[dict[str, str]], list[str]]:
+def quoted(rule: dict[str, Any], made: list[dict[str, Any]], daily: Path, most: int, also: list[str] | None = None) -> tuple[list[dict[str, str]], list[str]]:
     """The rule's quotes in its lessons, never swapped for a pointer: each quoted run of a lesson must be a run of a quote of the
     rule (a fault otherwise), and a quote of the rule past `most` words that a lesson keeps a run of is a listed item with the
-    line `pick` finds for it (its words given as his when the rule gives them so, the day and time the rule names before it), or kept."""
+    line `pick` finds for it (its words given as his when the rule gives them so, the day and time the rule names before it), or kept.
+    `also`: the reasons on file for it (REASONS), his words too, a run of which a lesson may quote."""
     said = rule["said"]
-    theirs = [(m[1], m.start()) for m in shape.QUOTED.finditer(said)]
+    theirs = [(m[1], m.start()) for m in shape.QUOTED.finditer(said)] + [(x, len(said)) for x in also or []]
     done, faults, seen_ = list[dict[str, str]](), list[str](), set[str]()
     for i, x in enumerate(made, 1):
         for m in shape.QUOTED.finditer(shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}").replace(SCOPED.format(job=rule["job"]), " ")):
@@ -203,7 +204,7 @@ def quoted(rule: dict[str, Any], made: list[dict[str, Any]], daily: Path, most: 
                 faults.append(f'lesson {i} quotes words that are no run of a quote of the rule: "{m[1]}"')
                 continue
             q, at = of[0]
-            if len(q.split()) > most and q not in seen_:
+            if len(q.split()) > most and q not in seen_ and at < len(said):
                 seen_.add(q)
                 line = pick(q, daily, rule.get("filed", ""), given_his(said[:at]), place=before(said[:at], filed_at(rule.get("filed", ""))))
                 done.append({"kind": "quote cited", "said": q, "as": m[1], "at": line} if line else {
@@ -361,7 +362,7 @@ def stale(s: memory.Settings, r: dict[str, Any], m: dict[str, Any], found: dict[
         any((was.get(x["said"]) or {}).get("kind") == "example cited" and (was[x["said"]].get("at"), was[x["said"]]["as"]) != (x.get("at"), x["as"])
             for x in shown_) or any(x not in {y["said"] for y in shown_} for x in was if (was[x] or {}).get("kind") == "example cited"),
         any(d["kind"] == "example left out" and "would pass its length" in str(d.get("why")) for d in m["done"]),
-        bool(checks(r, m["lessons"], m["done"], shown_) or quoted(r, m["lessons"], s.daily, most)[1]))) if hit]
+        bool(checks(r, m["lessons"], m["done"], shown_) or quoted(r, m["lessons"], s.daily, most, [w for _, w in supplied_reasons(s).get(r["cite"], [])])[1]))) if hit]
 
 
 def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: Callable[[dict[str, Any]], list[str]],
@@ -383,7 +384,8 @@ def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: C
             continue
         made = [{**x, "gate": gate(x)} for x in m["lessons"]]
         bad = stale(s, r, m, found)
-        looped = bool(found.get(r["cite"])) and m.get("found") == found[r["cite"]] and any(d["kind"] == "reviewer dropped" for d in m["done"])
+        looped = bool(found.get(r["cite"])) and m.get("found") == found[r["cite"]] and any(   # the reviewer: a finding of theirs holds
+            d["kind"] == "reviewer dropped" and re.search(r"\bfindings?\b", str(d.get("why"))) for d in m["done"])
         if not made or any(refused(x["gate"], NONE in rows.get(r["cite"], []), unlifted(r, f"{x['summary']} {x['body']}", read)) for x in made) \
                 or accounted(r, made, m["done"]) or (any(d["kind"] in ("still failing", "reviewer dropped") for d in m["done"]) and not looped):
             bad = bad or [STALE[-1]]
@@ -435,7 +437,9 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
     made, names, glosses = list[dict[str, Any]](), dict[int, list[int]](), dict[int, str]()
     for i, (summary, body, _, exs) in enumerate(parts):
         def theirs(m: re.Match[str], i: int = i) -> str:    # an <example> the model wrote that is one of the rule's: named
-            if n := next((k for k, y in enumerate(shown_, 1) if flat(m[1]) in (flat(y["said"]), flat(shape.INSIDE.sub(r"\1", y["as"])))), 0):
+            words = re.findall(r"[a-z0-9]+", m[1].lower())     # its words, or the line code cites it to, whatever its mark
+            if n := next((k for k, y in enumerate(shown_, 1) if words in (re.findall(r"[a-z0-9]+", y["said"].lower()), re.findall(
+                    r"[a-z0-9]+", shape.INSIDE.sub(r"\1", y["as"]).lower())) or (y.get("at") and (c := shape.CITED.search(m[1])) and c[0] == y["at"])), 0):
                 names.setdefault(n, []).append(i)
             return "" if n else m[0]
         body = " ".join(new.split()) if (new := shape.INSIDE.sub(theirs, body)) != body else body
@@ -474,7 +478,7 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
         else:
             x = {**x, "kind": "example in no lesson"}
         done.append(x)
-    cited, wrong = quoted(rule, made, s.daily, most)
+    cited, wrong = quoted(rule, made, s.daily, most, [w for _, w in supplied.get(rule["cite"], [])])
     done += cited
     if (c := (prop or {}).get("caution")):
         held = next((x for x in made if flat(str(c)) in flat(f"{x['summary']} {x['body']}")), None)

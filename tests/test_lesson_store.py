@@ -915,6 +915,8 @@ def test_r4_his_quote_is_kept_as_a_run_of_his_own_words_never_a_pointer(tmp_path
     assert {"kind": "quote cited", "said": said, "as": "the bank reads it every month", "at": f"daily/{day.name}:{n}"} in ledger["done"]
     ledger, backs = run(f'Never post it, since he said "{said}".')      # past 8 words and on record: the gate's finding goes back
     assert "the words at" not in ledger["lessons"][0]["body"] and backs and f"a quote the day log holds at daily/{day.name}:{n}" in backs[0]
+    ledger, backs = run('Never post it, since he said "holds my accounts".')         # a run of his reason on file is his words too
+    assert ledger["faults"] == [] and not backs
     ledger, backs = run('Never post it, since he said "the bank reads the ledger".')       # not a run of his quote
     assert ledger["faults"] == ['lesson 1 quotes words that are no run of a quote of the rule: "the bank reads the ledger"'] and backs
 
@@ -940,6 +942,9 @@ def test_r5_the_model_sees_the_examples_numbered_and_each_lands_where_it_names_n
     body = ledger["lessons"][0]["body"]
     assert len(body) > 600 and body.endswith(f"<example>{ex[0]}</example> <example>{ex[1]}</example>") and ledger["faults"] == []
     assert ledger["lessons"][0]["gate"] == [] or all(conversion.open_finding(g) for g in ledger["lessons"][0]["gate"])
+    _, ledger, _ = run([{**two[0], "body": two[0]["body"] + ' <example>Bounced, "the example ledger went to the hall board."</example>'},
+                        {**two[1], "examples": [2]}])                        # the model wrote one of the rule's own: taken as named
+    assert ledger["faults"] == [] and ledger["lessons"][0]["body"].endswith(f"<example>{ex[0]}</example>")
     _, ledger, _ = run([{**two[0], "examples": [1, 3]}, {**two[1], "examples": [1]}])
     assert ledger["faults"] == ["lesson 1 names example 3, which the rule does not have: it has 2",
                                 "example 1 is named in 2 lessons (1, 2): name it in the one whose step it shows",
@@ -977,7 +982,8 @@ def test_r8_a_findings_row_redoes_its_rule_shows_the_model_its_findings_and_a_ru
 
     def model(prompt: str, tools: str) -> str:
         prompts.append(prompt.lstrip())
-        return shop_model(asked, {"tree/rules.md:10"})(prompt, tools)
+        return shop_model(asked, {"tree/rules.md:10"})(prompt, tools).replace("| it adds a case", "| the owner's side's finding still holds: "
+                                                                               "lesson 1 leans on its sibling")
     asked.clear()
     rec = conversion.loaded(second := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2, earlier=earlier))
     assert asked == {"tree/rules.md:8", "tree/rules.md:10"} and rec["from"]["why"]["a findings row"] == 1     # :10 never kept with a row
