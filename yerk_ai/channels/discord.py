@@ -10,8 +10,10 @@
   its files, there or in the room's own channel, are saved to the room's inbox as a person's are (_keep).
 - One read past those channels: the message whose link `watch` or `attachments` is handed, in an owner's room anywhere
   in its own server, read once for the files attached to it (pull, files), which are saved as a person's files are.
-- Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
-  are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
+- Only the owner, the people a room lists (`people` in rooms.toml, and those the owner had it answer by asking, the
+  people tool), and in test mode the listed webhooks, are answered; in a room that answers more than one person, a line
+  above each one's message names who sent it (said). Webhook senders pass a loop guard (lifted/loopguard.py) so a
+  runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
   files are staged in the room's inbox under their own names, a ledger row each; a file that
   cannot be fetched gets a visible "could not fetch NAME" and the turn still runs. Every notice
@@ -32,10 +34,11 @@
 - Replies: the final text only, split under 2,000 characters, never inside a code block.
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
   checked against what the bot can send (measured, BOT_UPLOAD), the message id recorded, a
-  visible notice on any miss that names the limit in bytes.
-- Slash commands (/model, /effort, /new, /stop, /status): on connect exactly this install's, on the
+  visible notice on any miss that names the limit (in exact bytes only where MB would read the same).
+- Slash commands (/model, /effort, /new, /stop, /status, /fast): on connect exactly this install's, on the
   guilds its rooms live in, never global; the owner's only, in a room only, each the daemon method
-  the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds.
+  the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds;
+  /status's from what is on hand, the meters asked now edited into it once they come.
   `[discord] commands = false` in yerkd.toml: none registered, none answered.
 """
 from __future__ import annotations
@@ -110,7 +113,8 @@ def commands() -> list[dict[str, Any]]:
     def pick(name: str, values: list[str] | None) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
                  **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {"autocomplete": True} if values is None else {})}]
-    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
+    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"]), "fast": pick("fast", ["on", "off"]),
+            "login": [{"type": 3, "name": n, "description": words.CHOICE[n], "required": True} for n in ("name", "site", "user", "password")]}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -193,6 +197,12 @@ def stamp(m: Any, edit: bool = False) -> float:
     return at.timestamp() if hasattr(at, "timestamp") else time.time()
 
 
+def replied(m: Any) -> str | None:
+    """The id of the message a Discord reply answers, or None for a message that is no reply."""
+    ref = getattr(m, "reference", None)
+    return str(ref.message_id) if ref is not None and getattr(ref, "message_id", None) and getattr(m, "type", None) == discord.MessageType.reply else None
+
+
 def is_card(text: str) -> bool:
     """A progress card, which says its sender is still at work: a line that starts as an OpenClaw tool row does (CARD_ROWS),
     or Yerk AI's own card in a room with people (card.py): a state mark and its holding line first, "-# step N" last."""
@@ -231,7 +241,7 @@ class DiscordChannel:
     def __init__(self, token: str, owner: int | None, test_senders: list[int], ledger: Ledger,
                  client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
                  capture: Callable[..., bool] | None = None, daemon: Any = None, taste: Callable[[str, str], Any] | None = None,
-                 assistants: frozenset[int] = frozenset()):
+                 assistants: frozenset[int] = frozenset(), word: Callable[[str, str, str, str | None], Awaitable[bool]] | None = None):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
         self.assistants = assistants              # other assistants' user ids: filed where a room watches, never answered
         self.settling: dict[str, asyncio.TimerHandle] = {}   # message id -> an assistant's message waiting to settle
@@ -241,6 +251,7 @@ class DiscordChannel:
         self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
         self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
         self.taste = taste                        # the owner's verdict on a room's last reply (daemon.Yerkd.taste_heard), or None
+        self.word = word                          # the owner's word on a text card, read before a turn (daemon.Yerkd.texting_word)
         self.rooms: dict[int, Room] = {}          # channel id -> room: its own, and the one it watches
         self.names: dict[str, int] = {}           # room name -> its own channel id, where everything goes
         self.cards: dict[str, Any] = {}           # room name -> its open card
@@ -276,6 +287,24 @@ class DiscordChannel:
         self.names[room.name] = channel_id
         for cid in (channel_id, watch) if watch else (channel_id,):
             self.rooms[cid], self.people[cid] = room, people
+
+    def answer(self, room: str, people: frozenset[int]) -> None:
+        """The people `room` answers besides the owner from its next message on, in both channels add_room gave it (the
+        people tool's change, Yerkd.tool_people)."""
+        for cid in (c for c, r in self.rooms.items() if r.name == room):
+            self.people[cid] = people
+
+    async def author(self, room: str, cid: int | None, mid: int) -> tuple[int, str]:
+        """Who wrote message `mid` in `room`'s own channel (`cid`, from a link, must be it), for the people tool: their user
+        id and handle, (0, "") for the owner; watch.Failed in words for a message elsewhere, not there, unread, or by a bot,
+        a webhook or another assistant."""
+        if cid not in (None, self.names[room]):
+            raise watch.Failed(words.PEOPLE_NOT_HERE)
+        m = await self._read(room, self.names[room], mid, False, words.PEOPLE_NOT_HERE)
+        a, me = m.author, self.client.user
+        if getattr(m, "webhook_id", None) or getattr(a, "bot", False) or a.id in self.assistants or me is not None and a.id == me.id:
+            raise watch.Failed(words.PEOPLE_BOT)
+        return (0, "") if a.id == self.owner else (int(a.id), str(getattr(a, "name", "") or ""))
 
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -315,17 +344,26 @@ class DiscordChannel:
         return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
 
     def inbound_text(self, room: Room, m: Any, files: list[dict[str, Any]]) -> str:
-        """What the room reads of a message it takes: message_text, and from the channel it watches, a line above it naming who
+        """What the room reads of a message it takes: said, and from the channel it watches, a line above it naming who
         the message was sent to there (`watch_assistant`, the channel's name as the client sees it, else its id), so the room
         reads along and answers NO_REPLY unless the sender's words ask it something; with `watch_audit` true, so it grades that
         assistant's answer, never NO_REPLY, naming the sender and who reads the room (_readers). Never in its own channel."""
-        text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state))
+        text = self.said(room.name, m, files)
         if m.channel.id == self.names[room.name]:
             return text
         (who, where), audit = self._there(room, m.channel), getattr(room, "conf", {}).get("watch_audit") is True
         line = (words.SENT_THERE_AUDIT if audit else words.SENT_THERE).format(who=who, channel=where, quiet=words.NO_REPLY,
                                                                              sender=shown(m.author), readers=self._readers(m.channel))
         return f"{line}\n{text}"
+
+    def said(self, room: str, m: Any, files: list[dict[str, Any]]) -> str:
+        """message_text, under a line naming who sent it when a person did in a room that answers more than one (the people
+        tool adds one), so the room never takes one's words for another's: the name the server shows them by, and their handle."""
+        text, ids = message_text(m, files, self.reply_line(room, m), addons.reads(self.state)), self.people.get(m.channel.id, ())
+        if len(ids) < 2 or self.sender_of(m) != "person":
+            return text
+        handle, name = str(getattr(m.author, "name", "") or m.author.id), " ".join(shown(m.author).split())
+        return f"{words.PERSON_BY.format(who=f'{name} (@{handle})' if name != handle else f'@{handle}', n=len(ids))}\n{text}"
 
     def _readers(self, ch: Any) -> str:
         """Who reads the room that watches `ch`: the owner alone, else the owner and its people, each by the name the server
@@ -345,6 +383,13 @@ class DiscordChannel:
                 self.known[i] = shown(await asyncio.wait_for(ch.guild.fetch_member(i), 5))
             except Exception as e:                # a name, never a reason to hold the turn: said in words until fetched
                 log.debug("room %s: no name for %s yet: %s", room.name, i, e)
+
+    def channel_name(self, ref: str) -> str:
+        """A `watch` ref's channel ("discord:<id>") by the name the client's cache holds, for the status card; "" when it holds
+        none or the ref is another service's, so the card says the id. Never fetched: the card is read on the loop."""
+        kind, _, cid = str(ref).partition(":")
+        ch = self.client.get_channel(int(cid)) if kind == "discord" and cid.isdigit() else None
+        return str(getattr(ch, "name", "") or "")
 
     def _there(self, room: Room, ch: Any) -> tuple[str, Any]:
         """Who the owner talks to in the channel `room` watches (`watch_assistant`), and that channel's name, else its id."""
@@ -446,6 +491,15 @@ class DiscordChannel:
                 self.retry.add(m.channel.id)
                 asyncio.ensure_future(self._retry(m.channel.id, room))
             return
+        if self.word is not None and m.channel.id == self.names[room.name]:
+            try:                                  # a word that cannot be read is an ordinary message, never a lost one
+                his = await self.word(room.name, sender, str(m.content or ""), replied(m))
+            except Exception:
+                log.exception("room %s: message %s was not read as a word on a text card", room.name, m.id)
+                his = False
+            if his:
+                self.ledger.inbound_set(str(m.id), state="filed", note="a word on a text card")   # in the day's log already; no turn
+                return
         if sender == "owner" and self.taste is not None and m.content and m.channel.id == self.names[room.name]:
             try:                                  # rated before the turn runs: the room's last reply is the one the owner saw
                 self.taste(room.name, m.content)
@@ -540,7 +594,7 @@ class DiscordChannel:
             asyncio.ensure_future(self._release(h, ahead, mine))
 
     async def _release(self, h: Hold, ahead: asyncio.Future[None] | None, mine: asyncio.Future[None]) -> None:
-        """The group as one turn, in its place in the order chain: the sent-to line once, each message as message_text
+        """The group as one turn, in its place in the order chain: the sent-to line once, each message as said
         renders it, then the answer line. The turn's id is its first message's; the rest follow that row (`then`)."""
         room = h.room
         try:
@@ -553,8 +607,8 @@ class DiscordChannel:
             (first, _, extra, _), ids = group[0], [str(m.id) for m, *_ in group]
             await self._meet(room, first.channel)            # a watch_audit room's readers, by name, before its line is written
             text = "\n".join([self.inbound_text(room, first, staged[0]) + extra,
-                              *(message_text(m, f, self.reply_line(room.name, m), addons.reads(self.state)) + x
-                                for (m, _, x, _), f in zip(group[1:], staged[1:])), self._answer_line(h, first.channel, kept)])
+                              *(self.said(room.name, m, f) + x for (m, _, x, _), f in zip(group[1:], staged[1:])),
+                              self._answer_line(h, first.channel, kept)])
             note = f"one turn with {', '.join(ids)}" if len(ids) > 1 else ""
 
             def then(state: str, reply: list[str], chars: int) -> None:   # the room's thread, as the turn ends: the rest as its first
@@ -861,23 +915,37 @@ class DiscordChannel:
             picks = []
         await it.response.autocomplete([discord.app_commands.Choice(name=n[:100], value=v[:100]) for n, v in picks])
 
-    async def _command(self, name: str, room: str, args: dict[str, str]) -> str:
-        """Each command is the daemon method the room's tool or `yerk` command calls; no second path."""
+    async def _command(self, name: str, room: str, args: dict[str, str]) -> str | tuple[str, Callable[[], Awaitable[str]]]:
+        """Each command is the daemon method the room's tool or `yerk` command calls; no second path. /status: the room's own
+        card (not yerk status') from what is on hand; while an account on it has no reading under a minute old, a line
+        saying its meters are being asked, and the call that asks them now (usage.py), whose card _answer edits in."""
         d = self.daemon
         if name == "status":
-            return "\n".join(status.card(await d.status_now({"live": True})))     # the meters asked now (usage.py)
-        if name in ("model", "effort"):
+            card = status.room_card(s := await d.status_now({}), room)       # no Claude Code started
+            if all(a["meter"].get("source") == "live" and "error" not in a["meter"] for a in s["accounts"]):
+                return "\n".join(card)                                        # the live card already: nothing to ask
+            async def live() -> str:
+                return "\n".join(status.room_card(await d.status_now({"live": True}), room))
+            card.insert(card.index(words.TANK) + 1, words.METERS_ASKED)
+            return "\n".join(card), live
+        if name in ("model", "effort", "fast"):
             r = await (d.model_command(room, args.get("model", ""), args.get("account", "")) if name == "model"
+                       else d.fast_command(room, args.get("fast", "")) if name == "fast"
                        else d.tool_settings(room, "", args.get("effort", ""), by_owner=True))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
+        if name == "login":      # need 127: an interaction, never a message, so no room's session sees the password
+            r = await d.login_save(room, args.get("name", ""), args.get("site", ""), args.get("user", ""), args.get("password", ""))
+            return f"{words.DONE if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))
             return f"{words.DONE if r['ok'] else words.PLAIN} {r['line']}"
         return f"{words.NOT_DONE} {words.NOT_RUN}"
 
-    async def _answer(self, it: Any, call: Awaitable[str]) -> None:
+    async def _answer(self, it: Any, call: Awaitable[str | tuple[str, Callable[[], Awaitable[str]]]]) -> None:
         """Ephemeral, inside Discord's three seconds: a call still running after QUICK is deferred first
-        (Discord shows it thinking) and answered when it ends."""
+        (Discord shows it thinking) and answered when it ends. A call that hands back a second one (/status's meters)
+        has that one's answer edited into the same message once, as an ephemeral one is while its token lives (15 minutes);
+        an edit that fails is one log line, and the first answer stays."""
         task = asyncio.ensure_future(call)
         if (slow := not (await asyncio.wait({task}, timeout=QUICK))[0]):
             await it.response.defer(ephemeral=True, thinking=True)
@@ -886,7 +954,19 @@ class DiscordChannel:
         except Exception:
             log.exception("discord: a slash command failed")
             text = f"{words.NOT_DONE} {words.NOT_RUN}"
+        text, then = text if isinstance(text, tuple) else (text, None)
         await (it.followup.send if slow else it.response.send_message)(text[:MAX], ephemeral=True)
+        if then is None:
+            return
+        try:
+            text = await then()
+        except Exception:
+            log.exception("discord: a slash command failed")
+            text = f"{words.NOT_DONE} {words.NOT_RUN}"
+        try:                                            # after a defer the followup above filled the deferred message: the same one
+            await it.edit_original_response(content=text[:MAX])
+        except (discord.HTTPException, *LOST) as e:     # its token gone, or Discord refused the edit
+            log.warning("discord: a slash command's second answer was not edited in, its first stays: %s", e)
 
     async def recover(self, cid: int, room: Room) -> None:
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
@@ -1002,8 +1082,8 @@ class DiscordChannel:
         fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return fut.result(180) if wait else None
 
-    def open_card(self, room: str, text: str, kind: str = "turn") -> None:
-        self._call(self._open(room, text, kind), wait=False)
+    def open_card(self, room: str, text: str) -> None:
+        self._call(self._open(room, text, "turn"), wait=False)
 
     def progress(self, room: str, text: str) -> None:
         self.want[room] = text
@@ -1090,6 +1170,11 @@ class DiscordChannel:
                 self.ledger.outbound(room=room, channel=str(self.names[room]), kind="progress-edit",
                                      message_id=str(card.id), chars=len(text), body=text[:MAX])
                 return
+
+    async def edit_post(self, room: str, message_id: str, text: str) -> None:
+        """A post of its own in `room`'s channel edited by its id, after a restart too (a text card, texting/holds.py)."""
+        await (await self._channel(room)).get_partial_message(int(message_id)).edit(content=text[:MAX])
+        self.ledger.outbound(room=room, channel=str(self.names[room]), kind="card-edit", message_id=str(message_id), chars=len(text), body=text[:MAX])
 
     # worker cards (workers.py), on the event loop
     async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:

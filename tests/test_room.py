@@ -292,7 +292,7 @@ def test_every_account_out_of_the_pinned_model_runs_on_the_rooms_own_on_the_pinn
     wait_idle(room)
     assert [(r["account"], r["outcome"], r["model"], r["out_of"]) for r in rows_of(ledger)] == [
         ("two", "error", "m", None), ("one", "error", "m", None), ("two", "ok", "usual", "m")]
-    assert chan.replies == [("echo: hello", ["1"])] and f"{words.WORKING} on usual, m back {words.clock(reset)}" in chan.cards
+    assert chan.replies == [("echo: hello", ["1"])] and f"{words.WORKING} on usual, m back {words.short_when(reset)}" in chan.cards
     assert json.loads(f.read_text()) == {"model": "m", "account": "two"}                    # no fallback drops a pin
     room.rp.close()
 
@@ -496,6 +496,27 @@ def test_a_refusal_fallback_answer_stands_marked_and_the_next_turn_starts_fresh(
     assert "--session-id" in last and second["session_id"] != first["session_id"] and second["recap"] == 1
     assert chan.replies[1][0].startswith("echo: (Yerk AI: this is a new session.") and chan.replies[1][1] == ["2"]
     assert second["fallback_model"] is None
+    room.rp.close()
+
+
+def test_a_refusal_fallback_starts_the_next_turn_fresh_only_when_failures_toml_says_fresh_next_turn(env):
+    """failures.toml decides what the room does after a refusal, as it does for every other class (cleanup F1-03): with
+    another action the answer stands and is marked, and the next turn goes on in the same session, no recap."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    room.failures.actions["refusal"] = "stop"
+    send(room, ledger, "1", "FIXTURE:refusal_fallback hi")
+    wait_idle(room)
+    mark, first = chan.cards[-1], rows_of(ledger)[-1]
+    assert chan.replies[0] == ("answered on the fallback model", ["1"])
+    assert (first["outcome"], first["failure"], first["action"]) == ("ok", "refusal", "stop")
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    second = rows_of(ledger)[-1]
+    assert second["session_id"] == first["session_id"] and second["recap"] is None and len(argvs(tmp_path)) == 1
+    assert chan.replies[1] == ("echo: again", ["2"])
+    assert mark == f"{words.WORKING} answered by a backup model"                   # the class's mark, no fresh start named
     room.rp.close()
 
 
@@ -706,7 +727,7 @@ def test_every_account_out_of_the_pinned_model_runs_the_turn_on_the_rooms_own_mo
     assert [(r["account"], r["outcome"], r["model"], r["out_of"], r["hop"]) for r in rows] == [
         ("one", "error", "m", None, None), ("two", "error", "m", None, "quota:one"), ("one", "ok", "usual", "m", "quota:one,quota:two")]
     assert chan.replies == [("echo: hello", ["1"])] and not chan.notices
-    assert f"{words.WORKING} the sample, item moved {words.clock(reset)}" in chan.cards
+    assert f"{words.WORKING} on usual, m back {words.short_when(reset)}" in chan.cards     # a back-at time: the card's way
     cool = Cooldowns(tmp_path / "cooldowns.json")
     assert cool.until("one", model="m") == reset and cool.until("one", model="usual") is None   # the reply on usual left m's rest
     send(room, ledger, "2", "still out")                                                    # inside the rest: usual at once, no walk
@@ -738,4 +759,43 @@ def test_a_room_that_is_not_the_owners_falls_back_naming_no_model_or_account(env
     assert chan.replies == [("echo: hello", ["1"])] and (row["model"], row["out_of"], row["hop"]) == ("usual", "m", "quota:one,quota:two")
     assert f"{words.WORKING} {words.MOVED_ON}" in chan.cards
     assert not any("usual" in c or "back" in c or "account" in c or "two" in c.split() for c in chan.cards)
+    room.rp.close()
+
+
+def test_a_failed_turn_is_read_by_its_own_process_stderr_never_an_earlier_one(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    room.reap_idle(force=True)
+    (tmp_path / "rooms" / "r" / "stderr.log").write_bytes(b"No conversation found with session ID: 0ld\n")   # an earlier process's
+    room.turn_timeout = 1.0                                    # its silence window, short
+    send(room, ledger, "2", "STALL now")
+    wait_idle(room)
+    row = dict(ledger._select("SELECT outcome, action, source, session_id FROM turns ORDER BY id", ())[1])
+    assert (row["outcome"], row["action"], row["source"]) == ("timeout", "stop", "none")      # a silence, never a lost session
+    assert row["session_id"] == room.ledger._select("SELECT session_id FROM turns ORDER BY id", ())[0]["session_id"]
+    assert ledger.inbound_get("2")["state"] == "failed" and len(chan.notices) == 1
+
+
+def test_a_message_that_comes_in_while_the_idle_close_waits_for_the_old_process_is_answered(env, monkeypatch):
+    make, ledger, tmp_path = env
+    slow = tmp_path / "slow-exit.sh"                 # an old process that takes 2 s to exit after its stdin closes
+    slow.write_text(f'#!/bin/sh\n"{FAKE}" "$@"\nsleep 2\n')
+    slow.chmod(0o700)
+    monkeypatch.setenv("YERK_CLAUDE", str(slow))
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    closer = threading.Thread(target=room.reap_idle, kwargs={"force": True})
+    closer.start()
+    time.sleep(0.5)                                  # the close has the process and waits for it, its session still locked
+    assert room.rp is None and closer.is_alive()
+    send(room, ledger, "2", "hello again")
+    closer.join(10)
+    wait_idle(room)
+    assert chan.notices == [] and chan.replies[-1] == ("echo: hello again", ["2"])
+    assert ledger.inbound_get("2")["state"] == "answered"
     room.rp.close()

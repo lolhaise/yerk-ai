@@ -20,8 +20,10 @@ room (rooms.toml role = "machine"), else the ops room (yerkd.toml [jobs] ops_roo
 room. An agent job is a worker (workers.py): the
 `message` is its brief, the job's account, cap, model and thinking level apply, its card is in the job's room, and when
 it ends its last message is told by the room's own session; a last message of exactly NO_REPLY is
-silence. A note runs nothing: when it is due, its room's own session is told `[reminder NAME due]` and
-its `message` in a harness turn of its own and says it in its voice (no worker, shell, account or cap).
+silence. Its worker has a shell, files and the web, and of the room's own tools only the add-ons the room gives every worker (rooms.toml
+worker_addons), the ones its `addons` names, checked against the room when it is booked and at each sync that can read the rooms file, and recall
+and read_memory where [workers] yerk_tools gives workers those; never send, text or email. A note runs nothing: when it is due, its room's own
+session is told `[reminder NAME due]` and its `message` in a harness turn of its own and says it in its voice (no worker, shell, account or cap).
 `deliver = "silent"` keeps a job's output and relay out of the room (the ledger has them);
 a failure still alerts. Every run is a row in the ledger's job_runs table: the job, when it was
 planned and when it fired, how it ended, what was delivered or why nothing was.
@@ -43,21 +45,23 @@ import subprocess
 import sys
 import time
 import tomllib
+import urllib.error
 import urllib.request
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Collection, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
-from .config import EFFORTS, REPO, toml_value
+from .config import ADDON_NAME, EFFORTS, REPO, toml_value, write_private
+from .config import rooms as read_rooms
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
 from .words import DONE, NOT_DONE, NOTHING, PHONE
-from .workers import ENV_KEEP, Workers, last_message, systemctl, took, unit_line
+from .workers import ENV_KEEP, Workers, for_memory, last_message, oom_note, room_addons, systemctl, took, unit_line
 
 log = logging.getLogger("yerk.jobs")
 FILE = "jobs.toml"
@@ -70,6 +74,8 @@ WAITING = "undelivered: waiting for the room's turn"       # a told note's run u
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
+RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # an agent job's hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
+                                         # tried every RETRY_EVERY s until its unit's limit less RETRY_SPARE s; a script or a note gives up at once
 ROOM_NOTES, ROOM_NOTE_MINUTES, NOTE_CHARS = 20, 5, 600     # the [jobs] defaults (CONF)
 ROOM_NOTE_BURST = 3      # notes per room_note_minutes window: a reminder, its follow-up check and a watch in one turn
                          # (2026-10-21: one per window refused a person's second note twice, put off to the next turn)
@@ -94,6 +100,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
              "yerkd.toml); unset, [workers] model, else the room's live one",
     "effort": "agent jobs: the worker's thinking level, one of low, medium, high, xhigh, max; unset, [workers] effort, "
               "else the room's live level",
+    "addons": "agent jobs: the room's own add-on tools the worker gets beside the ones the room gives every worker "
+              "(rooms.toml worker_addons), each a tool as the room's allow names it or a server's name for all of its "
+              "tools there, such as [\"mcp__web__web_fetch\"]; one the room has not refuses the job when it is booked",
     "cap": "minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); "
            "a stopped run alerts",
     "deliver": '"announce" (default): the output or the relay goes to the room; "silent": the run and its ledger '
@@ -183,6 +192,7 @@ class Job:
     at_epoch: float = 0.0
     model: str = ""               # agent jobs: the worker's own model and thinking level; "" the room's
     effort: str = ""
+    addons: tuple[str, ...] = ()  # agent jobs: the room's own add-on tools its worker gets too
 
     @property
     def unit(self) -> str:
@@ -193,8 +203,8 @@ class Job:
         return ZoneInfo(self.tz or "UTC")
 
     def runs_on(self) -> dict[str, str]:
-        """The model and thinking level an agent job sets for its worker; {} runs on the room's."""
-        return {k: v for k, v in (("model", self.model), ("effort", self.effort)) if v}
+        """The model, thinking level and add-ons an agent job sets for its worker; {} runs on the room's."""
+        return {k: v for k, v in (("model", self.model), ("effort", self.effort), ("addons", " ".join(self.addons))) if v}
 
     def describe(self) -> str:
         if self.when == "calendar":
@@ -223,7 +233,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         raise JobError(f"unknown key{'s' if len(bad) > 1 else ''} {', '.join(bad)}; the keys are {', '.join(KEYS)}")
     if (kind := str(raw.get("kind", ""))) not in KINDS:
         raise JobError('`kind` must be "script", "agent" or "note"' + (f", not {kind!r}" if kind else ""))
-    if kind == "note" and (extra := [k for k in ("command", "account", "cap", "model", "effort") if k in raw]):
+    if kind == "note" and (extra := [k for k in ("command", "account", "cap", "model", "effort", "addons") if k in raw]):
         raise JobError(f"a note runs nothing, so it takes no `{extra[0]}`: its `message` is what its room is told")
     whens = [k for k in ("schedule", "at") if k in raw]
     if len(whens) != 1:
@@ -244,6 +254,8 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
         raise JobError('`deliver` must be "announce" or "silent"')
     account, model = str(raw.get("account", "") or ""), str(raw.get("model", "") or "").strip()
+    if not isinstance(addons := raw.get("addons", []), list) or not all(isinstance(a, str) and ADDON_NAME.match(a) for a in addons):
+        raise JobError('`addons` must be a list of the room\'s add-on tools or servers, like addons = ["mcp__web__web_fetch"]')
     if (effort := str(raw.get("effort", "") or "").strip().lower()) and effort not in EFFORTS:
         raise JobError(f"`effort` must be one of {', '.join(EFFORTS)}, or left out for the room's level")
     if kind == "script":
@@ -253,6 +265,8 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             raise JobError("a script job runs with no account; `account` is for agent jobs")
         if (extra := [k for k in ("model", "effort") if k in raw]):
             raise JobError(f"a script job runs no model; `{extra[0]}` is for agent jobs")
+        if "addons" in raw:
+            raise JobError("a script job runs no worker; `addons` is for agent jobs")
         payload = str(raw.get("command", "") or "")
         if not payload.strip():
             raise JobError("a script job needs `command`, the shell line to run")
@@ -276,7 +290,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             tz_name = "UTC"
         if at_epoch <= now:
             raise JobError(f"`at` {when_text(at_epoch, tz_name)} is in the past")
-    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort)
+    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort, tuple(addons))
 
 
 def load(path: Path, now: float | None = None) -> tuple[dict[str, Job], dict[str, str]]:
@@ -314,7 +328,7 @@ def in_text(epoch: float | None, now: float) -> str:
     return f"in {took(d)}" if d >= 0 else f"{took(-d)} ago"
 
 
-# the file: append a job, remove a job, under a lock
+# the file: append a job, remove a job, under a lock, each new text swapped in whole
 @contextmanager
 def locked(path: Path) -> Iterator[None]:
     lock = path.with_name(f".{path.name}.lock")
@@ -324,6 +338,13 @@ def locked(path: Path) -> Iterator[None]:
             yield
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def rewrite(path: Path, text: str) -> None:
+    """The file's new text written beside it and swapped in with one rename (write_private, 0600). `load` takes no lock, so a
+    read at any instant (the daemon's fire, a runner, a sync) finds the old file or the new one whole; written in place, it was
+    empty or cut for an instant and every job looked gone. Through a symlink, the file it points at is swapped, the link kept."""
+    write_private(path.resolve(), text)
 
 
 def block(name: str, fields: dict[str, Any]) -> str:
@@ -357,7 +378,7 @@ def add(path: Path, name: str, fields: dict[str, Any], now: float | None = None)
             raise JobError(f"a job named {name!r} is already in the file; remove it first, or pick another name")
         if text and not text.endswith("\n"):
             text += "\n"
-        path.write_text(text + ("\n" if text.strip() else "") + block(name, fields))
+        rewrite(path, text + ("\n" if text.strip() else "") + block(name, fields))
     return job
 
 
@@ -367,12 +388,12 @@ def remove(path: Path, name: str) -> bool:
         text = path.read_text() if path.is_file() else ""
         if (span := _span(text, name)) is None:
             return False
-        path.write_text(text[:span[0]] + text[span[1]:])
+        rewrite(path, text[:span[0]] + text[span[1]:])
     return True
 
 
 def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str = "announce", cap: float = 0.0,
-               account: str = "", model: str = "", effort: str = "") -> dict[str, Any]:
+               account: str = "", model: str = "", effort: str = "", addons: Collection[str] = ()) -> dict[str, Any]:
     """The table a `schedule add` writes: `when` is a time (a one-shot) or a systemd calendar line
     (recurring); `what` is the message (agent, note) or the command (script)."""
     w = when.strip()
@@ -390,8 +411,24 @@ def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str
     if account:
         out["account"] = account
     out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
+    if addons:
+        out["addons"] = list(addons)
     out["command" if kind == "script" else "message"] = what
     return out
+
+
+def addons_refusal(conf: dict[str, Any], addons: Collection[str]) -> str:
+    """Why the job's room cannot give its worker these add-ons, room_addons' own sentence; "" when it can."""
+    got = room_addons(conf, list(addons), "", Path())
+    return got if isinstance(got, str) else ""
+
+
+def room_confs(private: Path) -> dict[str, dict[str, Any]] | None:
+    """rooms.toml's rooms as the daemon reads them; None where it cannot be read here (a job's add-ons wait for its fire)."""
+    try:
+        return read_rooms(private)
+    except (OSError, SystemExit, tomllib.TOMLDecodeError):
+        return None
 
 
 def default_tz(room_confs: dict[str, dict[str, Any]], room: str, conf: dict[str, Any]) -> str:
@@ -414,18 +451,33 @@ def env_for(private: Path, state: Path) -> Env:
     return Env(sys.executable, REPO, private.resolve(), state.resolve())
 
 
+def spelled(python: str) -> str:
+    """The interpreter as every writer spells it in a unit (the daemon `python`, the `yerk` command's first line `python3`;
+    2026-11-19: each took the other's units for changed): its folder's `python`, else `python3`, when that is the same file,
+    else as given. Never another folder's: a venv's python is the system's file and runs another environment."""
+    for name in ("python", "python3"):
+        with suppress(OSError):
+            if os.path.samefile(plain := os.path.join(os.path.dirname(python), name), python):
+                return plain
+    return python
+
+
+def start_limit(job: Job) -> int:
+    """The unit's TimeoutStartSec in seconds: an agent job's runner only hands off, a script runs its cap in the unit."""
+    return 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
+
+
 def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     """(timer, service) for the job, byte for byte what sync writes."""
     head = f"{HEADER}{job.name}.\n"
     run = [f"WorkingDirectory={unit_line(str(env.repo))}", f'Environment="PYTHONPATH={unit_line(str(env.repo))}"',
            f'Environment="YERK_PRIVATE={unit_line(str(env.private))}"',
            f'Environment="YERK_STATE={unit_line(str(env.state))}"',
-           f"ExecStart={unit_line(env.python, '-P', '-m', 'yerk_ai.jobs', 'run', job.name)}"]
+           f"ExecStart={unit_line(spelled(env.python), '-P', '-m', 'yerk_ai.jobs', 'run', job.name)}"]
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
-    start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
-    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start}", ""]
+    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start_limit(job)}", ""]
     return "\n".join(timer), "\n".join(service)
 
 
@@ -484,6 +536,9 @@ class Systemd:
     def disable_now(self, timer: str) -> str:
         return self._unit_cmd("disable", "--now", timer)
 
+    def running(self, unit: str) -> bool:                     # a one-shot service is activating while its run goes
+        return systemctl("is-active", unit).stdout.strip() in ("active", "activating")
+
     def check(self, spec: str) -> str:
         try:
             p = subprocess.run(["systemd-analyze", "calendar", spec], capture_output=True, text=True, timeout=30)
@@ -512,10 +567,21 @@ class Plan:
     failed: dict[str, str] = field(default_factory=dict)       # systemd refused: job -> why
 
 
+def running_one_shots(path: Path, units: Systemd, errors: dict[str, str]) -> dict[str, Job]:
+    """The one-shots `load` refused only for their time having passed whose own service runs: in the file and running.
+    Only that run takes one out of the file and then its units; one whose run was cut is refused as any past time is."""
+    return {n: j for n, j in load(path, 0)[0].items() if n in errors and j.when == "at" and units.running(f"{j.unit}.service")}
+
+
 def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan:
     jobs, errors = load(path, now)
+    kept = running_one_shots(path, units, errors)               # kept as they are, never checked for a next fire
     p = Plan(jobs=jobs, errors=errors)
+    confs = room_confs(env.private) if any(j.addons for j in jobs.values()) else None
     for name, job in jobs.items():
+        if confs is not None and job.addons and (why := addons_refusal(confs.get(job.room, {}), job.addons)):
+            p.errors[name] = why
+            continue
         for spec in job.calendar():
             if (why := units.check(spec)):
                 p.errors[name] = why
@@ -529,6 +595,10 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
             p.added.append(name)
         else:
             p.changed.append(name)
+    for name, job in kept.items():
+        del p.errors[name]
+        p.jobs[name] = job
+        p.unchanged.append(name)
     wanted = set(jobs) - set(p.errors)
     p.removed = [n for n in units.ours() if n not in wanted]
     return p
@@ -590,19 +660,22 @@ def diff_lines(p: Plan) -> list[str]:
     return out or ["nothing to do: the jobs file is empty and no job timer is on disk"]
 
 
-def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float | None = None) -> list[str]:
-    """One line per job: next fire from systemd, in the job's zone, and the last fire."""
+def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float | None = None,
+               running: Collection[str] = ()) -> list[str]:
+    """One line per job: next fire from systemd, in the job's zone, and the last fire; a one-shot whose run is going
+    (`running`) says so in their place."""
     now = time.time() if now is None else now
     out = []
     for name, r in back.items():
         if r.get("stray"):
             out.append(f"timer {r['unit']}: NOT IN THE JOBS FILE (`yerk jobs sync` removes it)")
-        elif not r["scheduled"]:
+        elif not r["scheduled"] and name not in running:
             out.append(f"{name}: NOT SCHEDULED (no timer loaded; run `yerk jobs sync`)")
         else:
             nxt = when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})" if r["next"] else "")
             last = f", last {when_text(r['last'], r['tz'])}" if r["last"] else ", never fired yet"
-            out.append(f"{name}: next {nxt}{last}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
+            head = words.JOB_RUNNING.format(name=name) if name in running else f"{name}: next {nxt}{last}"
+            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
                        + "".join(f", {k} {v}" for k, v in jobs[name].runs_on().items()))
     return out or ["jobs: none"]
 
@@ -613,13 +686,15 @@ def phone(text: str) -> str:
 
 def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[str]:
     """`yerk status`: one line per job, state first and phone width: a green dot and how long until
-    its next fire (from systemd, never from memory), a white dot for a job with no timer, a red dot
-    for one that cannot be scheduled or a timer with no job. The detail (times, zones, why) is
-    `yerk jobs list`. An unreadable timer list is said, never shown as empty."""
+    its next fire (from systemd, never from memory), an orange one for a one-shot whose run is going,
+    a white dot for a job with no timer, a red dot for one that cannot be scheduled or a timer with
+    no job. The detail (times, zones, why) is `yerk jobs list`. An unreadable timer list is said,
+    never shown as empty."""
     now = time.time() if now is None else now
     jobs, errors = load(path, now)
     try:
-        back = readback(jobs, units, now)
+        kept = running_one_shots(path, units, errors)          # in the file and running, as the sync reads them
+        back = readback({**jobs, **kept}, units, now)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         log.warning("jobs: the timer list could not be read: %s", e)
         return [f"{NOT_DONE} jobs: the timer list could not be read"]
@@ -627,13 +702,15 @@ def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[s
     for name, r in back.items():
         if r.get("stray"):
             out.append(phone(f"{NOT_DONE} timer {name}: not in the jobs file"))
+        elif name in kept:
+            out.append(phone(f"{words.WORKING} " + words.JOB_RUNNING.format(name=name)))
         elif not r["scheduled"]:
             out.append(phone(f"{NOTHING} {name}: not scheduled"))
         elif r["next"]:
             out.append(phone(f"{DONE} {name}: {in_text(r['next'], now)}"))
         else:
             out.append(phone(f"{NOTHING} {name}: no next fire"))
-    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors)]
+    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors) if n not in kept]
     return out
 
 
@@ -675,6 +752,14 @@ def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, wor
         return dict(json.loads(r.read()))
 
 
+def not_listening(e: Exception) -> bool:
+    """post_control reached no daemon, so nothing was sent: no yerkd.json, its pid gone or another user's (one left from
+    before the box went down), or nothing on its port yet. A daemon that answered, or took the request and was slow, is not."""
+    if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError) and isinstance(e.reason, OSError):
+        e = e.reason
+    return isinstance(e, (FileNotFoundError, ProcessLookupError, PermissionError, ConnectionRefusedError))
+
+
 def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, now: float | None = None) -> int:
     """The unit's one step. A script job: ledger the run, run the command, hand the result to the
@@ -710,10 +795,16 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         if job.kind == "note":                  # and what a late tell reads (Jobs.reattach)
             (folder / "message").write_text(job.payload)
         payload = {"job": {"action": "fire", "name": name, "run": run_id}}
-    try:
-        out = handoff(payload)
-    except (OSError, ValueError) as e:
-        out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}
+    deadline = fired + start_limit(job) - RETRY_SPARE        # a one-shot stays in the file while this waits
+    while True:
+        try:
+            out = handoff(payload)
+        except (OSError, ValueError) as e:
+            if job.kind == "agent" and not_listening(e) and time.time() + RETRY_EVERY < deadline:
+                time.sleep(RETRY_EVERY)
+                continue
+            out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}
+        break
     if not out.get("ok"):
         why = str(out.get("error", "the daemon refused it"))
         if job.kind == "script":
@@ -737,17 +828,20 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
             f"{job.room}.\n"
             "- Your last message is what the room hears, told by the room's own session in its voice: write it for "
             f"the room. If there is nothing worth saying, make your last message exactly {NO_REPLY} and nothing else.\n"
-            "- Write that same text as the one line of REPORT.md in your folder; the card shows it.\n\n"
+            "- Write this run's one-line result (what it found or did) as the first line of REPORT.md in your folder, "
+            f"even when your last message is {NO_REPLY}: the card shows it with the job's name.\n\n"
             f"The job:\n\n{job.payload.strip()}\n")
 
 
 # the schedule tool's three actions: one code path for the tool and for `yerk schedule`
 def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
                  deliver: str = "announce", cap: float = 0.0, account: str = "", note_chars: int = NOTE_CHARS,
-                 model: str = "", effort: str = "", models: dict[str, str] | None = None) -> dict[str, Any]:
+                 model: str = "", effort: str = "", models: dict[str, str] | None = None, addons: Collection[str] = (),
+                 room_conf: dict[str, Any] | None = None) -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
     a job systemd will not schedule is taken out of the file again. A note longer than `note_chars` is refused, and so is
-    a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list."""
+    a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list,
+    and an agent job's `addons` its room (`room_conf`) cannot give its worker, before anything is written."""
     name, low, effort = name.strip().lower(), model.strip().lower(), effort.strip().lower()
     model = low if low in (models or {}) else model.strip()
     if kind == "note" and len(what) > note_chars:
@@ -755,11 +849,13 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
     if kind == "agent" and model and models is not None and model not in models and model not in models.values():
         listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in models.items())
         return {"ok": False, "error": words.NOT_LISTED.format(model=model, models=listed)}
+    if kind == "agent" and addons and room_conf is not None and (why := addons_refusal(room_conf, addons)):
+        return {"ok": False, "error": why}
     if not tz:
         return {"ok": False, "error": f"give `tz` (an IANA name such as Europe/Paris): room {room!r} has no timezone "
                                       "configured, and nothing is put on UTC by accident"}
     try:
-        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort)
+        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort, addons)
         job = add(path, name, fields)
         p, back = sync(path, units, env)
     except JobError as e:
@@ -793,6 +889,8 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
     that is not the owner's sees its own notes and never another job's name, room or error."""
     jobs, errors = load(path)
     try:
+        kept = running_one_shots(path, units, errors)          # in the file and running, as the sync reads them
+        jobs, errors = {**jobs, **kept}, {n: w for n, w in errors.items() if n not in kept}
         back = readback(jobs, units)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         return {"ok": False, "error": f"the timer list could not be read: {e}"}
@@ -803,7 +901,7 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
                                                                              if r["next"] else ""),
              **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind,
                  "deliver": jobs[n].deliver, **jobs[n].runs_on()} if n in jobs else {})} for n, r in back.items()]
-    lines = read_lines(back, jobs, now) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
+    lines = read_lines(back, jobs, now, kept) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
     return {"ok": True, "jobs": rows, "errors": errors, "lines": lines}
 
 
@@ -885,7 +983,8 @@ class Jobs:
                            str(req.get("when", "")), str(req.get("what", "")), room, tz,
                            str(req.get("deliver") or "announce"), float(req.get("cap_minutes") or 0),
                            str(req.get("account") or ""), int(self.conf.get("note_chars", NOTE_CHARS)),
-                           str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models)
+                           str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models,
+                           [str(a) for a in req.get("addons") or []], self.room_confs[room])
         if out["ok"]:
             log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line", out["schedule"], out["next_text"])
         return out
@@ -914,7 +1013,7 @@ class Jobs:
         if job.kind != "agent":
             return {"ok": False, "error": f"job {name} is a {job.kind} job; only agent jobs and notes are fired this way"}
         out = await self.workers.start(job.room, brief_for(job, run_id, float(run["fired"])), account=job.account,
-                                       cap_minutes=job.cap, job=name, effort=job.effort,
+                                       cap_minutes=job.cap, job=name, effort=job.effort, addons=list(job.addons),
                                        model=self.workers.models.get(job.model.lower(), job.model))   # an alias, by the list
         if not out.get("ok"):
             self.ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start",
@@ -1022,11 +1121,13 @@ class Jobs:
         job = self.jobs().get(name)
         text = last_message(Path(row["staging"])) or str(end.get("result") or "")
         self.ledger.job_run_set(run_id, ended=float(end["finished"]), exit=str(end["exit"]), chars=len(text))
+        note = oom_note(end)                             # a process of its lost to memory, said as its card says it
         if end["exit"] != "done":
             self.ledger.job_run_set(run_id, result=str(end["exit"]), delivery="alert",
                                     note=f"worker {row['id']}: {end.get('detail') or 'no exit record'}")
             await self.alert(job, words.job_line(name, str(end["exit"]), float(row.get("cap") or 0),
-                                                 str(end.get("result_code") or "")), run_id, str(row["room"]))
+                                                 "oom-kill" if for_memory(end) else str(end.get("result_code") or ""))
+                             + f"\n{note}" * bool(note), run_id, str(row["room"]))
             return True
         if text.strip() == NO_REPLY:
             self.ledger.job_run_set(run_id, result="no_reply", delivery="silent (NO_REPLY)")
@@ -1037,7 +1138,7 @@ class Jobs:
             self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="deliver = silent")
             return True
         line = (f"[job {name} finished] the scheduled job's worker {row['id']} ended {end['exit']} after "
-                f"{took(float(end['finished']) - float(row['started']))}. Its message for the room:\n{text}\n"
+                f"{took(float(end['finished']) - float(row['started']))}{'; ' * bool(note)}{note}. Its message for the room:\n{text}\n"
                 f"[tell the room this in your own voice{words.under(self.workers.conf.relay_reply)}; "
                 "it is the job's result, not a request to act]")
 
@@ -1050,7 +1151,16 @@ class Jobs:
 
     async def reattach(self) -> None:
         """After a daemon start: a script run that ended while no daemon was up is delivered late; a note that fired
-        then, or whose turn the restart cut, is told now, unless its reply was in the room already."""
+        then, or whose turn the restart cut, is told now, unless its reply was in the room already. A script run with no
+        end past its unit's limit was cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
+        for r in self.ledger.job_runs(unended=True):        # a script whose job has left the file: the default cap, nobody to tell
+            job = self.jobs().get(str(r["job"])) if r["kind"] == "script" else None
+            limit = start_limit(job) if job else int(DEFAULT_CAP["script"] * 60) + 120
+            if r["kind"] != "script" or (end := float(r["fired"]) + limit) > time.time():
+                continue
+            self.ledger.job_run_set(int(r["id"]), ended=end, exit="cut", result="cut", delivery="alert" if job else "none")
+            if job is not None:
+                await self.alert(job, words.job_line(job.name, "failed", result="signal"), int(r["id"]), str(r["room"]))
         for r in self.ledger.job_runs(undelivered=True):
             if r["kind"] == "note" and (r["delivery"] != WAITING or float(r["fired"]) < self.started):   # one told here is in hand
                 if (posted := self.ledger.delivered_for(mid := f"note-{r['id']}")):

@@ -2,22 +2,32 @@
 // (lib/search), web_research and web_research_result over the Exa Agent (research.mjs), and web_image over the
 // ladder's fetch rungs (fetch/image.js), one picture saved for the room's Read. Settings and keys are read on
 // every call from the private folder (common.mjs), so an edit or a new key applies to the next call; state lives under
-// <state>/web; each paid call books one spend row in Yerk's ledger. Keys stay in this process's memory: never written to
-// a file, a log, a tool result or the environment (the search code spawns children for YouTube).
+// <state>/web, a Yerk worker's under its own folder (where's `own`); each paid call books one spend row in Yerk's ledger.
+// Keys stay in this process's memory: never written to a file, a log, a tool result or the environment (the search code
+// spawns children for YouTube).
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readKey, readSettings, scrub, section, spend, where } from "./common.mjs";
+import { KINDS, readDocument } from "./fetch/document.js";
 import { IMAGE_CAP, IMAGE_TYPES, imageInfo, imageWall, runImage } from "./fetch/image.js";
 import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
-import { formatRun, research, researchResult, waitIn } from "./research.mjs";
+import { DAILY_USD, formatRun, research, researchResult, waitIn } from "./research.mjs";
+import { paidDomainEntry } from "./search/engines.js";
 import { runSearchPlus } from "./search/provider.js";
 import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
 
 export const AT = where();
+
+// Where a tool's state lives: `own` holds what this process writes, and in a worker the shared folder beside it is read
+// (common.mjs where). An `at` made by hand (the tests) without `own` writes in `web`, as a room's process does.
+export const dirsOf = (at, part) => {
+  const own = at.own || at.web;
+  return { stateDir: path.join(own, part), sharedStateDir: own === at.web ? "" : path.join(at.web, part) };
+};
 
 const RUNG = {
   F1: "a plain fetch from this machine, free",
@@ -35,6 +45,23 @@ const ENGINE = {
   parallel: "Parallel's keyless search, free",
   firecrawl: "Firecrawl keyless, free",
   duckduckgo: "DuckDuckGo, free",
+};
+// Whether an engine sends a web_search filter as a field of its request, read off lib/search/engines.js at the function
+// named on each row. One it drops, or only words as a preference in its request, is not enforced, and the answer's first
+// line says so: the room checks the pages itself. freshness and date_after share one start date on exa, parallel-paid
+// and you, which send the later of the two, so both hold. test/tools.test.mjs builds each request and keeps this true.
+// A country is the one filter that keeps no page out: by Exa's and Parallel's own pages it localizes the results
+// (geo-targeting), so where an engine takes it the first line says "localized to CA", never "filtered by". Paid
+// Parallel sends any two letters and, by its own page, ignores a code outside its 37: the one row no request shows.
+const YOU_COUNTRIES = new Set("AR AU AT BE BR CA CL DK FI FR DE HK IN ID IT JP KR MY MX NL NZ NO CN PL PT PH RU SA ZA ES SE CH TW TR GB US".split(" ")); // engines.js's own, not exported
+const PARALLEL_COUNTRIES = new Set([...YOU_COUNTRIES, "GR"]); // docs.parallel.ai, Advanced Search Settings, Supported locations (read 2026-11-11)
+export const ENFORCED = {
+  exa: () => true, // buildExaBody
+  "parallel-paid": (k, f) => k !== "date_before" && (k !== "country" || PARALLEL_COUNTRIES.has(f.country.toUpperCase())), // buildParallelPaidBody: the end date only as words in its objective
+  you: (k, f) => k !== "country" || YOU_COUNTRIES.has(f.country.toUpperCase()), // buildYouCall: only the 36 countries it lists
+  parallel: () => false, // searchParallelFree: each filter a sentence in its objective, the country never read
+  firecrawl: (k, f) => !k.startsWith("date_") || !f.freshness, // searchFirecrawl, firecrawlTbs: freshness wins over the dates
+  duckduckgo: (k) => k === "freshness", // searchDuckDuckGo
 };
 
 // List prices for the spend rows, US$ (October 2026: Browserbase's Developer plan, Exa's and Parallel's pricing pages).
@@ -71,7 +98,7 @@ export const TOOLS = [
   {
     name: "web_fetch",
     description:
-      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A hard site can take up to about two minutes.",
+      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A PDF or a Word file (.docx, .doc, .odt) comes back as its words, a PDF page by page, saved in this room's work folder, where Read opens a PDF's pages. A hard site can take up to about two minutes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -92,6 +119,11 @@ export const TOOLS = [
       properties: {
         query: { type: "string", description: "What to search for." },
         count: { type: "integer", minimum: 1, maximum: 10, description: "How many results (default 5)." },
+        freshness: { type: "string", description: "day, week, month or year." },
+        date_after: { type: "string", description: "Published after YYYY-MM-DD." },
+        date_before: { type: "string", description: "Published before YYYY-MM-DD." },
+        domain_filter: { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." },
+        country: { type: "string", description: "2-letter country code." },
       },
       required: ["query"],
       additionalProperties: false,
@@ -101,7 +133,7 @@ export const TOOLS = [
   {
     name: "web_research",
     description:
-      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one US$2 daily cap. A run still going after about 3 minutes comes back as a run id for web_research_result.",
+      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one daily cap, the one web.json sets, else US$" + DAILY_USD + ". A run still going after about 3 minutes comes back as a run id for web_research_result.",
     inputSchema: {
       type: "object",
       properties: {
@@ -172,9 +204,13 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   if (!key.value) lines.push(`No Browserbase key (${key.why}): only the free rungs on this machine can run.`);
   if (note) lines.push(note);
 
+  // The room's own limit caps the climb, need 49's rule as web_research waits (research.mjs waitIn: 10 s inside the limit,
+  // half a limit under 20 s): Claude Code drops an answer that comes after it, so the room gets the ladder's named wall in
+  // time, and no paid rung starts after the room stopped listening. No limit set: the ladder's own total.
+  const capMs = at.limit ? Math.max(at.limit - 10000, at.limit / 2) : undefined;
   let p;
   try {
-    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, stateDir: path.join(at.web, "fetch") } }, { signal }, {
+    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, ...dirsOf(at, "fetch") } }, { signal, capMs }, {
       ...deps,
       credentials: { apiKey: key.value || undefined, projectId: project.value || undefined },
     });
@@ -182,6 +218,7 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
     return refuse(scrub(`web_fetch could not run: ${firstLine(err)}`, secrets));
   }
   await spend(at, "web_fetch", fetchRows(p.paid));
+  if (p.document) return documentRead(url, p, { maxChars, at, lines, secrets, opts: deps.document });
   const ex = String(p.extractor || "");
   const wall = ex.startsWith("fetch-plus:failed:") ? ex.slice("fetch-plus:failed:".length) : "";
   const rung = wall ? "" : ex.replace(/^fetch-plus:/, "");
@@ -198,20 +235,98 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   return { content: [{ type: "text", text: scrub([head, ...lines, "", wrapWebContent(inner, "web_fetch")].join("\n"), secrets) }] };
 }
 
+// ---- a document at the link ---------------------------------------------------------------------------------
+// A PDF or a Word file (need 87, fetch/document.js): its bytes come up the ladder from a fetch rung, are saved in the room's
+// work folder as web/<the URL's sha1, first 12 hex>.<ext>, as web_image saves a picture, and its words come back as a page's
+// do, cut at max_chars and wrapped as untrusted. The saved file is the way to what words leave out: Read shows a PDF's
+// pages (a form's boxes, a scan with no text), and render makes a PDF of a Word file. A file that will not read is still
+// saved and named, with why.
+async function documentRead(url, p, { maxChars, at, lines, secrets, opts }) {
+  const { kind, buf } = p.document;
+  const k = KINDS[kind];
+  const rung = String(p.extractor || "").replace(/^fetch-plus:/, "");
+  const by = `${p.finalUrl || url} at ${rung} (${RUNG[rung] ?? rung}): HTTP ${p.status}, ${k.said}`;
+  const dir = path.join(workOf(at), "web");
+  const file = path.join(dir, `${createHash("sha1").update(url).digest("hex").slice(0, 12)}.${k.ext}`);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, buf, { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    return refuse(`web_fetch read ${by}, but could not save it in ${dir}: ${err?.code || firstLine(err)}.`);
+  }
+  let r;
+  let why = "";
+  try {
+    r = await readDocument(kind, file, buf, opts);
+  } catch (err) {
+    why = firstLine(err);
+  }
+  const pages = r?.pages ? ` of ${r.pages} page${r.pages === 1 ? "" : "s"}` : "";
+  const text = String(r?.text ?? "");
+  const cut = truncateSanitized(text, maxChars);
+  const look = kind === "pdf" ? "Read it to see its pages as drawn (a form's boxes and ticks, a table, a scan)" : "render(path) makes a PDF of it, then Read that PDF to see its pages as laid out";
+  const head = why
+    ? `web_fetch read ${by}, but not its words: ${why}.`
+    : r.xfa
+      ? `web_fetch read ${by}${pages}, an XFA form whose pages only Adobe Reader draws: ${text.length} characters of its own words, from its template${cut.truncated ? `, the first ${maxChars} below` : ""}.`
+      : !text.trim()
+        ? `web_fetch read ${by}${pages} with no text ${kind === "pdf" ? "on any page (a scan, or pictures of text)" : "in it"}, so nothing below.`
+        : `web_fetch read ${by}${pages}, ${text.length} characters${cut.truncated ? `, the first ${maxChars} below` : ""}.`;
+  const saved = `Saved at ${file}: ${r?.xfa ? "Read shows only its placeholder page; the words below are the form's" : look}.`;
+  if (p.warning) lines.unshift(p.warning);
+  const body = text.trim() ? ["", wrapWebContent(cut.text, "web_fetch")] : [];
+  return { content: [{ type: "text", text: scrub([head, saved, ...lines, ...body].join("\n"), secrets) }] };
+}
+
+// web_search's filters, named as lib/search/provider.js readArgs reads them. readArgs drops a value it cannot use without
+// a word, so a room that asked for one week would get everything and never know: the tool refuses that value instead.
+// freshness is the four words only (each is its own entry in readArgs's aliases); a domain must be one the strictest
+// engine keeps (paidDomainEntry's turbo rule, which You.com uses); and every engine with a domain field drops the
+// excluded ones when some are included, so a list is one kind or the other.
+const FILTERS = ["freshness", "date_after", "date_before", "domain_filter", "country"];
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(`${v}T00:00:00Z`))
+  && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+
+function badFilter({ freshness, date_after: after, date_before: before, domain_filter: domains, country }) {
+  if (freshness !== undefined && !["day", "week", "month", "year"].includes(freshness)) return "freshness must be day, week, month or year.";
+  for (const [name, v] of [["date_after", after], ["date_before", before]]) if (v !== undefined && !isDay(v)) return `${name} must be a date written YYYY-MM-DD.`;
+  if (after !== undefined && before !== undefined && after > before) return "date_after must not be later than date_before.";
+  if (domains !== undefined) {
+    const ds = Array.isArray(domains) && domains.length <= 20 ? domains.map((d) => (typeof d === "string" ? d.trim().toLowerCase() : "")) : [""];
+    if (ds.some((d) => !paidDomainEntry(d.replace(/^-/, ""), "turbo"))) return "domain_filter must be a list of up to 20 domains such as example.com; a leading - excludes one.";
+    if (ds.some((d) => d.startsWith("-")) && ds.some((d) => !d.startsWith("-"))) return "domain_filter must list domains to include or domains to exclude, not both.";
+  }
+  if (country !== undefined && !(typeof country === "string" && /^[a-z]{2}$/i.test(country))) return "country must be a 2-letter country code such as CA.";
+  return "";
+}
+
+// A filter as a person says it, for web_search's first line; a list of domains names its first three.
+function said(k, v) {
+  if (k !== "domain_filter") return `${{ freshness: "freshness", date_after: "after", date_before: "before", country: "country" }[k]} ${k === "country" ? v.toUpperCase() : v}`;
+  const ds = v.map((d) => d.trim().replace(/^-/, ""));
+  return `${v[0].trim().startsWith("-") ? "not sites" : "sites"} ${ds.slice(0, 3).join(", ")}${ds.length > 3 ? ` and ${ds.length - 3} more` : ""}`;
+}
+const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs[0]);
+
 export async function webSearch(args, { signal, at = AT } = {}) {
-  const bad = badArgs("web_search", args, ["query", "count"]);
+  const bad = badArgs("web_search", args, ["query", "count", ...FILTERS]);
   if (bad) return refuse(bad);
   const query = typeof args.query === "string" ? args.query.trim() : "";
   if (!query) return refuse("web_search refused: query must be a non-empty string.");
   const count = args.count ?? 5;
   if (!Number.isInteger(count) || count < 1 || count > 10) return refuse("web_search refused: count must be a whole number from 1 to 10.");
+  const filters = Object.fromEntries(FILTERS.filter((k) => args[k] != null).map((k) => [k, args[k]])); // null is no filter, as for count
+  const why = badFilter(filters);
+  if (why) return refuse(`web_search refused: ${why}`);
 
   const { conf, note } = readSettings(at);
   const { parallelApiKey, exaApiKey, ...rest } = section(conf, "search"); // a key comes from secrets/ only
   const par = readKey(at, "parallel");
   const exa = readKey(at, "exa");
   const secrets = [par.value, exa.value];
-  const config = { ...rest, parallelApiKey: par.value, exaApiKey: exa.value, stateDir: path.join(at.web, "search") };
+  const config = { ...rest, parallelApiKey: par.value, exaApiKey: exa.value, ...dirsOf(at, "search") };
   const settings = resolvePluginSettings(config);
   const lines = [];
   if (!par.value && settings.searchOrder.includes("parallel-paid")) lines.push(`No Parallel key (${par.why}): paid Parallel was skipped.`);
@@ -220,7 +335,7 @@ export async function webSearch(args, { signal, at = AT } = {}) {
 
   let p;
   try {
-    p = await runSearchPlus({ query, count }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
+    p = await runSearchPlus({ query, count, ...filters }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
   } catch (err) {
     return refuse(scrub(`web_search could not run: ${firstLine(err)}`, secrets));
   }
@@ -228,9 +343,15 @@ export async function webSearch(args, { signal, at = AT } = {}) {
   if (p.error) return refuse(scrub([`web_search could not run: ${p.message}`, ...lines].join("\n"), secrets));
   const tried = (p.attempts ?? []).map((a) => `${a.engine} ${a.error || `answered ${a.n}`}`).join(", ");
   const by = p.engine ? ENGINE[p.engine] ?? p.engine : "an engine the call log did not name";
+  // The filters asked (an empty domain list is none) and which the answering engine enforced; a cached answer keeps its engine.
+  const asked = FILTERS.filter((k) => k in filters && !(k === "domain_filter" && !filters[k].length));
+  const took = asked.filter((k) => ENFORCED[p.engine]?.(k, filters));
+  const held = took.filter((k) => k !== "country").map((k) => said(k, filters[k]));
+  const local = took.includes("country") ? `, localized to ${filters.country.toUpperCase()}` : "";
+  const loose = asked.filter((k) => !took.includes(k)).map((k) => said(k, filters[k]));
   const head = p.results.length
-    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}.`
-    : `web_search "${query}": no results${tried ? ` (${tried})` : ""}.`;
+    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}${held.length ? `, filtered by ${and(held)}` : ""}${local}${loose.length ? `; not enforced by this engine: ${loose.join(", ")}` : ""}.`
+    : `web_search "${query}": no results${asked.length ? ` with ${and(asked.map((k) => said(k, filters[k])))}` : ""}${tried ? ` (${tried})` : ""}.`;
   if ((p.attempts?.length ?? 0) > 1 && p.results.length) lines.unshift(`Engines tried: ${tried}.`);
   const rows = p.results
     .map((r, i) => [`${i + 1}. ${r.title || r.url}`, `   ${r.url}${r.published ? ` (${r.published})` : ""}`, ...(r.snippet ? [`   ${String(r.snippet).replace(/\n/g, "\n   ")}`] : [])].join("\n"))
@@ -336,7 +457,7 @@ export async function webImage(args, { signal, deps = {}, at = AT, now = Date.no
 
   let p;
   try {
-    const settings = resolveSettings({ ...rest, stateDir: path.join(at.web, "fetch") }, deps.settingsOverrides);
+    const settings = resolveSettings({ ...rest, ...dirsOf(at, "fetch") }, deps.settingsOverrides);
     p = await runImage({ url, settings, creds: { apiKey: key.value || undefined, projectId: project.value || undefined }, cap, signal, deps });
   } catch (err) {
     return refuse(scrub(`web_image could not run: ${firstLine(err)}`, secrets));

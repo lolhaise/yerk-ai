@@ -8,12 +8,13 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from test_pictures import Rec, Units
 from test_remember import daemon
 
-from yerk_ai import cli, context, curate, mcp_server, needs, words
+from yerk_ai import cli, context, curate, mcp_server, needs, words, workers
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 
 ASK = ("what does the picture in this post say", "web_fetch of the post: its text and the picture's address, no way to look at it",
@@ -87,6 +88,20 @@ def test_the_brief_from_a_need_carries_every_ask_the_repo_and_the_shape_of_done(
     assert "Never merge, push, open a PR or deploy" in b and "`PR <number>: <what it adds>`" in b
     assert "the full suite green" in b and "no tool call after it" in b and "\N{EM DASH}" not in b
     assert "is a placeholder, never one from the asks above" in b         # a room's asks carry real names; the repo never does
+
+
+def test_a_builders_brief_quoting_a_path_its_unit_hides_starts_and_tells_the_builder_in_its_prompt(tmp_path, capsys):
+    """need_build reads no start answer but its id: the builder hears of the path in PROMPT.md, and the build goes on."""
+    y, rec = ops(tmp_path, "example-room")
+    y.workers.launcher = launcher = Units()
+    workers.Systemd.__init__(launcher, y.state, (y.state / "rooms",))      # the daemon's launcher: every room's folder hidden
+    names = [a.name for a in y.accounts]
+    y.conf["needs"] = {"account": names[-1], "auto": False}
+    other = y.state / "rooms" / "example-room" / "work" / "scan.png"
+    day = need(y, "example-room", f"read the scan {other}", "no ocr tool", "read a scanned page")["day"]
+    r = asyncio.run(y.control({"needs": {"action": "build", "day": day, "n": 1}}))
+    assert r["ok"] and r["unseen"] == [str(other)] and len(launcher.calls) == 1
+    assert f"- Not there for you, since your unit hides them: {other}. " in (Path(r["staging"]) / "PROMPT.md").read_text()
 
 
 def test_build_starts_one_builder_on_the_needs_account_and_its_end_sets_the_state_list_and_done_follow(tmp_path, capsys):
@@ -171,6 +186,54 @@ def test_curates_rewrite_of_the_page_keeps_each_need_its_number_and_its_block(tm
     page = Path(out["file"]).read_text()
     assert "\n## 2. cut: rule 1 (-9 chars)\n" in page and f"\n## 1. need: {ASK[2]}\n" in page and "\n## 4. need: upload a video\n" in page
     assert curate.PROPOSALS == needs.FOLDER
+
+
+def test_a_new_need_never_takes_a_number_an_earlier_need_held_whatever_its_day(tmp_path):
+    """Numbers restarted each day until 2026-11-11, so two needs were both need 81: a new need goes past its day's page and
+    past every number a need on record holds; its day and number still name it everywhere."""
+    y = daemon(tmp_path)
+    noon = [datetime(2026, 11, d, 12, tzinfo=timezone.utc).timestamp() for d in (9, 10, 11)]
+    first = needs.file(y.memory, y.state, "example-room", "m-1", *ASK, now=noon[0])
+    later_day = datetime.fromtimestamp(noon[1], timezone.utc).astimezone(y.memory.tz).date().isoformat()
+    assert later_day != first["day"] and not (y.memory.root / needs.FOLDER / f"{later_day}.md").exists()   # its page is empty
+    later = needs.file(y.memory, y.state, "her-room", "m-2", "post a reel", "no upload tool", "upload a video", now=noon[1])
+    assert (first["n"], later["day"], later["n"]) == (1, later_day, 2) and needs.find(needs.load(y.state), later_day, 2)["ability"] == "upload a video"
+    # a day whose page already holds curate's proposals past every need's number: the need still goes past the page
+    third = datetime.fromtimestamp(noon[2], timezone.utc).astimezone(y.memory.tz).date().isoformat()
+    (y.memory.root / needs.FOLDER / f"{third}.md").write_text("".join(f"\n## {i}. cut: rule {i}\n" for i in range(1, 6)))
+    memo = needs.file(y.memory, y.state, "example-room", "m-3", "what does this voice memo say", "no audio tool", "hear a voice memo", now=noon[2])
+    assert (memo["day"], memo["n"]) == (third, 6) and "\n## 5. cut: rule 5\n" in (y.memory.root / needs.FOLDER / f"{third}.md").read_text()
+
+
+def twins(y) -> None:
+    """The record as numbers that restarted each day left it: need 81 on two days (one live, one held), need 82 on one."""
+    ask = {"room": "example-room", "at": "2026-11-09 09:00", "mid": "m-0", "asked": ASK[0], "tried": ASK[1], "needed": ASK[2], "shadow": ""}
+    rows = [{"day": "2026-11-09", "n": 81, "ability": ASK[2], "state": "live", "pr": 40, "asks": [ask]},
+            {"day": "2026-11-10", "n": 81, "ability": "read a scanned PDF", "state": "held", "why": "a reason",
+             "asks": [ask | {"at": "2026-11-10 09:00", "needed": "read a scanned PDF"}]},
+            {"day": "2026-11-10", "n": 82, "ability": "upload a video", "state": "filed", "asks": [ask | {"at": "2026-11-10 10:00", "needed": "upload a video"}]}]
+    (y.state / needs.STORE).write_text(json.dumps(rows))
+
+
+def test_a_number_two_needs_hold_is_said_with_its_day_and_one_only_one_holds_reads_as_before(tmp_path):
+    y, rec = ops(tmp_path, "example-room", "her-room")
+    twins(y)
+    f = need(y, "her-room", "read my lease", "Read on the PDF: no text layer", "read scanned PDFs")
+    assert (f["day"], f["n"], f["folded"]) == ("2026-11-10", 81, True)
+    assert rec.lines[-1] == words.NEED_AGAIN.format(n="81 of 2026-11-10", room="her-room", count=2, ability="read a scanned PDF")
+    assert need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"] == 82        # 82 is one need's alone
+    assert rec.lines[-1] == words.NEED_AGAIN.format(n=82, room="her-room", count=2, ability="upload a video")
+    assert asyncio.run(y.control({"needs": {"action": "build", "day": "2026-11-09", "n": 81}})) == {
+        "ok": False, "error": words.NEED_BUSY.format(n="81 of 2026-11-09", state="live, PR 40")}
+    r = asyncio.run(y.control({"needs": {"action": "build", "day": "2026-11-10", "n": 81}}))
+    assert r["ok"] and asyncio.run(y.control({"needs": {"action": "build", "day": "2026-11-10", "n": 81}})) == {
+        "ok": False, "error": words.NEED_BUSY.format(n="81 of 2026-11-10", state=f"building {r['id']}")}
+    (Path(r["staging"]) / "REPORT.md").write_text("PR 123: it reads a scanned PDF\n")
+    (Path(r["staging"]) / "exit.json").write_text(json.dumps({"result": "success", "code": "exited", "status": "0"}))
+    asyncio.run(y.workers.complete(r["id"]))
+    assert rec.lines[-1] == words.NEED_PR.format(n="81 of 2026-11-10", pr=123, ability="read a scanned PDF")
+    new = need(y, "example-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    assert rec.lines[-1] == words.NEED_FILED.format(n=new["n"], room="example-room", ability="hear a voice memo", day=new["day"])
 
 
 def test_one_ability_said_twice_is_one_need_and_two_abilities_are_two():

@@ -8,13 +8,15 @@ import asyncio
 import json
 import subprocess
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
-from test_needs import ASK, FLYER, listed, need, ops
+from test_needs import ASK, FLYER, listed, need, ops, twins
 from test_pictures import Rec
+from test_slash import OWNER, run_discord
 
-from yerk_ai import cli, git_askpass, github, needs, pipeline, words
+from yerk_ai import cli, git_askpass, github, jobs, needs, pipeline, words
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, head
 
 SLUG, TOK = "example-owner/example-repo", "tok-placeholder-0000"
@@ -52,7 +54,8 @@ class Deploys:
 @pytest.fixture
 def pipe(tmp_path, monkeypatch):
     y, rec = ops(tmp_path, "example-room", "her-room")
-    y.conf["needs"] = {"repo": SLUG}                      # auto on, as by default
+    y.conf["needs"] = {"repo": SLUG, "sensitive": []}     # auto on, as by default; no wait (the heads here are no commits git
+                                                          # could read): decision 40's road exactly, the risk tests' own below
     hub, units = Hub(), Deploys()
     monkeypatch.setattr(github, "api", hub)
     monkeypatch.setattr(github, "token", lambda private: TOK)
@@ -134,6 +137,18 @@ def test_a_need_filed_before_the_pipeline_is_queued_on_a_tick_one_whose_build_ca
     assert rec.lines[-1] == words.NEED_STARTS.format(n=1, room="example-room", ability=ASK[2]) and row(y, day, 2)["state"] == "filed"
 
 
+def test_the_pipelines_lines_say_a_number_two_needs_hold_with_its_day_and_queued_behind_it_too(pipe):
+    y, rec, hub, units, rooms = pipe
+    twins(y)
+    asyncio.run(y.pipeline.set(row(y, "2026-11-10", 81), {"state": "pr", "pr": 7}))           # in flight: a new need queues behind it
+    f = need(y, "her-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    assert row(y, f["day"], f["n"])["state"] == "queued" and y.workers.launcher.calls == []
+    assert rec.lines[-1] == words.NEED_QUEUED.format(n=f["n"], room="her-room", ability="hear a voice memo", behind="81 of 2026-11-10")
+    asyncio.run(y.pipeline.stop(row(y, "2026-11-10", 81), "held", "a reason"))                # none in flight now: the queued one starts
+    assert rec.lines[-2:] == [words.NEED_HELD.format(n="81 of 2026-11-10", ability="read a scanned PDF", why="a reason"),
+                              words.NEED_STARTS.format(n=f["n"], room="her-room", ability="hear a voice memo")]
+
+
 def test_built_pr_checks_pending_then_green_start_a_cold_read_and_its_merge_uses_the_heads_sha(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]
@@ -188,6 +203,234 @@ def test_checks_that_never_come_are_stuck_and_a_new_head_restarts_the_clock(pipe
     y.pipeline.now = lambda: time.time() + 41 * 60
     asyncio.run(y.pipeline.tick())
     assert row(y, day)["state"] == "stuck" and row(y, day)["why"].startswith("checks never came: 2 of 7 in ")
+
+
+def test_the_stuck_line_counts_the_final_checks_and_names_the_pending_ones(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: "7 of 7" said of seven posted, one still pending
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "pending", "statuses": [
+        *GREEN[:5], {"context": "ci/f", "state": "pending"}, {"context": "ci/g", "state": "pending"}]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    why = row(y, day)["why"]
+    assert why.startswith("checks never came: 5 of 7 in ") and why.endswith(" on aaaaaaa, still pending: ci/f, ci/g")
+    assert rec.lines[-1] == words.NEED_STUCK.format(n=1, ability=ASK[2], why=why)
+
+
+def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_with_no_pr_stays(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: need 81 sat stuck with all seven green
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "pending", "statuses": [*GREEN[:6], {"context": "ci/g", "state": "pending"}]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())                       # one still pending: it stays stuck
+    assert row(y, day)["state"] == "stuck"
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)
+    asyncio.run(y.pipeline.tick())                       # the next tick as any other: green, the cold read
+    assert row(y, day)["state"] == "reading" and role(y, row(y, day)["worker"])["role"] == "read"
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    asyncio.run(y.pipeline.set(row(y, day, n2), {"state": "stuck", "why": "no pull request seen"}))
+    calls = len(hub.calls)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day, n2)["state"] == "stuck" and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+
+
+def test_a_stuck_need_whose_checks_came_late_waits_while_another_need_is_in_flight_and_comes_back_once_none_is(pipe, monkeypatch):
+    y, rec, hub, units, rooms = pipe                     # two in flight edit the same lines of the same bookkeeping files
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "pending", "statuses": GREEN[:6]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    assert row(y, day)["state"] == "stuck" and row(y, day, n2)["state"] == "building"     # stuck is not in flight: need 2 starts
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    said, calls = list(rec.lines), len(hub.calls)
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())                       # all in and green, need 2 in flight: it stays stuck and says nothing
+    assert row(y, day)["state"] == "stuck" and rec.lines == said and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
+
+    def built_meanwhile(method, path, tok, body=None):    # need 2 built again by hand while its checks are read
+        if path.endswith("/status"):
+            needs.update(y.memory, y.state, day, n2, {"state": "building", "worker": "w2"})
+        return hub(method, path, tok, body)
+    monkeypatch.setattr(github, "api", built_meanwhile)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "stuck" and row(y, day, n2)["state"] == "building"
+    monkeypatch.setattr(github, "api", hub)
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
+    asyncio.run(y.pipeline.tick())                       # the tick that finds the flight empty brings it back
+    assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)
+
+
+def test_a_builder_that_cannot_start_holds_its_need_with_why_and_the_next_queued_need_starts(pipe):
+    y, rec, hub, units, rooms = pipe                     # a unit systemd refuses, then an account accounts.toml no longer has
+    y.conf["needs"]["auto"] = False                      # three filed; the first in flight with no unit, two queued behind it
+    day = need(y, "example-room", *ASK)["day"]
+    need(y, "her-room", "post a reel", "no upload tool", "upload a video")
+    need(y, "her-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    for k, st in ((1, {"state": "building", "worker": "w1"}), (2, {"state": "queued"}), (3, {"state": "queued"})):
+        asyncio.run(y.pipeline.set(row(y, day, k), st))
+    y.conf["needs"]["auto"] = True
+    launcher = y.workers.launcher
+    real = launcher.start
+
+    def refuse(*a):
+        launcher.start = real
+        raise OSError("the unit was refused")
+    launcher.start = refuse
+    asyncio.run(y.pipeline.stop(row(y, day), "held", "a reason"))           # need 2's builder is refused, need 3's starts
+    assert (row(y, day, 2)["state"], row(y, day, 2)["worker"]) == ("held", "")
+    why = row(y, day, 2)["why"]
+    assert why == words.NEED_NO_BUILDER.format(error="the unit did not start: the unit was refused")
+    assert rec.lines[-2:] == [words.NEED_HELD.format(n=2, ability="upload a video", why=why),
+                              words.NEED_STARTS.format(n=3, room="her-room", ability="hear a voice memo")]
+    assert row(y, day, 3)["state"] == "building" and row(y, day, 3)["worker"]
+    y.conf["needs"]["account"] = "gone"
+    n4 = need(y, "example-room", "read this scan", "no ocr tool", "read a scanned page")["n"]
+    asyncio.run(y.pipeline.stop(row(y, day, 3), "held", "a reason"))
+    assert row(y, day, n4)["state"] == "held" and row(y, day, n4)["why"].startswith("its builder did not start: no account 'gone'")
+
+
+def test_a_claim_whose_builder_never_answered_is_queued_when_the_daemon_starts_and_one_with_a_worker_is_left(tmp_path, monkeypatch):
+    state, ask = tmp_path / "state", {"room": "example-room", "at": "12:00", "asked": "a", "tried": "b", "needed": "c", "mid": "m-1"}
+    state.mkdir()                                        # the daemon died between need_build's claim and its start's answer
+    (state / needs.STORE).write_text(json.dumps([{"day": "2026-11-10", "n": n, "ability": f"ability {n}", "asks": [ask],
+                                                  "state": "building", "worker": w, "fixes": 0} for n, w in ((1, ""), (2, "w2"))]))
+    run_discord(tmp_path, monkeypatch, f"owner = {OWNER}\n")      # yerkd's start as it runs, its connection and tasks at once
+    assert [(r["state"], r["worker"]) for r in needs.load(state)] == [("queued", ""), ("building", "w2")]
+
+
+def test_a_builders_line_that_cannot_be_posted_is_said_so_on_the_workers_row(pipe):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    wid = row(y, day)["worker"]
+    to = y.ledger.worker_get(wid)["room"]
+
+    async def down(room: str, text: str) -> list[str]:
+        raise OSError("the channel is down")
+    y.channels[to].notify = down
+    end(y, wid, f"branch need-{day}-1 at 1234567: it reads pictures")
+    assert y.ledger.worker_get(wid)["relay_note"] == "need build: its line could not be posted: the channel is down"
+
+
+def test_a_workers_end_that_makes_no_line_says_so_on_its_row(pipe):
+    y, rec, hub, units, rooms = pipe                     # each one's need moved on by a person meanwhile: no line to make
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    reader = row(y, day)["worker"]
+    asyncio.run(y.pipeline.set(row(y, day), {"state": "live", "worker": ""}))     # merged and deployed by hand
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    builder = row(y, day, n2)["worker"]
+    asyncio.run(y.pipeline.set(row(y, day, n2), {"state": "merged", "pr": 8}))    # yerk needs done
+    said = list(rec.lines)
+    end(y, reader, "merge")
+    end(y, builder, f"branch need-{day}-{n2} at 1234567: it posts reels")
+    assert rec.lines == said and row(y, day)["state"] == "live" and row(y, day, n2)["state"] == "merged"
+    assert [y.ledger.worker_get(w)["relay_note"] for w in (reader, builder)] == ["need read: no line was made", "need build: no line was made"]
+
+
+def kill(y, wid: str, signal: bool = False) -> None:
+    """A worker's unit stopped from outside, a box shutdown: exited 143 after the TERM, or killed by it."""
+    d = Path(y.ledger.worker_get(wid)["staging"])
+    (d / "exit.json").write_text(json.dumps({"result": "signal", "code": "killed", "status": "TERM"} if signal else
+                                            {"result": "exit-code", "code": "exited", "status": "143"}))
+    asyncio.run(y.workers.complete(wid))
+
+
+def test_a_fix_or_a_read_cut_off_by_a_stop_nobody_asked_for_is_no_verdict_and_the_next_tick_starts_it_again(pipe):
+    y, rec, hub, units, rooms = pipe                     # seen live: need 83's fix died with the box and was held
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "failure", "statuses": [*GREEN[:6], {"context": "ci/g", "state": "failure"}]})
+    asyncio.run(y.pipeline.tick())
+    assert (row(y, day)["state"], row(y, day)["fixes"]) == ("fixing", 1)
+    kill(y, row(y, day)["worker"])
+    r = row(y, day)
+    assert (r["state"], r["worker"], r["fixes"]) == ("pr", "", 0)
+    assert rec.lines[-1] == words.NEED_CUT.format(n=1, pr=7, what=words.NEED_CUT_WHAT["fix"])
+    asyncio.run(y.pipeline.tick())                       # the same fix again, fix 1 of 2 again
+    assert (row(y, day)["state"], row(y, day)["fixes"]) == ("fixing", 1)
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    end(y, row(y, day)["worker"], "fixed: abc1234")
+    asyncio.run(y.pipeline.tick())
+    kill(y, row(y, day)["worker"], signal=True)          # the cold read, killed by the TERM itself
+    assert (row(y, day)["state"], row(y, day)["worker"], row(y, day)["fixes"]) == ("pr", "", 1)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "reading"
+    wid = row(y, day)["worker"]
+    y.ledger.worker_set(wid, stop_requested=time.time())  # a stop the owner asked for stays a stop
+    kill(y, wid)
+    assert (row(y, day)["state"], row(y, day)["why"]) == ("held", "the cold read gave no verdict: " + words.outcome("stopped")[1])
+
+
+def test_a_builder_cut_off_by_a_stop_nobody_asked_for_is_queued_uncounted_and_the_first_tick_after_starts_it(pipe):
+    y, rec, hub, units, rooms = pipe                     # a box shutdown stops the daemon too, so a start at once is refused or cut off
+    day = need(y, "example-room", *ASK)["day"]
+    for signal in (False, True):                         # exited 143 after the TERM, then killed by it
+        kill(y, row(y, day)["worker"], signal)
+        r = row(y, day)
+        assert (r["state"], r["worker"], int(r.get("fails") or 0), len(y.workers.launcher.calls)) == ("queued", "", 0, 1 + signal)
+        assert rec.lines[-1] == words.NEED_CUT_BUILD.format(n=1, ability=ASK[2])
+        asyncio.run(y.pipeline.tick())                   # the first tick after the restart: the queue starts it
+        assert row(y, day)["state"] == "building" and row(y, day)["worker"] and len(y.workers.launcher.calls) == 2 + signal
+        assert rec.lines[-1] == words.NEED_STARTS.format(n=1, room="example-room", ability=ASK[2])
+    end(y, row(y, day)["worker"], "no branch: the suite would not run", ok=False)        # a real failure still counts
+    assert int(row(y, day)["fails"]) == 1 and row(y, day)["state"] == "building"
+
+
+def starve(y, wid: str, policy: str) -> None:
+    """A worker that died for memory as the box showed it: under OOMPolicy=stop oom-kill, exited 143;
+    under continue its main process killed with KILL, the unit's count of kills for memory in the record."""
+    d = Path(y.ledger.worker_get(wid)["staging"])
+    (d / "exit.json").write_text(json.dumps({"result": "oom-kill", "code": "exited", "status": "143"} if policy == "stop" else
+                                            {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 1}))
+    asyncio.run(y.workers.complete(wid))
+
+
+@pytest.mark.parametrize("policy", ["stop", "continue"])
+@pytest.mark.parametrize("role", ["fix", "read"])
+def test_a_fix_or_a_read_that_died_for_memory_is_held_with_that_and_never_started_again(pipe, role, policy):
+    y, rec, hub, units, rooms = pipe                     # seen live: need 87's fix ran out of memory and started again
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    red = [*GREEN[:6], {"context": "ci/g", "state": "failure"}]
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "failure", "statuses": red} if role == "fix"
+                                                                       else {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == {"fix": "fixing", "read": "reading"}[role]
+    starve(y, row(y, day)["worker"], policy)
+    how, starts = words.outcome("died", why=words.DIED["oom-kill"])[1], len(y.workers.launcher.calls)
+    r = row(y, day)
+    assert (r["state"], r["worker"], r["why"]) == ("held", "", f"the fix worker {how}" if role == "fix" else f"the cold read gave no verdict: {how}")
+    assert rec.lines[-1] == words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "held" and len(y.workers.launcher.calls) == starts
+
+
+def test_a_builder_that_died_for_memory_is_reported_failed_with_it_held_and_never_built_again(pipe):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    how = words.outcome("died", why=words.DIED["oom-kill"])[1]
+    for policy in ("stop", "continue"):
+        starve(y, row(y, day)["worker"], policy)
+        r, starts = row(y, day), len(y.workers.launcher.calls)
+        assert (r["state"], r["worker"], r["why"], int(r.get("fails") or 0)) == ("held", "", f"its builder {how}", 0)
+        assert rec.lines[-2:] == [words.NEED_FAILED.format(n=1, how=how, ability=ASK[2]),
+                                  words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])]
+        asyncio.run(y.pipeline.tick())
+        assert row(y, day)["state"] == "held" and len(y.workers.launcher.calls) == starts
+        asyncio.run(y.need_build({"day": day, "n": 1}))  # a person builds it again (yerk needs build)
 
 
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
@@ -247,6 +490,21 @@ def test_a_proven_deploy_holding_the_merge_is_live_one_line_a_room_and_a_failed_
     y.ledger.deploy(kind="deploy", unit="yerkd", before=sha, after=sha, outcome="tests failed", note="the fast tests failed")
     asyncio.run(y.pipeline.tick())
     assert (row(y, day, n2)["state"], row(y, day, n2)["why"]) == ("held", "deploy failed: the fast tests failed")
+
+
+def test_a_deploy_that_gave_up_waiting_for_quiet_is_merged_again_and_the_next_tick_deploys_again(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: three gave up, each need held with nothing failed
+    day = need(y, "example-room", *ASK)["day"]
+    asyncio.run(y.pipeline.set(row(y, day), {"state": "deploying", "pr": 7, "merged_at": time.time() - 60, "merge": "c" * 40,
+                                             "deploy_at": time.time() - 30, "unit": "yerk-deploy-0b0b0b"}))
+    y.ledger.deploy(kind="deploy", unit="", before="0" * 7, after="", outcome="gave up", note="never quiet in 1 h; a room has a turn")
+    asyncio.run(y.pipeline.tick())
+    r = row(y, day)
+    assert (r["state"], r["unit"]) == ("merged", "") and units.argv == []
+    assert rec.lines[-1] == words.NEED_DEPLOY_AGAIN.format(n=1, pr=7, why="never quiet in 1 h; a room has a turn")
+    asyncio.run(y.pipeline.tick())                       # no deploy running: it deploys again, and the old row is not its
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "deploying" and len(units.argv) == 1 and rec.lines[-1] == words.NEED_DEPLOYING.format(n=1, pr=7)
 
 
 def test_a_rooms_live_line_waits_out_its_turn_and_neither_the_machine_rooms_line_nor_the_next_need_waits(pipe, monkeypatch):
@@ -318,6 +576,35 @@ def commit_on(p: Path, wt: Path, branch: str, text: str) -> str:
 
 def staged(y, wid: str) -> str:
     return (Path(y.ledger.worker_get(wid)["staging"]) / "BRIEF.md").read_text()
+
+
+def test_a_need_workers_clean_worktrees_go_when_it_ends_their_branches_kept_and_one_with_changes_stays_said_on_its_row(pipe, tmp_path):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-10: 207 worker worktrees of the live repository, none removed
+    repo = tmp_path / "scratch-repo"                     # made here, never the live one
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".venv/\n")
+    git(repo, "add", ".")
+    git(repo, *ID, "commit", "-q", "-m", "baseline")
+    day = need(y, "example-room", *ASK)["day"]
+    builder = row(y, day)["worker"]
+    d = Path(y.ledger.worker_get(builder)["staging"])
+    git(repo, "worktree", "add", "-q", str(d / "wt"), "-b", f"need-{day}-1")
+    (d / "wt" / ".venv").mkdir()                         # ignored: it goes with its worktree
+    git(repo, "worktree", "add", "-q", str(d / "other-wt"), "-b", "other")
+    (d / "other-wt" / "new.txt").write_text("not committed\n")
+    to_pr(y, hub, day)
+    assert not (d / "wt").exists() and (d / "other-wt" / "new.txt").is_file()
+    assert git(repo, "branch", "--list", f"need-{day}-1") and str(d / "wt") not in git(repo, "worktree", "list")
+    assert y.ledger.worker_get(builder)["relay_note"] == "; ".join([
+        words.LINE_POSTED.format(what="need build"), words.WORKTREE_KEPT.format(name="other-wt", why=words.WORKTREE_CHANGES)])
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    reader = row(y, day)["worker"]
+    r = Path(y.ledger.worker_get(reader)["staging"])
+    git(repo, "worktree", "add", "-q", str(r / "wt"), f"need-{day}-1")
+    end(y, reader, "unsure: it changes the gates")       # a cold read's worktree goes the same way
+    assert not (r / "wt").exists() and y.ledger.worker_get(reader)["relay_note"] == "need read: its line went to the machine room"
 
 
 def test_a_plugin_kept_in_its_own_git_repository_is_named_in_the_builders_brief_from_the_rooms_mcp_tables(pipe, tmp_path):
@@ -534,6 +821,11 @@ def test_the_askpass_answers_the_username_and_the_password_and_nothing_else(tmp_
     assert git_askpass.answer("Password for 'https://github.com': ", str(f)) == TOK
     assert git_askpass.answer("Are you sure you want to continue connecting (yes/no)? ", str(f)) == ""
     assert git_askpass.answer("Password for 'https://github.com': ", str(tmp_path / "missing")) == ""
+    for host, said in (("github.com", TOK), ("example.org", "")):     # the user put together here: test_scrub reads x@y.z as an email
+        assert git_askpass.answer(f"Password for 'https://{'@'.join(['x-access-token', host])}': ", str(f)) == said
+    assert git_askpass.answer("Password for 'https://github.com/owner/repo.git': ", str(f)) == TOK
+    assert git_askpass.answer("Username for 'https://example.org': ", str(f)) == ""
+    assert git_askpass.answer("Password for 'https://github.com.example.org': ", str(f)) == ""
     monkeypatch.setenv("YERK_GITHUB_TOKEN_FILE", str(f))
     assert git_askpass.main(["Password for 'https://github.com': "]) == 0 and capsys.readouterr().out == TOK + "\n"
     assert git_askpass.main(["Host key? "]) == 1 and capsys.readouterr().out == ""
@@ -548,3 +840,305 @@ def test_github_reads_its_answers_and_says_a_refused_merge_in_words(monkeypatch)
     assert github.merge(SLUG, 7, "a" * 40, TOK) == {"ok": False, "code": 409, "error": "GitHub said 409: Head branch was modified. Review and try the merge again."}
     assert github.slug(REPO, "o/n") == "o/n" and github.SLUG.search("ssh://github.com:o/n.git")[1] == "o/n"
     assert github.SLUG.search("https://github.com/o/n.git")[1] == "o/n"
+
+
+# the deeper check (2026-11-17): a need whose change touches the [needs] sensitive list waits before it merges
+@pytest.fixture
+def risk(pipe):
+    """The pipe with the default list in force ([needs] sensitive not set), as an install has it."""
+    del pipe[0].conf["needs"]["sensitive"]
+    return pipe
+
+
+def daemon_tree(y, tmp_path: Path, base: dict[str, str] | None = None) -> Path:
+    """The daemon's own tree, a scratch one made here: main with `base` committed and origin/main where the box's fetch keeps
+    it. A builder's branch is a branch of this tree, so the pipeline reads a need's change here with git, no network."""
+    tree = tmp_path / "daemon-tree"
+    for name, text in {"README.md": "baseline\n", **(base or {})}.items():
+        (tree / name).parent.mkdir(parents=True, exist_ok=True)
+        (tree / name).write_text(text)
+    git(tree, "init", "-q", "-b", "main")
+    git(tree, "add", ".")
+    git(tree, *ID, "commit", "-q", "-m", "baseline")
+    git(tree, "update-ref", "refs/remotes/origin/main", "main")
+    y.pipeline.tree = tree
+    return tree
+
+
+def commit(tree: Path, wt: Path, branch: str, changes: dict[str, str]) -> str:
+    """A worker's commit on `branch`, in its own worktree of the daemon's tree, each path in `changes` written."""
+    if not wt.exists():
+        git(tree, "worktree", "add", "-q", str(wt), "-b", branch, "main")
+    for name, text in changes.items():
+        (wt / name).parent.mkdir(parents=True, exist_ok=True)
+        (wt / name).write_text(text)
+    git(wt, "add", "-A")
+    git(wt, *ID, "commit", "-q", "-m", "the need")
+    return git(wt, "rev-parse", "HEAD")
+
+
+def to_read(y, hub, day: str, sha: str) -> None:
+    """PR 7 seen at `sha`, its seven checks green, its cold read running, and GitHub ready to merge it."""
+    to_pr(y, hub, day, sha)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{sha}/status")] = (200, {"state": "success", "statuses": GREEN})
+    hub.routes[("PUT", f"/repos/{SLUG}/pulls/7/merge")] = (200, {"merged": True, "sha": "c" * 40})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "reading"
+
+
+def risky(y, hub, tmp_path: Path, changes: dict[str, str], base: dict[str, str] | None = None) -> tuple[str, str]:
+    """Need 1 built with `changes` on its branch of the daemon's tree and read cold at that head: its day, and the head."""
+    day = need(y, "example-room", *ASK)["day"]
+    sha = commit(daemon_tree(y, tmp_path, base), tmp_path / "builder-wt", f"need-{day}-1", changes)
+    to_read(y, hub, day, sha)
+    return day, sha
+
+
+def puts(hub) -> list:
+    return [c for c in hub.calls if c[0] == "PUT"]
+
+
+def flat(why: str) -> str:
+    return " ".join(why.splitlines())
+
+
+def test_risk_a_a_change_on_the_list_is_held_after_merge_and_nothing_is_merged_landed_or_deployed(risk, tmp_path, capsys):
+    """risk (a): a need whose head changes a listed path, the cold read saying merge: held, the why naming the path, the
+    row's own field holding it, github.merge never called and nothing landed or deployed; `yerk needs list` shows the why."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n", "README.md": "a word\n"})
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and puts(hub) == [] and units.argv == [] and git(y.pipeline.tree, "rev-parse", "main") != sha
+    assert r["deeper"] == {"head": sha, "paths": ["yerk_ai/emails.py"], "plugins": []}
+    assert flat(r["why"]) == words.NEED_DEEPER.format(what="yerk_ai/emails.py") and r["why"] == pipeline.deeper_why(r["deeper"])
+    assert rec.lines[-1] == words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])
+    capsys.readouterr()
+    assert listed(y.state, capsys) == [f"{day} 1 held: {flat(r['why'])}: {ASK[2]} (asked 1 time)"]
+
+
+def test_risk_b_a_change_off_the_list_merges_exactly_as_on_main(risk, tmp_path):
+    """risk (b): a need whose head changes only paths off the list merges as on main, pinned: the same GitHub calls, the
+    merge at the head's sha, the same row with no field of the wait, the same line."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"README.md": "a word\n", "yerk_ai/texts.py": "a text\n", "docs/GUIDE.md": "a page\n"})
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert [c[:2] for c in hub.calls] == [("GET", f"/repos/{SLUG}/pulls?head=example-owner:need-{day}-1&state=open"),
+                                          ("GET", f"/repos/{SLUG}/pulls/7"), ("GET", f"/repos/{SLUG}/commits/{sha}/status"),
+                                          ("PUT", f"/repos/{SLUG}/pulls/7/merge")]
+    assert hub.calls[-1][2] == {"sha": sha, "merge_method": "merge"} and "deeper" not in r
+    assert (r["state"], r["merge"], r["worker"]) == ("merged", "c" * 40, "") and rec.lines[-1] == words.NEED_MERGED.format(n=1, pr=7)
+
+
+def test_risk_c_an_empty_list_is_decision_40s_road_and_reads_nothing(risk, tmp_path):
+    """risk (c): [needs] sensitive = [] turns the wait off: the need of (a) merges as on main, and nothing is read (a tree git
+    cannot read would hold it otherwise)."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"]["sensitive"] = []
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n", "README.md": "a word\n"})
+    y.pipeline.tree = tmp_path / "no-checkout"
+    end(y, row(y, day)["worker"], "merge")
+    assert puts(hub) == [("PUT", f"/repos/{SLUG}/pulls/7/merge", {"sha": sha, "merge_method": "merge"})] and "deeper" not in row(y, day)
+    assert row(y, day)["state"] == "merged" and rec.lines[-1] == words.NEED_MERGED.format(n=1, pr=7)
+
+
+@pytest.mark.parametrize("path, waits", [("yerk_ai/gates.py", False), ("docs/GUIDE.md", True)])
+def test_risk_d_a_list_in_yerkd_toml_replaces_the_default_whole(risk, tmp_path, path, waits):
+    """risk (d): a list in yerkd.toml's [needs] replaces the default: a default path no longer stops, a configured one does;
+    and yerkd.toml.example writes the default out as it is."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"] |= tomllib.loads('[needs]\nsensitive = ["docs/", "plugin:example-plugin"]\n')["needs"]
+    day, sha = risky(y, hub, tmp_path, {path: "a change\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert (row(y, day)["state"], len(puts(hub))) == (("held", 0) if waits else ("merged", 1))
+    assert row(y, day).get("deeper") == ({"head": sha, "paths": [path], "plugins": []} if waits else None)
+    assert tomllib.loads((REPO / "yerkd.toml.example").read_text())["needs"]["sensitive"] == list(pipeline.SENSITIVE)
+
+
+@pytest.mark.parametrize("how", ["a head the tree lacks", "no origin/main"])
+def test_risk_e_a_change_git_cannot_read_is_held_and_said_so(risk, tmp_path, how):
+    """risk (e): the changed paths cannot be read (the PR's head is no commit of the daemon's tree, or the tree has no
+    origin/main): held, never merged as a safe change, the why saying git could not read it in git's own words."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path)
+    sha = commit(tree, tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"}) if how == "no origin/main" else "b" * 40
+    if how == "no origin/main":
+        git(tree, "update-ref", "-d", "refs/remotes/origin/main")
+    to_read(y, hub, day, sha)
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and puts(hub) == [] and r["deeper"]["unread"] and r["deeper"] == {
+        "head": sha, "paths": [], "plugins": [], "unread": r["deeper"]["unread"]}
+    assert flat(r["why"]) == words.NEED_DEEPER_UNREAD.format(why=r["deeper"]["unread"]) and sha not in r["why"]
+    assert all(words.width(x) <= words.PHONE for x in r["why"].splitlines()), r["why"]
+
+
+def test_risk_f_a_branch_in_a_listed_plugin_is_held_and_nothing_lands(risk, tmp_path):
+    """risk (f): a need with a branch in a listed plug-in (hands, by its server's name in the rooms' mcp tables) is held,
+    though its own change is off the list, and the plug-in's base never moves."""
+    y, rec, hub, units, rooms = risk
+    p, mcp = attach(y, tmp_path), y.room_confs["example-room"]["mcp"]
+    mcp["hands"] = mcp.pop("example-plugin")
+    day = need(y, "example-room", *ASK)["day"]
+    plug = commit_on(p, tmp_path / "worker-plugin-wt", f"need-{day}-1", "export const gate = 'the page marks';\n")
+    to_read(y, hub, day, sha := commit(daemon_tree(y, tmp_path), tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"}))
+    assert row(y, day)["plugins"]["hands"]["head"] == plug
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and puts(hub) == [] and git(p, "rev-parse", "main") != plug
+    assert r["deeper"] == {"head": sha, "paths": [], "plugins": ["hands"]}
+    assert flat(r["why"]) == words.NEED_DEEPER.format(what=words.NEED_DEEPER_PLUGIN.format(name="hands"))
+
+
+def test_risk_g_a_folder_takes_each_file_below_it_and_an_entry_never_a_longer_name(risk, tmp_path):
+    """risk (g): a folder entry takes a file below it at any depth, and an entry never takes a longer name that only starts
+    with it: yerk_ai/accounts.py does not catch yerk_ai/accounts.py.bak, units/ (or units, written with no slash) does not
+    catch units_old/x, plugin:hands no hands-old plug-in."""
+    y, rec, hub, units, rooms = risk
+    tree = daemon_tree(y, tmp_path)
+    alike = {"yerk_ai/accounts.py.bak": "x\n", "units_old/x": "x\n", "yerk_ai/texting_old.py": "x\n", ".github.bak/x": "x\n", "uv.lock.old": "x\n"}
+    sha = commit(tree, tmp_path / "builder-wt", "need-x", alike)
+    for entries in (pipeline.SENSITIVE, ["units", "yerk_ai/accounts.py", "plugin:hands"]):
+        y.conf["needs"]["sensitive"] = entries
+        assert y.pipeline.waits({"head": sha, "plugins": {"hands-old": {}}}) == {}
+    below = commit(tree, tmp_path / "builder-wt", "need-x", {"units/deep/yerk-new.service": "x\n", "yerk_ai/texting/new.py": "x\n"})
+    assert y.pipeline.waits({"head": below}) == {"head": below, "paths": ["units/deep/yerk-new.service"], "plugins": []}
+    y.conf["needs"]["sensitive"] = pipeline.SENSITIVE
+    assert y.pipeline.waits({"head": below})["paths"] == ["units/deep/yerk-new.service", "yerk_ai/texting/new.py"]
+
+
+def test_risk_h_a_person_releases_it_the_hand_road_way_and_it_deploys_and_goes_live(risk, tmp_path, capsys):
+    """risk (h): the need of (a), then a person merges its PR and runs `yerk needs done DAY N PR`: it goes on to the deploy
+    and live as any held need does, that road unchanged."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and row(y, day)["deeper"]["paths"] == ["yerk_ai/emails.py"]
+    capsys.readouterr()
+    assert cli.main(["needs", "done", day, "1", "7", "--state", str(y.state), "--private", str(EXAMPLE_PRIVATE)]) == 0
+    assert capsys.readouterr().out.strip() == f"need 1 of {day}: merged, PR 7"
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "deploying" and len(units.argv) == 1 and rec.lines[-1] == words.NEED_DEPLOYING.format(n=1, pr=7)
+    done = head(REPO)                                    # the deployed commit holds the merge, as the hand road's own test has it
+    asyncio.run(y.pipeline.set(row(y, day), {"merge": done}))
+    y.ledger.deploy(kind="deploy", unit="yerkd", before="0" * 7, after=done, outcome="proven")
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "live" and rec.lines.count(words.NEED_LIVE.format(n=1, ability=ASK[2])) == 1 and puts(hub) == []
+    assert rooms["example-room"].lines == [words.NEED_LIVE_ROOM.format(n=1, ability=ASK[2])]
+
+
+def test_risk_i_a_pr_that_loosens_the_list_in_its_own_tree_is_judged_by_the_running_one(risk, tmp_path):
+    """risk (i): a pull request whose tree takes yerk_ai/gates.py off the default list (and the example's list to none) and
+    changes it is judged by the running daemon's list, never its own, and held: the list's own file is on it too."""
+    y, rec, hub, units, rooms = risk
+    own = (REPO / "yerk_ai" / "pipeline.py").read_text()
+    loose = own.replace('"yerk_ai/gates.py", ', "", 1)
+    assert '"yerk_ai/gates.py"' in own and '"yerk_ai/gates.py"' not in loose and "yerk_ai/gates.py" in pipeline.SENSITIVE
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/pipeline.py": loose, "yerk_ai/gates.py": "no hold\n", "yerkd.toml.example": "[needs]\nsensitive = []\n"},
+                     base={"yerk_ai/pipeline.py": own, "yerk_ai/gates.py": "the holds\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == []
+    assert row(y, day)["deeper"] == {"head": sha, "paths": ["yerk_ai/gates.py", "yerk_ai/pipeline.py"], "plugins": []}
+
+
+def test_risk_j_many_paths_name_the_first_three_and_how_many_more_on_lines_at_phone_width(risk, tmp_path):
+    """risk (j): a change touching many listed paths: the why names the first three and how many more, each of its lines at
+    phone width (STYLE.md) and the whole line under the machine room's cut; the row holds every path."""
+    y, rec, hub, units, rooms = risk
+    many = [".github/workflows/tests.yml", "pyproject.toml", "units/yerkd.service", "uv.lock", "yerk_ai/accounts.py",
+            "yerk_ai/deploy.py", "yerk_ai/texting/sender.py"]
+    day, sha = risky(y, hub, tmp_path, {p: "a change\n" for p in many})
+    end(y, row(y, day)["worker"], "merge")
+    r = row(y, day)
+    assert r["state"] == "held" and r["deeper"]["paths"] == many and puts(hub) == []
+    assert flat(r["why"]) == words.NEED_DEEPER.format(what=".github/workflows/tests.yml, pyproject.toml, units/yerkd.service and 4 more")
+    assert len(r["why"].splitlines()) > 1 and all(words.width(x) <= words.PHONE for x in r["why"].splitlines()), r["why"]
+    said = words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])
+    assert rec.lines[-1] == said and len(said) <= jobs.ALERT_MAX
+
+
+def test_risk_k_a_fix_workers_later_commit_on_the_list_stops_it_too(risk, tmp_path):
+    """risk (k): the tier comes from the change, on the final head at the merge, whoever made it: the builder's commit is
+    off the list, the cold read says fix first, the fix worker's commit touches a listed path, and that head's read saying
+    merge holds it."""
+    y, rec, hub, units, rooms = risk
+    day, first = risky(y, hub, tmp_path, {"README.md": "a word\n"})
+    end(y, row(y, day)["worker"], "fix first: the word is wrong")
+    assert row(y, day)["state"] == "fixing" and role(y, fixer := row(y, day)["worker"])["role"] == "fix"
+    sha = commit(y.pipeline.tree, tmp_path / "builder-wt", f"need-{day}-1", {"yerk_ai/hooks.py": "the fix\n"})
+    end(y, fixer, f"fixed: {sha[:7]}")
+    hub.routes[("GET", f"/repos/{SLUG}/pulls/7")] = (200, {"head": {"sha": sha}, "merged": False, "state": "open"})
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{sha}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert (row(y, day)["state"], row(y, day)["head"]) == ("reading", sha)
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and row(y, day)["deeper"] == {"head": sha, "paths": ["yerk_ai/hooks.py"], "plugins": []}
+    assert puts(hub) == []
+
+
+def test_risk_l_any_other_stop_clears_the_field_so_the_held_needs_with_one_are_those_that_wait(risk, tmp_path):
+    """risk (l): a program finds the needs that wait for the deeper check by the field alone: a later stop of another kind
+    clears it (a deploy that failed after a person released it), and a stop of a need that never had one writes none."""
+    y, rec, hub, units, rooms = risk
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert [(r["day"], r["n"]) for r in needs.load(y.state) if r.get("state") == "held" and r.get("deeper")] == [(day, 1)]
+    asyncio.run(y.pipeline.stop(row(y, day), "held", "deploy failed: the fast tests failed"))
+    assert (row(y, day)["state"], row(y, day)["deeper"], row(y, day)["why"]) == ("held", {}, "deploy failed: the fast tests failed")
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "stuck", "a reason"))
+    assert row(y, day, n2)["state"] == "stuck" and "deeper" not in row(y, day, n2)
+
+
+@pytest.mark.parametrize("value", ["yerk_ai/gates.py", False, 0])
+def test_risk_m_a_sensitive_that_is_no_list_is_the_default_list_never_no_list(risk, tmp_path, value):
+    """risk (m): [needs] sensitive written as something that is no list (one path as a string, false) is the default list, the
+    strict side: a mistyped line never turns the wait off, only [] does."""
+    y, rec, hub, units, rooms = risk
+    y.conf["needs"]["sensitive"] = value
+    day, sha = risky(y, hub, tmp_path, {"yerk_ai/emails.py": "the email goes out\n"})
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == [] and row(y, day)["deeper"]["paths"] == ["yerk_ai/emails.py"]
+
+
+def test_risk_n_a_listed_file_moved_off_its_path_is_still_seen(risk, tmp_path):
+    """risk (n): a change that moves a listed file to another name (git calls it a rename and names only the new path) is read
+    with both its paths, so the old, listed one holds it."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "".join(f"line {i} of the gate\n" for i in range(40))})
+    wt = tmp_path / "builder-wt"
+    git(tree, "worktree", "add", "-q", str(wt), "-b", f"need-{day}-1", "main")
+    git(wt, "mv", "yerk_ai/gates.py", "yerk_ai/doors.py")
+    git(wt, *ID, "commit", "-q", "-m", "the need")
+    to_read(y, hub, day, git(wt, "rev-parse", "HEAD"))
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "held" and puts(hub) == [] and row(y, day)["deeper"]["paths"] == ["yerk_ai/gates.py"]
+
+
+def test_risk_o_main_moving_on_a_listed_path_never_holds_a_change_that_leaves_it_alone(risk, tmp_path):
+    """risk (o): the change is read against its merge base with origin/main, never main's tip: main moving on with a listed
+    path after the branch was cut (another merge) is no part of this need's change, so it merges."""
+    y, rec, hub, units, rooms = risk
+    day = need(y, "example-room", *ASK)["day"]
+    tree = daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "the gate\n"})
+    sha = commit(tree, tmp_path / "builder-wt", f"need-{day}-1", {"README.md": "a word\n"})
+    (tree / "yerk_ai" / "gates.py").write_text("the gate, changed on main since\n")
+    git(tree, "add", "-A")
+    git(tree, *ID, "commit", "-q", "-m", "main moves on")
+    git(tree, "update-ref", "refs/remotes/origin/main", "main")
+    to_read(y, hub, day, sha)
+    end(y, row(y, day)["worker"], "merge")
+    assert row(y, day)["state"] == "merged" and "deeper" not in row(y, day) and puts(hub)[-1][2]["sha"] == sha
+
+
+@pytest.mark.parametrize("head", ["", "main", "--no-index"])
+def test_risk_p_a_head_that_is_no_sha_waits_and_is_never_handed_to_git(risk, tmp_path, head):
+    """risk (p): a row whose head is no sha (none, a branch's name, something shaped like an option) is never handed to git:
+    the need waits, said as a change that could not be read, never read as the tree's own HEAD and taken as safe."""
+    y, rec, hub, units, rooms = risk
+    daemon_tree(y, tmp_path, {"yerk_ai/gates.py": "the gate\n"})
+    assert y.pipeline.waits({"head": head, "plugins": {}}) == {"head": head, "paths": [], "plugins": [],
+                                                              "unread": "its PR's head is no commit"}

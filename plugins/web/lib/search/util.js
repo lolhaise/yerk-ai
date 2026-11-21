@@ -27,7 +27,8 @@ export const DEFAULTS = Object.freeze({
   paidMode: "fast",
   exaAlertThresholds: [5000, 10000],
   youDailyCap: 100,
-  stateDir: "~/.local/state/yerk/web/search", // tools.mjs always passes <state>/web/search
+  stateDir: "~/.local/state/yerk/web/search", // tools.mjs always passes <state>/web/search, a Yerk worker's own folder's web/search in one
+  sharedStateDir: "", // a worker's: <state>/web/search, read for every room's bookings, never written (tools.mjs)
   fallbackSnippetChars: 700,
 });
 
@@ -87,6 +88,7 @@ export function resolvePluginSettings(config, overrides = {}) {
     ytTranscriptPath: typeof merged.ytTranscriptPath === "string" ? expandHome(merged.ytTranscriptPath.trim()) : "",
     ytTranscriptBin: typeof merged.ytTranscriptBin === "string" ? merged.ytTranscriptBin : "",
     stateDir: expandHome(typeof merged.stateDir === "string" && merged.stateDir.trim() ? merged.stateDir.trim() : DEFAULTS.stateDir),
+    sharedStateDir: typeof merged.sharedStateDir === "string" && merged.sharedStateDir.trim() ? expandHome(merged.sharedStateDir.trim()) : "",
     fallbackSnippetChars: intIn(merged.fallbackSnippetChars, 200, 3000, DEFAULTS.fallbackSnippetChars),
     noLog: merged.noLog === true,
     noCache: merged.noCache === true,
@@ -131,10 +133,6 @@ export function cacheSet(key, value, ttlMs) {
   CACHE.set(key, { at: Date.now(), value });
 }
 
-export function cacheClear() {
-  CACHE.clear();
-}
-
 // ---- private state files: dir 0700, files 0600 ----
 export function ensureStateDir(dir) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -163,16 +161,6 @@ export function appendCallLog(settings, entry) {
 
 function monthStamp(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function readPaidCount(settings) {
-  try {
-    const file = path.join(settings.stateDir, `paid-${monthStamp()}`);
-    const n = parseInt(fs.readFileSync(file, "utf8").trim(), 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  } catch {
-    return 0;
-  }
 }
 
 // Alert lines go to <stateDir>/alerts.log, 0600.
@@ -234,27 +222,34 @@ export function countExaCall(settings, now = new Date()) {
 // You.com's keyless MCP allows 100 searches a day (you.com/docs/agents/mcp-server, read 2026-10-19).
 // <stateDir>/you-daily holds "YYYY-MM-DD N" for the local calendar day. A slot is booked BEFORE the
 // request (a crash over-counts, like the monthly counters); once the day's count reaches
-// youDailyCap the engine is skipped without a request until the local date changes.
+// youDailyCap the engine is skipped without a request until the local date changes. A Yerk worker's
+// process books in its own folder's file and counts the rooms' shared one with it (sharedStateDir).
 function dayStamp(d = new Date()) {
   return `${monthStamp(d)}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function dayCount(dir, day) {
+  try {
+    const [d, n] = fs.readFileSync(path.join(dir, "you-daily"), "utf8").trim().split(/\s+/);
+    const count = parseInt(n, 10);
+    return d === day && Number.isFinite(count) && count >= 0 ? count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// count: the day's searches every process booked that this one counts; own: this process's file's.
 export function readYouDay(settings, now = new Date()) {
   const day = dayStamp(now);
-  try {
-    const [d, n] = fs.readFileSync(path.join(settings.stateDir, "you-daily"), "utf8").trim().split(/\s+/);
-    const count = parseInt(n, 10);
-    return { day, count: d === day && Number.isFinite(count) && count >= 0 ? count : 0 };
-  } catch {
-    return { day, count: 0 };
-  }
+  const own = dayCount(settings.stateDir, day);
+  return { day, count: own + (settings.sharedStateDir ? dayCount(settings.sharedStateDir, day) : 0), own };
 }
 
 // Returns { ok: true, count } with the slot booked, or { ok: false, count } once the day is spent.
 export function takeYouSlot(settings, now = new Date()) {
-  const { day, count } = readYouDay(settings, now);
+  const { day, count, own } = readYouDay(settings, now);
   if (count >= settings.youDailyCap) return { ok: false, count };
-  writeCounter(settings, path.join(settings.stateDir, "you-daily"), `${day} ${count + 1}`);
+  writeCounter(settings, path.join(settings.stateDir, "you-daily"), `${day} ${own + 1}`);
   return { ok: true, count: count + 1 };
 }
 

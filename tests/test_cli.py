@@ -43,3 +43,29 @@ def test_map_shows_the_rules_file_as_a_part_of_its_own(tmp_path):
 
 def test_map_unknown_room():
     assert yerk("map", "no-such-room").returncode == 2
+
+
+def test_a_command_on_the_example_layer_says_so_once_on_stderr(tmp_path):
+    """F9-12: with no --private and no $YERK_PRIVATE a command answers about the example layer in the repo against the real
+    state folder; one line on stderr says so, state first, with the flag that names the real folder, once however often the
+    command reads the folder (`yerk explain retention` reads it twice), and the answer itself is unchanged."""
+    from yerk_ai import words
+    r = yerk("explain", "retention", "--state", str(tmp_path))
+    said = r.stderr.splitlines()
+    assert r.returncode == 0 and len(said) == 1 and said[0].startswith(words.WORKING), r.stderr
+    assert "example layer" in said[0] and "--private" in said[0] and words.width(said[0]) <= words.PHONE
+    q = yerk("explain", "retention", "--private", "examples/private", "--state", str(tmp_path))
+    assert q.returncode == 0 and q.stdout == r.stdout and q.stderr == ""
+
+
+def test_add_and_deploy_never_say_the_example_layer(tmp_path, monkeypatch, capsys):
+    """F9-12: the two commands that never answer on the example layer say nothing of it: `yerk add` refuses there with its
+    own line, and `yerk deploy` takes the running daemon's own layer, else refuses."""
+    from yerk_ai import cli, config, deploy
+    r = yerk("add", "anything", "--state", str(tmp_path))
+    assert r.returncode == 2 and "example layer" not in r.stderr and "--private" in r.stderr, r.stderr
+    monkeypatch.delenv("YERK_PRIVATE", raising=False)
+    monkeypatch.setattr(config, "_EXAMPLE_SAID", False, raising=False)
+    monkeypatch.setattr(deploy, "run", lambda private, *a, **k: 0 if private == config.EXAMPLE_PRIVATE else 1)
+    assert cli.main(["deploy", "--state", str(tmp_path)]) == 0
+    assert "example layer" not in capsys.readouterr().err

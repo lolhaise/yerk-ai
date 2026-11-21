@@ -19,7 +19,7 @@ import discord
 
 from . import context, memory, words
 from .channels.discord import REPLY_MAX, file_type, safe_name
-from .config import REPO, budgets, load_toml, people, private_dir, room_id, rooms, state_dir, toml_value, write_private
+from .config import REPO, added, budgets, load_toml, people, private_dir, room_id, rooms, state_dir, toml_value, write_private
 
 MAX_FILE = 25_000_000                               # bytes: a larger attachment is named in its line, not saved
 HOOK = "yerk-test-sender"                           # the test webhook, named as `yerk setup-room` names it
@@ -36,6 +36,12 @@ def made_like(c: dict[str, Any], person: bool) -> bool:
     if not str(c.get("channel", "")).startswith("discord:"):
         return False
     return bool(c.get("people")) if person else str(c.get("privacy", "owner")) == "owner" and not c.get("role")
+
+
+def answers(state: Path, name: str, c: dict[str, Any]) -> frozenset[int]:
+    """The people room `name` answers besides the owner: rooms.toml's and those the owner had it answer by asking (the people
+    tool, kept in the daemon's override), whom the daemon joins to them at its start."""
+    return people(name, c) | {int(p["id"]) for p in added(state, name)}
 
 
 def block_of(t: dict[str, Any], like: dict[str, Any], fill: dict[str, str]) -> dict[str, Any]:
@@ -131,11 +137,11 @@ async def add(a: argparse.Namespace) -> int:
         have = rs.get(room)
         found = [c["id"] for c in await http.get_all_guild_channels(d["guild"]) if c["name"] == room and c["type"] == 0]
         cid = str(have["channel"]).partition(":")[2] if have else found[0] if found else ""
-        ows = [o for o in (await http.get_channel(rs[like]["channel"].partition(":")[2]))["permission_overwrites"]
-               if int(o["id"]) not in people(like, rs[like])]
+        out = answers(state, like, rs[like])        # its people, never let into the new room
+        ows = [o for o in (await http.get_channel(rs[like]["channel"].partition(":")[2]))["permission_overwrites"] if int(o["id"]) not in out]
         ows += [{"id": str(a.person), "type": 1, "allow": str(t["allow"]), "deny": "0"}] if a.person else []
         fill = {"name": a.room, "channel": cid or "NEW", "layer": str(priv.resolve() / a.room)}
-        block = have or block_of(t, rs[like], fill) | ({"people": [a.person]} if a.person else {})
+        block = have or renamed(block_of(t, rs[like], fill), like, room) | ({"people": [a.person]} if a.person else {})
         saved = context.attachments_dir(priv, room, block)       # the history's files: in its also, its recall and backfills reach them
         if listing := not have and not a.person and isinstance(block.get("also"), list) and str(saved) not in block["also"]:
             block["also"] = [*block["also"], str(saved)]         # a block with no also reads every root: never cut to this one
@@ -275,7 +281,7 @@ async def imports(a: argparse.Namespace) -> int:
             if c["type"] in (15, 16) or kind == "discord-guild" and not dry and (room or ch in skip):
                 print(f"{where}: {'a forum, its posts are the threads under it' if c['type'] in (15, 16) else 'left as it is'}; {about}", flush=True)
                 continue
-            mates = people(ids[rid], rs[ids[rid]]) if cls == "room" and rid in ids else frozenset()
+            mates = answers(state, ids[rid], rs[ids[rid]]) if cls == "room" and rid in ids else frozenset()
             log, n, why = memory.DailyLog(s.daily, s.tz, {label: (rid, cls)}), None, "its channel is not readable" if pid in walled else ""
             try:
                 if not why:
@@ -308,3 +314,20 @@ async def imports(a: argparse.Namespace) -> int:
         print(f"{len(chats)} chats: {read} read, {msgs:,} messages, {new:,} {'to file' if dry else 'filed'}; {failed} not read; "
               f"{cov} covered by a room; {skipped} in [import] skip")
     return 1 if failed else 0
+
+
+def renamed(block: dict[str, Any], was: str, now: str) -> dict[str, Any]:
+    """A block made like the room `was`, each mcp server's arg or env value that is exactly that room's name (a plug-in's
+    --room, its YERK_ROOM) naming `now`, the new room, so its plug-ins serve it and not the room it was copied from; a
+    path or any other value stays as copied."""
+    def put(v: Any) -> Any:
+        return now if v == was else v
+    if not isinstance(mcp := block.get("mcp"), dict):
+        return block
+    out: dict[str, Any] = {}
+    for name, s in mcp.items():
+        if isinstance(s, dict):
+            s = s | ({"args": [put(x) for x in s["args"]]} if isinstance(s.get("args"), list) else {})
+            s = s | ({"env": {k: put(v) for k, v in s["env"].items()}} if isinstance(s.get("env"), dict) else {})
+        out[name] = s
+    return block | {"mcp": out}

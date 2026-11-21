@@ -6,10 +6,14 @@ daemon restarts.
   gives the items), a `workers` ledger row, the card in the room, then the unit: `claude -p` under one
   named account with the prompt on stdin, stdout and stderr to files in the folder, a cap
   (RuntimeMaxSec, 65 minutes unless the call or [workers] says otherwise) and its own cgroup, so a
-  stop takes every process with it. The unit's environment names its account's token file and no
+  stop takes every process with it. A memory ceiling too (MemoryMax, 4G unless [workers] memory_max
+  says otherwise, and no swap): past it the kernel kills the process using the most memory inside
+  the unit, never one of the box's, and systemd does not stop the unit for it (OOMPolicy=continue),
+  so a command of the worker's that runs away dies alone and the worker goes on.
+  The unit's environment names its account's token file and no
   other; its first step (`python -m yerk_ai.workers run`) reads it the way a room does
   (accounts.account_env) and starts claude with an allowlisted environment. A worker gets no room
-  session, no MCP server (so no `worker` tool: no workers spawning workers) and no subagent tool.
+  session, no `worker` or `schedule` tool on any MCP server it is given (so no workers spawning workers) and no subagent tool.
   The unit sees the state folder read-only and its own folder writable; the install's secret, the
   private layer's secrets/ (its own account's token alone comes back, read-only) and every room's
   folder are not there at all (Systemd.sandbox), so a worker spends no money outside the daemon's
@@ -20,8 +24,9 @@ daemon restarts.
   there is written; the adapter edits at most once a second, the latest text winning, as it does
   for turn cards. Its words come from words.py (STYLE.md): no path and no exit code in a room.
 - Completion: the unit's ExecStopPost writes exit.json (systemd's SERVICE_RESULT, EXIT_CODE and
-  EXIT_STATUS) and the same watch sees it. The card settles with the outcome in plain words
-  (finished clean, stopped: timed out, stopped by the owner, died: why, lost), the report's first
+  EXIT_STATUS, and how many of its processes the kernel killed for memory) and the same watch sees it. The card settles
+  with the outcome in plain words (finished clean, stopped: timed out, stopped by the owner, died: why, lost; a death
+  for memory says memory, and one that lost a process to memory and went on says so in one line), the report's first
   line and "report saved" with `yerk worker report <id>`, where the path and the unit's exit live;
   then ONE relay turn in the room's own session tells the outcome under 1,500 characters ending with
   that line. The relay waits until the room is idle (no human message for 60 s and no turn running;
@@ -29,14 +34,21 @@ daemon restarts.
   merged with another relay; two completions are two relays, in order), and in a room whose process
   is closed it resumes the room's own session, as any message does. The raw report never goes to
   the room. A last message of exactly NO_REPLY settles the card quiet, live or at a re-attach: the
-  done mark and "finished clean, nothing to add", no token, no rows, the footer as ever; and no
-  relay turn, whoever started it (the tool, `yerk worker start` in a script), the ledger saying why.
+  done mark and "finished clean" over the report's first line, or "finished clean, nothing to add" when
+  that line is the token too, no rows, the footer as ever; and no relay turn, whoever started it (the
+  tool, `yerk worker start` in a script), the ledger saying why. A job's worker names its job in its footer.
 - One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
   waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
   the account frees. A worker that moves account mid-run is not built.
-- Tools: none from Yerk AI by default. [workers] yerk_tools may give it the read-only ones (recall,
-  read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
-  schedule tool to give.
+- Tools: a shell, files and the web (TOOLS); none from Yerk AI by default. [workers] yerk_tools may give it the read-only
+  ones (recall, read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
+  schedule tool to give. Of the room's own add-on tools it gets the ones the room gives every worker started from it
+  (rooms.toml worker_addons, an owner room's carried from [defaults]; a job's worker too, with no one to remember them) and
+  the ones a start's `addons` names (need 83 of 2026-11-10: a room could not hand a worker the browser), one list with no
+  repeat: each one the room's allow list has, its server's table as the room runs it plus YERK_WORKER and YERK_WORK_DIR;
+  never one whose table hands it a credential, which the worker's shell could read. A named one the room cannot give
+  refuses the start; a default it cannot give is skipped (a credential's with a warning) and the worker starts. Its gate
+  (gates.worker_check) refuses any other MCP tool, and every call that carries the owner's word (`confirmed`).
 - A daemon start re-attaches from the ledger and the unit list: a running unit gets its watch and its
   card back, one that ended while the daemon was away completes, one that vanished settles as lost.
 """
@@ -56,6 +68,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Sequence
 
@@ -71,13 +84,24 @@ from .room import Inbound
 log = logging.getLogger("yerk.workers")
 UNIT = "yerk-worker-"
 EXIT, TASKS, REPORT = "exit.json", "TASKS.md", "REPORT.md"
+# a worker's git worktrees in its folder, by the names every need brief gives them (needs.py): `wt`, Yerk's, and
+# `<plug-in>-wt`, a plug-in's; an owner room's Read, Grep and Glob reach them, and the worker's own files too except in a sealed room (Yerkd.worker_reads)
+WORKTREES = ("wt", "*-wt")
 TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
 WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
+ADDON = re.compile(r"^mcp__([A-Za-z0-9_-]+?)(?:__([A-Za-z0-9_-]+))?$")   # a room's add-on tool, or all of its server's
+# a path a brief names: absolute or ~/, at a word's start or after an opening bracket, a quote, a backtick or "="; a closing
+# bracket, a quote or a backtick ends it, and the sentence's punctuation after it is not part of it (NAMED_END)
+NAMED, NAMED_END, WILD = re.compile(r"(?<![^\s(\[{<'\"`=])~?/[^\s'\"`()\[\]{}<>]*"), ".,;:!?", re.compile(r"[*?]")
+CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)   # an env name or header that hands one over
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
+MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
+CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgroup v2: where a unit's memory.events is
+SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
 
 
 @dataclass
@@ -85,6 +109,7 @@ class Settings:
     """[workers] in the private yerkd.toml; every key optional."""
     root: Path
     cap_minutes: float = 65.0
+    memory_max: str = MEMORY_MAX        # the unit's memory ceiling, no swap past it (Systemd.start); a size, see memory_max()
     model: str = ""                     # "" = the room's own model
     account: str = ""                   # "" = the first account in order that is not resting
     effort: str = ""                    # "" = the room's own effort; one of EFFORTS (config.py)
@@ -105,7 +130,19 @@ def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None =
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
                     relay_message=0 if whole else int(relay.get("message", 1500)), relay_reply=0 if whole else int(relay.get("reply", 1500)),
-                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf))
+                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf), memory_max=memory_max(conf))
+
+
+def memory_max(conf: dict[str, Any]) -> str:
+    """[workers] memory_max, a worker unit's memory ceiling: a whole number of bytes, or one with K, M, G or T after it (any
+    case, base 1024, as systemd reads MemoryMax). Anything else (a word, a fraction, a percentage, infinity, zero, past 64
+    bits) never reaches systemd: dropped with a warning, as a wrong yerk_tools name is, and the default used."""
+    value = conf.get("memory_max", MEMORY_MAX)
+    text = str(value).strip().upper() if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
+    if (m := SIZE.fullmatch(text)) and int(m[1]) * 1024 ** SUFFIXES.index(m[2]) < 2 ** 64:
+        return text
+    log.warning("workers: memory_max %r is not a size; a worker gets %s", value, MEMORY_MAX)
+    return MEMORY_MAX
 
 
 def yerk_tools(conf: dict[str, Any]) -> list[str]:
@@ -130,12 +167,74 @@ def gate_settings(folder: Path) -> Path:
     return path
 
 
-def mcp_config(state: Path, room: str, tools: list[str], path: Path) -> Path:
-    """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`."""
-    args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
-    cfg = {"mcpServers": {"yerk": {"type": "stdio", "command": sys.executable, "args": args, "env": {"PYTHONPATH": str(PACKAGE.parent)}}}}
-    path.write_text(json.dumps(cfg, indent=1))
+def mcp_config(state: Path, room: str, tools: list[str], path: Path, servers: dict[str, Any] | None = None) -> Path:
+    """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`, when there are any, and the
+    room's add-on servers it was given (`servers`, from room_addons)."""
+    cfg: dict[str, Any] = dict(servers or {})
+    if tools:
+        args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
+        cfg["yerk"] = {"type": "stdio", "command": sys.executable, "args": args, "env": {"PYTHONPATH": str(PACKAGE.parent)}}
+    path.write_text(json.dumps({"mcpServers": cfg}, indent=1))
     return path
+
+
+def room_addons(conf: dict[str, Any], want: Sequence[str], wid: str, folder: Path) -> tuple[dict[str, Any], list[str]] | str:
+    """The room's own add-on tools a worker asks for, from its rooms.toml table (`conf`, [defaults] in it): each a tool's
+    name as the room has it (mcp__hands__browser) or a server's name (hands) for every one of its tools the room's allow
+    names. (its servers, each as the room runs it, its env with YERK_WORKER, YERK_WORK_DIR and YERK_TOOL_TIMEOUT; the tools), or why not:
+    a tool the room has not, or a server whose table hands over a credential (an env name or header saying key, token,
+    secret, pass, auth, cookie or credential), since an add-on's process and its table are the worker's shell's to read."""
+    servers = {str(k): v for k, v in dict(conf.get("mcp") or {}).items() if isinstance(v, dict)}
+    have = [str(t) for t in conf.get("allow") or [] if (m := ADDON.match(str(t))) and m.group(1) in servers]
+    tools: list[str] = []
+    for w in (str(x).strip() for x in want if str(x).strip()):
+        hit = [t for t in have if t == w or ADDON.match(t).group(1) == w.removeprefix("mcp__")]  # type: ignore[union-attr]
+        if not hit and (m := ADDON.match(w)) and m.group(2) and f"mcp__{m.group(1)}" in have:   # the room allows all of it
+            hit = [w]
+        if not hit:
+            return f"this room has no add-on tool {w!r}; its add-on tools: {', '.join(have) or 'none'}"
+        tools += [t for t in hit if t not in tools]
+    out: dict[str, Any] = {}
+    for name in dict.fromkeys(ADDON.match(t).group(1) for t in tools):  # type: ignore[union-attr]
+        table = servers[name]
+        if any(CREDENTIAL.search(str(k)) for part in ("env", "headers") for k in dict(table.get(part) or {})):
+            return f"the add-on {name} is not given to a worker: its rooms.toml table passes a credential, which a worker's shell could read"
+        env = {**dict(table.get("env") or {}), "YERK_WORKER": wid, "YERK_WORK_DIR": str(folder)}
+        if isinstance(table.get("timeout"), int):
+            env["YERK_TOOL_TIMEOUT"] = str(table["timeout"])
+        out[name] = {**table, "env": env}
+    return out, tools
+
+
+def with_defaults(conf: dict[str, Any], given: tuple[dict[str, Any], list[str]], wid: str,
+                  folder: Path) -> tuple[dict[str, Any], list[str]]:
+    """A start's own add-ons (`given`, from room_addons) and the room's worker_addons after them, one list with no repeat. A
+    default is never a refusal: one the room's allow has not is skipped, one whose server's table passes a credential
+    skipped with one warning."""
+    servers, tools, said = dict(given[0]), list(given[1]), set()
+    for w in conf.get("worker_addons") or []:
+        if isinstance(got := room_addons(conf, [str(w)], wid, folder), str):
+            if got not in said and not got.startswith("this room has no"):
+                log.warning("worker %s: worker_addons %s is skipped: %s", wid, w, got)
+            said.add(got)
+            continue
+        servers |= {k: v for k, v in got[0].items() if k not in servers}
+        tools += [t for t in got[1] if t not in tools]
+    return servers, tools
+
+
+def named(brief: str) -> list[str]:
+    """The paths a brief names, each once in its order: every absolute path, and every ~/ one as the daemon's user's."""
+    out: list[str] = []
+    for m in NAMED.finditer(brief):
+        if (raw := m[0].rstrip(NAMED_END)) and (s := str(Path(os.path.expanduser(raw)))) not in out:
+            out.append(s)
+    return out
+
+
+def own_token(acct: Account) -> str:
+    """The token file a worker's unit gets as YERK_TOKEN_FILE (Systemd.sandbox binds it back): its account's, when there."""
+    return str(acct.token_file) if acct.token_file and acct.token_file.is_file() else ""
 
 
 # the unit; systemctl and unit_line are the jobs' and the deploy's too
@@ -155,10 +254,11 @@ def unit_line(*argv: str) -> str:
 class Systemd:
     """systemd-run --user: the unit outlives the daemon; --collect unloads it once it has ended
     (exit.json is the record). With the daemon's state folder, the unit sees it through systemd's own
-    namespacing (`sandbox`), so no tool or shell shape gets around it."""
+    namespacing (`sandbox`), so no tool or shell shape gets around it. Every unit gets `memory_max`
+    as its memory ceiling with no swap past it, and outlives a kill for memory (OOMPolicy=continue)."""
 
-    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = ()):
-        self.state, self.hidden = state, tuple(hidden)
+    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = (), memory_max: str = MEMORY_MAX):
+        self.state, self.hidden, self.memory_max = state, tuple(hidden), memory_max
 
     def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
         """The state folder read-only; the worker's own folder writable, and its account's config
@@ -178,8 +278,8 @@ class Systemd:
         # read-only inside the writable folder, so no tool, shell shape or program of the worker's rewrites, moves or removes it
         props += [f"ReadOnlyPaths={folder / n}" for n in GATE_FILES if (folder / n).is_file()]
         rooms, token = self.state / "rooms", env.get("YERK_TOKEN_FILE", "")
-        for p in self.hidden:
-            if p != rooms and token and Path(token).is_relative_to(p):
+        for p, back in self._fence(self._room(folder), token):
+            if p != rooms and back:
                 # secrets/ holding the worker's own token (secrets/claude-<name>.token, the default): an empty read-only
                 # filesystem with that one file bound back, since nothing comes back inside an InaccessiblePaths (systemd.exec)
                 props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"]
@@ -191,17 +291,52 @@ class Systemd:
             # with the worker's own room's work folder bound back at its own path, read and write: the
             # one room folder a brief may name (systemd.exec's TemporaryFileSystem plus BindPaths pattern)
             props.append(f"TemporaryFileSystem={rooms}:ro")
-            if (room := str(self._room(folder))) and "/" not in room and room not in (".", ".."):
-                props.append(f"BindPaths=-{rooms / room / 'work'}")
+            if back:
+                props.append(f"BindPaths=-{back}")
         return [x for p in props for x in ("-p", p)]
 
+    def _fence(self, room: str, token: str) -> list[tuple[Path, Path | None]]:
+        """Each hidden path with what comes back inside it, for a worker of `room` (_room's) whose own token file is `token`:
+        rooms/ its room's work folder, a secrets folder holding the token that file, any other nothing. The one reading of
+        `hidden` the fence (sandbox) and the question (unseen) share, so the two cannot drift apart."""
+        rooms, out = self.state / "rooms" if self.state else None, list[tuple[Path, Path | None]]()
+        for p in self.hidden:
+            if p != rooms and token and Path(token).is_relative_to(p):
+                out.append((p, Path(token)))
+            elif p != rooms:
+                out.append((p, None))
+            else:                                   # rooms/ itself: the one room folder a brief may name comes back
+                out.append((p, p / room / "work" if room and "/" not in room and room not in (".", "..") else None))
+        return out
+
+    def unseen(self, room: str, bind: str, token: str, paths: Sequence[str]) -> list[str]:
+        """Of `paths`, those this unit hides from a worker of `room` (of `bind`, when the daemon's caller gave one; the calling
+        room's own work folder is then hidden like any other room's) whose own token file is `token`: one of the hidden paths
+        or under one, and not what comes back inside it (_fence). The rooms' root itself is hidden: a worker sees it holding
+        one room. Each path as written and resolved, so a link into a hidden folder is hidden too, and a glob by the part
+        before its first wildcard; with no state folder there is no fence and nothing is hidden. Each once, in order."""
+        if self.state is None:
+            return []
+        fence, out = self._fence(self._bound({"room": room, "bind": bind}), token), []
+        for s in paths:
+            here = [Path(WILD.split(s, 1)[0])]                  # a glob: the part before its first wildcard
+            with contextlib.suppress(OSError, RuntimeError):
+                here.append(here[0].resolve())
+            if s not in out and any(q.is_relative_to(p) and not (back and q.is_relative_to(back)) for q in here for p, back in fence):
+                out.append(s)
+        return out
+
     @staticmethod
-    def _room(folder: Path) -> str:
+    def _bound(spec: dict[str, Any]) -> str:
+        """The room whose work folder comes back: the `bind` the daemon gave, else the worker's own room."""
+        return str(spec.get("bind") or spec.get("room") or "")
+
+    @classmethod
+    def _room(cls, folder: Path) -> str:
         """The room whose work folder the worker gets, from the spec Workers.start wrote before the launch: its own, or the
         `bind` the daemon gave it (a pictures backfill: its card in the machine room, the pictures in the owner room's inbox)."""
         try:
-            spec = json.loads((folder / "worker.json").read_text())
-            return str(spec.get("bind") or spec.get("room") or "")
+            return cls._bound(json.loads((folder / "worker.json").read_text()))
         except (OSError, ValueError):
             return ""
 
@@ -210,7 +345,9 @@ class Systemd:
                "--description", f"Yerk AI worker {unit.removeprefix(UNIT)}",
                "-p", f"RuntimeMaxSec={max(1, int(cap))}", "-p", f"StandardOutput=append:{out}",
                "-p", f"StandardError=append:{err}", "-p", f"ExecStopPost={unit_line(*post)}",
-               "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20", *self.sandbox(cwd, env),
+               "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20",
+               # past the ceiling the kernel kills the unit's biggest process, never the box's; the unit goes on without it
+               "-p", f"MemoryMax={self.memory_max}", "-p", "MemorySwapMax=0", "-p", "OOMPolicy=continue", *self.sandbox(cwd, env),
                *[f"--setenv={k}={v}" for k, v in env.items()], "--", *argv]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if p.returncode:
@@ -235,9 +372,9 @@ def run(spec_path: Path) -> int:
             "--session-id", str(spec["session_id"]), "--setting-sources", "", "--strict-mcp-config",
             "--tools", ",".join(spec["tools"]), "--disallowedTools", "Agent", "--permission-mode",
             str(spec["permission_mode"]), *(["--effort", str(spec["effort"])] if spec.get("effort") else [])]
-    if spec.get("mcp_config") and spec.get("yerk_tools"):     # only the read-only tools, from its own server
-        argv += ["--mcp-config", str(spec["mcp_config"]),
-                 "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in spec["yerk_tools"] if t in WORKER_TOOLS)]
+    granted = [*(f"mcp__yerk__{t}" for t in spec.get("yerk_tools") or [] if t in WORKER_TOOLS), *spec.get("addon_tools", [])]
+    if spec.get("mcp_config") and granted:     # the read-only tools from its own server, the room's add-on tools it was given
+        argv += ["--mcp-config", str(spec["mcp_config"]), "--allowedTools", ",".join(granted)]
     if spec.get("settings"):                                   # the gates' hook (gate_settings)
         argv += ["--settings", str(spec["settings"])]
     os.dup2(os.open(spec["prompt"], os.O_RDONLY), 0)         # the prompt on stdin; the opened fd closes on exec
@@ -245,13 +382,30 @@ def run(spec_path: Path) -> int:
 
 
 def post(folder: Path) -> int:
-    """ExecStopPost: how the unit ended, as systemd tells it, in exit.json (written whole, then renamed)."""
-    rec = {"result": os.environ.get("SERVICE_RESULT", ""), "code": os.environ.get("EXIT_CODE", ""),
-           "status": os.environ.get("EXIT_STATUS", ""), "ended": round(time.time(), 3)}
+    """ExecStopPost: how the unit ended, as systemd tells it, and how many of its processes the kernel killed for memory
+    (oom_kills; left out when it cannot be read), in exit.json (written whole, then renamed)."""
+    rec: dict[str, Any] = {"result": os.environ.get("SERVICE_RESULT", ""), "code": os.environ.get("EXIT_CODE", ""),
+                           "status": os.environ.get("EXIT_STATUS", ""), "ended": round(time.time(), 3)}
+    if (n := oom_kills()) is not None:
+        rec["oom_kill"] = n
     tmp = folder / f"{EXIT}.tmp"
     tmp.write_text(json.dumps(rec))
     os.replace(tmp, folder / EXIT)
     return 0
+
+
+def oom_kills() -> int | None:
+    """memory.events' oom_kill of the cgroup this process runs in: the processes any OOM killer killed there, its children's
+    included; None when it cannot be read. Only inside a unit (systemd's INVOCATION_ID): ExecStopPost runs in the unit's own
+    cgroup, which still exists then (seen on systemd 259, 2026-11-11), and anywhere else the count is another cgroup's."""
+    if not os.environ.get("INVOCATION_ID"):
+        return None
+    try:
+        own = next(x[3:] for x in OWN_CGROUP.read_text().splitlines() if x.startswith("0::"))
+        events = (CGROUP / own.lstrip("/") / "memory.events").read_text().split()       # "low 0 high 0 ... oom_kill 1 ..."
+        return int(events[events.index("oom_kill") + 1])
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
 
 
 # the watch
@@ -343,44 +497,82 @@ def settled_state(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[
         state = "no report"
     elif state == "done" and items and ticked < len(items):
         state = "partly"
-    why = words.died(str(end.get("result_code") or "")) if state == "died" else ""
+    why = words.died("oom-kill" if for_memory(end) else str(end.get("result_code") or "")) if state == "died" else ""
     return words.outcome(state, cap=words.span(float(row["cap"])), why=why, ticked=ticked, rows=len(items))
+
+
+def for_memory(end: dict[str, Any]) -> bool:
+    """A death for memory: systemd says oom-kill (a unit under OOMPolicy=stop exits 143), or the main
+    process was killed with KILL in a unit whose cgroup counted a kill for memory (OOMPolicy=continue says signal)."""
+    return end.get("exit") == "died" and (end.get("result_code") == "oom-kill"
+                                          or (str(end.get("status") or "") == "KILL" and int(end.get("oom_kill") or 0) > 0))
+
+
+def oom_note(end: dict[str, Any]) -> str:
+    """The line of a worker that lost a process to memory and ended any other way; "" when none was or it died for memory."""
+    n = int(end.get("oom_kill") or 0)
+    return words.OOM_LOST[n > 1].format(n=n) if n > 0 and not for_memory(end) else ""
+
+
+def cut_off(end: dict[str, Any]) -> bool:
+    """A worker that died from a stop nobody asked for, a box shutdown (seen live on need 83's fix): settled "died",
+    which a row with a stop request never is ("stopped"), and its exit the termination signal, exited 143 or killed by
+    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed); never a death for memory, which
+    would only run out again (seen live: oom-kill, exited 143, started again)."""
+    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM") and not for_memory(end)
+
+
+def footer(parts: Sequence[str]) -> list[str]:
+    """A card's small lines: its parts joined by commas, a part that would pass phone width starting a line."""
+    foot: list[str] = []
+    for x in (x for x in parts if x):
+        if foot and words.width(f"{foot[-1]}, {x}") <= words.PHONE:
+            foot[-1] += f", {x}"
+        else:
+            foot.append(x)
+    return [words.SUB + x for x in foot]
 
 
 def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
               accounts: int = 1, privacy: str = "owner", look: words.Look | None = None,
               now: float | None = None) -> str:
     """The worker's card, state first (STYLE.md). Running: its state and its rows, then the time so
-    far against the cap. Settled: the outcome in plain words, the report's first line, the rows as
-    they were, then how long it ran and "report saved" with the command that opens it; settled quiet
-    (end["quiet"]), the done mark, QUIET_WORKER and that footer alone. The account shows only when
-    the install has more than one; the path only under presentation.paths = owner, in an owner room."""
+    far against the cap. Settled: the outcome in plain words, the report's first line (two phone lines at most), the
+    rows as they were, then how long it ran and "report saved" with the command that opens it; settled quiet
+    (end["quiet"]), the done mark and no rows: "finished clean" over the report's first line, or QUIET_WORKER when that
+    line is the token itself or there is no report. A scheduled job's worker names its job first in the footer (need
+    100 of 2026-11-16: six quiet job cards read alike, whatever each found). The account shows only when the install
+    has more than one; the path only under presentation.paths = owner, in an owner room."""
     look = look or words.LOOK
     now = time.time() if now is None else now
     ticked = sum(1 for t, _ in items if t)
     started, cap = float(row["started"]), float(row["cap"])
-    who = words.WORKER.format(id=row["id"])
+    who, said = words.WORKER.format(id=row["id"]), ""
+    job = words.named(words.WORKER_JOB, str(row["job"])) if row.get("job") else ""
     if end is None and row.get("waiting"):               # in line for its account: no time against the cap yet
         lines = [words.line(f"{words.WORKING} {words.WORKER_HEAD.format(state=words.WAITING_ACCOUNT)}"),
                  words.line(f"{words.WAITING} " + words.IN_LINE.format(nth=words.nth(int(row.get("line") or 1)),
                                                                         name=row["account"]))]
         lines += [words.line(f"{words.WAITING} {text}") for _, text in items[-ROWS_SHOWN:]]
-        return "\n".join([*lines, words.SUB + who])
+        return "\n".join([*lines, *footer([job, who])])
     if end is None:
         mark, state = words.outcome("ticking" if items else "running", ticked=ticked, rows=len(items))
         when = (words.of_cap(now - started, cap) if look.times == "relative"
                 else f"started {words.clock(started, now)}, cap {words.span(cap)}")
     else:
         mark, state = settled_state(row, items, end)
+        said = str(end.get("result") or "") if end.get("has_report") else ""
         if end.get("quiet"):                             # its last message was exactly NO_REPLY: no token, no rows
-            mark, state, items = words.DONE, words.QUIET_WORKER, []
+            said = "" if said.strip() == words.NO_REPLY else said
+            mark, state, items = words.DONE, words.outcome("done")[1] if said else words.QUIET_WORKER, []
         ran = float(end["finished"]) - started
         when = ((f"done in {words.span(ran)}" if end["exit"] == "done" else f"ran {words.of_cap(ran, cap)}")
                 if look.times == "relative" else f"ended {words.clock(float(end['finished']), now)}, "
                                                   f"after {words.span(ran)}")
     lines = [words.line(f"{mark} {words.WORKER_HEAD.format(state=state)}")]
-    if end is not None and end.get("result") and end.get("has_report") and not end.get("quiet"):
-        lines.append(words.line(str(end["result"])))
+    if end is not None and (note := oom_note(end)):
+        lines.append(words.line(note))
+    lines += words.wrap(said)
     current = next((i for i, (t, _) in enumerate(items) if not t), None)
     stuck = words.WORKING if end is None else words.NOT_DONE if mark == words.NOT_DONE else words.WAITING
     rows = [words.line(f"{words.DONE if t else stuck if i == current else words.WAITING} {text}") for i, (t, text) in enumerate(items)]
@@ -390,13 +582,7 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
     extra = [f"account {row['account']}"] if accounts > 1 or look.footer == "full" else []
     if end is not None and end["exit"] == "did not start":
         when = ""                                        # it never ran: no time to tell
-    foot: list[str] = []                                 # phone width: a part that does not fit starts a line
-    for x in (x for x in [*([who] if end is None else []), when, *extra] if x):
-        if foot and words.width(f"{foot[-1]}, {x}") <= words.PHONE:
-            foot[-1] += f", {x}"
-        else:
-            foot.append(x)
-    lines += [words.SUB + x for x in foot]
+    lines += footer([job, *([who] if end is None else []), when, *extra])
     if look.footer == "full" and row.get("model"):
         lines.append(words.SUB + f"model {row['model']}")
     if end is not None:
@@ -413,8 +599,8 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     room says it in its own voice. Never the path, never the exit (STYLE.md). At most `cap` characters; 0: the whole report."""
     _, state = settled_state(row, tasks_of(Path(row["tasks"])), end)
     ran = float(end["finished"]) - float(row["started"])
-    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}\n"
-            + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
+    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}"
+            + (f"; {note}" if (note := oom_note(end)) else "") + "\n" + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
     try:
         body = Path(row["report"]).read_text(errors="replace").strip()
     except OSError:
@@ -422,8 +608,7 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     saved = relay_line(row)
     whole = ("the report, all of it:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="it is all here, so "
                                                                 "there is no file to open"))
-    part = ("the report begins:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="the rest is in the report, "
-                                                           "which this room does not open"))
+    part = ("the report begins:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="the rest is in the report"))
     label, ask = whole if not cap or len(head) + len(whole[0]) + len(body) + 1 + len(whole[1]) <= cap else part
     room = cap - len(head) - len(label) - 1 - len(ask)
     if cap and len(body) > room:
@@ -451,8 +636,9 @@ class Workers:
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs, self.models = rooms, channels, room_confs, models or {}
         # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
-        # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox
-        self.launcher: Systemd = launcher or Systemd(self.state, hidden)
+        # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox;
+        # and every unit gets [workers] memory_max as its memory ceiling
+        self.launcher: Systemd = launcher or Systemd(self.state, hidden, conf.memory_max)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
@@ -509,7 +695,8 @@ class Workers:
             return await self.start(room, str(req.get("brief") or ""),
                                     str(req.get("brief_file") or ""), str(req.get("account") or ""),
                                     str(req.get("model") or ""), float(req.get("cap_minutes") or 0),
-                                    list(req.get("tasks") or []), effort=str(req.get("effort") or ""))
+                                    list(req.get("tasks") or []), effort=str(req.get("effort") or ""),
+                                    addons=[str(a) for a in req.get("addons") or []])
         if action == "stop":
             return await self.stop(str(req.get("id", "")))
         if action == "list":
@@ -525,8 +712,10 @@ class Workers:
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
-                    more: dict[str, Any] | None = None, effort: str = "") -> dict[str, Any]:
-        """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one."""
+                    more: dict[str, Any] | None = None, effort: str = "", addons: list[str] | None = None) -> dict[str, Any]:
+        """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one.
+        `addons`: the room's own add-on tools the worker gets (room_addons), refused whole when one is not given; the room's
+        worker_addons come with every start, whoever calls it (with_defaults)."""
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if brief_file and not brief:
@@ -547,13 +736,20 @@ class Workers:
         while self.ledger.worker_get(wid):
             wid = uuid.uuid4().hex[:6]
         d = self.conf.root / wid
+        given = room_addons(self.room_confs.get(room, {}), addons, wid, d) if addons else ({}, [])
+        if isinstance(given, str):
+            return {"ok": False, "error": given}
+        given = with_defaults(self.room_confs.get(room, {}), given, wid, d)
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
         report, tasks_md = d / REPORT, d / TASKS
+        bind = str((more or {}).get("bind") or "")
+        if (unseen := self.launcher.unseen(room, bind, own_token(acct), named(brief))):   # told, never refused: a brief may
+            log.info("worker %s: its brief names %d path(s) its unit hides", wid, len(unseen))   # quote what it never reads
         (d / "BRIEF.md").write_text(brief)
         if tasks:
             tasks_md.write_text("".join(f"- [ ] {t}\n" for t in tasks))
-        prompt = d / "PROMPT.md"
+        prompt, yerk = d / "PROMPT.md", [t for t in WORKER_TOOLS if t in self.conf.yerk_tools]   # one list: words, worker.json, server
         prompt.write_text(
             f"You are a Yerk AI worker: a headless Claude Code run with one brief, started from room {room}.\n"
             f"- Your folder is {d}. Write your files there unless the brief names another place.\n"
@@ -561,11 +757,19 @@ class Workers:
             "it is done. The room's card shows these lines as you tick them.\n"
             f"- Write your report to {report}. Its first line is the one-line result; the card shows it.\n"
             "- Your last message is the deliverable: end with it, no tool call after it.\n"
-            f"- You have no room session, no Yerk AI tools and no subagents. Your cap is {cap / 60:g} minutes; "
-            "past it the run is stopped.\n"
-            "- Your tool calls pass Yerk AI's gates: a plain delete in your folder goes to the trash; a delete "
+            + (f"- You have no room session and no subagents. Of Yerk AI's tools you have {' and '.join(f'mcp__yerk__{t}' for t in yerk)} and no other: "
+               f"{'they read' if yerk[1:] else 'it reads'} the memory of the room that started you, as the room does. Where the brief depends on what "
+               "the owner or the room said, decided or keeps on file, look there first. " if yerk else
+               "- You have no room session, no Yerk AI tools and no subagents. ") + f"Your cap is {cap / 60:g} minutes; past it the run is stopped.\n"
+            + (f"- You have the room's own {', '.join(given[1])} too. A step that needs the owner's word (`confirmed`) is "
+               "refused, since nobody is here to give it: leave that step ready, and say in your report what waits for "
+               "the word, for the room to do once the owner says it.\n" if given[1] else "")
+            + "- Your tool calls pass Yerk AI's gates: a plain delete in your folder goes to the trash; a delete "
             "elsewhere or after a cd, an external action (a post, a login, money, a message out) and a change to "
-            "Yerk AI's own config are refused. Put what you could not do in your report.\n\n"
+            "Yerk AI's own config are refused. Put what you could not do in your report.\n"
+            + (f"- Not there for you, since your unit hides them: {', '.join(unseen)}. The brief names them; name them in your "
+               "report's first lines, with what you did without them.\n" if unseen else "")
+            + "\n"
             f"The brief (also in {d / 'BRIEF.md'}):\n\n{brief.strip()}\n")
         sid = str(uuid.uuid4())
         spec = {"id": wid, "room": room, "account": acct.name, "model": model, "effort": effort, "session_id": sid,
@@ -573,9 +777,12 @@ class Workers:
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
                 "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
         spec.update({k: v for k, v in (more or {}).items() if k not in spec})
-        if self.conf.yerk_tools:
-            spec["yerk_tools"] = list(self.conf.yerk_tools)
-            spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json"))
+        if yerk:
+            spec["yerk_tools"] = yerk
+        if given[1]:
+            spec["addon_tools"] = given[1]
+        if yerk or given[1]:
+            spec["mcp_config"] = str(mcp_config(self.state, room, yerk, d / "mcp.json", given[0]))
         (d / "worker.json").write_text(json.dumps(spec, indent=1))
         now = round(time.time(), 3)
         busy = self.busy(acct.name)
@@ -591,7 +798,11 @@ class Workers:
         if self.watch:
             self.watch.add(d)
         out = {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model, "effort": effort,
-               "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60}
+               "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60,
+               **({"addons": given[1]} if given[1] else {}),
+               **({"unseen": unseen, "unseen_note": words.WORKER_UNSEEN.format(
+                   paths=words.few(unseen), work=self.state / "rooms" / (bind or room) / "work")}
+                  if unseen else {})}
         if row.get("waiting"):
             row["line"] = len(self.in_line(acct.name))
             await self._show(row)
@@ -622,8 +833,8 @@ class Workers:
             return f"no account {row['account']!r}"
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PYTHONPATH": str(PACKAGE.parent),
                "CLAUDE_CONFIG_DIR": str(acct.config_dir)}
-        if acct.token_file and acct.token_file.is_file():
-            env["YERK_TOKEN_FILE"] = str(acct.token_file)
+        if (token := own_token(acct)):
+            env["YERK_TOKEN_FILE"] = token
         me = [sys.executable, "-P", "-m", "yerk_ai.workers"]    # -P: nothing in the folder can shadow an import
         try:
             await asyncio.to_thread(self.launcher.start, row["unit"], [*me, "run", str(d / "worker.json")], env, d,
@@ -689,7 +900,10 @@ class Workers:
         report = Path(row["report"])
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
-               "has_report": report.is_file(), "result_code": x.get("result") or ""}
+               "has_report": report.is_file(), "result_code": x.get("result") or "", "status": str(x.get("status") or ""),
+               "oom_kill": x["oom_kill"] if isinstance(x.get("oom_kill"), int) else 0}
+        if said := words.died("oom-kill") if for_memory(end) else oom_note(end):      # memory, in plain words, in the ledger too
+            detail = end["detail"] = f"{detail}; {said}"
         # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text), no relay
         end["quiet"] = state == "done" and (last_message(Path(row["staging"])) or end["result"]).strip() == words.NO_REPLY
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])
@@ -869,24 +1083,30 @@ class Workers:
 def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
     """The newest workers, running or ended: what `worker list` and `yerk worker list` show."""
     now = time.time()
-    return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"],
+    return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"], "job": r.get("job") or "",
              "state": r["exit"] or (words.WAITING_ACCOUNT if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
              "cap_minutes": r["cap"] / 60, "result": r["result"], "report": r["report"],
              "relay": r["relay"], "relay_note": r["relay_note"]} for r in ledger.workers(limit=limit)]
 
 
+def worktrees(folder: Path) -> list[str]:
+    """Each git worktree in a worker's folder that an owner room's Read reaches (WORKTREES; a linked one's .git is a file),
+    by its path, so a room checks the worker's claim about its change there; none once needs.tidy or the sweep took them."""
+    return [str(p.parent) for p in sorted(folder.glob("*/.git")) if p.is_file() and any(fnmatch(p.parent.name, w) for w in WORKTREES)]
+
+
 def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
-    """A worker's report: its path, first line and text (at most `limit` characters)."""
+    """A worker's report: its path, first line and text (at most `limit` characters), and its worktrees."""
     if (row := ledger.worker_get(wid)) is None:
         return {"ok": False, "error": f"no worker {wid!r}"}
     try:
         text = Path(row["report"]).read_text(errors="replace")
     except OSError:
         text = ""
-    return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"],
+    return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"], "job": row.get("job") or "",
             "first_line": first_line(Path(row["report"])), "text": text[:limit], "trimmed": len(text) > limit,
             "unit": row["unit"], "exit_detail": row["exit_detail"], "staging": row["staging"], "account": row["account"],
-            "model": row["model"]}
+            "model": row["model"], "worktrees": worktrees(Path(row["staging"])) if row["staging"] else []}
 
 
 def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = None, full: bool = False) -> list[str]:

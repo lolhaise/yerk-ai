@@ -253,19 +253,19 @@ free_path = "this is the free path"
 asked_as = ["delete files outside", "free up disk space", "clean up my disk", "delete old backups", "empty the trash", "delete crash dumps"]
 
 [abilities.text-as-you]
-state = "described"
-what = "Texts people as the owner, in the owner's voice, with a preview and a veto: the owner sees each reply before it goes and can stop it."
+state = "built"
+what = "Answers some of the owner's iMessage threads in their name, for the people on the reply list only, sending a checked reply on its own where the owner turned standing release on for that person and putting anything else on a card for their word."
 how = [
-  "The phone's messaging app through a small signed app on the owner's own computer, which carries the texts both ways.",
-  "A texting agent per thread that writes in the owner's voice and asks the owner's main room first when it does not know a fact.",
-  "Preview and veto: a reply waits in the owner's room for a send, an edit or a no; plans, money and feelings always go to the owner.",
-  "Texts queue while the computer is away and none is ever lost.",
+  "One call decides a reply, a tapback, nothing or a hold; a second call that reaches only the thread, the person's sheet and the draft checks it, and the code holds anything it cannot confirm.",
+  "A card in the owner's main room for what must wait, answered send, skip or edit <text>; standing release is off for everyone until the owner turns it on for a person.",
+  "Health, money, location and the other always-held classes wait for the owner's word unless a person's sheet opens one; the reply list and the sheets are files in the private folder.",
+  "At the send time the thread is read again and the text goes only if the owner has not answered and they have not written again; dry writes what would have gone and sends nothing.",
 ]
 tier = "free"
-needs = "a desktop computer signed into the owner's messaging account, the small signed app on it, and an ssh path from the box"
+needs = "a Mac signed into the owner's Messages with the bridge app and the runner that sends from its outbox, an ssh path from the box ([imessage] host), the reply list and a sheet for each person"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8, and the text tool sends one text the owner asked for, previewed and sent on the owner's word; a texting agent that reads other people's texts and drafts the owner's replies to them is not built."
+why_not = "A video or a voice message in a thread is named to the writer and not opened; the rest is built."
 asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "text messages for me"]
 layer = 8
 upgrade = "text"
@@ -292,6 +292,19 @@ free_path = "this is the free path"
 asked_as = ["my email", "my inbox", "send an email", "read my email", "search my email", "email him for me", "email her for me",
             "email them for me", "send an email for me", "email this to", "email it to", "send it by email", "attach it to an email",
             "email from my gmail"]
+
+# need-2026-11-16-102: a room asked why the emails it sent in the owner's name landed in people's spam found, in Sent Mail,
+# each one it sent under the bare address and the owner's own mail under the owner's name; the From line takes the name
+# only from [gmail] name, which was not set, and yerkd.toml is out of a room's reach, so the room could not check it.
+[abilities.email-name]
+state = "built"
+what = "An email in the owner's name goes out under the owner's name beside the address, \"Name <address>\", the way the owner's own Gmail sends mail: the name is [gmail] name in yerkd.toml, and with none set each email goes out under the bare address. The held email's preview shows its from line as it will go, marked \"no name on it\" when there is none; the send's answer names the From line it went under; `yerk doctor` names a missing [gmail] name each day with the line to add; and the Here line of this answer says whether the name is set on this install, never the name or the address, since yerkd.toml is out of a room's reach. The owner sets it, then restarts yerkd."
+tier = "free"
+needs = "the email ability, and [gmail] name in yerkd.toml for the name (yerkd restarted after it is set)"
+free_path = "this is the free path"
+asked_as = ["in spam", "to spam", "in people's spam", "in their spam", "in his spam", "in her spam", "spam folder", "junk folder",
+            "my name on the email", "my name on my emails", "my name on the emails", "name on the from line", "the from line",
+            "sender name"]
 
 [abilities.mail-watch]
 state = "described"
@@ -374,10 +387,10 @@ asked_as = ["call someone for me", "make a call for me", "place a call", "call o
 state = "described"
 what = "Fills and confirms a free booking form (a table or an appointment: a name, a phone number, an email, no card) in the browser ability's browser on the owner's order, though the page's address looks like a checkout; a page that takes money is still never touched."
 how = [
-  "The page decides, not its address: a checkout address whose page shows no card field, no payment frame, no amount and no saved card is a look-alike, and one that shows any of them is a payment page.",
-  "Money read from the page's whole text: an amount (a currency sign or code beside a number) or a saved card (its last four digits after a mask or after 'ending in'); a false alarm keeps the refusal, so the list leans wide.",
+  "The page decides, not its address: a checkout address whose page shows no card field, no payment frame and no saved card is a look-alike, and one that shows any of them is a payment page.",
+  "Money read from the page's whole text: a saved card (its last four digits after a mask or after 'ending in'), never an amount alone; a false alarm keeps the refusal, so the list leans wide.",
   "On a look-alike, each field set and each click only on the owner's word (the browser's confirmed flag), and without it the refusal asks for that word; a read of the page says which of the two it is.",
-  "On a payment page, nothing set or clicked, the owner's word or not, and the refusal says what it saw: a card field, a payment frame, a payment service's host or the money in its words.",
+  "On a payment page, nothing set or clicked, the owner's word or not, and the refusal says what it saw: a card field, a payment frame, a payment service's host or a saved card in its words.",
 ]
 tier = "free"
 needs = "the browser ability, with a plug-in whose payment check reads the page as well as its address"
@@ -396,7 +409,7 @@ how = [
   "A tool server attached to that profile, so a room or a worker can open, read, click and type.",
   "A brake: the owner's stop word ends it at once, and a run lifts the brake for itself with a lease that runs out on its own.",
   "A relaunch before each call: a browser that quit with its last tab leaves a port that takes a connection and resets it, so the tool starts it again inside the call's lease, and one that will not come back is said to be down in one line with its reason, never a stack trace's first line.",
-  "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it.",
+  "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it, or when the tool's own reply says to call the other one (its video action's reply for a browser not signed in to Instagram).",
   "A field typed as keys type it, by the browser action type in place of set, for a React or Angular form that never sees a value a script sets and keeps its Next button disabled: found by set's label rules, cleared with a real Backspace, typed through the browser's own text input (Input.insertText) a character at a time while short, read back, and the focus taken off it so its checks run.",
 ]
 tier = "free"
@@ -407,6 +420,30 @@ why_not = "Not in this repo: a browser reaches the rooms as a plug-in an install
 asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me",
             "open it in my browser", "open a page in my browser", "browser on my pc", "the next button stays disabled",
             "the form won't take the value", "the field needs real keystrokes"]
+
+# need-2026-11-14-97: a room asked to check a store's live stock met a retailer's product page empty behind a captcha
+# frame in the automated browser, and, handed an opaque empty page, improvised off a photo of the stock box instead of
+# naming the wall; filed 2026-11-14. PR 81's cold read: the first cut called the check a wall never worked around while it
+# sent the room to web_fetch, whose ladder is built to solve one, and put web_fetch under web_research's daily cap.
+[abilities.store-stock]
+state = "described"
+what = "Reads a store's live in-stock count for an item; when a retailer puts a captcha or bot-check in front of the automated browser, that browser names the check instead of handing back an opaque empty page, and the count is read through the web plug-in's web_fetch, whose ladder brings its own stealth browser and captcha solvers, or on the owner's own screen."
+how = [
+  "A page whose stock panel loads is read and answered as any page is: the automated browser (the hands plug-in's browser) reads the panel on the retailer's product page, and only a page the retailer walls needs the rest.",
+  "The browser names a bot-check, and hands never spoofs a browser or solves a check itself: a dedicated captcha host, such as DataDome's, in a frame on sight; another challenge host or a challenge phrase only when the page's own content never arrived.",
+  "Then web_fetch reads the page, its ladder built for such pages: a plain read, the machine's own stealth browser and captcha solver where they are installed, then the paid cloud browser with its proxies and captcha solving, and it names the wall (such as captcha_unsolved) when the page stays shut.",
+  "Or the owner reads it on their own screen: they open the page in their own browser and give the count, which is used and said to be theirs, never passed off as a live read.",
+  "A stock panel left on its loading placeholders is no count either: it is said unread, and read the same other ways.",
+  "A count read is reported with where and when it was read: a store's stock moves.",
+]
+tier = "free"
+needs = "the browser ability's plug-in to read a retailer's page, and the web ability's plug-in for web_fetch past a bot-check; no key of its own and no sign-in"
+price = "none for a page whose panel loads, for web_fetch's rungs on the machine and for the owner's own screen; web_fetch's cloud-browser rungs at the web ability's price, inside the Browserbase plan's included calls and hours, each paid call a spend row"
+free_path = "a page whose panel loads, web_fetch's rungs on the machine (its plain read, its stealth browser and its local captcha solver) and the owner's own screen; the paid cloud-browser rungs only when web_fetch climbs to them"
+why_not = "It rides on the browser and web abilities, plug-ins an install attaches, not code in this repo; an install whose browser plug-in names a bot-check and whose web plug-in carries web_fetch has the way, and a room asked whether a store has an item in stock reads the page, names any bot-check and reads the count through web_fetch or on the owner's own screen, never improvising a way of its own."
+asked_as = ["in stock", "in stock at the store", "is it in stock", "do they have it in stock", "stock at the store", "store stock",
+            "does the store have any left", "the store still has one", "is it on the shelf", "available at the store",
+            "the store page won't load", "captcha on the store site", "bot check on the retailer"]
 
 # need-2026-11-01-31: a form that wants a photo could not be sent, since a file input takes no typed value.
 [abilities.form-files]
@@ -435,7 +472,8 @@ how = [
   "Drawn by the browser itself, so a tab with no window on the owner's screen is shot: Page.captureScreenshot over the browser's developer protocol, where a desktop screenshot sees nothing.",
   "Saved in the room's own work folder, to open with Read and send with send: a new name for each shot, never one reused; the path comes back, never the picture, and a file that is not a PNG is never named.",
   "A read, under every browser call's guards: no owner's word and no payment check; only the room's own tabs, owner rooms only, the brake's lease.",
-  "A tab that never paints is named, with the way past it: the active tab of a minimized window never paints, so after its wait the room is told to open the page again in a background tab and shoot that one.",
+  "Back in under a second from any of the room's tabs, the one a minimized window shows too, and the window is never shown for it; a tab that gives no picture in 25 seconds is named, with the way past it: open the page again in a new tab and shoot that one.",
+  "A picture's numbers are the click's: it is the page's own pixels at most, its longer edge 2000 at most, which Read shows unshrunk, so a spot read off it goes to a click by position as read, and the plug-in turns it into the page's point.",
 ]
 tier = "free"
 needs = "the browser ability with a shot action in its plug-in"
@@ -467,6 +505,27 @@ why_not = "It rides on the browser ability, which is not in this repo; an instal
 asked_as = ["save the api key", "keep the api key", "store the api key", "copy the api key", "key in a locked file", "token in a locked file",
             "save the key to the secrets folder", "save the token from the page"]
 
+# need-2026-11-20-127: the owner sent a room a new site's login in pictures and said it needs to know their login; it had no
+# way to file it as a secret (its shell cannot write the secrets folder, and the browser's keep saves only a key a page
+# shows), and signing in later meant typing the password through a tool call, which lands in its kept transcript.
+[abilities.logins]
+state = "built"
+what = "Saves a login the owner hands over, a site's user and password, as a secret no room reads, from their own /login command, and signs in with it through the browser ability's browser by its name alone, so the password never reaches a room, its session log or a reply."
+how = [
+  "Saved by the owner with /login in any room, its name, site, user and password, since a slash command reaches the daemon alone, never a room's session as a message would; the answer only they see names the login, its site and its user, never the password.",
+  "Written by the daemon, NAME.login in the private folder's secrets (the site, the user and the password, 0600 in a 0700 folder), the way every key Yerk runs on is kept, so no room's Read or shell reaches it; the same name again is the owner's own new password, a link in its place is refused.",
+  "Signed in by name, as the browser's type takes login and part, user or password, and the plug-in reads the file itself, so the value is in no tool call's arguments and no reply; a name not saved lists the saved ones by name and site.",
+  "Only on the login's own site over https, its host or a subdomain of it, the password only into a password field and the user only into a text field, never on a payment page; the plug-in scrubs every saved password from every line it returns after.",
+  "A login the owner sends in a message or a picture instead is never typed out, filed in memory or copied by the room, which asks them to save it with /login and to delete the message.",
+]
+tier = "free"
+needs = "the owner's Discord rooms for /login, and the browser ability with type's login in its plug-in for the sign-in"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["save my login", "save my password", "keep my password", "store my password", "remember my login", "remember my password",
+            "here is my login", "here's my login", "my login is", "my password is", "know my login", "sign in with my login",
+            "log in with my login", "use my login", "my login details"]
+
 # need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail had the mail's words and
 # no link's address, since the mail tool's text strips the tags, and the mail would not open by its row in the browser.
 # need-2026-11-07-74: a room asked whether a guest booking was still live read its mails with every link stripped again,
@@ -491,6 +550,29 @@ asked_as = ["link in the email", "link in that email", "links in the email", "li
             "confirmation link", "unsubscribe link", "link in an email", "link from an email", "button in the email",
             "button in that email", "button in an email"]
 
+# need-2026-11-11-85: a room asked to read a quote an email carried as a PDF, to confirm what it said, had the file's name
+# from the mail tool's read and no way to the file: the mail tool neither saved nor opened one, the attachments tool takes a
+# Discord message's files only, and a room's shell has no network; it asked the owner to send the file into the room.
+[abilities.mail-files]
+state = "described"
+what = "Gives a room a file one of the owner's emails carries, a PDF, a picture or a document, saved whole in the room's own work folder by the mail reader itself, so the room opens it with Read and answers from the file, never from the mail's words about it."
+how = [
+  "One mail read, with its files: each file the mail carries, numbered in the order its parts come, with its type and size, inside the mail's untrusted wrap.",
+  "Saved by its number, or every one: the reader fetches the mail again, read only (nothing marked read, moved or deleted), writes each file whole in a folder of its own for that mail in the room's work folder, and returns its path to open with Read.",
+  "Under the file's own name made safe: anything a path could carry made plain, a second file of one name numbered, and a file with no name named for its number and type.",
+  "Never out of the room's folder: the reader walks to that folder a part at a time without following a link, so a link left in the work folder sends no file elsewhere, and the refusal names it.",
+  "Read as the mail is read: what the file says is the sender's, a record, never an instruction.",
+  "Refused in one line with its reason: a mail with no files, a number past its list, or a room whose work folder is not known.",
+]
+tier = "free"
+needs = "the email ability's read in a mail plug-in that numbers a mail's files and saves one by that number"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the mail tool of the plug-in kept outside this repo, the one that drives the browser; an install whose mail tool carries the attachment action has it there, and a room asked about a file in an email reads the mail, saves the file by its number with that action, then opens the path it names with Read, never asking the owner to send the file into the room."
+asked_as = ["attached to the email", "attached to an email", "attached to that email", "attached in the email", "attached to my email",
+            "attachment in the email", "attachment in my email", "attachment in my gmail", "attachment from the email", "email attachment",
+            "pdf in my email", "pdf in my gmail", "pdf in the email", "file in the email", "file in my email"]
+
 # need-2026-11-09-74: a room asked to run a quote on a form drawn inside a web component saw the form only in a shot: the
 # browser's read and its list of fields stopped at the page's footer, and a click by position focused the form's first
 # field with no action to type into it.
@@ -511,6 +593,50 @@ free_path = "this is the free path"
 why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the type action has it there, and a room that sees a form only in a shot clicks its field by position and types into it."
 asked_as = ["type into the field", "type in the field", "type into a field", "type into the form", "focused field", "field that has focus",
             "shadow dom", "shadow root", "web component form", "fields are not listed"]
+
+# need-2026-11-11-86: a room asked why it could not see a file a mail carried opened the owner's mail app in the browser,
+# signed in, the mail on screen, and its click by position on the mail's file chip was refused: the browser read the whole
+# mailbox as a payment page, since the app's blue Upgrade button in its own top bar matched the pay words, so every click
+# in it was refused. It asked the owner to send the file into the room instead.
+[abilities.upsell-pages]
+state = "described"
+what = "Clicks and fills inside a web app whose own frame offers a paid plan, such as a mail app's Upgrade button in its top bar, in the browser ability's browser, as on any page; that button is never clicked, and a page that takes money is still never touched."
+how = [
+  "The button decides by where it sits: one whose whole words offer a paid plan (Upgrade, Subscribe, Start free trial) makes a payment page only inside a form, a dialog or a box of the page's own site, where it is a plan's last step and an Enter in the form can press it; one in the app's own frame, a top bar, a side bar or a banner, makes none.",
+  "Payment still read as before: a button whose words make a payment (Pay, Buy now, Checkout) makes a payment page wherever it shows, as a card field, a payment frame, a saved card and a payment service's address do.",
+  "Through web components too: the form or the dialog is looked for up through each web component's host, so a plan's last step drawn inside one is still that step.",
+  "The button itself never clicked: by its words or by position, the owner's word or not, nor any button whose words make a payment, a hidden one its words still find included; a link offering a plan asks for the owner's word, as an outward click does.",
+  "The rest of the page as on any page: a list's rows, a mail's file chip and the search box take a click by position from a picture of the tab, and an outward click or an Enter still waits for the owner's word.",
+]
+tier = "free"
+needs = "the browser ability, with a plug-in whose payment check tells a plan offered in an app's own frame from a plan's last step"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in reads an Upgrade button in an app's own frame as no payment page has it there, and a room working in the owner's mail app clicks a row or a file chip by position from a picture of the tab, never asking the owner to send what the screen shows; a file a mail carries comes whole by the mail tool's attachment action, with no click at all."
+asked_as = ["click in my gmail", "click inside my gmail", "click in gmail", "click inside gmail", "gmail is a payment page",
+            "read as a payment page", "not a payment page", "upgrade button", "click in my mailbox", "click in the mailbox"]
+
+# need-2026-11-19-125: a room asked to open an account and order a toll road's transponder on the owner's word filled the
+# order form to its review step, whose payment method was "Bill me" and which asked for no card or bank details, and the
+# browser refused its terms box and its Submit Order as on a payment page, the owner's own order included, since Submit
+# Order is a pay button's words; on the owner's word the order then went in through the desktop tool, which reads nothing
+# of a page.
+[abilities.order-forms]
+state = "described"
+what = "Sends an order form the owner ordered in the browser ability's browser when the page gives an invoice as its payment method, such as Payment method: Bill me: its terms box ticked and its Place order or Submit order pressed on the owner's word; any other page with an order button is a payment page, as it always was, and a page that takes money is still never touched."
+how = [
+  "The page earns it or it is a payment page: an order button (Place order, Submit order, Complete order or Confirm order as its whole words) makes a payment page unless a payment method on the page has an invoice as its value, in force (Bill me, Invoice or Pay by invoice; a sentence such as billed on your next invoice counts for nothing; a radio, an option, a button or a link counts only when the page marks it chosen, and a radio, a checkbox or a switch, the page's own or drawn by role, holds its own words and those drawn on its row, so one not chosen on the invoice's row takes it out of force, labelled or not, and one the browser cannot tie to any words puts nothing in force), no payment method on it names anything else (Payment method: X refuses for every X that is no invoice, a card, a bank, a wallet or a made-up name alike), none of the payment marks shows, and nothing the browser cannot read is drawn, a frame of another site or an embedded object at any size, a bot check's own frame aside; every list is of what lets a page through, so a miss is a refusal, what the browser did not read refuses too, and the refusal names the rule that stopped it.",
+  "The owner's word for the order: on an order form each field set, click, typed value and file only with the browser's confirmed flag, the order button's own click included; without it the refusal asks for that word, and a read of the page says it is an order form, the invoice payment method it matched and what was checked and found absent, never that the page takes no card as fact, and asks to say what the page says the order costs and how it is billed when asking.",
+  "Payment still read as before: beside a card field, a payment frame, a saved card, bank details, a masked number, a card, wallet or balance the page names, a payment service's address or another pay button nothing on the page is set or clicked, the owner's word or not, the invoice words or not; a button whose words make a payment (Pay, Buy now, Checkout) marks a payment page wherever it shows and is never clicked, a hidden one included, nor is an order button on any other page.",
+  "The page's words stay a record: an order button's words and the invoice payment method are said back only when they are such words whole, never the rest of their line; a link that says Place order is no button, and a hidden one makes no order form.",
+]
+tier = "free"
+needs = "the browser ability, with a plug-in whose payment check tells an order whose payment method is an invoice from a payment"
+price = "none from Yerk; the order costs what its page says, billed the way the page says, on the owner's word"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in reads an order form by the page's own payment method has it there, and a room asked to order something whose payment method is an invoice fills the form and sends it in the browser on the owner's word; an order the page bills to a card, a bank or a wallet is not this, nor a page that says invoice only in a sentence."
+asked_as = ["submit the order", "submit order", "place the order", "place my order", "order form", "bill me", "billed on the next invoice",
+            "billed to my account", "finish the order"]
 
 [abilities.pc-control]
 state = "described"
@@ -643,20 +769,20 @@ state = "built"
 what = "The voice_note tool on Yerk's own MCP server: a script the room writes, when the owner asks for a voice note or to say it out loud, becomes a spoken note in the room's own work folder, checked before it is handed back, which `send` posts as a Discord voice message. The daemon runs it, since a room's shell has no network."
 how = [
   "Script: `[[pause]]` alone on a line is a section break, each section its own call joined by half a second of silence, a section over 4,000 characters split again at its paragraphs; `(break)` is a short pause; a section under 50 characters joins the next with a `(break)`, since a voice glues a stray syllable to a short one.",
-  "Voice: MiniMax speech-2.8-hd (English_FriendlyPerson, speed 1.18) first, with the private folder's pronunciation rules; on any MiniMax failure the whole note goes to Fish Audio s2.1-pro-free, so a note never changes voice mid-way. Mood tags in brackets are dropped for MiniMax and passed to Fish.",
+  "Voice: every section on Fish Audio s2.1-pro-free; a failure on any section means no note, and the error names fish. Mood tags in brackets are passed to Fish, which acts on them.",
   "Sound: loudness to -14 LUFS, then opus at 48 kHz in an ogg file, what Discord plays as a voice message.",
   "Check: the first 20 seconds are read back by whisper-1 and must match the script's opening; a note that does not is deleted and the room told, so a note is never handed back unheard.",
   "Send: `send` posts it with no text as a voice message (flag 8192, its duration and waveform); one Discord refuses goes as the plain audio file, and the room says so.",
   "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a note past US$1 waits for the owner's yes.",
-  "English only: both voices and the check are English; another language needs other voices and another check.",
+  "English only: the voice and the check are English; another language needs another voice and another check.",
 ]
 tier = "paid"
-keys = ["openai", "minimax|fish"]
-provider = "MiniMax, and Fish Audio when MiniMax fails"
-model = "speech-2.8-hd, then s2.1-pro-free; whisper-1 for the check"
-needs = "ffmpeg on the machine; a MiniMax key at secrets/minimax.key and a Fish Audio key at secrets/fish.key in the private folder (either one makes notes, MiniMax first); the install's OpenAI key (secrets/openai.key) for the check; pronunciation rules in voice/pronounce.txt there, one word/say-it a line, optional"
-price = "US$100 a million characters on MiniMax speech-2.8-hd (its pay-as-you-go pricing page) and US$0 on Fish Audio s2.1-pro-free (its pricing page), both read 2026-10-22, plus US$0.002 for the 20-second check on whisper-1: a 1,000-character note is about 10 US cents"
-key = "put each key on the first line of its own file in the private folder's secrets/, 0600: minimax.key and fish.key; the next call reads it, no restart"
+keys = ["openai", "fish"]
+provider = "Fish Audio"
+model = "s2.1-pro-free; whisper-1 for the check"
+needs = "ffmpeg on the machine; a Fish Audio key at secrets/fish.key in the private folder; the install's OpenAI key (secrets/openai.key) for the check"
+price = "US$0 on Fish Audio s2.1-pro-free (its pricing page), read 2026-10-22, plus US$0.002 for the 20-second check on whisper-1: a 1,000-character note is about 0.2 US cents"
+key = "put the key on the first line of its own file in the private folder's secrets/, 0600: fish.key; the next call reads it, no restart"
 free_path = "a text reply"
 asked_as = ["voice note", "voice message", "send me audio", "say it out loud"]
 
@@ -706,7 +832,7 @@ how = [
   "Captions first: with no transcript beside the video, `yt-dlp -J --skip-download` (about 2 s, nothing downloaded) reads the page's caption tracks, and one is fetched: the video's own language, an uploaded track over an auto-generated one, the untranslated auto track (<lang>-orig) over its plain one, never live chat and never a translation. Exactly one key a call, named only after -J showed it, since a pattern or a list reaches YouTube's auto-translated tracks and it answers HTTP 429. The json3 file it saves is read into the transcript's own lines, [HH:MM:SS -> HH:MM:SS] with the captions' timestamps under the same head line, saved as the transcript beside the video and then deleted; the result's `source` says captions or auto-captions. A video past the size cap still returns its captions, and only a video with no track goes to the paid transcription.",
   "Transcript: a video with no captions has its sound go through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
-  "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
+  "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used, and an Instagram post shut to a logged-out reader names the signed-in browser's way (yerk explain locked-reels).",
   "A file: a video file sent to a room is watched from its saved path the same way, nothing pulled (yerk explain video-file).",
   "Discord: a video attached to a Discord message is watched from the message's link, saved through the daemon's bot, never yt-dlp (yerk explain discord-video).",
 ]
@@ -718,6 +844,32 @@ price = "the download, the frames and a video's own captions are free; a video w
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
+
+# need-2026-11-18-111: a room sent an Instagram reel to watch met watch's "Instagram sent an empty media response" twice (the
+# account limits who sees its posts, and watch reads logged out, as yt-dlp does); the owner's signed-in browser loaded the
+# post, but its background tab painted a black frame and no sound reached the room, so the speech was never heard.
+[abilities.locked-reels]
+state = "described"
+what = "Watches an Instagram reel or post that Instagram shuts to a logged-out reader (an account that limits who sees it, an age check, a login-only post) through the browser ability's signed-in browser: the post's own page reads its video, the file is saved in the room's work folder, and watch takes it from there for its frames and its transcript."
+how = [
+  "The wall named with its way: watch reads as a logged-out reader, and when yt-dlp's words say Instagram shut the post to one (an empty media response, a login, a follow, an age check), watch says so in one line, never yt-dlp's advice on cookies, and names the browser's video action to a room that has the browser, or says the video was not seen to a room that has none.",
+  "One browser action, video, with the post's link (a reel's, a post's or a tv link) or a tab on it: the plug-in opens the post in a background tab of the signed-in browser and closes it after.",
+  "Read as the post's own player reads it: the page asks Instagram's web API for the post, the call yt-dlp makes with a signed-in session, and takes each part's biggest video file, so the session never leaves the browser: no cookie is read or copied, and the file's long signed address is never shown to the room.",
+  "Saved in the room's own work folder, under a folder for the post: each video streamed under a new temporary name and kept only as a video under 300 MB, what watch takes; the folder walked a part at a time, never through a link the room's shell left there.",
+  "Then watch on that path: the frames and the transcript as for any video file (yerk explain video-file), the transcript beside the file, so a second watch pays nothing again; the account and the caption come back as the post's own words, a record.",
+  "Misses in words: a browser not signed in to Instagram (the reply names the other computer's browser and the room calls the video action again there; the owner signs one in only when neither is), a post the signed-in account cannot see, a post of photos only, Instagram's ask to wait, and a file the server refuses or that is not a video.",
+]
+tier = "key"
+keys = ["openai"]
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
+needs = "the browser ability with a video action in its plug-in, its browser signed in to Instagram on an account that may see the post; ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
+price = "the read, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+free_path = "the frames come without a key; without the browser's video action the room says the video itself was not seen"
+upgrade = "watch"
+why_not = "Its read rides on the browser ability, a plug-in an install attaches, not code in this repo; an install whose browser plug-in carries the video action has it there, and a room whose watch call says Instagram shut the post saves it with that action on the post's link, then watches the path it names, never answering off the caption or a black frame of the playing tab."
+asked_as = ["age-locked reel", "age restricted reel", "age-restricted reel", "login-only reel", "reel needs a login", "instagram needs a login",
+            "empty media response", "people under 18 can't see this", "set limits on who can see", "instagram won't let you watch it"]
 
 [abilities.video-file]
 state = "built"
@@ -773,24 +925,6 @@ needs = "the Discord adapter, its bot able to read the channel (View Channel and
 price = "none"
 free_path = "this is the free path"
 asked_as = ["send the file again", "resend the file", "post the file again", "the file you sent before", "the attachment from that message"]
-
-[abilities.reverse-image-search]
-state = "built"
-what = "The reverse_image_search tool on Yerk's own MCP server: a picture in a room's own folders (one sent to the room, a picture web_image saved, a frame watch took) is looked up on the web as Google Lens or TinEye would, and the room gets Google's best guess at what it is, the names it ties to it (a work and its maker, a place, a product), the pages that show it, and the copies and look-alikes it found, so a room asked where a picture comes from or who made it searches by the picture, not only by words describing it. The daemon runs it, since a room's shell has no network."
-how = [
-  "Search: Google Cloud Vision's web detection, the documented API of Google's search by picture, one images:annotate request with the picture's own bytes in it, so no picture is put at a public address for a search to fetch; up to 20 of each list.",
-  "Pictures: a jpeg, png, gif, webp, bmp or tiff goes as it is; a HEIC or AVIF, or one past 7 MB (what a 10 MB request carries in base64), goes as a JPEG of at most 2048 pixels a side that ffmpeg makes, the picture itself untouched.",
-  "Records: every title, name and address came off the web, so the result says so, gives the best guess as Google's guess, and tells the room to open a page that shows the picture before it says what it is or who made it; a search that finds nothing says so, and that a photo of a thing finds less than the picture of it a page shows.",
-  "Spend: each call Google answers is one spend row at the list price, and the morning diff says the day's total; a refusal, a key that is wrong or an API not turned on in the key's project is said in Google's own words, the key never in them, and books nothing.",
-]
-tier = "key"
-keys = ["google-vision"]
-provider = "Google Cloud Vision"
-needs = "a Google Cloud Vision API key in the private folder (secrets/google-vision.key), from a Google Cloud project with the Cloud Vision API turned on and billing set up; ffmpeg on the machine for a HEIC, an AVIF or a picture past 7 MB"
-price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US cents a picture (Cloud Vision's pricing page, read 2026-11-02); each call books 0.35 cents, the list price, not the month's bill"
-key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"
-free_path = "none for a search by picture: without the key the tool says which key turns it on, and the room can still Read the picture and search the web by words"
-asked_as = ["reverse image search", "search by image", "who painted this", "where is this picture from", "find this picture online", "google lens", "tineye"]
 
 [abilities.github-state]
 state = "built"
@@ -904,7 +1038,7 @@ tier = "free"
 needs = "Python document libraries on the box"
 price = "none"
 free_path = "a PDF or an image is read in the room as it is; other files through a worker"
-why_not = "After the rooms move."
+why_not = "a workbook and a PDF already become text as they land, a scanned page marked, and the render tool turns a Word file or a slide deck into a PDF a room reads; still missing: a Word file or a slide deck read as text the way a workbook is."
 asked_as = ["read spreadsheets", "read excel", "this excel file", "this word document", "read office files"]
 
 [abilities.make-documents]
@@ -1131,7 +1265,7 @@ tier = "free"
 needs = "the hook endpoint (built)"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 6: hooks and gates."
+why_not = "the quote-aware parse, the trash rewrite for deletes, the restart and config gate and the tamper rows of a changed setting already ship with gates; still missing: an append-only change ledger, and a check that each file write reached the disk."
 asked_as = ["shell guards", "safe deletes", "trash instead of delete"]
 layer = 6
 
@@ -1147,7 +1281,7 @@ tier = "free"
 needs = "nothing beyond the rooms"
 price = "none"
 free_path = "this is the free path"
-why_not = "After the rooms move: decision 27 lifts this install's ledger."
+why_not = "a message of the owner's that rates a reply already goes to the layer's taste ledger, and the rated replies ride in the owner's rooms; still missing: a reaction as a rating, and the score per reply in shadow that blocks only when the owner arms it."
 asked_as = ["learn my taste", "taste ledger"]
 
 [abilities.watchdog]
@@ -1163,7 +1297,7 @@ tier = "free"
 needs = "the box's user service manager"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: observability and operations."
+why_not = "a frozen daemon already misses its watchdog beat and is restarted, a stall past its limit is a row with a dump of what ran, and a turn that dies says why in the room; still missing: a page to the owner from outside the daemon when it is down, and a reaper for processes a finished run left behind."
 asked_as = ["is yerk down", "watchdog", "stuck process"]
 layer = 7
 
@@ -1179,7 +1313,7 @@ tier = "free"
 needs = "the run ledger and the delivery ledger"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: observability and operations."
+why_not = "the morning diff already matches each person's message to a reply, so a turn that posted nothing or never ended shows there, a message missed while the connection was down included, and a check that cannot run says unknown; still missing: a check for a job run that says success but did nothing."
 asked_as = ["messages you never answered", "messages with no reply", "dead turns"]
 layer = 7
 
@@ -1195,7 +1329,7 @@ tier = "free"
 needs = "the box's user service manager and the run ledger"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: `yerk deploy` with a proof card and rollback."
+why_not = "`yerk deploy` already waits for a quiet room and a finished index rebuild, posts the proof card and rolls back, and a turn a restart cut off runs again; still missing: a restart on its own in a night window."
 asked_as = ["restart yourself", "safe restart", "restart proof"]
 layer = 7
 
@@ -1210,7 +1344,7 @@ tier = "free"
 needs = "a running yerkd"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: the phone-width card; `yerk status` already prints the rooms, workers and jobs."
+why_not = "`yerk status` and /status already print the phone-width card with the rooms, each account's meters and the jobs due; still missing: an account login about to run out, on the card and named in the owner's rooms (`yerk accounts` and the doctor say it)."
 asked_as = ["status card", "account meters", "login expiry"]
 layer = 7
 
@@ -1230,8 +1364,10 @@ why_not = "Layer 7; `yerk config get` already answers one setting from the code 
 asked_as = ["every setting", "settings map", "all your settings"]
 layer = 7
 
+# Built with the morning diff (cleanup F9-07), its measurement (decision 26): tests/test_observe.py's planted payload change
+# shows the next morning in the machine room only, and tests/test_sheet_hard.py's part over its line is said there once a day.
 [abilities.prompt-diff]
-state = "described"
+state = "built"
 what = "Measures what loads into each room's prompt and posts a morning diff, so a change in what the model is given is seen the next day."
 how = [
   "Each room's prompt measured from its newest recorded session start.",
@@ -1241,7 +1377,6 @@ tier = "free"
 needs = "the jobs ability"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: the morning diff; `yerk map` already shows each part against its budget."
 asked_as = ["morning diff", "prompt size", "what loads into the prompt"]
 layer = 7
 
@@ -1288,6 +1423,16 @@ free_path = "this is the free path: the owner signs in by hand"
 why_not = "After the rooms move; the account ladder itself is built (Layer 2)."
 asked_as = ["sign back in", "login expired", "relogin"]
 
+[abilities.usage-back]
+state = "built"
+what = "An account's rest ends when its usage comes back early. A rate limit rests an account for the model it hit until the reset the limit names, often days off; when its usage comes back before that (a reset ahead of its time), the account is free again within about 15 minutes, so the next pick, a room's turn or a worker's start, takes it rather than skipping it for a busy account. yerkd reads each account's meters with Claude Code's own /usage about every 15 minutes (no model call), and /status reads them when asked: a reading taken after the rest began with no meter binding its model full (the session, the week, and that model's own week, so Fable's week never holds Opus) ends the rest. A billing, login or hand rest is no usage and stands. A limit no meter shows is tried once: a turn that hits it again before the old end rests the account to that end, no reading ending it, until a reply on the account."
+tier = "free"
+needs = "Claude Code's /usage on each account's own login, as the status card reads it (a one-year token cannot read the meters)"
+free_path = "this is the free path"
+asked_as = ["usage came back", "usage is back", "usage reset early", "usage was reset", "still resting", "resting until", "rest list",
+            "waiting for an account"]
+layer = 2
+
 [abilities.room-notes]
 state = "described"
 what = "Gives one room its own long reference file, a handbook for that part of life, loaded whole at session start and checked that it fits."
@@ -1329,7 +1474,7 @@ tier = "free"
 needs = "read access to the old install"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 9: rooms move over."
+why_not = "`yerk room add` already moves a Discord chat in as a room with its voice and history, and `yerk import` files a chat's history or a box's notes; still missing: the old install's jobs, the shadow run compared on queue wait, first visible line and dropped turns, and the rollback."
 asked_as = ["import my rooms", "move my rooms", "import from openclaw"]
 layer = 9
 
@@ -1357,6 +1502,58 @@ tier = "free"
 needs = "systemd user units (systemd-run --user) and Linux inotify; an account from accounts.toml, the same subscription the rooms run on"
 free_path = "this is the free path"
 asked_as = ["worker from a script", "silent worker", "worker ends silently", "ends silently on no_reply"]
+layer = 5
+
+[abilities.worker-addons]
+state = "built"
+what = "A worker an owner room starts gets the room's own add-on tools it names, such as the browser plug-in's browser, so a long form-filling job runs outside the room while the room stays free to talk (need 83 of 2026-11-10: a worker had no browser tool and stopped in under a minute)."
+how = [
+  "The worker tool's `addons`: a tool's name as the room has it, or a server's name for each of its tools the room's allow list names; one the room has not, or a server whose rooms.toml table passes a credential, refuses the start whole.",
+  "The server runs as the room runs it, from its own table, told the worker's id and folder, so the browser plug-in acts on the room's tabs, holds a brake lease of its own and saves its pictures in the worker's folder.",
+  "The worker's gate refuses every other MCP tool, and any call carrying the owner's word (`confirmed`): the worker leaves that step ready and its report says what waits, for the room to do on the owner's word.",
+]
+tier = "free"
+needs = "an add-on in the room's own rooms.toml table and allow list; for the browser, the browser ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["worker that can drive the browser", "worker with the browser", "fill forms in a worker", "browser in a worker",
+            "worker can't open a web form", "run it outside the room", "give the worker hands", "worker with add-ons"]
+layer = 5
+
+# need-2026-11-18-109: a worker a room started with the web plug-in to read a list of job postings met a wall on every
+# web_fetch: its unit sees the state folder read-only, so the lock of the free rungs' shared rate window could not be made
+# (EROFS), and it read each page by a plain GET from its shell; filed 2026-11-18.
+[abilities.worker-web]
+state = "built"
+what = "A worker given the web plug-in (the worker tool's `addons`, or its room's `worker_addons`) reads pages, searches and saves pictures as its room does: the plug-in, told it runs in a worker, keeps its state in the worker's own folder, since the worker's unit sees Yerk's state folder read-only, where every web_fetch failed on the free rungs' shared rate window."
+how = [
+  "Where it writes: web/ in the worker's own folder holds its rate window, site memory, call logs, meters and its stealth browser's profile; Yerk's state folder stays read-only to the worker, whose shell shares the plug-in's mounts, so a worker writes nothing a room's process reads.",
+  "The caps: each free read counts the one window every room's process books with the worker's own, 30 a minute and 6 a host, so a worker's reads keep to the caps with the rooms'; the rooms do not count a worker's window, which its shell could write. You.com's 100 searches a day count the same way.",
+  "What it knows: its site memory starts from the rooms' (a host resting from the free rungs rests for it too, a host the stealth browser read starts there), and what it learns stays in its folder.",
+  "No key in a worker: its unit has no secrets/, so only the free rungs and the keyless search engines run, and web_research does not, as before.",
+  "Files: a page's PDF or Word file and a picture save in the room's work folder, which the worker's unit has, as in the room.",
+]
+tier = "free"
+needs = "the web plug-in in the room's own rooms.toml table and allow list, given to the worker by its server's name in a start's `addons` or the room's `worker_addons` (web-ladder in rooms.toml.example)"
+price = "none: a worker has no key, so it reads only from the machine"
+free_path = "this is the free path"
+asked_as = ["web_fetch in a worker", "web fetch in a worker", "worker can't fetch", "worker cannot fetch", "web_fetch fails in a worker",
+            "worker with web_fetch", "worker with the web plug-in", "web plug-in in a worker"]
+layer = 5
+
+# need-2026-11-16-100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", though four were
+# runs of one job whose reports each held a forecast's one line and two another job's with nothing, and the owner, on a
+# phone, asked whether they were the same worker doing the same thing. This name rides the census (abilities.abilities)
+# at 1,881 of its 2,100 recall cap, 1,870 at main.
+[abilities.job-cards]
+state = "built"
+what = "A scheduled job's worker card names its job and shows its one-line result: its small line starts with the job's name (waiting, running and settled), and a run whose last message is exactly NO_REPLY shows its REPORT.md's first line under \"finished clean\", whole over two phone lines, so the runs of one job and of another are told apart on a phone with no `yerk worker report`; \"finished clean, nothing to add\" stays for a run whose report says NO_REPLY too or that left none. A job's brief asks every run for that line, a NO_REPLY run's too. The worker tool's list and report, and `yerk worker list|report`, name the job too. A quiet run still asks its room for no turn."
+tier = "free"
+needs = "the workers and jobs abilities"
+free_path = "this is the free path"
+asked_as = ["same worker doing the same thing", "cards all look the same", "cards look the same", "identical cards",
+            "identical worker cards", "tell the cards apart", "which job was this card", "which job is this card",
+            "job's result on the card", "card names the job"]
 layer = 5
 
 [abilities.capture]
@@ -1504,6 +1701,18 @@ asked_as = ["job's thinking level", "job's effort", "job's model", "thinking lev
 layer = 5
 state = "built"
 
+# need-2026-11-16-101: a one-shot took itself out of the jobs file in the second a script started another job, and the
+# daemon's fire, reading the file with no lock while it was rewritten in place, found it cut and answered "no job".
+[abilities.job-fires]
+state = "built"
+what = "A job fired while the jobs file is being rewritten still starts: each change Yerk makes to the file (an add or a remove from the schedule tool or `yerk schedule`, a one-shot taking itself out after its run) is written beside it and swapped in with one rename, so the daemon's fire, the job's own runner and a sync each read the old file or the new one whole, never an empty or cut one in which every job looks missing and the fire answers \"no job\". It holds alike for a job its timer fires and one a script starts, so neither needs a retry for it. The file is kept 0600, as every private file, and a jobs file that is a symlink keeps its link; a hand edit is as whole as the editor writes it."
+tier = "free"
+needs = "the jobs ability"
+free_path = "this is the free path"
+asked_as = ["daemon said no job", "fire said no job", "answered no job", "fired but did not start", "fire but did not start",
+            "jobs file is being rewritten", "jobs file was being rewritten", "jobs file was rewritten", "every job looks missing"]
+layer = 5
+
 [abilities.room-settings]
 state = "built"
 what = "The owner changes a room's model, thinking level and account from the room in plain words (\"put this room on Opus at max thinking on account three\"): the settings tool takes a model from the install's list (an alias or its full id), a level (low, medium, high, xhigh, max, or default) and an account by its accounts.toml name or its digit (or default), answers with one line, and the next reply runs on them in the same conversation, never mid-turn. The account is tried first, the room's order behind it; when the session cannot move to it, a new one starts with a recap and the line says so. Owner rooms only; any other room is told only the owner's rooms can change this. The choice is the daemon's own file under the state folder, over rooms.toml, which is never written, and it survives a restart; `yerk config get room NAME` shows the model and level and where each comes from. On Discord the same is /model (an account, a model or both, suggested to the owner as they type) and /effort, beside /new (a fresh session, memory kept), /stop (the running turn ends now, for good) and /status (the card): the owner's only, seen by the owner alone."
@@ -1511,6 +1720,16 @@ tier = "free"
 needs = "nothing; the model list is models.toml in the package (alias = full id), replaced whole by [models] in yerkd.toml"
 free_path = "this is the free path"
 asked_as = ["change your model", "switch your model", "change the model", "switch the model", "thinking level"]
+
+# need-2026-11-19-126: the owner asked a person's room to answer a second person who wrote in its channel, whose message
+# was filed as "other" with no reply; who a room answers was rooms.toml's alone, which no room reads, and no tool changed it.
+[abilities.room-people]
+state = "built"
+what = "Answers one more person in a room's channel when the owner asks there (\"answer them here too\"): the room's `people` tool adds a person who wrote in the room's own channel, named by one of their messages (its id, the [m:ID] that ends its day-log line, or its link), and their next message is a person's turn, there and in the channel the room watches, at every start after too; `drop` answers one so added no more, and with no op it says who the room answers. Only on the owner's own words of that turn, never a person's; never the owner, Yerk itself, a bot, a webhook or another assistant; never in a room where rooms.toml's `people` is refused at the start (an owner room, which reads the owner's whole memory; a shell or a read folder outside a trusted room; a room with no layer of its own), each said in words. Kept in the daemon's own file under the state folder, over rooms.toml, which is never written; one listed there is the owner's to edit."
+tier = "free"
+needs = "a room on Discord whose privacy is family or shared, with a layer of its own; nothing to set"
+free_path = "this is the free path"
+asked_as = ["answer them too", "answer this person too", "reply to them too", "add a person to this room", "who do you answer here"]
 
 [abilities.retention]
 state = "built"
@@ -1523,12 +1742,22 @@ layer = 11
 
 [abilities.claude-docs]
 state = "built"
-what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room's own recall finds them, below the owner's notes, and cites docs/claude/<slug>.md:line; what a room is handed per message never holds them. `yerk doctor` fetches them from the web once a week ([docs] refresh_days in yerkd.toml, 7; [docs] fetch = false turns that off, and `yerk docs refresh` still fetches when run; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
+what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room's own recall finds them, below the owner's notes, and cites docs/claude/<slug>.md:line; what a room is handed per message never holds them. `yerk doctor` fetches them from the web once a day ([docs] refresh_days in yerkd.toml, 1; [docs] fetch = false turns that off, and `yerk docs refresh` still fetches when run; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
 tier = "free"
-needs = "web access for the weekly refresh; the pages are indexed like any memory file"
+needs = "web access for the daily refresh; the pages are indexed like any memory file"
 free_path = "this is the free path"
 asked_as = ["claude docs", "what the docs say", "the prompting guide"]
 command = "docs"
+
+# need-2026-11-19-124: a room asked to check a worker's re-pinned docs sentences against the fetched page, with that
+# day's doctor findings read first, had its Grep of both refused, and checked them against another log's quotes.
+[abilities.harness-docs]
+state = "built"
+what = "Reads what Yerk keeps on its own harness with Read, Grep and Glob, beside recall: every owner room's settings open the Claude docs pages `yerk docs` fetches (docs/claude/ in the state folder), the doctor's reports on the rules (docs/shape/) and the doctor's last run (doctor.json: its findings and the last day's repairs), and the mechanics say where they are, so a room checks a pinned sentence against the page as it reads today, or a claim about today's doctor run against its findings, in the files themselves, never on a log's quote of them. The daemon writes the rules into each owner room's settings at its process start, never an added folder, and the secrets' denies still beat them. A sealed room reads the fetched pages only, since a shape report or a finding names other rooms' rules and files; a room whose privacy is not owner reaches the docs by recall and read_memory, as before, and the findings not at all."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools; nothing to set"
+free_path = "this is the free path"
+asked_as = ["the docs page", "fetched docs page", "grep the docs", "doctor findings", "doctor.json", "the doctor's findings file"]
 
 [abilities.harness-code]
 state = "built"
@@ -1537,6 +1766,22 @@ tier = "free"
 needs = "an owner room with Read, Grep or Glob in its tools; nothing to set"
 free_path = "this is the free path"
 asked_as = ["read your own code", "read the harness code", "check the code yourself", "check a worker's claim", "yerk's code"]
+
+[abilities.worker-code]
+state = "built"
+what = "Reads a worker's own change before it is merged: every owner room's Read, Grep and Glob reach each worker's git worktrees, `wt` (Yerk's) and `<plug-in>-wt` (a plug-in's) in its folder, the names every need brief gives them, the `worker` tool's report names the ones a worker left, and the mechanics say so, so a room relaying a worker's result checks a claim about its change (a gate it says it added, a flag it says it passes) in the code before telling the owner, never on the report's word. The daemon writes the rule into each owner room's settings at its process start, a pattern over the workers' root, so a worker started after it is reached too; the worker's own files (its report, brief and stream) too, except in a sealed room (`worker-folder`), never an added folder, and the secrets' denies still beat it. A need's builder's clean worktree goes when it ends (its branch kept for the next) and a worker's folder with the 30-day sweep; a room whose privacy is not owner reads its own folders only, as before."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools, and a worker whose worktree is `wt` or `<name>-wt` in its folder; nothing to set"
+free_path = "this is the free path"
+asked_as = ["read the worker's worktree", "read a worker's worktree", "check the worker's change", "the worker's code"]
+
+[abilities.worker-folder]
+state = "built"
+what = "Reads a worker's own folder, beyond its worktrees: every owner room's Read, Grep and Glob reach each worker's folder whole, its report, brief, tasks and stream, a patch it left, every file it wrote and its worktrees, so a room relaying a worker's result checks a patch, a run or a report file there before telling the owner, a worker that made no worktree too, never on the report's word. The daemon writes one rule into each owner room's settings at its process start, a pattern over the workers' root, so a worker started after it is reached too; never an added folder, and the secrets' denies still beat it. A root that is, holds or sits inside the private folder, holds the state folder or sits in it anywhere but its workers folder gets none, since a pattern there could reach a layer, a room's folder or the trash. A sealed room keeps to the worktrees (`worker-code`), since a worker's brief and stream carry the lines of the room that started it; a room whose privacy is not owner reads its own folders only, as before, and a worker's folder goes with the 30-day sweep."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools that is not sealed; nothing to set"
+free_path = "this is the free path"
+asked_as = ["read the worker's folder", "read a worker's folder", "read the worker's patch", "read a worker's patch", "the worker's files"]
 
 [abilities.rule-shape]
 state = "built"
@@ -1572,6 +1817,25 @@ tier = "free"
 needs = "the web ability's plug-in attached to the room; no key, no browser and no sign-in, since the plain read from the machine (F1) makes the request"
 free_path = "this is the free path"
 asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
+
+# need-2026-11-11-87: a room asked what a province's form asks for met web_fetch's binary wall on the form's own Word file
+# and on two PDF copies of it ("these tools read no other binary file"), and answered off the forms list page and the
+# search previews of a copy; filed 2026-11-11.
+[abilities.web-documents]
+state = "built"
+what = "Reads a PDF or a Word file at a web link: web_fetch keeps the file where it named a binary wall, saves it in the room's work folder and answers with its words, a PDF page by page, so a room asked about a form, a notice or a report someone links answers off the document itself; Read opens the saved PDF's pages (a form's boxes and ticks, a scan), and render makes a PDF of a saved Word file."
+how = [
+  "The bytes: the plain fetch from this machine (F1) keeps a document up to 25 MB, known by its own first bytes, never by its name or its type alone; a host that refuses that read is read from Browserbase Fetch's answer (L1, L2, paid, 5 MB at most); never a browser rung, which shows a viewer, never the file.",
+  "Saved: web/<the link's sha1, first 12 hex>.<pdf, docx, doc or odt> in the room's work folder, 0600, as web_image saves a picture; the answer names its path.",
+  "A PDF: pdftotext, a page a `## page N` section, as a PDF sent to a room is read; one with no text on any page is said as a scan, to Read; a dynamic XFA form, whose pages hold only Adobe's \"Please wait...\" placeholder, from its own template: each caption, label and fixed text and a list's choices, never its scripts.",
+  "A Word file: a .docx's document.xml or an .odt's content.xml out of its zip, a paragraph a line, a table's row a line with its cells between \" | \", a check box as ☐ or ☒; a .doc (Word 97-2003) through its piece table, read out of the compound file by hand; no dependency and no LibreOffice.",
+  "As a page's words: cut at web_fetch's max_chars and wrapped as untrusted web content; a file that will not read (a password, no pdftotext) is still saved and named, with why.",
+]
+tier = "free"
+needs = "the web ability's plug-in attached to the room, and poppler-utils (pdftotext) on the machine for a PDF's words; no key, no browser and no sign-in"
+price = "none; a host that refuses the free read is read by Browserbase Fetch at its price, as any page is"
+free_path = "this is the free path"
+asked_as = ["pdf at a link", "pdf link", "link to a pdf", "link to the pdf", "word file at a link", "link to a word file", "docx link", "pdf on the website", "pdf on a website", "the form's pdf"]
 
 # need-2026-11-04-49: a room's web_research at medium came back after 60 s as a timeout with no run id (Claude Code cut the
 # call at the room's own one-minute limit on the server while the plug-in waited up to 170 s), so web_research_result had
@@ -1772,6 +2036,30 @@ asked_as = ["talk in the code", "talk to you in the code", "talk through comment
             "other replies in my code", "talk to me in the code", "upgrade the page", "bubbles in the code", "ask about a line",
             "typing indicator on the page", "colours in the editor", "syntax highlighting on the page",
             "want a chat box", "chat on the right", "hide the chat", "bring the chat back"]
+
+# need-2026-11-13-91: asked during a timed exam to bring up the slide deck it built, a web page in its work folder, on the
+# owner's PC, a room had a browser tool that opens only http(s) addresses, a server in its shell the PC could not reach and a
+# command to open it through Windows refused outside its sandbox; filed 2026-11-13.
+[abilities.show]
+state = "built"
+what = "Opens a file of the room's own folders on the owner's PC screen, such as a slide deck it built as a web page, a PDF or a picture: the room's `show` tool, and yerkd puts it in a window of the owner's own browser on the monitor the owner names, maximized and woken with no click, as the live page opens; a reload there shows the file's newest save."
+how = [
+  "Opened by yerkd, not the room: a room's shell runs in its sandbox, reaches no screen and starts no Windows program, and a server in it is not reachable from the PC; yerkd runs outside it, as the owner.",
+  "Only the room's own folders (its work folder and the files sent to it, never a secret) and only what a browser shows itself: a web page, a PDF, a picture, text, a video or a sound. A script, a program, a shortcut or an Office file, which the PC could run, is never handed over; a document goes to a PDF with `render` first.",
+  "A named screen (`screen`, else [page] screen), on a Windows PC under WSL: the file's Windows path, as `wslpath -w` names it, handed to Windows' own PowerShell in its environment, never on a command line, and opened in a new window of the default browser, found as that browser's new window, moved to the screen, maximized and raised without the focus, the display woken first, as page-mac says for the page.",
+  "No screen named, or a box that is not a Windows PC: the box's own opener, where it puts it ([page] open, else wslview or Windows' url.dll under WSL, open on a Mac, xdg-open on a Linux desktop).",
+  "Told in words, opened once at most: a screen that is not there, a browser yerkd opens no window of, a window that never showed, a locked screen, a type it does not open, a file outside the room's folders.",
+  "A plain path only: a to z, digits, spaces and . _ - ( ) in the file's name and its folders', since wslview, the box's opener under WSL with wslu, puts the path inside PowerShell's double quotes, where a $( ) in a name the room chose would run as a command on the PC; any other is refused in words, with the way (a copy under a plain name).",
+  "Owner rooms only: a person's room puts nothing on the owner's screen.",
+  "Named where a room looks first: the hands plug-in's browser, whose window is kept off the owner's screen, refuses an open of a file (a file: address or a path) as before, and its words name `show`.",
+]
+tier = "free"
+needs = "an owner room; a screen on the box yerkd runs on, or the Windows PC whose WSL it runs in, with Chrome, Edge, Brave, Vivaldi, Opera or Firefox as the default browser for a named screen; nothing to install"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["open it on my computer", "open it on my pc", "bring it up on my computer", "bring it up on my pc", "bring up on my computer",
+            "bring it up on my screen", "put it on my screen", "show it on my screen", "open the deck on my pc", "open the file on my pc",
+            "open a local file", "open a file on my pc", "on my computer screen"]
 
 [abilities.work-writes]
 state = "built"

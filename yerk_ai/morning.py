@@ -11,10 +11,12 @@ only once the diff is delivered, so a failed post shows the same change again th
 from __future__ import annotations
 
 import json
+import re
 import statistics
 import sys
 import time
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -61,6 +63,51 @@ def calls(ledger: Ledger, since: float, until: float) -> list[tuple[str, str]]:
     out += ["\n".join([W.line(f"{W.DONE} " + W.CALL_FIXED.format(id=c["id"], source=c["source"])), W.line(W.SUB + W.FIXED_BY.format(cite=c["correction"]))])
             for c in made if since <= float(c["fixed"] or 0) < until]
     return [("", x) for x in out]
+
+
+FETCH_ALERT = re.compile(r"(\S+) fetch-plus month=(\d{4})-(\d{2}) (.*?)\. Nothing was refused")   # fetch/util.js recordUsage
+FETCH_PAST = {"fetchCalls": (re.compile(r"fetchCalls passed (\d+) \(now (\d+)"), "{:,.0f}", "{:,.0f}"),
+              "proxy": (re.compile(r"proxy traffic passed ([\d.]+) GB \(now ([\d.]+) GB"), "{:g} GB", "{:.1f} GB"),
+              "browser": (re.compile(r"browser time passed ([\d.]+) h \(now ([\d.]+) h"), "{:g} h", "{:.1f} h")}
+
+
+def web_alert(kind: str, raw: str) -> tuple[float, str] | None:
+    """One line of the web plug-in's alerts.log as (when it was written, the diff's words); None for a line that is none.
+    fetch/alerts.log: util.js recordUsage's text line; search/alerts.log: util.js countMonthly's {ts, engine, count, month}."""
+    W = words
+    try:
+        if kind == "search":
+            e = json.loads(raw)
+            year, month = (int(x) for x in str(e["month"]).split("-"))
+            at, said = datetime.fromisoformat(e["ts"]).timestamp(), W.WEB_REACHED.format(
+                what=W.WEB_WHAT.get(e["engine"], str(e["engine"])), limit=f"{int(e['count']):,}", month="{month}")
+        elif m := FETCH_ALERT.match(raw):
+            at, year, month, said = datetime.fromisoformat(m[1]).timestamp(), int(m[2]), int(m[3]), W.WEB_ALERT
+            for what, (shape, limit, now) in FETCH_PAST.items():
+                if n := shape.match(m[4]):
+                    said = W.WEB_PAST.format(what=W.WEB_WHAT[what], limit=limit.format(float(n[1])), month="{month}", now=now.format(float(n[2])))
+        else:
+            return None
+        return at, said.format(month=datetime(year, month, 1).strftime("%b"))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def web_alerts(state: Path, start: float, until: float) -> list[tuple[str, str]]:
+    """The web plug-in's plan alerts (fetch: Browserbase's calls, proxy bytes and browser hours; search: the paid engines'
+    calls), which only this diff reads: each line written in [start, until) is a finding of its own, so it opens the diff
+    once. `until` is this diff's midnight (a line is said the day after it was written); `start` is the delivered stamp's
+    "alerts", where the last diff stopped, so no line is said twice and a diff that was not delivered loses none."""
+    out = []
+    for kind in ("fetch", "search"):
+        try:
+            raw = (state / "web" / kind / "alerts.log").read_text().splitlines()
+        except OSError:
+            continue
+        for at, said in [x for x in map(lambda r: web_alert(kind, r), raw) if x]:
+            if start <= at < until:
+                out.append((f"web alert {kind} {int(at)} {said}", words.line(f"{words.WORKING} {said}")))
+    return out
 
 
 def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
@@ -123,6 +170,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add("", W.PLAIN, status.spend_line(status.spend(ledger, since, until, status.midnight(now, 7)), W.YESTERDAY))
     elif (spent := ledger.spent(since, until)).get("n"):   # the paid calls, a spend row each (transcribe, voice_note, plugins/web)
         add("", W.PLAIN, W.SPENT.format(day=W.YESTERDAY, **spent))
+    rows += web_alerts(state, float(last.get("alerts") or since), until)     # the plug-in's plan alerts, each once
     for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
         if d["outcome"] != "proven" or (d["cut"] or 0) > 0:      # a proven one that cut a person's turn too
             said = W.UNPROVEN.format(kind=d["kind"], commit=str(d["after"] or d["before"] or "?")[:7], outcome=d["outcome"])
@@ -151,7 +199,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     head = (f"{W.NOT_DONE} " + W.MORNING_NEW.format(n=len(new)) if new else
             f"{W.PLAIN} {W.MORNING_SAME}" + (W.KNOWN.format(n=len(found)) if found else ""))
     lines = [W.line(head), *[x for k, x in rows if k in new], *[x for k, x in rows if k not in new]]
-    return lines, {"at": now, "sizes": now_sizes, "findings": found}
+    return lines, {"at": now, "sizes": now_sizes, "findings": found, "alerts": until}
 
 
 def run(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns,

@@ -19,6 +19,7 @@ tz = "UTC"
 room = "example-room"                # its card is here; its last message is told here by the room
 account = "one"
 effort = "high"                      # its worker's thinking level (and `model` its model); unset, the room's live ones
+# addons = ["mcp__example-addon__read"]   # the room's own add-on tools its worker gets too, beside the room's worker_addons; checked when booked
 cap = 20
 deliver = "announce"
 message = "Write the morning brief from the open loops and yesterday's daily log: three lines at most. Nothing worth saying: answer exactly NO_REPLY."

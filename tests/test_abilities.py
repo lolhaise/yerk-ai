@@ -5,11 +5,16 @@ every described one from its entry, and a room that names one, or asks "what can
 recall cap, the size limit on the notes a message arrives with. The described entries are decision 26, the patterns rule decision 22."""
 import json
 import re
+import shutil
+import tomllib
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 from starlette.testclient import TestClient
 
-from yerk_ai import abilities, cli, hooks, mcp_server, words
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai import abilities, addons, cli, hooks, mcp_server, words
+from yerk_ai.config import EXAMPLE_PRIVATE, table
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
@@ -43,6 +48,39 @@ def life(text: str) -> list[str]:
 
 def text_of(ab: dict) -> str:
     return json.dumps(ab, ensure_ascii=False)
+
+
+def test_the_manifest_is_parsed_once_and_read_again_when_a_file_changes_or_an_add_on_comes_or_goes(tmp_path, monkeypatch):
+    """Every message looks its abilities up (asked, through the daemon's recall_for); the parsed manifest is kept while
+    abilities.toml and each add-on's entry keep their size and modification time and the add-ons installed stay the same,
+    and it is always what a fresh read gives: after a file changes, an add-on comes and one goes (cleanup F8-09)."""
+    core, state = tmp_path / "abilities.toml", tmp_path / "state"
+    shutil.copy(table("abilities.toml"), core)
+    monkeypatch.setattr(abilities, "table", lambda name: core)
+    reads: list[str] = []
+    for mod in (abilities, addons):
+        monkeypatch.setattr(mod, "load_toml", lambda p, real=mod.load_toml: reads.append(Path(p).name) or real(p))
+
+    def addon(name: str, what: str) -> None:
+        (folder := state / addons.DIR / name).mkdir(parents=True, exist_ok=True)
+        (folder / addons.MANIFEST).write_text(f'[abilities.{name}]\nstate = "described"\nwhat = "{what}"\n')
+
+    def fresh() -> dict:                                       # read from disk, nothing kept
+        return dict(tomllib.loads(core.read_text())["abilities"]) | {
+            f.parent.name: next(iter(tomllib.loads(f.read_text())["abilities"].values()))
+            for f in sorted((state / addons.DIR).glob(f"*/{addons.MANIFEST}"))}
+    addon("hello", "says hello")
+    first = abilities.manifest(state)
+    assert first == fresh() and first["hello"]["what"] == "says hello" and reads == ["abilities.toml", "addon.toml"]
+    reads.clear()
+    assert abilities.manifest(state) == first and abilities.asked("zzqx", SimpleNamespace(state=state)) == [] and reads == []
+    core.write_text(core.read_text() + '\n[abilities.extra]\nstate = "described"\nwhat = "one more"\n')
+    addon("hello", "says hello twice")
+    assert abilities.manifest(state) == fresh() and abilities.manifest(state)["extra"]["what"] == "one more"
+    addon("bye", "says bye")
+    assert abilities.manifest(state) == fresh() and abilities.manifest(state)["bye"]["what"] == "says bye"
+    shutil.rmtree(state / addons.DIR / "hello")
+    assert abilities.manifest(state) == fresh() and "hello" not in abilities.manifest(state)
 
 
 def test_every_entry_says_built_or_described():
@@ -143,6 +181,9 @@ def test_a_room_asked_to_open_a_page_in_the_browser_on_the_pc_hears_the_plug_in_
     told = abilities.explain("browser", TAB["browser"], TAB, y.memory)
     assert next(x for x in told if x.startswith("- A relaunch before each call:")).endswith(
         "is said to be down in one line with its reason, never a stack trace's first line.")
+    assert next(x for x in told if x.startswith("- The computer the owner names:")).endswith(
+        "only when the owner names it, or when the tool's own reply says to call the other one (its video action's reply for a "
+        "browser not signed in to Instagram).")
     assert not abilities.asked("the tracker is open on my pc already, I logged the hours myself", y.memory, TAB)
 
 
@@ -218,6 +259,23 @@ def test_a_room_asked_to_keep_a_key_a_page_shows_hears_the_keep_way_never_the_re
     assert not abilities.asked("the key works now, thanks", y.memory, TAB)
 
 
+def test_a_room_handed_a_login_hears_the_login_way_never_to_type_it_or_file_it(tmp_path):
+    """need-2026-11-20-127: the owner sent a room a new site's login in pictures and said it needs to know their login; it
+    could file no secret, and a password typed through a tool call lands in its transcript. Asked that way, a room gets
+    logins whole: the owner's own /login, the daemon's file no room reads, and the browser typing it by name, unseen."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("these pictures are the example site's account, you need to know my login", y.memory, TAB)
+    assert [e["key"] for e in found] == ["logins"]
+    text = found[0]["text"]
+    assert text.startswith(f"logins, a Yerk AI ability ({words.ability('on')[1]}): Saves a login the owner hands over")
+    for want in ("with /login in any room", "never a room's session as a message would", "NAME.login in the private folder's secrets",
+                 "type takes login and part, user or password", "in no tool call's arguments and no reply",
+                 "Only on the login's own site over https", "never typed out, filed in memory or copied by the room"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert "logins" not in [e["key"] for e in abilities.asked("the login code came, thanks", y.memory, TAB)]
+
+
 def test_a_room_whose_form_never_takes_a_set_value_hears_the_typing_way(tmp_path):
     """need-2026-11-09-75: a room drove a quote form to its last text field, and the browser's `set` put the value there
     (the field showed it) while the page's React form never had it, so its Next stayed disabled. Asked that way, a room
@@ -247,7 +305,8 @@ def test_a_room_asked_for_a_picture_of_its_tab_hears_the_shot_way_never_the_desk
     assert text.startswith(f"tab-shots, a Yerk AI ability ({words.ability('described')[1]}): Saves a picture of what one of the room's tabs")
     for want in ("One browser action, shot", "Drawn by the browser itself, so a tab with no window on the owner's screen is shot",
                  "Saved in the room's own work folder, to open with Read and send with send", "the owner's screen is never shot",
-                 "A tab that never paints is named, with the way past it", "whose browser plug-in carries the shot action"):
+                 "Back in under a second from any of the room's tabs", "the window is never shown for it",
+                 "A picture's numbers are the click's", "whose browser plug-in carries the shot action"):
         assert want in text, want
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("take a screenshot of my whole screen", y.memory, TAB)] == ["pc-control"]
@@ -306,6 +365,73 @@ def test_a_room_asked_for_a_link_or_a_button_in_an_email_hears_the_numbered_way_
     assert not abilities.asked("the button on the booking form is greyed out", y.memory, TAB)
 
 
+def test_a_room_asked_to_read_a_file_an_email_carries_hears_the_attachment_way_never_to_ask_for_the_file(tmp_path):
+    """need-2026-11-11-85: a room asked to read a quote an email carried as a PDF, to confirm what it said, had the file's
+    name from the mail tool's read and no way to the file (the mail tool neither saved nor opened one, the attachments tool
+    takes a Discord message's files only, and its shell has no network), so it asked the owner to send the file into the
+    room. Asked that way, a room gets mail-files whole: the read numbers the mail's files, the plug-in's attachment action
+    saves one by that number in the room's work folder, and the room opens the path with Read, never asking for the file;
+    a mail ask with no file in it still gets the email entry, and a file posted again from a Discord message the
+    attachments entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("can you read the quote the insurer sent? it's a pdf attached to the email, I need the deductible",
+                "check the attachment in my gmail from the bank and tell me the total"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["mail-files"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"mail-files, a Yerk AI ability ({words.ability('described')[1]}): Gives a room a file one of the "
+                           "owner's emails carries")
+    for want in ("One mail read, with its files; Saved by its number, or every one; Under the file's own name made safe; "
+                 "Never out of the room's folder; Read as the mail is read; Refused in one line with its reason",
+                 "saves the file by its number with that action, then opens the path it names with Read, never asking the owner "
+                 "to send the file into the room"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("mail-files", TAB["mail-files"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- Saved by its number")).endswith("and returns its path to open with Read.")
+    assert next(x for x in told if x.startswith("- Never out of")).startswith(
+        "- Never out of the room's folder: the reader walks to that folder a part at a time without following a link")
+    assert [e["key"] for e in abilities.asked("search my email for the receipt", y.memory, TAB)] == ["email"]
+    assert [e["key"] for e in abilities.asked("send the file again", y.memory, TAB)] == ["attachments"]
+    assert not abilities.asked("I attached the file to my reply", y.memory, TAB)
+
+
+def test_a_room_whose_clicks_in_the_owners_mail_app_were_refused_as_a_payment_page_hears_the_upsell_way(tmp_path):
+    """need-2026-11-11-86: a room asked why it could not see a file a mail carried opened the owner's mail app in the
+    browser, signed in, the mail on screen, and its click by position on the mail's file chip was refused: the browser read
+    the whole mailbox as a payment page, since the app's blue Upgrade in its own top bar matched the pay words, so every
+    click in it was refused, and the room asked the owner to send the file instead. Asked that way, a room gets
+    upsell-pages whole: a plan offered in an app's own frame makes no payment page, that button is never clicked, the rest
+    of the page takes clicks as any page does, and a mail's file comes by the attachment action; a booking ask still gets
+    free-bookings, and a mail's file asked for the mail-files entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("why can't you click inside my gmail? the file is right there on the screen",
+                "the browser says the tab is read as a payment page because of the upgrade button"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["upsell-pages"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"upsell-pages, a Yerk AI ability ({words.ability('described')[1]}): Clicks and fills inside a "
+                           "web app whose own frame offers a paid plan, such as a mail app's Upgrade button in its top bar")
+    for want in ("The button decides by where it sits; Payment still read as before; Through web components too; The button "
+                 "itself never clicked; The rest of the page as on any page", "that button is never clicked, and a page that "
+                 "takes money is still never touched", "clicks a row or a file chip by position from a picture of the tab, "
+                 "never asking the owner to send what the screen shows", "by the mail tool's attachment action"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("upsell-pages", TAB["upsell-pages"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- The button decides")).endswith(
+        "only inside a form, a dialog or a box of the page's own site, where it is a plan's last step and an Enter in the form "
+        "can press it; one in the app's own frame, a top bar, a side bar or a banner, makes none.")
+    assert next(x for x in told if x.startswith("- Payment still")).endswith(
+        "makes a payment page wherever it shows, as a card field, a payment frame, a saved card and a payment service's address do.")
+    assert next(x for x in told if x.startswith("- The button itself")).startswith(
+        "- The button itself never clicked: by its words or by position, the owner's word or not")
+    assert [e["key"] for e in abilities.asked("ok book a table for two at the place on the corner, thursday at seven",
+                                              y.memory, TAB)] == ["free-bookings"]
+    assert [e["key"] for e in abilities.asked("check the attachment in my gmail from the bank", y.memory, TAB)] == ["mail-files"]
+    assert not abilities.asked("I upgraded my phone plan last week", y.memory, TAB)
+
+
 def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_no_reply_way(tmp_path):
     """need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look,
     and each run that answered NO_REPLY still asked its room for a relay turn. Asked that way, a room gets the workers entry
@@ -320,6 +446,22 @@ def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_
             "timer's script, at any --effort): its card settles quiet and the ledger says why.") in text
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert not abilities.asked("the worker finished and the report is saved", y.memory, TAB)
+
+
+def test_a_room_asked_whether_its_alike_job_cards_are_one_worker_hears_the_job_cards_way(tmp_path):
+    """need-2026-11-16-100: asked whether six alike quiet cards were the same worker doing the same thing, a room read each
+    id out of the ledger's workers table, since the cards named no job and hid each report's line. Asked that way, a room
+    gets job-cards whole: each card names its job, and a quiet run shows its one-line result under "finished clean"."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("are these all the same worker doing the same thing? the cards all look the same", y.memory, TAB)
+    assert [e["key"] for e in found] == ["job-cards"]
+    text = found[0]["text"]
+    assert text.startswith(f"job-cards, a Yerk AI ability ({words.ability('on')[1]}): A scheduled job's worker card names its job")
+    assert "shows its REPORT.md's first line under \"finished clean\", whole over two phone lines" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("which job was this card for?", y.memory, TAB)] == ["job-cards"]
+    assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
+    assert not abilities.asked("the cards are on the table, same as last week", y.memory, TAB)
 
 
 def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule_way(tmp_path):
@@ -338,6 +480,63 @@ def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("what is the job's model now?", y.memory, TAB)] == ["schedule"]
     assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
+
+
+def test_a_room_whose_job_fired_as_the_jobs_file_was_rewritten_hears_the_job_fires_way(tmp_path):
+    """need-2026-11-16-101: a job a script started answered "no job" from the daemon's fire in the second a one-shot took
+    itself out of the jobs file, and the room had its script try the start again. Asked that way, a room gets job-fires
+    whole: each change Yerk makes to the jobs file is swapped in whole, so a job fired in that instant starts, no retry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("the daemon said no job while the jobs file was being rewritten; should the script retry?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["job-fires"]
+    text = found[0]["text"]
+    assert text.startswith(f"job-fires, a Yerk AI ability ({words.ability('on')[1]}): A job fired while the jobs file is being "
+                           "rewritten still starts")
+    assert "written beside it and swapped in with one rename" in text and "so neither needs a retry for it" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("why was it fired but did not start?", y.memory, TAB)] == ["job-fires"]
+    assert not abilities.asked("the job fired at nine and its card settled quiet", y.memory, TAB)
+
+
+def test_a_room_asked_why_its_emails_land_in_spam_hears_the_email_name_way_and_whether_the_name_is_set_here(tmp_path, capsys):
+    """need-2026-11-16-102: a room asked why the emails it sent in the owner's name landed in people's spam found them all
+    under the bare address, since [gmail] name was not set, and could not check it: yerkd.toml is out of a room's reach.
+    Asked that way, a room gets email-name whole, with a Here line saying whether the name is set on this install, read
+    from yerkd.toml as the doctor reads it, never the name or the address, since any room may ask."""
+    y, owner = Yerkd(EXAMPLE_PRIVATE, tmp_path), "@".join(["owner", "example.test"])
+    (priv := tmp_path / "private").mkdir()
+    s, gmail = replace(y.memory, private=priv), f'[gmail]\nuser = "{owner}"\npassword_file = "secrets/gmail.password"\n'
+    (priv / "yerkd.toml").write_text(gmail)
+    found = abilities.asked("why do the emails you send in my name land in people's spam?", s, TAB)
+    assert [e["key"] for e in found] == ["email-name"] and hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert found[0]["text"].startswith(f"email-name, a Yerk AI ability ({words.ability('on')[1]}): An email in the owner's name goes "
+                                       "out under the owner's name beside the address")
+    assert found[0]["text"].endswith(f"Here: {words.EMAIL_NAMELESS_HERE}.") and owner not in found[0]["text"]
+    (priv / "yerkd.toml").write_text(gmail + 'name = "Example Owner"\n')
+    [e] = abilities.asked("would one I sent myself go to spam too?", s, TAB)
+    assert e["text"].endswith(f"Here: {words.EMAIL_NAMED_HERE}.") and "Example Owner" not in e["text"] and owner not in e["text"]
+    assert cli.main(["explain", "email-name", "--private", str(priv), "--state", str(tmp_path)]) == 0
+    assert f"Here: {words.EMAIL_NAMED_HERE}" in capsys.readouterr().out.splitlines()
+    for none in ("", "[gmail\n"):                         # no Gmail to send from, or a yerkd.toml that does not read: no Here
+        (priv / "yerkd.toml").write_text(none)
+        assert "Here:" not in abilities.asked("is my name on the emails you send?", s, TAB)[0]["text"]
+    assert [e["key"] for e in abilities.asked("send an email for me", s, TAB)] == ["email"]
+
+
+def test_a_room_asked_why_a_worker_waits_while_an_account_has_its_usage_back_hears_the_usage_back_way(tmp_path):
+    """need-2026-11-17-104: a room asked why its worker waited for an account while two had usage left found the rest
+    list holding one of them on a rate limit until the reset the limit named, days off, though its usage had come back,
+    and started its worker there by name to skip the list. Asked that way, a room gets usage-back whole: such a rest ends
+    on a reading of the usage back, taken about every 15 minutes and by /status, so no worker goes there by name for it."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("why is my worker waiting for an account when the other one's usage came back?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["usage-back"] and hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    text = found[0]["text"]
+    assert text.startswith(f"usage-back, a Yerk AI ability ({words.ability('on')[1]}): An account's rest ends when its usage "
+                           "comes back early")
+    assert "the account is free again within about 15 minutes" in text and "so Fable's week never holds Opus" in text
+    assert [e["key"] for e in abilities.asked("the card says it is still resting, until Sun 3a", y.memory, TAB)] == ["usage-back"]
+    assert not abilities.asked("the dog is resting on the couch until dinner", y.memory, TAB)
 
 
 def test_a_room_asked_for_no_chat_box_on_its_page_hears_the_page_tool_s_switch(tmp_path):
@@ -452,3 +651,150 @@ def test_a_room_asked_to_talk_in_the_code_with_bubbles_hears_the_page_talk_way(t
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("please upgrade the page", y.memory, TAB)] == ["page-talk"]
     assert not abilities.asked("the bubbles in the bath", y.memory, TAB)
+
+
+SHIPPED_IN_PART = ("taste", "status-card", "safe-restarts", "dead-turns", "watchdog", "shell-guards", "import", "read-documents")
+
+
+def test_an_ability_that_ships_says_built_and_one_that_ships_in_part_names_what_is_missing(tmp_path, capsys):
+    """F9-07: a room asked whether it can do what the install ships never hears that it cannot. prompt-diff ships with the
+    morning diff, measured (decision 26) by tests/test_observe.py's planted payload change that shows the next morning in the
+    machine room only and tests/test_sheet_hard.py's part over its line said there once a day, so it says built; the eight
+    that ship in part each say what is still missing, never only a layer that has shipped."""
+    assert TAB["prompt-diff"]["state"] == "built" and "why_not" not in TAB["prompt-diff"], TAB["prompt-diff"].get("why_not")
+    stale = {n: TAB[n]["why_not"] for n in SHIPPED_IN_PART if TAB[n]["state"] != "described" or "still missing: " not in TAB[n]["why_not"]}
+    assert not stale, stale
+    assert cli.main(["explain", "prompt-diff", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == f"{words.DONE} prompt-diff: {words.ability('on')[1]}" and abilities.HOW["built"] in lines
+    assert not [x for x in lines if x.startswith("Why it is not built")], lines
+
+
+ASK_NOUNS = ("RONA", "cactus", "Scarborough", "Midland", "IKEA", "Home Depot")
+
+
+def test_store_stock_names_the_bot_check_and_web_fetch_for_what_it_is_and_prices_it_as_the_web_ability_does(tmp_path, capsys):
+    """Need 97 (2026-11-14): a room asked to check a store's live stock met a retailer's product page empty behind a captcha
+    frame in the automated browser and, handed an opaque empty page, improvised off a photo of the stock box. The ability
+    (it rides on the hands browser plug-in, whose test/run.mjs has the note) names the bot-check and the ways that still
+    read the count, web_fetch or the owner's own screen. PR 81's cold read: the first cut called the check a wall never
+    worked around while it sent the room to web_fetch, whose ladder is a stealth browser and captcha solvers, and put
+    web_fetch's paid rungs under the daily cap only web_research has. So "never spoofs a browser or solves a check" is
+    hands' alone, web_fetch's ladder is named for what it is, and its cloud-browser rungs are priced as the web ability's
+    own price line prices them; a message that asks whether a store has an item in stock surfaces it, and an everyday one
+    (a store's parking too) does not."""
+    ab = TAB["store-stock"]
+    assert ab["state"] == "described" and ab["tier"] == "free" and "key" not in ab
+    text = " ".join([ab["what"], *ab["how"], ab["why_not"], ab["free_path"]])
+    assert all(w in text for w in ("bot-check", "hands never spoofs a browser or solves a check", "web_fetch", "stealth browser",
+                                   "captcha solver", "names the wall", "their own screen", "live read"))
+    held = [w for w in ("never worked around", "left alone", "rather than defeating", "honest way") if w in text]
+    assert not held, ("the check is not called left alone while the room is sent to a ladder that solves one", held)
+    assert "daily cap" not in ab["price"] and all(w in ab["price"] for w in ("included calls and hours", "spend row"))
+    assert re.search(r"cloud-browser read inside its plan's included calls and hours", TAB["web"]["price"])
+    assert re.search(r"research run [^;]*daily cap", TAB["web"]["price"]), "the web ability's one daily cap is research's"
+    assert not any(n in json.dumps(ab, ensure_ascii=False) for n in ASK_NOUNS), "no person or place from the ask is named"
+    for ask in ("can you make sure the store has one in stock before I go?", "does the store have any left?"):
+        assert "store-stock" in [e["key"] for e in abilities.asked(ask, None, TAB)], ask
+    for ask in ("I have to fill out a form for work", "does the store have parking?", "check my stocks", "out of stock on milk"):
+        assert not any(e["key"] == "store-stock" for e in abilities.asked(ask, None, TAB)), ask
+    assert cli.main(["explain", "store-stock", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:2] == [f"{words.NOTHING} store-stock: {words.ability('described')[1]}", ab["what"]]
+    assert abilities.HOW["described"] in lines
+
+
+def test_a_room_whose_reel_instagram_shuts_to_a_logged_out_reader_hears_the_signed_in_browsers_way(tmp_path, capsys):
+    """need-2026-11-18-111: a room sent an Instagram reel to watch met watch's "Instagram sent an empty media response"
+    twice (the account limits who sees it, and watch reads logged out), and the signed-in browser's background tab painted
+    a black frame with no sound. Asked that way, a room gets locked-reels whole under the recall cap: the browser plug-in's
+    video action reads the post signed in and saves its video in the room's work folder, then watch on that path; the
+    session never leaves the browser; and its built part is watch, whose entry names it."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("it says people under 18 can't see this, can you still watch the reel?", y.memory, TAB)
+    assert "locked-reels" in [e["key"] for e in found]
+    text = next(e["text"] for e in found if e["key"] == "locked-reels")
+    assert text.startswith(f"locked-reels, a Yerk AI ability ({words.ability('described')[1]}): Watches an Instagram reel or post")
+    for want in ("The wall named with its way", "One browser action, video", "Read as the post's own player reads it",
+                 "Saved in the room's own work folder", "Then watch on that path", "whose browser plug-in carries the video action",
+                 "never answering off the caption or a black frame of the playing tab"):
+        assert want in text, want
+    assert hooks.render_recall([e for e in found if e["key"] == "locked-reels"], [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = "\n".join(abilities.explain("locked-reels", TAB["locked-reels"], TAB, y.memory))
+    for want in ("never yt-dlp's advice on cookies", "no cookie is read or copied", "never shown to the room",
+                 "the room calls the video action again there; the owner signs one in only when neither is",
+                 "never through a link the room's shell left there"):
+        assert want in told, want
+    assert "(yerk explain locked-reels)" in " ".join(TAB["watch"]["how"])
+    assert cli.main(["explain", "locked-reels", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    assert "Built part: watch (yerk explain watch)" in capsys.readouterr().out.splitlines()
+    assert not abilities.asked("I watched the reel on my phone, it was good", y.memory, TAB)
+
+
+def test_a_room_whose_order_form_was_refused_as_a_payment_page_hears_the_order_form_way(tmp_path, capsys):
+    """need-2026-11-19-125: a room asked to order a toll road's transponder on the owner's word filled the order form to its
+    review step, whose payment method was "Bill me" and which asked for no card or bank details, and the browser refused
+    its terms box and its Submit Order as on a payment page, the owner's own order included, since Submit Order is a pay
+    button's words; the order then went in through the desktop tool, which reads nothing of a page. Asked that way, a
+    room gets order-forms whole under the recall cap (it rides on the hands browser plug-in, whose test/run.mjs has the
+    order form): built again after PR 109's three cold reads, and fixed where a sentence or a choice's caption still let a
+    page through, the page earns the order form by a payment method whose value is an invoice in force, or it is a payment
+    page as it always was; a sentence counts for nothing, a choice holds its own words and those drawn on its row, and one
+    the browser cannot tie to any words puts nothing in force; the owner's word sends the order, a
+    page that takes card or bank details is still never touched, and the page's words stay a record. free-bookings no longer
+    says an amount marks a payment page, which the browser never read. upsell-pages no longer names Place order among
+    the buttons that mark a payment page wherever they show; a booking ask still gets free-bookings; no person or place
+    from the ask is named; an everyday message about an order gets no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("the browser would not let you submit the order? it's billed on the next invoice",
+                "the payment method says bill me, so place the order"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["order-forms"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"order-forms, a Yerk AI ability ({words.ability('described')[1]}): Sends an order form the owner "
+                           "ordered in the browser ability's browser when the page gives an invoice as its payment method")
+    for want in ("The page earns it or it is a payment page; The owner's word for the order; Payment still read as before; "
+                 "The page's words stay a record", "a page that takes money is still never touched",
+                 "any other page with an order button is a payment page, as it always was",
+                 "reads an order form by the page's own payment method has it there",
+                 "nor a page that says invoice only in a sentence"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("order-forms", TAB["order-forms"], TAB, y.memory)
+    # built again (PR 109's three cold reads each found a way of paying a list of payments missed), and fixed where a
+    # sentence or a choice's caption still let a page through: the page earns the order form by its payment method's
+    # invoice value in force alone, no other payment method, no choice not chosen holding that value on its row, no choice
+    # it cannot tie to any words, nothing drawn it cannot read; a miss refuses, and so does what it did not read
+    decides = next(x for x in told if x.startswith("- The page earns it or it is a payment page:"))
+    assert all(w in decides for w in ("makes a payment page unless a payment method on the page has an invoice as its value, "
+                                      "in force", "Bill me", "a sentence such as billed on your next invoice counts for nothing",
+                                      "counts only when the page marks it chosen",
+                                      "a radio, a checkbox or a switch, the page's own or drawn by role, holds its own words "
+                                      "and those drawn on its row",
+                                      "so one not chosen on the invoice's row takes it out of force, labelled or not",
+                                      "one the browser cannot tie to any words puts nothing in force",
+                                      "Payment method: X refuses for every X that is no invoice", "a made-up name alike",
+                                      "a frame of another site or an embedded object at any size",
+                                      "a bot check's own frame aside", "so a miss is a refusal",
+                                      "what the browser did not read refuses too")), decides
+    assert "with no not before it" not in decides and "the page itself says" not in decides, decides
+    assert "by its label, its parent or its own row" not in decides, decides
+    assert decides.endswith("and the refusal names the rule that stopped it.")
+    word = next(x for x in told if x.startswith("- The owner's word for the order:"))
+    assert "the order button's own click included" in word and "how it is billed" in word
+    assert "the invoice payment method it matched and what was checked and found absent, never that the page takes no card as fact" in word, word
+    held = next(x for x in told if x.startswith("- Payment still read as before:"))
+    assert "nothing on the page is set or clicked, the owner's word or not, the invoice words or not" in held, held
+    assert all(w in held for w in ("a card field", "bank details", "a masked number", "another pay button", "a hidden one included"))
+    fb = " ".join(TAB["free-bookings"]["how"])
+    assert "never an amount alone" in fb and "no amount" not in fb and "the money in its words" not in fb, fb
+    up = next(x for x in abilities.explain("upsell-pages", TAB["upsell-pages"], TAB, y.memory) if x.startswith("- Payment still"))
+    assert "Place order" not in up and "(Pay, Buy now, Checkout)" in up, up
+    assert not any(n in text_of(TAB["order-forms"]) for n in ("407", "ETR", "grandmother")), "no person or place from the ask"
+    assert [e["key"] for e in abilities.asked("ok book a table for two at the place on the corner, thursday at seven",
+                                              y.memory, TAB)] == ["free-bookings"]
+    assert not abilities.asked("the order came yesterday, thanks", y.memory, TAB)
+    assert cli.main(["explain", "order-forms", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:2] == [f"{words.NOTHING} order-forms: {words.ability('described')[1]}", TAB["order-forms"]["what"]]
+    assert abilities.HOW["described"] in lines

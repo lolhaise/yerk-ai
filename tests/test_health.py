@@ -97,6 +97,8 @@ def test_yerk_accounts_lists_tokens_rests_and_health(box, capsys, monkeypatch):
     priv, state, _ = box
     base = ["--private", str(priv), "--state", str(state)]
     assert cli.main(["accounts", "cool", "two", "20", *base]) == 0
+    said = capsys.readouterr().out                                                 # the end of a rest, the card's way: '5:10p'
+    assert said.startswith("two rests (manual) until ") and said.rstrip()[-1] in "ap"
     monkeypatch.setattr("sys.stdin", io.StringIO("fake-token-for-tests\n"))
     assert cli.main(["accounts", "token", "one", "--issued", "2025-11-10", *base]) == 0
     assert oct((priv / "secrets" / "claude-one.token").stat().st_mode & 0o777) == "0o600"
@@ -106,7 +108,8 @@ def test_yerk_accounts_lists_tokens_rests_and_health(box, capsys, monkeypatch):
     assert "fake-token" not in out
     lines = dict(line.split(" ", 1) for line in out.strip().splitlines())
     assert "RENEW" in lines["one"] and "days left" in lines["one"] and rc == 1      # inside 30 days
-    assert "rests (manual, x0) until" in lines["two"] and "config folder's own login" in lines["two"]
+    until = Cooldowns(state / "cooldowns.json").show("two")[0]["until"]
+    assert f"rests (manual, x0) until {words.short_when(until)};" in lines["two"] and "config folder's own login" in lines["two"]
     assert cli.main(["accounts", "clear", "two", *base]) == 0
     assert cli.main(["accounts", "health", "--names", "three", *base]) == 0
     assert "three: pass in" in capsys.readouterr().out
@@ -121,9 +124,13 @@ def test_yerk_status_prints_a_meter_per_account(box, capsys):
     assert out[0] == "🔴 yerkd: not running" and out[1] == f"- {words.DONE}① 5h 7% · wk 3%" and out[2].startswith("- ↻ 5h ")
     assert out[3] == "- ①: last reading just now"                    # the fake's /usage printed no meters: the stream's, aged
     assert "- ②: no reading yet" in out and all(words.width(x) <= words.PHONE for x in out)   # a dash: no colour
+    rest, w = time.time() + 1200, words.short_when
+    Cooldowns(state / "cooldowns.json").set("three", "manual", rest)
     assert cli.main(["status", "--full", "--private", str(priv), "--state", str(state)]) == 0     # the detail
     full = capsys.readouterr().out.splitlines()
     assert full[0] == "yerkd: not running" and "seen " in full[1] and full[2] == "two: no meter (no stream has reported it yet)"
+    assert full[1].startswith(f"one: 5h 7% ({w(2000000000)}) · wk 3% ({w(2000300000)}), seen ")   # the card's way: 'May 17'
+    assert full[3] == f"three: no meter (no stream has reported it yet); rests until {w(rest)}"
 
 
 def test_a_token_from_another_account_fails_the_identity_check(box, monkeypatch):

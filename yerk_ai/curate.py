@@ -6,8 +6,8 @@ a cite whose quoted words left its line moves only when they sit on exactly one 
 never a guess. The promotion: a pack per card from each day's sources as the card's reader may read them; a worker that sees the
 pack alone proposes lines, a second knocks them down (curate.md), code checks shape, head, secrets and that each cite is a line
 of the pack, and the lines land, appended with a backup, only when the bench does not fall. A correction to a line on file is
-the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts, condensations
-and promotions proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule file changes only by the owner's
+only ever proposed, in the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts,
+condensations, moves to the topic rules, promotions and gates proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule
 file changes only by the owner's `--apply DAY N[,N...]`, backed up first and fitted to its line in budgets.toml, its lines
 none written that a rule's filing would turn back (shape.filing)."""
 from __future__ import annotations
@@ -27,7 +27,7 @@ from itertools import combinations, groupby
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, doctor, lessons, memindex, memory, mentions, needs, shape, taste, words
+from . import context, doctor, lessons, memindex, memory, mentions, needs, retention, shape, taste, words
 from .accounts import account_env, load_accounts
 from .config import budgets, flag, load_toml, rooms, write_private
 from .engine import claude_bin
@@ -423,7 +423,7 @@ def run(private: Path, state: Path, since: str = "", dry: bool = False, now: flo
            **promote(s, private, state, c, days, backup, dry, model, now)}
     out["checked"] = undone + out["checked"]
     try:                                                 # then the rule files: proposed, never applied (PR curate-rules)
-        out["rules"] = rules(private, state, s, dry, now)["card"]
+        out["rules"] = rules(private, state, s, dry, now, reuse=True)["card"]    # the day's on file stand: the card's numbers
     except (Exception, SystemExit) as e:                 # rooms.toml or budgets.toml unreadable: the morning says it
         out["rules"], out["checked"] = [], out["checked"] + [f"rules: not proposed, {type(e).__name__}: {words.no_paths(str(e))[:80]}"]
     if not dry:
@@ -470,7 +470,7 @@ def line(state: Path, now: float) -> tuple[str, str]:
 
 
 # The rule files (PR curate-rules; decisions 30 and 42): the line-per-rule parts every room loads, read whole, and merges,
-# cuts, condensations and promotions PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
+# cuts, condensations, topic moves, promotions and gates PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
 PROPOSED, PROPOSALS, NEAR, LONG, CARD_MOST, WEEK = "curate-rules.json", "rules-proposals", 0.75, 600, 10, 7 * 86400
 TRAILER, SHARE = memory.TRAILER, 1 / 3      # a filing's room, time, message; under SHARE of the week's messages, a rule is on one topic
 # A rule a code check could hold on every reply (`gate`: proposed, never built here), the words that say it and the check it needs
@@ -519,11 +519,11 @@ def asked(s: memory.Settings, days: list[str], ids_: set[str] | None = None) -> 
 
 
 def rides(state: Path, names: list[str], since: float) -> tuple[int, dict[str, int]]:
-    """The sessions since `since` in the rooms `names` (their assembled.jsonl's message rows), and per topic rule's job how many it rode in."""
+    """The sessions since `since` in the rooms `names` (their assembled log's message rows: the day archives, the parts it rolled
+    to and the live file, in order, retention.read), and per topic rule's job how many it rode in."""
     sessions, rode = set[str](), dict[str, set[str]]()
     for n in names:
-        p = state / "rooms" / n / "assembled.jsonl"
-        for x in p.read_text(errors="replace").splitlines() if p.is_file() else []:
+        for x in retention.read(state / "rooms" / n / "assembled.jsonl", since):
             with suppress(ValueError, AttributeError, TypeError):
                 if (r := json.loads(x)).get("event") == "message" and float(r.get("t", 0)) >= since:
                     sessions.add(sid := str(r.get("session_id")))
@@ -1012,17 +1012,27 @@ def say(private: Path, state: Path, day: str, lines: list[str], post: Callable[[
 
 
 def rules(private: Path, state: Path, s: memory.Settings, dry: bool, now: float,
-          post: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
+          post: Callable[[dict[str, Any]], dict[str, Any]] | None = None, reuse: bool = False) -> dict[str, Any]:
     """The rules phase: the proposals, kept in <memory>/rules-proposals/<day>.md (0600) and <state>/curate-rules.json unless
-    `dry` (the applies on file kept for undo), and the card said in the machine room at most once a day, never with none."""
+    `dry` (the applies on file kept for undo), and the card said in the machine room at most once a day, never with none.
+    `reuse` (curate's own phase): the day's proposals on file (an earlier `yerk curate --rules` of that day) stand as they
+    are, so the numbers its card showed are the numbers `--apply` takes; they are built only when none of the day are on file."""
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
-    props, sizes, name = propose(private, state, s, now)
-    with nullcontext() if dry else memory.daily_lock(s.daily):    # the needs' lock: a need filed now keeps its number and block
-        needs.around(props, needs.numbers(state, day))           # the day's needs keep theirs; the proposals take the rest
-        out: dict[str, Any] = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
-        if props and not dry:
-            (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
-            out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name) + needs.part(state, day)))
+    try:
+        built = dict(json.loads((state / PROPOSED).read_text())) if reuse else {}
+    except (OSError, ValueError, TypeError):
+        built = {}
+    if built.get("date") == day:
+        props = list(built.get("proposals", []))
+        out: dict[str, Any] = {"day": day, "proposals": props, "sizes": [], "card": card(day, props), "file": ""}
+    else:
+        props, sizes, name = propose(private, state, s, now)
+        with nullcontext() if dry else memory.daily_lock(s.daily):    # the needs' lock: a need filed now keeps its number and block
+            needs.around(props, needs.numbers(state, day))           # the day's needs keep theirs; the proposals take the rest
+            out = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
+            if props and not dry:
+                (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
+                out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name) + needs.part(state, day)))
     if dry:
         return out
     try:
@@ -1138,7 +1148,7 @@ def rules_main(private: Path, state: Path, dry: bool = False) -> int:
         return 2
     print("".join(f"{q['n']}. {q['kind']}: {q['label']} ({-q['saved']:+,} chars, evidence {q['rows']}): {q['why']}\n" for q in r["proposals"]), end="")
     print("".join(f"{n}: {a:,} now, {b:,} with every proposal" + (f", line {c:,}" if c else "") + "\n" for n, _, c, a, b in r["sizes"]), end="")
-    print("dry run: nothing written" if dry else f"proposals: {r['file']}" if r["file"] else "no proposals")
+    print(words.ADD_DRY if dry else f"proposals: {r['file']}" if r["file"] else "no proposals")
     return 1 if r["proposals"] else 0
 
 

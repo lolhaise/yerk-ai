@@ -2,11 +2,15 @@
 rows, the morning diff. /proc and systemd are faked where it matters; the stall is a real event loop held
 for 3 s in a test daemon on a temp state folder with no channel adapter attached. Layer 7, run 1."""
 import asyncio
+import contextlib
 import json
+import logging
 import os
 import re
 import shutil
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -19,7 +23,7 @@ from zoneinfo import ZoneInfo
 from starlette.testclient import TestClient
 
 from yerk_ai import __version__, beat, cli, context, jobs, mcp_server, morning, status, usage, words
-from yerk_ai.accounts import Account, Cooldowns, load_accounts
+from yerk_ai.accounts import Account, Cooldowns, load_accounts, pick
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
@@ -194,6 +198,40 @@ def test_live_meters_put_five_accounts_on_the_card_in_the_box_cards_shape_with_t
     assert two(live(79, H, 80, 50 * H)) == f"- ② 5h 79% · wk {words.WARN}80%"                        # the warning sign from 80
 
 
+def test_a_reset_and_the_end_of_a_rest_read_the_cards_short_way_in_every_renderer(monkeypatch):
+    """The owner's yes of 2026-11-10 (one way to write a reset time, the status card's): at one moment the card, `yerk
+    status --full`'s meter line, the morning diff's account line and /model's resting state write a reset and the end of
+    a rest the same way, words.short_when's: '5:30a' within a day, 'Tue 4a' within a week, 'Oct 27' past that. They said
+    '05:30', 'Tue' and 'Tue 04:00' before; a reset not read yet still says '?'. The morning diff's account line
+    (meter_short) is held to the phone width: where the resets do not fit beside the meters they take a second line,
+    the card's own, so no reset is ever cut off."""
+    from yerk_ai.meters import meter_line, meter_short
+    monkeypatch.setattr(time, "time", lambda: NOW)                                  # words.rest reads the clock itself
+    m, rest, far, w = live(7, 3.5 * H, 3, 50 * H), NOW + 10 * H, NOW + 9 * 24 * H, words.short_when
+    five, week = w(m["five_hour"]["resets"], NOW), w(m["seven_day"]["resets"], NOW)
+    assert re.fullmatch(r"\d+:\d\d[ap]", five) and re.fullmatch(r"[A-Z][a-z]{2} \d+[ap]", week)   # within a day, a week
+    card = status.account_lines([{"name": "one", "meter": m, "rests_until": None, "bill": None}], NOW)
+    resting = status.account_lines([{"name": "one", "meter": m, "rests_until": rest, "bill": None}], NOW)
+    assert card[1] == f"- ↻ 5h {five} · wk {week}" and resting[1] == f"- ↻ resting until {w(rest, NOW)}"   # as it was
+    assert meter_line("one", {**m, "at": NOW}, NOW) == f"one: 5h 7% ({five}) · wk 3% ({week}), seen 0 min ago"
+    assert words.rest(rest) == f"resting until {w(rest, NOW)}"
+    later = {"five_hour": {"pct": 7}, "seven_day": {"pct": 3, "resets": far}, "at": NOW}   # no reset read; one 9 days off
+    assert re.fullmatch(r"[A-Z][a-z]{2} \d+", w(far, NOW))
+    assert meter_line("one", later, NOW) == f"one: 5h 7% (?) · wk 3% ({w(far, NOW)}), seen 0 min ago"
+    assert meter_short("one", {"seven_day": m["seven_day"]}, now=NOW) == f"- one: wk 3% ({week})"   # a weekly window alone
+    assert meter_short("one", m, now=NOW) == f"- one: 5h 7% ({five}) · wk 3% ({week})"              # both, where they fit
+    assert meter_short("one", m, rest, NOW) == f"{words.NOT_DONE} one: resting until {w(rest, NOW)}"
+    assert meter_short("one", later, now=NOW) == f"- one: 5h 7% · wk 3% ({w(far, NOW)})"           # 9 days off: its date
+    hot = meter_short("three", live(93, 3.5 * H, 93, 50 * H), now=NOW)                                # too wide for one line
+    assert hot == f"{words.WORKING} three: 5h 93% · wk 93%\n- ↻ 5h {five} · wk {week}"              # the card's two lines
+    assert all(words.width(x) <= words.PHONE for x in hot.splitlines())                             # and nothing is cut
+    back = NOW + 56 * H + 59 * 60                               # Tue 10:59a: as wide as a reset inside a week is ever said
+    note = words.out_of("claude-opus-5-5", "claude-fable-5-2", back, NOW)      # the card's note when every account is out
+    assert re.fullmatch(r"[A-Z][a-z]{2} \d\d:\d\d[ap]", w(back, NOW)) and note == f"on Opus..., Fable 5.2 back {w(back, NOW)}"
+    assert words.line(f"{words.WORKING} {note}") == f"{words.WORKING} {note}"   # the card cuts nothing: the time is whole
+    assert words.out_of("claude-opus-5-5", "claude-fable-5-2", NOW + 3.5 * H, NOW) == f"on Opus 5.5, Fable 5.2 back {five}"
+
+
 def test_a_failed_live_read_shows_the_streams_reading_with_its_age_and_json_says_why(tmp_path):
     accounts = five_accounts(tmp_path)[:2]                                     # five and one
     (tmp_path / "meters.json").write_text(json.dumps({"one": {"at": NOW - 1.5 * H, "source": "stream",
@@ -264,6 +302,50 @@ def test_the_deploys_status_ask_and_json_never_start_claude_code_and_the_card_do
     assert sorted(started) == ["one", "two"]
 
 
+def test_the_card_names_a_watched_channel_by_its_name_and_by_its_id_only_when_no_name_is_known(tmp_path):
+    """F2-13: a room's watched channel on the card (`yerk status` and /status, both from status_now) is its name as the
+    adapter knows it; its id only with no adapter, or a channel the adapter has no name for."""
+    y, ref = Yerkd(EXAMPLE_PRIVATE, tmp_path), "discord:4242"        # a real id is 17 to 19 digits; the scrub test refuses one
+    y.rooms = {"example-room": busy_room()}
+    y.rooms["example-room"].conf["watch"] = ref
+    y.link = SimpleNamespace(channel_name=lambda r: "watched" if r == ref else "")
+    lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
+    assert [x for x in lines if ": watches " in x] == ["- example-room: watches #watched"], lines
+    for link in (None, SimpleNamespace(channel_name=lambda r: "")):
+        y.link = link
+        lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
+        assert [x for x in lines if ": watches " in x] == ["- example-room: watches 4242"], lines
+
+
+def test_the_status_help_names_every_part_the_card_prints(tmp_path):
+    """F2-02: `yerk status --help` (and so docs/commands.md) names every part of the card, from words.STATUS_PARTS in the
+    card's order; the fullest card (every part present) has no line that a named part does not make, so a part added to the
+    card and not to the list fails here."""
+    import argparse
+    W = words
+    s = json.loads(json.dumps(status.collect(EXAMPLE_PRIVATE, tmp_path, load_accounts(EXAMPLE_PRIVATE / "accounts.toml"),
+                                             Cooldowns(tmp_path / "c.json"), Ledger(tmp_path / "l.sqlite"), {}, now=NOW, units=set)))
+    s.update({"rooms": [{"room": "example-room", "busy": True, "waiting": 1, "watch": "discord:1", "since": NOW - 120, "account": "one"}],
+              "workers": [{"id": "abc123", "room": "example-room", "account": "one", "started": NOW - 180, "cap": 900, "waiting": False,
+                           "queued": None, "gone": False}], "jobs": [{"name": "backup", "next": NOW + 600}],
+              "units": [{"name": "yerkd", "rss_mb": 120.0, "cpu_pct": 1.5}], "speed": {"first": 2.0, "turn": 30.0},
+              "spend": {"n": 2, "usd": 0.375, "week": 1.875}, "backup": {"at": NOW - 3600, "bytes": 1000}, "addons": ["hello"],
+              "texting": {"mode": "dry", "up": True, "since": NOW - 600, "last_in": NOW - 60}})
+    tags, pre, mid = {W.tag(a["name"]) for a in s["accounts"]}, (lambda t: t.split("{", 1)[0]), (lambda t: t.split("}", 1)[1].split("{", 1)[0])
+    made = [lambda x: x.startswith(pre(W.RUNNING_ROOMS)), lambda x: x.partition(":")[0] in tags or x.startswith(pre(W.FIRST_TRY)),
+            lambda x: mid(W.TURN_FOR) in x, lambda x: mid(W.WATCHES) in x, lambda x: mid(W.PINNED) in x or x.startswith(pre(W.ROOMS_ON)),
+            lambda x: x.startswith(pre(W.VERSION_AT)), lambda x: x.startswith(pre(W.ADDONS)), lambda x: x.startswith(pre(W.TEXTING_STATUS)),
+            lambda x: x.startswith(pre(W.WORKER)) or x == W.NONE_RUNNING, lambda x: x.startswith(pre(W.JOB_DUE)) or x in (W.NO_JOB_DUE, W.NO_TIMERS),
+            lambda x: x.endswith(W.UNIT_USE.rsplit("}", 1)[1]), lambda x: mid(W.SPEED) in x, lambda x: x.startswith(pre(W.SPEND)),
+            lambda x: x.startswith(pre(W.BACKUP_AT)), lambda x: x.startswith(pre(W.STALLS))]
+    lines = [x.split(" ", 1)[1] for x in status.card(s, NOW)]
+    part = [next((i for i, f in enumerate(made) if f(x)), None) for x in lines]
+    assert None not in part and part == sorted(part) and set(part) == set(range(len(made))), list(zip(part, lines))
+    sub = next(a for a in cli.parser()._actions if isinstance(a, argparse._SubParsersAction))
+    said, parts = {c.dest: str(c.help) for c in sub._choices_actions}["status"], getattr(W, "STATUS_PARTS", ())
+    assert len(parts) == len(made) and all(x in said for x in parts), (said, parts)
+
+
 def test_a_status_read_that_does_not_ask_never_waits_on_a_card_that_does(tmp_path):
     accounts, gate, began, got = five_accounts(tmp_path)[:1], threading.Event(), threading.Event(), []
 
@@ -283,6 +365,446 @@ def test_a_status_read_that_does_not_ask_never_waits_on_a_card_that_does(tmp_pat
     proof.join(10)
     assert not waited and got == [{}]                                      # answered at once, from the file as it stood
     assert usage.readings(accounts, tmp_path, False, NOW) == {"five": {**TANK["five"], "at": NOW, "source": "live"}}
+
+
+# kept-fresh: the daemon's keeper (Yerkd.keep_meters) runs usage.keep every 30 s, so a card that asks nothing has a live
+# reading at most usage.EVERY old to show; on a fake reader and a pinned clock, no Claude Code started
+def kept_at(tmp_path, minutes):
+    """usage.json with each named account's TANK reading kept that many minutes before NOW, as `readings` files one."""
+    (tmp_path / usage.FILE).write_text(json.dumps({n: {**TANK[n], "at": NOW - m * 60, "source": "live"} for n, m in minutes.items()}))
+
+
+def test_kept_fresh_e_each_step_reads_the_oldest_reading_past_every_and_only_that_one(tmp_path):
+    """kept-fresh (e) Four accounts kept 5, 20, 1 and 16 minutes ago: a step reads the 20-minute one only and files it as
+    `readings` would, the next the 16-minute one, the next nothing; never two in one step."""
+    accounts, asked, tried = five_accounts(tmp_path)[:4], [], {}                 # five, one, four, two
+    kept_at(tmp_path, {"five": 5, "one": 20, "four": 1, "two": 16})
+    for _ in range(3):
+        usage.keep(accounts, tmp_path, tried, clock=lambda: NOW, read_one=lambda a: asked.append(a.name) or TANK[a.name])
+    filed = usage.last(tmp_path)
+    assert asked == ["one", "two"] and usage.EVERY == 900.0 and filed["one"] == {**TANK["one"], "at": NOW, "source": "live"}
+    assert {n: r["at"] for n, r in filed.items()} == {"five": NOW - 300, "one": NOW, "four": NOW - 60, "two": NOW}
+
+
+def test_kept_fresh_f_a_failed_read_leaves_a_good_reading_and_waits_every_and_no_reading_takes_the_error(tmp_path):
+    """kept-fresh (f) An account with no entry is read first and takes the failure as `readings` would. One with a good
+    reading 20 minutes old keeps it as it was when its read fails, and is not tried again until EVERY has passed."""
+    accounts, asked, tried, t = five_accounts(tmp_path)[:2], [], {}, [NOW]       # five, one
+    kept_at(tmp_path, {"five": 20})
+    good, failed = usage.last(tmp_path)["five"], {"error": "no answer in 15 s"}
+
+    def step():
+        usage.keep(accounts, tmp_path, tried, clock=lambda: t[0], read_one=lambda a: asked.append(a.name) or dict(failed))
+    step()
+    assert asked == ["one"] and usage.last(tmp_path) == {"five": good, "one": {**failed, "at": NOW, "source": "live"}}
+    step()
+    assert asked == ["one", "five"] and usage.last(tmp_path)["five"] == good
+    t[0] = NOW + usage.EVERY - 1
+    step()
+    assert asked == ["one", "five"] and usage.last(tmp_path)["five"] == good             # tried, and in memory only
+    t[0] = NOW + usage.EVERY
+    step()
+    assert asked == ["one", "five", "five"] and usage.last(tmp_path)["five"] == good
+
+
+def test_kept_fresh_g_a_reading_a_card_filed_while_a_background_read_ran_is_never_overwritten_by_it(tmp_path):
+    """kept-fresh (g) A card's live ask files a reading while the background read is in flight: that newer reading stays.
+    With none filed meanwhile, the background read is filed with the time it ended."""
+    accounts, t = five_accounts(tmp_path)[:1], [NOW]                              # five
+    card, old = {**TANK["five"], "seven_day": {"pct": 2.0, "resets": NOW + 38 * H}}, TANK["five"]
+
+    def in_flight(a):
+        usage.readings(accounts, tmp_path, True, NOW + 3, lambda a: card)        # the card's own ask, the lock free
+        t[0] = NOW + 9
+        return old
+    kept_at(tmp_path, {"five": 20})
+    usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=in_flight)
+    assert usage.last(tmp_path)["five"] == {**card, "at": NOW + 3, "source": "live"}
+
+    def slow(a):
+        t[0] = NOW + 9
+        return old
+    t[0] = NOW
+    kept_at(tmp_path, {"five": 20})
+    usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=slow)
+    assert usage.last(tmp_path)["five"] == {**old, "at": NOW + 9, "source": "live"}
+
+
+def test_kept_fresh_h_the_background_read_starts_claude_code_through_nice_and_the_cards_ask_does_not(tmp_path, monkeypatch):
+    """kept-fresh (h) The keeper's read is `nice -n 19` then Claude Code's own argv, so it never competes with a room's turn;
+    the card's live ask (readings) is Claude Code's argv as it was. subprocess.run is faked: nothing starts."""
+    accounts, argvs = five_accounts(tmp_path)[:1], []
+    accounts[0].config_dir.mkdir(parents=True)
+    out = json.dumps({"result": "Current session: 30% used · resets 5:10pm\nCurrent week (all models): 72% used · resets 5:10pm\n"})
+    monkeypatch.setattr(usage.subprocess, "run", lambda argv, **kw: argvs.append(argv) or SimpleNamespace(stdout=out))
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW)
+    usage.readings(accounts, tmp_path, True, NOW + usage.FRESH)
+    assert argvs == [["nice", "-n", "19", usage.claude_bin(), *usage.ARGV], [usage.claude_bin(), *usage.ARGV]]
+    assert usage.last(tmp_path)["five"]["seven_day"]["pct"] == 72.0
+
+
+# meter-reading-light: a reading runs inside bwrap with an empty tmpfs over the account's projects folder, so Claude Code's
+# start reads no transcript (measured 2026-11-20 on one box: 3 GB asked of read() a reading, about 1 MB with it hidden),
+# and bwrap's own failure reads once more without it. A stand-in bwrap and the stand-in claude, never the real ones.
+METERS = {"five_hour": {"pct": 30.0, "resets": None}, "seven_day": {"pct": 72.0, "resets": None}}
+STANDIN_BWRAP = """#!/usr/bin/python3
+import json, os, sys
+with open(os.environ["FAKE_BWRAP_RECORD"], "a") as f:
+    f.write(json.dumps({"argv": sys.argv, "stdin_null": os.path.samestat(os.fstat(0), os.stat(os.devnull))}) + "\\n")
+if os.environ.get("FAKE_BWRAP_SAYS"):
+    print(os.environ["FAKE_BWRAP_SAYS"], file=sys.stderr, flush=True)
+if os.environ.get("FAKE_BWRAP_EXIT"):
+    sys.exit(int(os.environ["FAKE_BWRAP_EXIT"]))
+os.execvp(sys.argv[sys.argv.index("--") + 1], sys.argv[sys.argv.index("--") + 1:])
+"""
+
+
+def hidden_account(tmp_path, monkeypatch, projects=True):
+    """An account whose config folder holds a projects folder (`projects`), its one-year token on file, the stand-in claude
+    printing METERS for it, and a stand-in bwrap first on PATH, found by name as read finds it: it records how it was run
+    and whether its stdin is /dev/null, says FAKE_BWRAP_SAYS on stderr, then exits FAKE_BWRAP_EXIT as bwrap's own failure
+    does, else runs what follows its `--`, hiding nothing. Returns the account, the stand-in's path, its record and every
+    subprocess.run call as (argv, its keywords), each run for real."""
+    (cfg := tmp_path / "cfg-a").mkdir()
+    if projects:
+        (cfg / "projects" / "-work").mkdir(parents=True)
+    (tmp_path / "usage").mkdir()
+    (tmp_path / "usage" / "cfg-a.txt").write_text("Current session: 30% used\nCurrent week (all models): 72% used\n")
+    (tmp_path / "a.token").write_text("sk-" + "ant-oat01-" + "x" * 40)
+    (bin_ := tmp_path / "bin").mkdir()
+    (bwrap := bin_ / "bwrap").write_text(STANDIN_BWRAP)
+    bwrap.chmod(0o755)
+    for k, v in {"YERK_CLAUDE": str(FAKE), "FAKE_CLAUDE_USAGE_DIR": str(tmp_path / "usage"), "FAKE_CLAUDE_RECORD": str(tmp_path / "claude.jsonl"),
+                 "FAKE_BWRAP_RECORD": str(tmp_path / "bwrap.jsonl"), "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(usage, "BWRAP", "bwrap")                       # conftest's no_bwrap undone: found by its name
+    monkeypatch.setattr(usage, "_bwrap_failed", [])                    # this process has not seen bwrap fail
+    calls, run = [], subprocess.run
+    monkeypatch.setattr(usage.subprocess, "run", lambda argv, **kw: calls.append((argv, kw)) or run(argv, **kw))
+    return Account("a", cfg, token_file=tmp_path / "a.token"), str(bwrap), tmp_path / "bwrap.jsonl", calls
+
+
+def ran(record):
+    return [json.loads(x) for x in record.read_text().splitlines()] if record.exists() else []
+
+
+def logged(caplog):
+    return [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "yerk.usage"]
+
+
+def test_meter_reading_light_k1_a_reading_runs_in_bwrap_with_the_projects_folder_hidden_and_the_config_folder_not(tmp_path, monkeypatch):
+    """meter-reading-light (K1) bwrap found and the config folder holding projects: the command run is exactly bwrap's
+    words, an empty tmpfs over that folder alone (never the config folder, whose login is read), then the command as it
+    was, `nice -n 19` inside it for the keeper; stdin /dev/null, the token not in its environment, the meters back."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    plain, nice = [str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV]
+    assert usage.read(a, tmp_path, nice=True) == METERS and usage.read(a, tmp_path) == METERS
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    assert [argv for argv, _ in calls] == [hide + nice, hide + plain]
+    assert all(kw["stdin"] is subprocess.DEVNULL and kw["cwd"] == tmp_path and "CLAUDE_CODE_OAUTH_TOKEN" not in kw["env"] for _, kw in calls)
+    assert [(r["argv"], r["stdin_null"]) for r in ran(record)] == [(hide + nice, True), (hide + plain, True)]
+    seen = ran(tmp_path / "claude.jsonl")                              # the stand-in claude, run by the stand-in bwrap
+    assert [(s["argv"], s["config_dir"]) for s in seen] == [(usage.ARGV, str(a.config_dir))] * 2
+    assert all("CLAUDE_CODE_OAUTH_TOKEN" not in s["env_keys"] for s in seen) and (a.config_dir / "projects" / "-work").is_dir()
+
+
+def test_meter_reading_light_k2_a_projects_folder_that_is_a_link_is_hidden_at_the_folder_it_names_never_the_link(tmp_path, monkeypatch):
+    """meter-reading-light (K2) The config folder's projects is a link to a folder elsewhere (the accounts of one box
+    sharing one), through a second link: the tmpfs goes over the folder the links name, never over a link."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch, projects=False)
+    (shared := tmp_path / "home" / "projects").mkdir(parents=True)
+    (tmp_path / "hop").symlink_to(shared)
+    (a.config_dir / "projects").symlink_to(tmp_path / "hop")
+    assert usage.read(a, tmp_path) == METERS
+    argv = ran(record)[0]["argv"]
+    assert argv[argv.index("--tmpfs") + 1] == os.path.realpath(shared) and calls[0][0][5] == os.path.realpath(shared)
+    assert os.path.realpath(shared) not in (str(a.config_dir / "projects"), str(tmp_path / "hop"))
+
+
+def test_meter_reading_light_k3_a_config_folder_with_no_projects_folder_is_read_with_the_plain_command(tmp_path, monkeypatch):
+    """meter-reading-light (K3) No projects in the config folder, a link there to nothing, or a file of that name: the
+    plain command, bwrap never run, and the meters back."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch, projects=False)
+    assert usage.read(a, tmp_path) == METERS
+    (a.config_dir / "projects").symlink_to(tmp_path / "gone")
+    assert usage.read(a, tmp_path, nice=True) == METERS
+    (a.config_dir / "projects").unlink()
+    (a.config_dir / "projects").write_text("")
+    assert usage.read(a, tmp_path) == METERS
+    assert [argv for argv, _ in calls] == [[str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV], [str(FAKE), *usage.ARGV]]
+    assert ran(record) == [] and len(ran(tmp_path / "claude.jsonl")) == 3
+
+
+def test_meter_reading_light_k4_with_no_bwrap_on_path_a_reading_is_the_plain_command_and_says_nothing(tmp_path, monkeypatch, caplog):
+    """meter-reading-light (K4) No bwrap on PATH, the projects folder there: the plain command, no warning, the meters
+    back, for the card's ask and the keeper's."""
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    (bare := tmp_path / "bare").mkdir()                                # PATH with no bwrap: the stand-in claude's python, nice
+    (bare / "python3").symlink_to(sys.executable)
+    (bare / "nice").symlink_to(shutil.which("nice"))
+    monkeypatch.setenv("PATH", str(bare))
+    assert shutil.which("bwrap") is None
+    assert usage.read(a, tmp_path) == METERS and usage.read(a, tmp_path, nice=True) == METERS
+    assert [argv for argv, _ in calls] == [[str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV]]
+    assert ran(record) == [] and logged(caplog) == [] and usage._bwrap_failed == []
+
+
+def test_meter_reading_light_k5_bwraps_own_failure_reads_plain_once_in_the_same_call_says_so_once_and_hides_no_more(tmp_path, monkeypatch, caplog):
+    """meter-reading-light (K5) The run in bwrap exits 1, its stderr's first line bwrap's own and no meters: the same call
+    runs the plain command once and returns its meters, one warning names bwrap's line, and the next call of this process
+    runs the plain command with no bwrap and says nothing more."""
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    line = "bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces."
+    monkeypatch.setenv("FAKE_BWRAP_SAYS", line)
+    monkeypatch.setenv("FAKE_BWRAP_EXIT", "1")
+    plain, nice = [str(FAKE), *usage.ARGV], ["nice", "-n", "19", str(FAKE), *usage.ARGV]
+    assert usage.read(a, tmp_path, nice=True) == METERS
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    assert [argv for argv, _ in calls] == [hide + nice, nice] and calls[1][1]["stdin"] is subprocess.DEVNULL
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in calls[1][1]["env"]
+    assert logged(caplog) == [(logging.WARNING, f"usage: the transcripts could not be hidden from a reading ({line}); reading without it")]
+    assert usage.read(a, tmp_path) == METERS                           # the next call: plain, bwrap not tried again
+    assert [argv for argv, _ in calls][2:] == [plain] and len(ran(record)) == 1 and len(logged(caplog)) == 1
+    assert len(ran(tmp_path / "claude.jsonl")) == 2
+
+
+def test_meter_reading_light_k6_claude_codes_own_failure_in_bwrap_is_todays_error_with_no_second_run_and_bwrap_stays(tmp_path, monkeypatch, caplog):
+    """meter-reading-light (K6) The run in bwrap prints no meters (Claude Code on a login with none), or fails as Claude
+    Code fails (exit 1, its own first line on stderr, a `bwrap:` line after it): today's {"error": ...}, no second run,
+    nothing said, and the next call still runs in bwrap. A `bwrap:` first line with the meters printed is the meters."""
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    (tmp_path / "usage" / "cfg-a.txt").unlink()                        # the cost lines, no meter
+    assert usage.read(a, tmp_path) == {"error": "no meters in what Claude Code printed"}
+    (failing := tmp_path / "claude-fails").write_text("#!/bin/sh\necho 'Error: Invalid API key' >&2\necho 'bwrap: not first' >&2\nexit 1\n")
+    failing.chmod(0o755)
+    monkeypatch.setenv("YERK_CLAUDE", str(failing))
+    assert usage.read(a, tmp_path, nice=True) == {"error": "no meters in what Claude Code printed"}
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    (tmp_path / "usage" / "cfg-a.txt").write_text("Current session: 30% used\nCurrent week (all models): 72% used\n")
+    monkeypatch.setenv("FAKE_BWRAP_SAYS", "bwrap: a word of its own, then the command run")
+    assert usage.read(a, tmp_path) == METERS
+    assert [argv for argv, _ in calls] == [hide + [str(FAKE), *usage.ARGV], hide + ["nice", "-n", "19", str(failing), *usage.ARGV],
+                                           hide + [str(FAKE), *usage.ARGV]]
+    assert len(ran(record)) == 3 and logged(caplog) == [] and usage._bwrap_failed == []
+
+
+def test_meter_reading_light_k7_a_reading_that_times_out_in_bwrap_is_no_answer_in_15_s_with_no_second_run(tmp_path, monkeypatch):
+    """meter-reading-light (K7) The run in bwrap times out: {"error": "no answer in 15 s"} as today, no second run, and
+    the next call still runs in bwrap; the same with the stand-ins run for real on a short timeout."""
+    a, bwrap, record, calls = hidden_account(tmp_path, monkeypatch)
+    hide = [bwrap, "--dev-bind", "/", "/", "--tmpfs", os.path.realpath(a.config_dir / "projects"), "--die-with-parent", "--"]
+    asked = []
+
+    def slow(argv, **kw):
+        asked.append(argv)
+        raise subprocess.TimeoutExpired(argv, kw["timeout"])
+    with monkeypatch.context() as m:
+        m.setattr(usage.subprocess, "run", slow)
+        assert usage.read(a, tmp_path) == {"error": "no answer in 15 s"} and asked == [hide + [str(FAKE), *usage.ARGV]]
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE_SLOW", "3")
+    assert usage.read(a, tmp_path, timeout=0.5) == {"error": "no answer in 0.5 s"}
+    assert [argv for argv, _ in calls] == [hide + [str(FAKE), *usage.ARGV]] and len(ran(record)) == 1 and usage._bwrap_failed == []
+
+
+FABLE, OPUS = "claude-fable-5-2", "claude-opus-5-5"
+
+
+def seen(reading, at):
+    """A live reading as usage.readings hands one back, taken at `at`."""
+    return {**reading, "at": at, "source": "live"}
+
+
+def test_a_rate_limits_rest_ends_when_a_live_reading_shows_its_usage_back_and_the_next_pick_takes_the_account(tmp_path):
+    """Need 104 of 2026-11-17: a rate limit rested an account on Fable until the reset it named, days off; its usage came
+    back early (Fable 0%, the week near empty, the same reset) and the rest stood, so the picker skipped the account and
+    put a worker on a busy one, where it waited. A live reading taken after a rest began with no meter binding the rest's
+    model full ends that rest, the keeper's as it files it, so the next pick takes the account; a reading from before the
+    rest, or one still full, ends nothing, and a billing rest is never a meter's to end."""
+    accounts, asked, tried = five_accounts(tmp_path), [], {}               # tried five, one, four, two, three
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    for name in ("five", "one"):                                           # the reset the limit named: the Fable week's
+        cool.fail(name, "rate_limit", lambda r: 60, now=NOW - 4 * H, model=FABLE, until=NOW + 80 * H)
+    cool.fail("two", "billing", lambda r: 3 * H, now=NOW - H)
+    assert pick(accounts, cool, NOW, model=FABLE).name == "four"           # the wall: both skipped
+    early = seen(live(2, 3 * H, 5, 80 * H, 0), NOW - 5 * H)               # read before the limit hit: it proves nothing
+    full = seen(live(9, 3 * H, 60, 80 * H, 100), NOW - H)                 # read since, the Fable week still full
+    assert usage.back(cool, {"five": early, "one": full}) == [] and usage.back(cool, {"five": full}) == []
+    assert pick(accounts, cool, NOW, model=FABLE).name == "four" and cool.until("five", NOW, FABLE) == NOW + 80 * H
+    got = {"five": live(2, 3 * H, 5, 80 * H, 0), "one": live(9, 3 * H, 60, 80 * H, 100), "four": live(3, H, 3, H, 3),
+           "two": live(1, H, 1, H, 1), "three": live(1, H, 1, H, 1)}
+    for _ in range(5):                                                     # the keeper's steps, one account each
+        usage.keep(accounts, tmp_path, tried, clock=lambda: NOW, read_one=lambda a: asked.append(a.name) or got[a.name], cooldowns=cool)
+    assert asked == ["five", "one", "four", "two", "three"] and cool.until("one", NOW, FABLE) == NOW + 80 * H
+    assert pick(accounts, cool, NOW, model=FABLE).name == "five" and cool.show("two", NOW)[0]["kind"] == "billing"
+    again = Cooldowns(tmp_path / "cooldowns.json")                         # a restart: still ended, its repeats kept
+    assert again.until("five", NOW, FABLE) is None and again.data["five"][f"rate_limit:{FABLE}"]["repeats"] == 1
+
+
+def test_only_a_rate_limits_rest_ends_and_only_on_the_meters_that_bind_its_model(tmp_path):
+    """The session and the week bind every model, a model's own week only its model ('Fable' binds claude-fable-5-2, not
+    Opus); a rest keyed to no model waits for every meter. A billing, login or hand rest is no usage and stays, and a
+    failed reading ends nothing."""
+    assert usage.full(live(10, H, 50, H, 100), OPUS) is False and usage.full(live(10, H, 50, H, 100), FABLE) is True
+    assert usage.full(live(10, H, 50, H, 100)) is True and usage.full(live(10, H, 100, H, 0), OPUS) is True
+    assert usage.full({"five_hour": {"pct": 4}, "model": {"name": "Sonnet only", "pct": 100}}, "claude-sonnet-4-5") is True
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    for name, kind, model in (("one", "rate_limit", FABLE), ("one", "rate_limit", OPUS), ("two", "rate_limit", ""),
+                              ("three", "billing", ""), ("four", "auth", "")):
+        cool.fail(name, kind, lambda r: 3 * H, now=NOW - H, model=model, until=NOW + 50 * H if kind == "rate_limit" else None)
+    cool.set("five", "manual", NOW + 50 * H)
+    every = ("one", "two", "three", "four", "five")
+    assert usage.back(cool, {n: {"error": "no answer in 15 s", "at": NOW, "source": "live"} for n in every}) == []
+    fable_full = {n: seen(live(10, 2 * H, 50, 50 * H, 100), NOW) for n in every}
+    assert usage.back(cool, fable_full) == [("one", f"rate_limit:{OPUS}")]          # Fable's own week never held Opus
+    assert usage.back(cool, {n: seen(live(100, 2 * H, 50, 50 * H, 0), NOW) for n in every}) == []   # the session full
+    assert usage.back(cool, {n: seen(live(10, 2 * H, 50, 50 * H, 0), NOW) for n in every}) == [("one", f"rate_limit:{FABLE}"),
+                                                                                              ("two", "rate_limit")]
+    assert [n for n in every if cool.show(n, NOW)] == ["three", "four", "five"]
+
+
+def test_a_limit_no_meter_shows_is_ended_once_then_its_next_rest_stays_to_its_end(tmp_path):
+    """A limit no /usage meter shows (every meter reads under 100%): the reading ends its rest, the next turn hits the
+    limit again before the end that reading took away, and that rest stays to its own end whatever a reading says, so no
+    turn after it hops on the same wall every time the keeper reads. A reply on the account (Cooldowns.clear) trusts the
+    meters again."""
+    accounts, back = five_accounts(tmp_path)[:1], live(3, 2 * H, 10, 50 * H, 10)        # five
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    cool.fail("five", "rate_limit", lambda r: 60, now=NOW - H, model=FABLE, until=NOW + 50 * H)
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW, read_one=lambda a: back, cooldowns=cool)
+    assert cool.until("five", NOW, FABLE) is None
+    cool.fail("five", "rate_limit", lambda r: 60, now=NOW + 120, model=FABLE, until=NOW + 50 * H)   # the next turn: limited
+    assert [(r["kind"], r["stays"]) for r in cool.show("five", NOW + 120)] == [(f"rate_limit:{FABLE}", True)]
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + usage.EVERY, read_one=lambda a: back, cooldowns=cool)
+    assert usage.back(cool, {"five": seen(back, NOW + 2 * usage.EVERY)}) == []
+    assert cool.until("five", NOW + 2 * usage.EVERY, FABLE) == NOW + 50 * H
+    cool.clear("five", model=FABLE)                                        # a reply on Fable there
+    cool.fail("five", "rate_limit", lambda r: 60, now=NOW + 3 * usage.EVERY, model=FABLE, until=NOW + 50 * H)
+    assert usage.back(cool, {"five": seen(back, NOW + 4 * usage.EVERY)}) == [("five", f"rate_limit:{FABLE}")]
+
+
+def test_the_cards_own_reading_ends_a_rest_its_usage_shows_over_before_it_draws_the_account(tmp_path):
+    """/status read an account at Fable 0% and the week 4% while the rest list still had it resting till its reset; the
+    card's own live reading now ends that rest first, so the account's line is no longer red with the rest's end and the
+    next turn tries it first. An account still full keeps its rest and its line."""
+    accounts = five_accounts(tmp_path)
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    for name in ("five", "one"):                                           # TANK: five reads Fable 2%, one Fable 100%
+        cool.fail(name, "rate_limit", lambda r: 60, now=NOW - 4 * H, model=FABLE, until=NOW + 10 * H)
+    s = status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"), now=NOW,
+                       units=set, timers=Timers({}), live=True, read_one=lambda a: TANK[a.name])
+    lines = status.card(json.loads(json.dumps(s)), NOW)
+    assert [(a["name"], a["rests_until"]) for a in s["accounts"][:2]] == [("five", None), ("one", NOW + 10 * H)]
+    assert lines[1] == "- ⑤ 5h 7% · wk 1% · Fable 2%" and "- next turn tries ⑤ first" in lines
+    assert f"- ↻ resting until {words.short_when(NOW + 10 * H, NOW)} · 💳 {words.short_day(status.next_bill(8, NOW))}" in lines
+
+
+def test_the_daemons_keeper_ends_a_rest_its_reading_shows_over_and_a_worker_then_starts_on_that_account(tmp_path, monkeypatch, caplog):
+    """The daemon's keeper (Yerkd.keep_meters) reads each account with Claude Code's /usage at least every usage.EVERY;
+    a reading it files ends a rate limit's rest that it shows over, says so in one log line, and the next worker's pick
+    takes that account, where it was put on another before and waited there."""
+    asked = []
+    caplog.set_level(logging.INFO, logger="yerk.usage")
+    monkeypatch.setattr(usage, "read", lambda a, cwd, timeout=usage.TIMEOUT, nice=False: asked.append(a.name) or live(4, 2 * H, 6, 50 * H, 0))
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)                                   # accounts one, then two
+    y.cooldowns.fail("one", "rate_limit", lambda r: 60, now=time.time() - H, model=FABLE, until=time.time() + 50 * H)
+    assert y.workers._account("", FABLE).name == "two"
+
+    async def steps():
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(y.keep_meters(every=0.02), 0.5)
+    asyncio.run(steps())
+    assert asked == ["one", "two"] and y.cooldowns.until("one", model=FABLE) is None    # each once: then fresh for EVERY
+    assert y.workers._account("", FABLE).name == "one"
+    assert f"account one: its rate_limit:{FABLE} rest ended early, its usage is back" in caplog.messages
+
+
+# failed-read: a card's live ask that fails never replaces a good kept reading in usage.json (the failure is held in memory
+# FRESH long instead), and the keeper files a good reading over an error; a fake reader and a pinned clock, no Claude Code
+FAILED = {"error": "no answer in 15 s"}
+
+
+def test_failed_read_a_a_failed_ask_leaves_the_good_kept_reading_in_the_file_and_hands_back_the_failure(tmp_path):
+    """failed-read (a) A good reading kept 10 minutes ago and the card's live ask for that account fails: usage.json keeps
+    that reading exactly as it was (numbers, time, source), and the card is handed the failure, so it knows its ask
+    failed. The other account's good answer is filed as always."""
+    accounts = five_accounts(tmp_path)[:2]                                     # five, one
+    kept_at(tmp_path, {"five": 10, "one": 10})
+    good = usage.last(tmp_path)["five"]
+    got = usage.readings(accounts, tmp_path, True, NOW, lambda a: dict(FAILED) if a.name == "five" else TANK[a.name])
+    assert got == {"five": {**FAILED, "at": NOW, "source": "live"}, "one": {**TANK["one"], "at": NOW, "source": "live"}}
+    assert usage.last(tmp_path) == {"five": good, "one": got["one"]} and good["at"] == NOW - 600
+
+
+def test_failed_read_b_the_failed_ask_counts_as_the_try_for_fresh_and_is_asked_again_after(tmp_path):
+    """failed-read (b) A second card inside FRESH starts no second Claude Code for the account whose ask failed and gets the
+    same failure back (held in memory, the file still the good reading); another state folder's account of that name is
+    its own; once FRESH has passed it is asked again."""
+    accounts, asked = five_accounts(tmp_path)[:1], []                         # five
+    kept_at(tmp_path, {"five": 10})
+    good = usage.last(tmp_path)
+
+    def fails(a):
+        asked.append(a.name)
+        return dict(FAILED)
+    first = usage.readings(accounts, tmp_path, True, NOW, fails)
+    assert usage.readings(accounts, tmp_path, True, NOW + usage.FRESH - 1, fails) == first and asked == ["five"]
+    assert usage.last(tmp_path) == good and usage.FRESH == 60.0
+    (tmp_path / "other").mkdir()
+    usage.readings(accounts, tmp_path / "other", True, NOW + 1, fails)
+    assert asked == ["five", "five"]
+    again = usage.readings(accounts, tmp_path, True, NOW + usage.FRESH, fails)
+    assert again == {"five": {**FAILED, "at": NOW + usage.FRESH, "source": "live"}} and asked == ["five"] * 3
+    assert usage.last(tmp_path) == good
+
+
+def test_failed_read_c_an_account_kept_as_an_error_or_not_kept_takes_the_failure_in_the_file_as_before(tmp_path):
+    """failed-read (c) An account whose kept entry is itself an error, and one with none: the failed ask is filed in
+    usage.json as it always was, with the time of the ask, and counts as the try from there for FRESH."""
+    accounts, asked = five_accounts(tmp_path)[:2], []                         # five, one
+    (tmp_path / usage.FILE).write_text(json.dumps({"five": {"error": "unreadable (ValueError)", "at": NOW - 600, "source": "live"}}))
+    got = usage.readings(accounts, tmp_path, True, NOW, lambda a: asked.append(a.name) or dict(FAILED))
+    assert got == usage.last(tmp_path) == {n: {**FAILED, "at": NOW, "source": "live"} for n in ("five", "one")}
+    assert usage.readings(accounts, tmp_path, True, NOW + 30, lambda a: asked.append(a.name) or dict(FAILED)) == got
+    assert asked == ["five", "one"]
+
+
+def test_failed_read_d_after_a_failed_ask_the_keeper_reads_the_account_once_its_good_reading_is_every_old(tmp_path):
+    """failed-read (d) After (a), the good reading kept 10 minutes before the failed ask: the keeper's step once that reading
+    is EVERY old reads the account and files the answer (the card's error, under EVERY old, held it back before). A good
+    reading the keeper files inside the failure's minute is the next card's, nothing asked."""
+    accounts, asked = five_accounts(tmp_path)[:1], []                         # five
+    kept_at(tmp_path, {"five": 10})
+    usage.readings(accounts, tmp_path, True, NOW, lambda a: dict(FAILED))
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + usage.EVERY - 600, read_one=lambda a: asked.append(a.name) or TANK["two"])
+    assert asked == ["five"] and usage.last(tmp_path)["five"] == {**TANK["two"], "at": NOW + usage.EVERY - 600, "source": "live"}
+    kept_at(tmp_path, {"five": 15})
+    usage.readings(accounts, tmp_path, True, NOW + 2 * usage.FRESH, lambda a: dict(FAILED))   # the first failure past FRESH: asked
+    usage.keep(accounts, tmp_path, {}, clock=lambda: NOW + 2 * usage.FRESH + 5, read_one=lambda a: TANK["two"])
+    filed = usage.readings(accounts, tmp_path, True, NOW + 2 * usage.FRESH + 10, lambda a: asked.append(a.name) or dict(FAILED))
+    assert filed == {"five": {**TANK["two"], "at": NOW + 2 * usage.FRESH + 5, "source": "live"}} and asked == ["five"]
+
+
+def test_failed_read_e_a_good_background_read_replaces_an_error_a_card_filed_meanwhile_and_never_a_good_one(tmp_path):
+    """failed-read (e) The account kept only as an error, and while the keeper's read is in flight a card's live ask fails
+    and files its own error: the keeper's good reading is filed over it with the time it ended. A good reading a card
+    filed meanwhile still stays."""
+    accounts, t = five_accounts(tmp_path)[:1], [NOW]                          # five
+
+    def step(card):
+        def in_flight(a):
+            usage.readings(accounts, tmp_path, True, NOW + 3, lambda a: dict(card))     # the card's own ask, the lock free
+            t[0] = NOW + 9
+            return TANK["five"]
+        t[0] = NOW
+        (tmp_path / usage.FILE).write_text(json.dumps({"five": {"error": "unreadable (ValueError)", "at": NOW - 1200, "source": "live"}}))
+        usage.keep(accounts, tmp_path, {}, clock=lambda: t[0], read_one=in_flight)
+        return usage.last(tmp_path)["five"]
+    assert step(FAILED) == {**TANK["five"], "at": NOW + 9, "source": "live"}
+    assert step(TANK["two"]) == {**TANK["two"], "at": NOW + 3, "source": "live"}
 
 
 def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():
@@ -327,7 +849,9 @@ def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys
     assert refused == [401, 401, 401, 401] and hook_by_room == 200   # a room's token opens its own door only
     s = r.json()
     assert r.status_code == 200 and s["running"] and s["rooms"] == [{"room": "example-room", "busy": False,
-                                                                     "waiting": 0, "watch": None, "since": None, "account": ""}]
+                                                                     "waiting": 0, "watch": None, "copy": None, "since": None, "account": "",
+                                                                     "fast": False, "head": {
+        "model": "claude-fable-5-1", "effort": "", "account": "one", "context": None, "window": 250000, "compactions": 0}}]
     assert s["units"][0]["name"] == "yerkd" and s["units"][0]["rss_mb"] > 0 and s["stalls"] == [] and s["started"]
     assert [a["name"] for a in s["accounts"]] == ["one", "two"] and s["accounts"][0]["meter"]["error"]
 

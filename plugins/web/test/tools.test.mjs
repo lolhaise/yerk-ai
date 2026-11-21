@@ -11,15 +11,19 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, beforeEach, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import zlib from "node:zlib";
 import { KEY_FILES, readKey, spend, takeWindow, where } from "../lib/common.mjs";
+import { documentKind, xfaWords, xmlWords } from "../lib/fetch/document.js";
 import { imageInfo } from "../lib/fetch/image.js";
 import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 import { REF, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
+import { buildExaBody, buildParallelPaidBody, buildYouCall, searchDuckDuckGo, searchFirecrawl, searchParallelFree } from "../lib/search/engines.js";
 import { resetCooldowns } from "../lib/search/provider.js";
-import { TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
+import { ENGINES, takeYouSlot } from "../lib/search/util.js";
+import { ENFORCED, TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-test-"));
 const FAKE = { browserbase: "bb_live_FAKEKEY_0123456789abcdef", browserbaseProject: "fake-project-4c1d", parallel: "par_FAKEKEY_9876543210zyxw" };
@@ -112,7 +116,7 @@ after(() => fs.rmSync(TMP, { recursive: true, force: true })); // the test's own
 // ---- where, keys and settings -------------------------------------------------------------------
 test("the command line names the private folder; the state folder and the room follow Yerk's own rules", () => {
   const w = where(["--private", "/srv/p", "--state", "/srv/s"], {}, "/anywhere");
-  assert.deepEqual(w, { private: "/srv/p", state: "/srv/s", web: "/srv/s/web", room: null, work: "/anywhere", limit: null });
+  assert.deepEqual(w, { private: "/srv/p", state: "/srv/s", web: "/srv/s/web", own: "/srv/s/web", worker: null, room: null, work: "/anywhere", limit: null });
   const r = where([], { YERK_STATE: "/srv/s2" }, "/srv/s2/rooms/gym-room/work");
   assert.deepEqual([r.private, r.state, r.room, r.work], ["", "/srv/s2", "gym-room", "/srv/s2/rooms/gym-room/work"]);
   assert.equal(where([], { XDG_STATE_HOME: "/x" }, "/").state, "/x/yerk");
@@ -121,6 +125,16 @@ test("the command line names the private folder; the state folder and the room f
   assert.equal(where(["--state", "/srv/s", "--room", "gym-room"], {}, "/srv/s/rooms/gym-room/work").work, "/srv/s/rooms/gym-room/work");
   assert.equal(where(["--state", "/srv/s", "--room", "gym-room"], {}, "/srv/elsewhere").work, "/srv/s/rooms/gym-room/work");
   assert.equal(where(["--state", "/srv/s", "--room", "gym-room"], {}, "/srv/s/rooms/other-room/work").work, "/srv/s/rooms/gym-room/work");
+});
+
+test("a Yerk worker's process writes its state in its own folder and reads the shared one; a bad id or folder is a room's process", () => {
+  const argv = ["--state", "/srv/s", "--room", "gym-room"];
+  const w = where(argv, { YERK_WORKER: "0a1b2c", YERK_WORK_DIR: "/srv/s/workers/0a1b2c" }, "/srv/s/workers/0a1b2c");
+  assert.deepEqual([w.web, w.own, w.worker, w.work], ["/srv/s/web", "/srv/s/workers/0a1b2c/web", "0a1b2c", "/srv/s/rooms/gym-room/work"]);
+  for (const env of [{ YERK_WORKER: "0a1b2c" }, { YERK_WORKER: "0a1b2c", YERK_WORK_DIR: "workers/0a1b2c" }, { YERK_WORKER: "../x", YERK_WORK_DIR: "/srv/x" }, { YERK_WORK_DIR: "/srv/x" }]) {
+    const r = where(argv, env, "/srv/elsewhere");
+    assert.deepEqual([r.own, r.worker], ["/srv/s/web", null], JSON.stringify(env));
+  }
 });
 
 test("a key is its file's first line; a missing, empty or unnamed one says why and never carries a value", () => {
@@ -270,6 +284,100 @@ test("the shared window counts every booking in its file, whoever made it", () =
   assert.equal(takeWindow(file, { key: "c.example", perKey: 1, now: now + 61000 }), "key");
 });
 
+test("a window counts the windows in `also` with its own and writes only its own", () => {
+  const file = path.join(TMP, "window-own", "rate.json");
+  const shared = path.join(TMP, "window-shared", "rate.json");
+  const now = Date.now();
+  fs.mkdirSync(path.dirname(shared), { recursive: true });
+  const was = JSON.stringify({ t: [[now - 1000, "a.example"], [now - 70000, "a.example"]] }) + "\n";
+  fs.writeFileSync(shared, was);
+  assert.equal(takeWindow(file, { key: "a.example", perKey: 2, now, also: [shared] }), null);
+  assert.equal(takeWindow(file, { key: "a.example", perKey: 2, now, also: [shared] }), "key"); // one shared, one its own
+  assert.equal(takeWindow(file, { key: "b.example", perMinute: 3, now, also: [shared, path.join(TMP, "no-such", "rate.json")] }), null);
+  assert.equal(takeWindow(file, { key: "c.example", perMinute: 3, now, also: [shared] }), "all");
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).t.map((e) => e[1]), ["a.example", "b.example"]);
+  assert.equal(fs.readFileSync(shared, "utf8"), was);
+});
+
+// Need 109 of 2026-11-18: a Yerk worker's unit mounts the state folder read-only, and every web_fetch in it failed on the
+// shared window's lock (EROFS). Here the shared folder is one this process may not write (0500), as in a worker's unit.
+function workerAt(base, id = "0a1b2c") {
+  const own = path.join(TMP, "workers", id);
+  fs.rmSync(own, { recursive: true, force: true });
+  fs.mkdirSync(own, { recursive: true });
+  return { ...base, own: path.join(own, "web"), worker: id };
+}
+function sharedReadOnly(dirs, fn) {
+  for (const d of dirs) fs.mkdirSync(d, { recursive: true });
+  for (const d of [...dirs, path.join(STATE, "web")]) fs.chmodSync(d, 0o500);
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => {
+      for (const d of [path.join(STATE, "web"), ...dirs]) fs.chmodSync(d, 0o700);
+    });
+}
+
+test("web_fetch in a worker reads a page with the shared state folder read-only: it books and logs in its own folder", async () => {
+  const w = workerAt(WITHOUT);
+  const OWN = path.join(w.own, "fetch");
+  const r = rig({ pages: { "jobs.example": { body: ARTICLE, status: 200 } } });
+  fs.mkdirSync(FETCH, { recursive: true });
+  const before = JSON.stringify({ t: [[Date.now() - 1000, "other.example"]] }) + "\n";
+  fs.writeFileSync(path.join(FETCH, "local-rate.json"), before);
+  await sharedReadOnly([FETCH], async () => {
+    assert.throws(() => fs.writeFileSync(path.join(FETCH, "local-rate.json.lock"), ""), { code: "EACCES" }); // the wall, as the worker met it
+    const room = textOf(await webFetch({ url: "https://jobs.example/posting/1" }, { deps: r.deps, at: WITHOUT }));
+    assert.match(room.split("\n")[0], /^web_fetch could not run: EACCES/); // a room's process in this folder still meets it
+    const out = await webFetch({ url: "https://jobs.example/posting/1" }, { deps: r.deps, at: w });
+    await flushPending();
+    const t = textOf(out);
+    assert.equal(out.isError, undefined);
+    assert.match(t.split("\n")[0], /^web_fetch read https:\/\/jobs\.example\/posting\/1 at F1 \(a plain fetch from this machine, free\): HTTP 200/);
+    assert.match(t, /15 to 25 millimetres/);
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(OWN, "local-rate.json"), "utf8")).t.map((e) => e[1]), ["jobs.example"]);
+  assert.equal(fs.readFileSync(path.join(FETCH, "local-rate.json"), "utf8"), before);
+  assert.deepEqual(fs.readdirSync(FETCH), ["local-rate.json"]); // nothing written in the shared folder
+  assert.deepEqual(jsonl(path.join(OWN, "calls.jsonl")).map((l) => [l.host, l.rung]), [["jobs.example", "F1"]]);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(OWN, `usage-${month()}.json`), "utf8")).localFetchCalls >= 1);
+});
+
+test("a worker's reads keep to the caps with every room's: the shared window counts, and its own reads count too", async () => {
+  fs.writeFileSync(path.join(WITHOUT.private, "web.json"), JSON.stringify({ ...WEB_JSON, fetch: { ...WEB_JSON.fetch, localMaxPerHostPerMinute: 2 } }));
+  try {
+    const w = workerAt(WITHOUT);
+    const r = rig({ pages: { "cap.example": { body: ARTICLE, status: 200 }, "free.example": { body: ARTICLE, status: 200 } } });
+    fs.mkdirSync(FETCH, { recursive: true });
+    fs.writeFileSync(path.join(FETCH, "local-rate.json"), JSON.stringify({ t: [[Date.now() - 1000, "cap.example"]] }));
+    await sharedReadOnly([FETCH], async () => {
+      assert.match(textOf(await webFetch({ url: "https://cap.example/1" }, { deps: r.deps, at: w })).split("\n")[0], / at F1 /);
+      assert.match(textOf(await webFetch({ url: "https://cap.example/2" }, { deps: r.deps, at: w })).split("\n")[0], /wall no_key, rungs none\.$/);
+      assert.match(textOf(await webFetch({ url: "https://free.example/1" }, { deps: r.deps, at: w })).split("\n")[0], / at F1 /);
+    });
+    assert.equal(r.seen.local.length, 2);
+  } finally {
+    fs.writeFileSync(path.join(WITHOUT.private, "web.json"), JSON.stringify(WEB_JSON));
+  }
+});
+
+test("a worker starts from the rooms' site memory and keeps what it learns in its own folder", async () => {
+  const w = workerAt(WITHOUT);
+  const OWN = path.join(w.own, "fetch");
+  const r = rig({ f2ok: true });
+  fs.mkdirSync(FETCH, { recursive: true });
+  const memory = JSON.stringify({ "memo.example": { start: "F2", readAt: new Date().toISOString(), probeAt: new Date().toISOString() } });
+  fs.writeFileSync(path.join(FETCH, "local-cooldown.json"), memory);
+  await sharedReadOnly([FETCH], async () => {
+    assert.match(textOf(await webFetch({ url: "https://memo.example/a" }, { deps: r.deps, at: w })).split("\n")[0], / at F2 /);
+    local.resetGuards();
+    assert.match(textOf(await webFetch({ url: "https://late.example/a" }, { deps: r.deps, at: w })).split("\n")[0], / at F2 /);
+  });
+  assert.deepEqual(r.seen.local, ["https://late.example/a"]); // the rooms' memory skipped F1 for memo.example
+  const own = JSON.parse(fs.readFileSync(path.join(OWN, "local-cooldown.json"), "utf8"));
+  assert.deepEqual([own["memo.example"]?.start, own["late.example"]?.start], ["F2", "F2"]);
+  assert.equal(fs.readFileSync(path.join(FETCH, "local-cooldown.json"), "utf8"), memory);
+});
+
 test("each process takes its own browser profile slot, skipping a live owner's", () => {
   const base = path.join(TMP, "slots", "local-profile-cloak");
   fs.mkdirSync(path.dirname(base), { recursive: true });
@@ -329,6 +437,31 @@ test("web_search with no keys says so in one line each, the keyless engine answe
   }
 });
 
+test("web_search in a worker logs in its own folder, and You.com's day counts every room's searches with its own", async () => {
+  const w = workerAt(WITHOUT);
+  const OWN = path.join(w.own, "search");
+  const f = stubFetch((url) => (url === "https://api.firecrawl.dev/v2/search"
+    ? json({ success: true, data: [{ url: "https://en.wikipedia.org/wiki/Example", title: "Example", description: "An example page." }] })
+    : json({}, 500)));
+  try {
+    await sharedReadOnly([SEARCH], async () => {
+      assert.match(textOf(await webSearch({ query: "example wikipedia" }, { at: w })).split("\n")[0], /: 1 results from Firecrawl keyless, free\.$/);
+    });
+    assert.deepEqual(jsonl(path.join(OWN, "calls.jsonl")).length, 1);
+    assert.deepEqual(fs.readdirSync(SEARCH), []);
+  } finally {
+    f.restore();
+  }
+  const day = dayStamp();
+  fs.writeFileSync(path.join(SEARCH, "you-daily"), `${day} 99\n`);
+  const settings = { stateDir: OWN, sharedStateDir: SEARCH, youDailyCap: 100 };
+  assert.deepEqual(takeYouSlot(settings), { ok: true, count: 100 });
+  assert.equal(fs.readFileSync(path.join(OWN, "you-daily"), "utf8"), `${day} 1\n`);
+  assert.deepEqual(takeYouSlot(settings), { ok: false, count: 100 });
+  assert.equal(fs.readFileSync(path.join(SEARCH, "you-daily"), "utf8"), `${day} 99\n`);
+  assert.deepEqual(takeYouSlot({ stateDir: SEARCH, youDailyCap: 100 }), { ok: true, count: 100 }); // a room's process counts its own file
+});
+
 test("web_search answers from Exa first with the key from secrets/, counts it and books what Exa billed", async () => {
   const f = stubFetch((url) => (url === "https://api.exa.ai/search"
     ? json({ requestId: "r1", results: [{ url: "https://news.example/rain-2", title: "Rain warning tonight", publishedDate: "2026-10-19T00:00:00.000Z", highlights: ["Up to 25 mm of rain is expected overnight."] }], costDollars: { total: 0.005 } })
@@ -354,7 +487,261 @@ test("unknown arguments and bad values are refused before any work", async () =>
   assert.equal(textOf(a), "web_fetch refused: unknown argument extractMode; it takes url and max_chars.");
   assert.equal((await webFetch({ url: "https://x.example", max_chars: 5 }, { at: WITH })).isError, true);
   assert.equal((await webSearch({ query: "x", count: 50 }, { at: WITH })).isError, true);
-  assert.equal(textOf(await webSearch({ q: "x" }, { at: WITH })), "web_search refused: unknown argument q; it takes query and count.");
+  assert.equal(textOf(await webSearch({ q: "x" }, { at: WITH })), "web_search refused: unknown argument q; it takes query, count, freshness, date_after, date_before, domain_filter and country.");
+});
+
+// The five filters search-plus offers, named as lib/search/provider.js readArgs reads them (F7-13).
+const EXA_ROW = { requestId: "r1", results: [{ url: "https://news.example/rain-5", title: "Rain warning tonight", publishedDate: "2026-11-02T00:00:00.000Z", highlights: ["Up to 25 mm of rain is expected overnight."] }], costDollars: { total: 0.005 } };
+const exaOnly = () => stubFetch((url) => (url === "https://api.exa.ai/search" ? json(EXA_ROW) : json({ success: false, error: "unexpected" }, 500)));
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+test("web_search takes the five filters search-plus offers, under the names the engines read, each with a short description", () => {
+  const s = TOOLS.find((t) => t.name === "web_search").inputSchema;
+  assert.deepEqual(Object.keys(s.properties), ["query", "count", "freshness", "date_after", "date_before", "domain_filter", "country"]);
+  assert.deepEqual(s.properties.freshness, { type: "string", description: "day, week, month or year." });
+  assert.deepEqual(s.properties.date_after, { type: "string", description: "Published after YYYY-MM-DD." });
+  assert.deepEqual(s.properties.date_before, { type: "string", description: "Published before YYYY-MM-DD." });
+  assert.deepEqual(s.properties.domain_filter, { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." });
+  assert.deepEqual(s.properties.country, { type: "string", description: "2-letter country code." });
+  assert.deepEqual([s.required, s.additionalProperties], [["query"], false]);
+});
+
+test("each filter reaches Exa's request: the dates, the domains to include or exclude, the country, and freshness as the start date", async () => {
+  const f = exaOnly();
+  try {
+    const r = await webSearch({ query: "rain filtered", count: 3, date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example", "Weather.example"], country: "ca" }, { at: WITH_EXA });
+    assert.equal(r.isError, undefined, textOf(r));
+    const sent = JSON.parse(f.seen[0].body);
+    assert.deepEqual([sent.startPublishedDate, sent.endPublishedDate, sent.includeDomains, sent.excludeDomains, sent.userLocation],
+      ["2026-11-01T00:00:00.000Z", "2026-11-08T00:00:00.000Z", ["news.example", "weather.example"], undefined, "CA"]);
+    const early = daysAgo(7);
+    const w = await webSearch({ query: "rain this week", freshness: "week", domain_filter: ["-spam.example"] }, { at: WITH_EXA });
+    assert.equal(w.isError, undefined, textOf(w));
+    const week = JSON.parse(f.seen[1].body);
+    assert.ok([early, daysAgo(7)].includes(week.startPublishedDate.slice(0, 10)), week.startPublishedDate);
+    assert.deepEqual([week.excludeDomains, week.includeDomains, week.endPublishedDate], [["spam.example"], undefined, undefined]);
+    assert.equal(f.seen.length, 2);
+  } finally {
+    f.restore();
+  }
+});
+
+test("each filter reaches paid Parallel's request: start date and domains as its filters, the end date in its objective, the country as its location", async () => {
+  const f = stubFetch((url) => (url === "https://api.parallel.ai/v1/search"
+    ? json({ search_id: "s2", results: [{ url: "https://news.example/rain-6", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] })
+    : json({ success: false, error: "unexpected" }, 500)));
+  try {
+    const r = await webSearch({ query: "rain paid filtered", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, { at: WITH });
+    assert.equal(r.isError, undefined, textOf(r));
+    const sent = JSON.parse(f.seen[0].body);
+    assert.deepEqual(sent.advanced_settings, { max_results: 5, source_policy: { include_domains: ["news.example"], after_date: "2026-11-01" }, location: "ca" });
+    assert.match(sent.objective, /Only sources published before 2026-11-08\./);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter web_search cannot use is refused in one line naming it and what it takes, before any engine is called", async () => {
+  const f = exaOnly();
+  const FRESH = "web_search refused: freshness must be day, week, month or year.";
+  const AFTER = "web_search refused: date_after must be a date written YYYY-MM-DD.";
+  const DOMAINS = "web_search refused: domain_filter must be a list of up to 20 domains such as example.com; a leading - excludes one.";
+  const COUNTRY = "web_search refused: country must be a 2-letter country code such as CA.";
+  try {
+    for (const [extra, line] of [
+      [{ freshness: "7d" }, FRESH], [{ freshness: "Week" }, FRESH], [{ freshness: 7 }, FRESH], [{ freshness: "" }, FRESH],
+      [{ date_after: "2026-02-30" }, AFTER], [{ date_after: "11/01/2026" }, AFTER], [{ date_after: 20261101 }, AFTER],
+      [{ date_before: "2026-11" }, "web_search refused: date_before must be a date written YYYY-MM-DD."],
+      [{ date_after: "2026-11-08", date_before: "2026-11-01" }, "web_search refused: date_after must not be later than date_before."],
+      [{ domain_filter: "example.com" }, DOMAINS], [{ domain_filter: [""] }, DOMAINS], [{ domain_filter: ["-"] }, DOMAINS], [{ domain_filter: [7] }, DOMAINS],
+      [{ domain_filter: ["example.com/news"] }, DOMAINS], [{ domain_filter: ["example.com:8080"] }, DOMAINS], [{ domain_filter: ["example"] }, DOMAINS],
+      [{ domain_filter: Array.from({ length: 21 }, (_, i) => `site${i}.example`) }, DOMAINS],
+      [{ domain_filter: ["news.example", "-spam.example"] }, "web_search refused: domain_filter must list domains to include or domains to exclude, not both."],
+      [{ country: "CAN" }, COUNTRY], [{ country: "C1" }, COUNTRY], [{ country: "" }, COUNTRY], [{ country: 1 }, COUNTRY],
+    ]) {
+      const r = await webSearch({ query: "rain", ...extra }, { at: WITH_EXA });
+      assert.deepEqual([r.isError, textOf(r)], [true, line], JSON.stringify(extra));
+    }
+    assert.equal(f.seen.length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+test("with only query and count web_search sends the request and gives the text it gave before the filters came back", async () => {
+  const f = exaOnly();
+  try {
+    const t = textOf(await webSearch({ query: "rain warning plain", count: 3 }, { at: WITH_EXA }));
+    assert.equal(f.seen[0].body, '{"query":"rain warning plain","type":"auto","numResults":3,"contents":{"highlights":true}}');
+    assert.equal(t.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"'), [
+      'web_search "rain warning plain": 1 results from Exa, paid.',
+      "",
+      "",
+      '<<<EXTERNAL_UNTRUSTED_CONTENT id="ID">>>',
+      "Source: Web Search",
+      "---",
+      "1. Rain warning tonight",
+      "   https://news.example/rain-5 (2026-11-02T00:00:00.000Z)",
+      "   Up to 25 mm of rain is expected overnight.",
+      '<<<END_EXTERNAL_UNTRUSTED_CONTENT id="ID">>>',
+    ].join("\n"));
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter given as null is no filter, as a null count is the default count: the same request, the same text", async () => {
+  const f = exaOnly();
+  try {
+    const plain = textOf(await webSearch({ query: "rain warning plain", count: 3 }, { at: WITH_EXA }));
+    const nulls = await webSearch({ query: "rain warning plain", count: 3, freshness: null, date_after: null, date_before: null, domain_filter: null, country: null }, { at: WITH_EXA });
+    assert.equal(nulls.isError, undefined, textOf(nulls));
+    assert.equal(f.seen[1].body, f.seen[0].body);
+    const same = (s) => s.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"');
+    assert.equal(same(textOf(nulls)), same(plain));
+  } finally {
+    f.restore();
+  }
+});
+
+// The first line says what the answering engine did with the filters asked (F7-13, the second pass).
+const PAID_ROW = { search_id: "s3", results: [{ url: "https://news.example/rain-6", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] };
+const YOU_ROW = { jsonrpc: "2.0", id: 1, result: { structuredContent: { results: { web: [{ url: "https://news.example/rain-7", title: "Rain warning tonight", description: "Up to 25 mm of rain is expected overnight.", page_age: "2026-11-02T00:00:00" }] } } } };
+const FREE_ROW = { jsonrpc: "2.0", id: 1, result: { structuredContent: { results: [{ url: "https://news.example/rain-8", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] } } };
+const REPLY = { "https://api.exa.ai/search": EXA_ROW, "https://api.parallel.ai/v1/search": PAID_ROW, "https://api.you.com/mcp?profile=free": YOU_ROW, "https://search.parallel.ai/mcp": FREE_ROW };
+const engines = () => stubFetch((url) => (REPLY[url] ? json(REPLY[url]) : json({ success: false, error: "unexpected" }, 500)));
+const headOf = async (args, where) => textOf(await webSearch(args, { at: where })).split("\n")[0];
+
+// A private folder with no keys whose web.json runs its own engines, for the ones WEB_JSON leaves out.
+function searchFolder(name, search) {
+  const dir = privateFolder(name, {});
+  fs.writeFileSync(path.join(dir, "web.json"), JSON.stringify({ ...WEB_JSON, search: { ...WEB_JSON.search, ...search } }));
+  return at(dir);
+}
+const YOU = searchFolder("you-only", { searchOrder: ["you"] });
+const FREE = searchFolder("parallel-only", { searchOrder: ["parallel"] });
+const CACHED = searchFolder("you-cached", { searchOrder: ["you"], cacheTtlMinutes: 15 });
+
+test("the table of filters each engine enforces is what its request carries: an enforced filter sets a field, one dropped or only worded sets none", async () => {
+  const NOW = new Date("2026-11-11T12:00:00Z");
+  const NAME = { freshness: "freshness", date_after: "dateAfter", date_before: "dateBefore", domain_filter: "domainFilter", country: "country" };
+  // An engine's options as lib/search/provider.js readArgs makes them from the tool's arguments.
+  const opts = (filters) => ({ query: "rain", count: 3, snippetChars: 300, timeoutMs: 5000, domainFilter: [],
+    ...Object.fromEntries(Object.entries(filters).map(([k, v]) => [NAME[k], k === "country" ? v.toUpperCase() : v])) });
+  const f = stubFetch(() => json({}, 500)); // a keyless engine's request is read off the stub; its answer is not needed
+  const sent = async (search, o) => {
+    await search(o).catch(() => {});
+    const s = f.seen.at(-1);
+    return s.body ? JSON.parse(s.body) : Object.fromEntries(new URL(s.url).searchParams);
+  };
+  // Each engine's request less its words: the objective a Parallel engine writes every filter into, and the call's id.
+  const REQUEST = {
+    exa: async (o) => buildExaBody(o, NOW),
+    "parallel-paid": async (o) => ({ ...buildParallelPaidBody(o, NOW), objective: "" }),
+    you: async (o) => buildYouCall(o, 1, NOW),
+    parallel: async (o) => {
+      const b = await sent(searchParallelFree, o);
+      return { ...b, id: 0, params: { ...b.params, arguments: { ...b.params.arguments, objective: "" } } };
+    },
+    firecrawl: async (o) => sent(searchFirecrawl, o),
+    duckduckgo: async (o) => sent(searchDuckDuckGo, o),
+  };
+  // Each filter alone, both kinds of domain list, a country You.com lists and one it does not, and each date beside a
+  // looser freshness: Firecrawl then sends freshness alone; Exa, paid Parallel and You.com send the later start date.
+  const CASES = [
+    [{}, "freshness", "week"], [{}, "date_after", "2026-11-01"], [{}, "date_before", "2026-11-08"],
+    [{}, "domain_filter", ["news.example"]], [{}, "domain_filter", ["-spam.example"]], [{}, "country", "CA"], [{}, "country", "ie"],
+    [{ freshness: "year" }, "date_after", "2026-11-01"], [{ freshness: "year" }, "date_before", "2026-11-08"],
+  ];
+  try {
+    assert.deepEqual(Object.keys(ENFORCED), ENGINES);
+    for (const engine of ENGINES) {
+      for (const [rest, k, v] of CASES) {
+        const filters = { ...rest, [k]: v };
+        const field = !isDeepStrictEqual(await REQUEST[engine](opts(rest)), await REQUEST[engine](opts(filters)));
+        // The one row a request cannot show: paid Parallel sends any two letters and, by its own page, ignores a code
+        // outside its 37 (IE is not one), so the table says it does not take that country though the field is set.
+        const ignored = engine === "parallel-paid" && k === "country" && v === "ie";
+        assert.equal(ENFORCED[engine](k, filters), field && !ignored, `${engine} ${JSON.stringify(filters)}`);
+      }
+    }
+    // You.com sends a country only when it is one of its own: every two-letter code, as a room may write it.
+    for (let i = 0; i < 26 * 26; i++) {
+      const code = String.fromCharCode(65 + Math.floor(i / 26), 65 + (i % 26));
+      const meta = buildYouCall(opts({ country: code }), 1, NOW).params._meta?.["com.you.com/search"] ?? {};
+      assert.equal(ENFORCED.you("country", { country: code.toLowerCase() }), "country" in meta, code);
+      // Paid Parallel's 37 (docs.parallel.ai, Advanced Search Settings, Supported locations) are You.com's 36 and Greece.
+      assert.equal(ENFORCED["parallel-paid"]("country", { country: code.toLowerCase() }), "country" in meta || code === "GR", code);
+    }
+  } finally {
+    f.restore();
+  }
+});
+
+test("every filter asked enforced by the engine that answered: the first line says filtered by each, as a person says it, and localized to a country, which keeps no page out", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "CA" }, WITH_EXA),
+      'web_search "rain": 1 results from Exa, paid, filtered by freshness week, localized to CA.');
+    assert.equal(await headOf({ query: "rain sites", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["a.example", "b.example", "c.example", "d.example", "e.example"], country: "ca" }, WITH_EXA),
+      'web_search "rain sites": 1 results from Exa, paid, filtered by after 2026-11-01, before 2026-11-08 and sites a.example, b.example, c.example and 2 more, localized to CA.');
+    assert.equal(await headOf({ query: "rain not sites", freshness: "day", domain_filter: ["-spam.example", "-junk.example"] }, WITH_EXA),
+      'web_search "rain not sites": 1 results from Exa, paid, filtered by freshness day and not sites spam.example, junk.example.');
+    assert.equal(await headOf({ query: "rain warning plain", count: 3, domain_filter: [] }, WITH_EXA), 'web_search "rain warning plain": 1 results from Exa, paid.');
+    assert.equal(await headOf({ query: "rain here", country: "ca" }, WITH_EXA), 'web_search "rain here": 1 results from Exa, paid, localized to CA.');
+    assert.equal(f.seen.length, 5);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter the answering engine drops or only words is named as not enforced: You.com and a country it does not list, paid Parallel and the end date", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, YOU),
+      "web_search \"rain\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(await headOf({ query: "rain paid", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, WITH),
+      "web_search \"rain paid\": 1 results from Parallel's paid Search API, filtered by after 2026-11-01 and sites news.example, localized to CA; not enforced by this engine: before 2026-11-08.");
+    assert.equal(await headOf({ query: "rain paid elsewhere", freshness: "week", country: "ie" }, WITH),   // sent, and ignored: not one of its 37
+      "web_search \"rain paid elsewhere\": 1 results from Parallel's paid Search API, filtered by freshness week; not enforced by this engine: country IE.");
+  } finally {
+    f.restore();
+  }
+});
+
+test("an engine that enforces none of the filters asked says so: keyless Parallel only words them as a preference and drops the country", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, FREE),
+      "web_search \"rain\": 1 results from Parallel's keyless search, free; not enforced by this engine: freshness week, country IE.");
+  } finally {
+    f.restore();
+  }
+});
+
+test("a cached answer keeps its engine, so its first line says of the filters what the first answer said", async () => {
+  const f = engines();
+  try {
+    const args = { query: "rain cached", freshness: "week", country: "IE" };
+    assert.equal(await headOf(args, CACHED), "web_search \"rain cached\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(await headOf(args, CACHED), "web_search \"rain cached\": 1 results from this process's 15-minute cache, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(f.seen.length, 1);
+  } finally {
+    f.restore();
+  }
+});
+
+test("when no engine found anything the first line names the filters asked; with none, or an empty domain list, it is the line it was", async () => {
+  const f = stubFetch((url) => json(url === "https://api.exa.ai/search" ? { requestId: "r0", results: [] } : url === "https://api.parallel.ai/v1/search" ? { search_id: "s0", results: [] } : { success: true, data: [] }));
+  try {
+    assert.equal(await headOf({ query: "rain nothing", freshness: "week", domain_filter: ["news.example"], country: "CA" }, WITH_EXA),
+      'web_search "rain nothing": no results with freshness week, sites news.example and country CA (exa empty, parallel-paid empty, firecrawl empty).');
+    for (const args of [{ query: "rain nothing" }, { query: "rain nothing", domain_filter: [] }]) {
+      assert.equal(await headOf(args, WITH_EXA), 'web_search "rain nothing": no results (exa empty, parallel-paid empty, firecrawl empty).');
+    }
+  } finally {
+    f.restore();
+  }
 });
 
 // ---- spend --------------------------------------------------------------------------------------
@@ -749,7 +1136,7 @@ test("the wall: a room whose limit on the server is short gets its run id, or it
 
 test("the server lists five tools under the names the rooms call, and bad research arguments are refused before any work", async () => {
   assert.deepEqual(TOOLS.map((t) => t.name), ["web_fetch", "web_search", "web_research", "web_research_result", "web_image"]);
-  assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
+  assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count", "freshness", "date_after", "date_before", "domain_filter", "country"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
   const research = TOOLS.find((t) => t.name === "web_research");
   assert.match(research.description, /a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch\. About 10 cents a run at medium, up to 15 minutes/);
   assert.deepEqual(research.inputSchema.properties.effort.enum, ["minimal", "low", "medium", "high"]);
@@ -971,13 +1358,199 @@ test("the ladder's site memory: a host resting from this machine's free rungs st
 });
 
 test("web_fetch's binary wall names the way out for an image, so a room never tries its shell; another binary keeps the plain wall", async () => {
-  const r = imageRig({ "pics.example": () => picture(jpeg(4, 4), "image/jpeg"), "docs.example": () => picture("%PDF-1.7", "application/pdf") });
+  const r = imageRig({ "pics.example": () => picture(jpeg(4, 4), "image/jpeg"), "docs.example": () => picture(zipOf({ "a.txt": "not a document" }), "application/zip") });
   const t = textOf(await webFetch({ url: "https://pics.example/media/a.jpg" }, { deps: r.deps, at: WITH }));
   assert.equal(t.split("\n")[0], "web_fetch could not read https://pics.example/media/a.jpg: wall binary_content, rungs F1:binary:image/jpeg. It is an image: use web_image(url), then Read the file it saves.");
-  assert.match(t, /Next move: An image: use web_image\(url\), then Read the file it saves; these tools read no other binary file\./);
-  const pdf = textOf(await webFetch({ url: "https://docs.example/a.pdf" }, { deps: r.deps, at: WITH }));
-  assert.equal(pdf.split("\n")[0], "web_fetch could not read https://docs.example/a.pdf: wall binary_content, rungs F1:binary:application/pdf.");
+  assert.match(t, /Next move: An image: use web_image\(url\), then Read the file it saves; web_fetch reads a PDF or a Word file itself, and these tools read no other binary file\./);
+  const zip = textOf(await webFetch({ url: "https://docs.example/a.zip" }, { deps: r.deps, at: WITH }));
+  assert.equal(zip.split("\n")[0], "web_fetch could not read https://docs.example/a.zip: wall binary_content, rungs F1:binary:application/zip.");
   assert.equal(r.seen.bb.length, 0);
+  // A page or a text that names a PDF's first bytes is still that page or text, never read as a PDF.
+  for (const [body, type] of [["%PDF-1.7 is how a PDF file begins.", "text/plain"], ['{"magic": "%PDF-1.7"}', "application/json"], ["<x>%PDF-1.7</x>", "application/xml"]]) {
+    const q = imageRig({ "notes.example": () => picture(body, type) });
+    const first = textOf(await webFetch({ url: "https://notes.example/pdf-magic" }, { deps: q.deps, at: WITH })).split("\n")[0];
+    assert.match(first, /^web_fetch (read|could not read) https:\/\/notes\.example\/pdf-magic[ :]/);
+    assert.doesNotMatch(first, /a PDF|binary_content/, type);
+  }
+});
+
+// ---- web_fetch on a document (need 87) ----------------------------------------------------------------
+// A room asked what a province's form asks for met the binary wall on the form's Word file and two PDF copies, and answered
+// off a forms list page and search previews. A PDF or a Word file at a link is now read as its words and saved for Read.
+const HAS_PDFTOTEXT = (process.env.PATH || "").split(path.delimiter).some((d) => d && fs.existsSync(path.join(d, "pdftotext")));
+const DOC_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const savedAt = (t) => /^Saved at (\S+): /m.exec(t)?.[1];
+
+// A zip as a .docx or an .odt is one: each member deflated, its central directory and end record.
+function zipOf(files) {
+  const locals = [];
+  const centrals = [];
+  let off = 0;
+  for (const [name, data] of Object.entries(files)) {
+    const raw = Buffer.from(data);
+    const packed = zlib.deflateRawSync(raw);
+    const n = Buffer.from(name);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(8, 8);
+    lh.writeUInt32LE(zlib.crc32(raw), 14);
+    lh.writeUInt32LE(packed.length, 18);
+    lh.writeUInt32LE(raw.length, 22);
+    lh.writeUInt16LE(n.length, 26);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0);
+    ch.writeUInt16LE(20, 4);
+    ch.writeUInt16LE(20, 6);
+    ch.writeUInt16LE(8, 10);
+    ch.writeUInt32LE(zlib.crc32(raw), 16);
+    ch.writeUInt32LE(packed.length, 20);
+    ch.writeUInt32LE(raw.length, 24);
+    ch.writeUInt16LE(n.length, 28);
+    ch.writeUInt32LE(off, 42);
+    locals.push(lh, n, packed);
+    centrals.push(ch, n);
+    off += 30 + n.length + packed.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(centrals.length / 2, 8);
+  end.writeUInt16LE(centrals.length / 2, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(off, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+
+// A PDF of pages of lines in Helvetica, and any more objects (a stream's whole body), its xref counted to the byte.
+function pdfOf(pages, extras = []) {
+  const objs = [null, null, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  const add = (body) => objs.push(body);
+  const kids = pages.map((lines) => {
+    const ops = lines.map((l, i) => `BT /F1 11 Tf 72 ${720 - i * 16} Td (${l.replace(/[()\\]/g, "\\$&")}) Tj ET`).join("\n");
+    const content = add(`<< /Length ${Buffer.byteLength(ops, "latin1")} >>\nstream\n${ops}\nendstream`);
+    return add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${content} 0 R >>`);
+  });
+  extras.forEach(add);
+  objs[0] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(" ")}] /Count ${kids.length} >>`;
+  const parts = [Buffer.from("%PDF-1.4\n", "latin1")];
+  const offsets = [];
+  let size = parts[0].length;
+  objs.forEach((body, i) => {
+    const b = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, "latin1"), Buffer.isBuffer(body) ? body : Buffer.from(body, "latin1"), Buffer.from("\nendobj\n", "latin1")]);
+    offsets.push(size);
+    size += b.length;
+    parts.push(b);
+  });
+  const xref = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  parts.push(Buffer.from(`${xref}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${size}\n%%EOF\n`, "latin1"));
+  return Buffer.concat(parts);
+}
+
+const FORM_PDF = () => pdfOf([["Form 9.9 Notice of Example", "Name of owner: ________"], ["Page two: the amount not paid is $1,234.00"]]);
+const W = (body) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><w:body>${body}</w:body></w:document>`;
+const FORM_DOCX = () => zipOf({
+  "[Content_Types].xml": "<Types/>",
+  "word/document.xml": W([
+    `<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr><w:r><w:t>Form 9.9 Notice of Example</w:t></w:r></w:p>`,
+    `<w:p><w:r><w:t xml:space="preserve">Given under section 12 &amp; </w:t></w:r><w:del><w:r><w:delText>struck words</w:delText></w:r></w:del><w:r><w:t>the Example Act.</w:t></w:r></w:p>`,
+    `<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Name of owner</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Address for service</w:t></w:r></w:p></w:tc></w:tr>`,
+    `<w:tr><w:tc><w:p><w:r><w:t>Alex Placeholder</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1 Sample Street</w:t></w:r></w:p><w:p><w:r><w:t>Exampletown</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`,
+    `<w:p><w:r><w:fldChar w:fldCharType="begin"><w:ffData><w:checkBox><w:sizeAuto/><w:default w:val="1"/></w:checkBox></w:ffData></w:fldChar></w:r><w:r><w:instrText> FORMCHECKBOX </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:tab/><w:t>The owner has not paid</w:t></w:r></w:p>`,
+    `<w:p><w:r><mc:AlternateContent><mc:Choice><w:txbxContent><w:p><w:r><w:t>Office use only</w:t></w:r></w:p></w:txbxContent></mc:Choice><mc:Fallback><w:txbxContent><w:p><w:r><w:t>Office use only</w:t></w:r></w:p></w:txbxContent></mc:Fallback></mc:AlternateContent><w:t>Signature: ________</w:t></w:r></w:p>`,
+  ].join("")),
+});
+
+test("web_fetch reads a PDF at a link as its words, a page a section, and saves it in the room's work folder for Read; nothing paid", { skip: !HAS_PDFTOTEXT && "pdftotext is not on this machine" }, async () => {
+  const pdf = FORM_PDF();
+  const r = imageRig({ "forms.example": () => picture(pdf, "application/pdf") });
+  const url = "https://forms.example/en/form-9-9.pdf";
+  const out = await webFetch({ url }, { deps: r.deps, at: ROOM });
+  const t = textOf(out);
+  assert.equal(out.isError, undefined);
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/forms\.example\/en\/form-9-9\.pdf at F1 \(a plain fetch from this machine, free\): HTTP 200, a PDF of 2 pages, \d+ characters\.$/);
+  assert.doesNotMatch(t, /binary_content|could not read/);   // the wall the room met on 2026-11-11
+  const file = path.join(WORK, "web", `${createHash("sha1").update(url).digest("hex").slice(0, 12)}.pdf`);
+  assert.equal(savedAt(t), `${file}:`.slice(0, -1));
+  assert.match(t.split("\n")[1], /: Read it to see its pages as drawn \(a form's boxes and ticks, a table, a scan\)\.$/);
+  assert.ok(fs.readFileSync(file).equals(pdf));
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.match(t, /EXTERNAL_UNTRUSTED_CONTENT/);
+  assert.match(t, /## page 1\nForm 9\.9 Notice of Example\nName of owner: ________/);
+  assert.match(t, /## page 2\nPage two: the amount not paid is \$1,234\.00/);
+  assert.equal(r.seen.bb.length, 0);
+  assert.deepEqual(spendRows(), []);
+  const log = jsonl(path.join(FETCH, "calls.jsonl")).at(-1);
+  assert.deepEqual([log.host, log.rung, log.outcome, log.rungs], ["forms.example", "F1", "ok", "F1:ok"]);
+  const cut = textOf(await webFetch({ url, max_chars: 100 }, { deps: r.deps, at: ROOM }));
+  assert.match(cut.split("\n")[0], /, \d+ characters, the first 100 below\.$/);
+});
+
+test("web_fetch reads a Word file (.docx) at a link: a paragraph a line, a table row with its cells, a check box by its state; no field code, tab stop, struck text or second copy", async () => {
+  const docx = FORM_DOCX();
+  const r = imageRig({ "forms.example": () => picture(docx, DOC_TYPE) });   // its type says "xml": once read as text
+  const t = textOf(await webFetch({ url: "https://forms.example/form-9-9.docx" }, { deps: r.deps, at: ROOM }));
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/forms\.example\/form-9-9\.docx at F1 \(a plain fetch from this machine, free\): HTTP 200, a Word file \(\.docx\), \d+ characters\.$/);
+  assert.match(t.split("\n")[1], /^Saved at \S+\.docx: render\(path\) makes a PDF of it, then Read that PDF to see its pages as laid out\.$/);
+  const words = t.slice(t.indexOf("Form 9.9"), t.indexOf("<<<END_EXTERNAL_UNTRUSTED_CONTENT")).trim();
+  assert.deepEqual(words.split("\n"), [
+    "Form 9.9 Notice of Example",
+    "Given under section 12 & the Example Act.",
+    "Name of owner | Address for service",
+    "Alex Placeholder | 1 Sample Street / Exampletown",
+    "☒\tThe owner has not paid",
+    "Office use only",
+    "Signature: ________",
+  ]);
+  assert.ok(fs.readFileSync(savedAt(t)).equals(docx));
+});
+
+test("web_fetch reads a Word 97-2003 file (.doc) through its piece table, and an OpenDocument text file (.odt)", async () => {
+  const doc = fs.readFileSync(new URL("./fixtures/notice.doc", import.meta.url)); // LibreOffice's MS Word 97 export of a placeholder notice
+  const odt = zipOf({
+    mimetype: "application/vnd.oasis.opendocument.text",
+    "content.xml": `<office:document-content xmlns:office="o" xmlns:text="t" xmlns:table="b"><office:body><office:text><text:h>Form 9.9 Notice of Example</text:h><text:p>Owner:<text:tab/>Alex<text:s text:c="2"/>Placeholder<office:annotation><text:p>a reviewer's note</text:p></office:annotation></text:p><table:table><table:table-row><table:table-cell><text:p>Amount</text:p></table:table-cell><table:table-cell><text:p>$1,234.00</text:p></table:table-cell></table:table-row></table:table></office:text></office:body></office:document-content>`,
+  });
+  const r = imageRig({ "doc.example": () => picture(doc, "application/msword"), "odt.example": () => picture(odt, "application/octet-stream") });
+  const d = textOf(await webFetch({ url: "https://doc.example/notice.doc" }, { deps: r.deps, at: ROOM }));
+  assert.match(d.split("\n")[0], /: HTTP 200, a Word 97-2003 file \(\.doc\), \d+ characters\.$/);
+  for (const line of ["Form 9.9 Notice of Example", "Name of owner\tAddress for service", "Alex Placeholder\t1 Sample Street, Exampletown", "The amount not paid is $1,234.00 — “quoted” café.", "Signature: ________________"]) assert.ok(d.includes(`\n${line}\n`), line);
+  assert.match(savedAt(d), /\.doc$/);
+  const o = textOf(await webFetch({ url: "https://odt.example/notice" }, { deps: r.deps, at: ROOM }));
+  assert.match(o.split("\n")[0], /: HTTP 200, an OpenDocument text file \(\.odt\), \d+ characters\.$/);
+  assert.match(o, /\nForm 9\.9 Notice of Example\nOwner:\tAlex  Placeholder\nAmount \| \$1,234\.00\n/);
+  assert.doesNotMatch(o, /reviewer's note/);
+});
+
+test("a scan's PDF says it has no text and names the file to Read; an XFA form's words come from its template; a file that will not read is saved and named with why", { skip: !HAS_PDFTOTEXT && "pdftotext is not on this machine" }, async () => {
+  const template = `<?xml version="1.0"?><xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><template xmlns="http://www.xfa.org/schema/xfa-template/3.3/"><subform name="form1"><draw><value><text>Form 9.9 Notice of Example</text></value></draw><field name="owner"><caption><value><text>Name of owner</text></value></caption><assist><toolTip>Type the owner's name</toolTip></assist></field><field name="paid"><ui><choiceList/></ui><items><text>Paid</text><text>Not paid</text></items></field><draw><value><exData contentType="text/html"><body><p>Signed at <span>Exampletown</span></p></body></exData></value></draw><event activity="click"><script>app.alert("hi")</script></event></subform></template></xdp:xdp>`;
+  const z = zlib.deflateSync(Buffer.from(template));
+  const xfa = pdfOf([["Please wait...", "If this message is not eventually replaced by the proper contents of the document, your PDF", "viewer may not be able to display this type of document."]],
+    [Buffer.concat([Buffer.from(`<< /Length ${z.length} /Filter /FlateDecode >>\nstream\n`, "latin1"), z, Buffer.from("\nendstream", "latin1")])]);
+  const scan = pdfOf([[], []]);
+  const r = imageRig({ "xfa.example": () => picture(xfa, "application/pdf"), "scan.example": () => picture(scan, "application/pdf"), "bad.example": () => picture(FORM_PDF(), "application/pdf") });
+  const x = textOf(await webFetch({ url: "https://xfa.example/form.pdf" }, { deps: r.deps, at: ROOM }));
+  assert.match(x.split("\n")[0], /: HTTP 200, a PDF of 1 page, an XFA form whose pages only Adobe Reader draws: \d+ characters of its own words, from its template\.$/);
+  assert.match(x.split("\n")[1], /: Read shows only its placeholder page; the words below are the form's\.$/);
+  assert.match(x, /\nForm 9\.9 Notice of Example\nName of owner\nPaid\nNot paid\nSigned at Exampletown\n/);
+  assert.doesNotMatch(x, /Please wait|toolTip|Type the owner's name|app\.alert/);
+  const s = textOf(await webFetch({ url: "https://scan.example/scan.pdf" }, { deps: r.deps, at: ROOM }));
+  assert.match(s.split("\n")[0], /: HTTP 200, a PDF of 2 pages with no text on any page \(a scan, or pictures of text\), so nothing below\.$/);
+  assert.match(s.split("\n")[1], /^Saved at \S+\.pdf: Read it to see its pages as drawn/);
+  assert.doesNotMatch(s, /EXTERNAL_UNTRUSTED_CONTENT/);
+  const b = textOf(await webFetch({ url: "https://bad.example/form.pdf" }, { deps: { ...r.deps, document: { pdftotext: path.join(TMP, "no-such-pdftotext") } }, at: ROOM }));
+  assert.match(b.split("\n")[0], /: HTTP 200, a PDF, but not its words: pdftotext \(poppler-utils\) is not on this machine\.$/);
+  assert.ok(fs.existsSync(savedAt(b)));
+});
+
+test("a document this machine was refused is read from Browserbase Fetch's base64 answer at L1, with its spend row; a page's binary wall is unchanged", async () => {
+  const docx = FORM_DOCX();
+  const r = imageRig({}, () => ({ statusCode: 200, headers: {}, content: docx.toString("base64"), contentType: DOC_TYPE, encoding: "base64" }));
+  const t = textOf(await webFetch({ url: "https://walled.example/form-9-9.docx" }, { deps: { ...r.deps, localBrowserRung: undefined, settingsOverrides: { l3Enabled: false, localBrowserEnabled: false } }, at: ROOM }));
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/walled\.example\/form-9-9\.docx at L1 \(Browserbase Fetch, paid\): HTTP 200, a Word file \(\.docx\), \d+ characters\.$/);
+  assert.match(t, /Alex Placeholder \| 1 Sample Street \/ Exampletown/);
+  assert.deepEqual(spendRows().map((x) => [x.tool, x.engine]), [["web_fetch", "browserbase-L1"]]);
 });
 
 test("a picture's type and size come from its own bytes: jpeg, png, gif and the three webp forms; an avif or a cut file is none", () => {
@@ -998,4 +1571,154 @@ test("a picture's type and size come from its own bytes: jpeg, png, gif and the 
     ["image/webp", "webp", 320, 240], ["image/webp", "webp", 1920, 1080], ["image/webp", "webp", 4096, 2048],
   ]);
   assert.deepEqual([imageInfo(AVIF), imageInfo(jpeg(10, 10).subarray(0, 12)), imageInfo(Buffer.from("<html>no</html>"))], [null, null, null]);
+});
+
+// ---- web_fetch inside the room's own limit (F7-15) ---------------------------------------------------------------
+// Claude Code cuts a call at the room's limit on this server and drops its answer (common.mjs where().limit); the family
+// rooms' is a minute while the ladder's own total is 140 s. The climb now ends 10 s inside the limit, need 49's rule as
+// web_research waits, so the room gets the ladder's named wall in time and no paid rung starts after it stopped listening.
+// The clock is the ladder's test seam (settings._now): F2 holds its whole budget on a challenge, a Browserbase Fetch takes
+// 10 s, and a session create answers 503; every paid call's start is noted.
+async function climbIn(limit, n) {
+  const clock = { t: Date.parse("2026-11-10T12:00:00Z") };
+  const t0 = clock.t;
+  const paid = [];
+  const r = rig();
+  r.deps.localBrowserRung = async ({ budgetMs }) => {
+    clock.t += budgetMs;
+    return { rung: "F2", ok: false, wall: "challenge", verdict: "challenge", outcome: "challenge:fixture", status: 403, ms: budgetMs, next: "BB" };
+  };
+  r.deps.fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    if (u.endsWith("/v1/fetch")) {
+      paid.push(["fetch", clock.t - t0]);
+      clock.t += 10000;
+      return json({ statusCode: 403, headers: { "content-type": "text/html" }, content: CF, contentType: "text/html" });
+    }
+    if (u.endsWith("/v1/sessions") && init.method === "POST") {
+      paid.push(["session", clock.t - t0]);
+      return json({ error: "unavailable" }, 503);
+    }
+    return json({}, 404);
+  };
+  r.deps.settingsOverrides = { l3Enabled: true, contextStrategy: "none", usageSyncMinutes: 0, localTrawlEnabled: false, _now: () => clock.t };
+  const t = textOf(await webFetch({ url: `https://slow${n}.example/listing` }, { deps: r.deps, at: { ...WITH, limit } }));
+  return { head: t.split("\n")[0], paid, took: clock.t - t0 };
+}
+
+test("web_fetch ends its climb 10 s inside the room's limit: a one-minute room gets the timeout wall by 50 s and no paid rung starts after it; no limit, or the owner rooms' 180 s, climbs as before", async () => {
+  const minute = await climbIn(60000, 1);
+  assert.match(minute.head, /^web_fetch could not read https:\/\/slow1\.example\/listing: wall timeout, rungs F1:challenge[^,]*,F2:challenge:fixture,L1:challenge[^.]*\.$/);
+  assert.ok(minute.took <= 50000, `the climb ended at ${minute.took} ms`);
+  assert.ok(minute.paid.every(([, ms]) => ms < 50000), `paid starts ${JSON.stringify(minute.paid)}`);
+  const none = await climbIn(null, 2);
+  assert.deepEqual(none.paid, [["fetch", 35000], ["fetch", 45000], ["session", 55000]], "no limit: the ladder's own 140 s");
+  const owner = await climbIn(180000, 3);
+  assert.deepEqual(owner.paid, none.paid, "170 s is above the ladder's own 140 s, so nothing changes");
+});
+
+// F7-16: every room carries web_research's description, and the cap it meets is web.json's research.dailyUsd (research.mjs
+// dailyCap); the description names that one, and the default only as the default, from the code's own number.
+test("web_research's description says every room shares the daily cap web.json sets, US$2 when it sets none, never a fixed figure", () => {
+  const d = TOOLS.find((t) => t.name === "web_research").description;
+  assert.match(d, /every room shares one daily cap, the one web\.json sets, else US\$2\./);
+  assert.doesNotMatch(d, /one US\$2 daily cap/);
+});
+
+// ---- a crafted document costs what its bytes hold (the fix of 2026-11-11) ----------------------------------------------
+// documentKind runs on every binary read at F1, L1 and L2, and the readers run in the web plug-in's own event loop, so a
+// file that makes either ask for gigabytes or minutes takes the plug-in down for every room.
+
+// A compound file of 512-byte sectors: the header, FAT sector 0, then the directory from sector 1, its entries as given.
+function compoundOf(entries) {
+  const S = 512;
+  const dirSectors = Math.max(1, Math.ceil(entries.length * 128 / S));
+  const buf = Buffer.alloc(S * (2 + dirSectors));
+  buf.writeUInt32LE(0xe011cfd0, 0); buf.writeUInt32LE(0xe11ab1a1, 4);
+  buf.writeUInt16LE(9, 30); buf.writeUInt16LE(6, 32);
+  buf.writeUInt32LE(1, 44); buf.writeUInt32LE(1, 48); buf.writeUInt32LE(4096, 56);
+  buf.writeUInt32LE(0xfffffffe, 60); buf.writeUInt32LE(0xfffffffe, 68);
+  for (let i = 0; i < 109; i++) buf.writeUInt32LE(i ? 0xffffffff : 0, 76 + i * 4);
+  for (let i = 0; i < S / 4; i++) buf.writeUInt32LE(i === 0 ? 0xfffffffd : i <= dirSectors ? (i < dirSectors ? i + 1 : 0xfffffffe) : 0xffffffff, S + i * 4);
+  entries.forEach(([name, type, left, right, child], id) => {
+    const o = S * 2 + id * 128;
+    buf.write(name, o, "utf16le");
+    buf.writeUInt16LE((name.length + 1) * 2, o + 64);
+    buf[o + 66] = type;
+    buf.writeUInt32LE(left, o + 68); buf.writeUInt32LE(right, o + 72); buf.writeUInt32LE(child, o + 76);
+    buf.writeUInt32LE(0xfffffffe, o + 116);
+  });
+  return buf;
+}
+
+test("a crafted compound file is held to its own bytes: a looping DIFAT asks for no 16 GiB, a tree whose entries share their siblings is walked once, a real one still reads", () => {
+  const concat = Buffer.concat;
+  let biggest = 0;
+  Buffer.concat = (list, n) => {
+    biggest = Math.max(biggest, n ?? list.reduce((a, b) => a + b.length, 0));
+    if (biggest > 64 * 1024 * 1024) throw new Error(`Buffer.concat asked for ${biggest} bytes`);
+    return concat(list, n);
+  };
+  try {
+    // 64 KB: 4096-byte sectors, the FAT count 0xfffffff0, the DIFAT chain a loop on sector 0 (it asked for 15.98 GiB).
+    const loop = Buffer.alloc(64 * 1024);
+    loop.writeUInt32LE(0xe011cfd0, 0); loop.writeUInt32LE(0xe11ab1a1, 4);
+    loop.writeUInt16LE(12, 30); loop.writeUInt16LE(6, 32);
+    loop.writeUInt32LE(0xfffffff0, 44); loop.writeUInt32LE(0, 68);
+    const t0 = Date.now();
+    assert.equal(documentKind(loop), "");
+    assert.ok(biggest <= loop.length, `the 64 KB file asked Buffer.concat for ${biggest} bytes`);
+    // Each entry the next's left and right sibling, 63 deep in 9.7 KB (2^63 paths; 26 deep took 8 s).
+    const deep = 63;
+    const tree = compoundOf([["Root Entry", 5, 0xffffffff, 0xffffffff, 1], ...Array.from({ length: deep }, (_, k) => {
+      const next = k + 1 < deep ? k + 2 : 0xffffffff;
+      return ["S", 1, next, next, 0xffffffff];
+    })]);
+    assert.equal(documentKind(tree), "");
+    // A sector shift other than 9 or 12 is no Word file, whatever else it says.
+    const odd = compoundOf([["Root Entry", 5, 0xffffffff, 0xffffffff, 0xffffffff]]);
+    odd.writeUInt16LE(30, 30);
+    assert.equal(documentKind(odd), "");
+    assert.ok(Date.now() - t0 < 2000, `the crafted files took ${Date.now() - t0} ms`);
+    assert.equal(documentKind(fs.readFileSync(new URL("./fixtures/notice.doc", import.meta.url))), "doc");
+  } finally {
+    Buffer.concat = concat;
+  }
+});
+
+test("the XML readers are linear: a megabyte of unclosed tags, one long name or spaces before a letter reads in well under a second; words read as before", () => {
+  const MB = 1024 * 1024;
+  const timed = (label, fn) => {
+    const t0 = Date.now();
+    const out = fn();
+    assert.ok(Date.now() - t0 < 2000, `${label} took ${Date.now() - t0} ms`);
+    return out;
+  };
+  timed("unclosed tags", () => xmlWords(`<w:document><w:body><w:p>${"<a ".repeat(MB / 3)}`, "docx"));
+  timed("one long name", () => xmlWords(`<w:p><${"a".repeat(MB)}`, "docx"));
+  assert.equal(timed("spaces before a letter", () => xmlWords(`<w:p><w:t>${" ".repeat(MB)}x</w:t><w:t xml:space="preserve">  </w:t></w:p>`, "docx")), `${" ".repeat(MB)}x`.trim());
+  assert.equal(timed("a row of spaces", () => xmlWords(`<w:tbl><w:tr><w:tc><w:p><w:t>a${" ".repeat(MB)}b</w:t></w:p></w:tc><w:tc><w:p/></w:tc></w:tr></w:tbl>`, "docx")), `a${" ".repeat(MB)}b`);
+  assert.equal(xmlWords(`<w:p><w:r><w:t xml:space="preserve">Name: </w:t></w:r><w:r><w:t>Alex</w:t></w:r><w:r><w:tab/><w:t>a &lt;b&gt; "c"</w:t></w:r></w:p><w:p/><w:p><w:t>two</w:t></w:p>`, "docx"), 'Name: Alex\ta <b> "c"\n\ntwo');
+  // An XFA template that never closes its tags, deflated in a PDF of a few KB.
+  const pdf = (xml) => {
+    const z = zlib.deflateSync(Buffer.from(`<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">${xml}`));
+    return Buffer.concat([Buffer.from(`%PDF-1.7\n1 0 obj << /Length ${z.length} /Filter /FlateDecode >>\nstream\n`, "latin1"), z, Buffer.from("\nendstream endobj\n", "latin1")]);
+  };
+  for (const [label, xml] of [["unclosed <script>", "<script>".repeat(MB / 8)], ["unclosed <text>", "<text>".repeat(MB / 6)], ["<text with no >", "<text ".repeat(MB / 6)], ["<br with no > in a text", `<text>${"<br ".repeat(MB / 4)}</text>`]]) {
+    const file = pdf(xml);
+    assert.ok(file.length < 8 * 1024, `${label}: ${file.length} bytes`);
+    timed(label, () => xfaWords(file));
+  }
+  assert.equal(xfaWords(pdf(`<draw><value><text>Form 9.9</text></value></draw><event><script>app.alert(1)</script></event><script/><field><items><text>Paid</text><text/><text>Not<br/>paid</text></items></field>`)), "Form 9.9\nPaid\nNot\npaid");
+});
+
+test("web_fetch answers a 1 KB .docx whose text part is a megabyte of unclosed tags in seconds, not minutes", async () => {
+  const docx = zipOf({ "[Content_Types].xml": "<Types/>", "word/document.xml": `<w:document><w:body><w:p><w:t>Form 9.9</w:t></w:p><w:p>${"<a ".repeat(350000)}` });
+  assert.ok(docx.length < 4096, `the .docx is ${docx.length} bytes`);
+  const r = imageRig({ "docs.example": () => picture(docx, DOC_TYPE) });
+  const t0 = Date.now();
+  const t = textOf(await webFetch({ url: "https://docs.example/bomb.docx" }, { deps: r.deps, at: ROOM }));
+  assert.ok(Date.now() - t0 < 5000, `web_fetch took ${Date.now() - t0} ms`);
+  assert.match(t.split("\n")[0], /: HTTP 200, a Word file \(\.docx\), \d+ characters\.$/);
+  assert.match(t, /Form 9\.9/);
 });

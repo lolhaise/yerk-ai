@@ -5,8 +5,9 @@ for every room, so every room shares the same one best way of doing each thing.
   what was asked, what it tried, what it needed; what it did anyway (`shadow`) rides on the line behind a `[shadow]` mark, so
   the builder sees what the room improvised. A room never builds a way of its own (mechanics.md).
 - Where it lives: <state>/needs.json is the record; each need is a proposal of kind `need` in <memory>/rules-proposals/<day>.md,
-  `## N. need: ABILITY`, numbered with curate's in one count a day (curate.rules gives its own proposals the numbers the day's
-  needs leave and keeps their blocks when it rewrites the page), and one line in the machine room.
+  `## N. need: ABILITY`, numbered past every number on its day's page and every number a need has held, so a new need never
+  takes an earlier one's (until 2026-11-11 the count restarted each day; curate.rules gives its own proposals the numbers the
+  day's needs leave and keeps their blocks when it rewrites the page), and one line in the machine room.
 - Folded: a filing naming the ability of an open need (`same`) is a line under it, its count + 1, never a second builder.
 - `yerk needs build DAY N`: the need as a worker brief (`brief`: the asks, the tries, the repo, the shape of done) on [needs]
   account (default: [curate] account), its card in the machine room. A worker never pushes or opens a PR (gates.EXTERNAL), so
@@ -29,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import memindex
+from . import memindex, words
 from .config import write_private
 from .memory import Settings, daily_lock, one_line
 
@@ -60,6 +61,13 @@ def load(state: Path) -> list[dict[str, Any]]:
 
 def find(rows: list[dict[str, Any]], day: str, n: int) -> dict[str, Any] | None:
     return next((r for r in rows if r.get("day") == day and int(r.get("n", 0)) == n), None)
+
+
+def called(state: Path, r: dict[str, Any]) -> str:
+    """A need's number as a line says it: N, or "N of DAY" (words.NEED_OF) when a need of another day holds N too, as needs
+    filed before 2026-11-11 can, when the count restarted each day."""
+    n, day = int(r["n"]), str(r["day"])
+    return words.NEED_OF.format(n=n, day=day) if any(int(x.get("n", 0)) == n and x.get("day") != day for x in load(state)) else str(n)
 
 
 def stem(w: str) -> str:
@@ -93,7 +101,8 @@ def said(r: dict[str, Any]) -> str:
             "building": f"building {r.get('worker')}", "built": f"built on branch {r.get('branch')}{plug}",
             "pr": f"PR {pr}" + (f", checks {ran.count('success')} of {len(ran)} passed" if ran else "") + plug,
             "fixing": f"fixing PR {pr}, fix {r.get('fixes')} of {r.get('fix_cap', 2)}, {r.get('worker')}",
-            "reading": f"cold read of PR {pr}{plug}, {r.get('worker')}", "held": f"held: {r.get('why')}", "stuck": f"stuck: {r.get('why')}",
+            "reading": f"cold read of PR {pr}{plug}, {r.get('worker')}", "held": f"held: {' '.join(str(r.get('why')).splitlines())}",
+            "stuck": f"stuck: {r.get('why')}",
             "merged": f"merged, PR {pr}", "deploying": f"merged, PR {pr}, deploying", "live": f"live, PR {pr}"}.get(st, "filed" + last)
 
 
@@ -142,7 +151,7 @@ def page(s: Settings, rows: list[dict[str, Any]], day: str) -> Path:
 def file(s: Settings, state: Path, room: str, mid: str, asked: str, tried: str, needed: str, shadow: str = "",
          now: float | None = None) -> dict[str, Any]:
     """One filing: folded into the open need of the same ability (its count + 1), else a new need numbered past every
-    proposal and need of the day; the page's block written. A retried call files once."""
+    proposal of the day and every need of any day; the page's block written. A retried call files once."""
     a = {k: one_line(v).strip() for k, v in (("asked", asked), ("tried", tried), ("needed", needed), ("shadow", shadow))}
     if not (a["asked"] and a["tried"] and a["needed"]):
         return {"ok": False, "error": "a need is three things, each as text: what was asked, what you tried, what you needed"}
@@ -155,7 +164,7 @@ def file(s: Settings, state: Path, room: str, mid: str, asked: str, tried: str, 
         if r is None:
             day, p = at.date().isoformat(), s.root / FOLDER / f"{at.date().isoformat()}.md"
             used = {int(x) for x in HEAD.findall(p.read_text())} if p.is_file() else set()
-            r = {"day": day, "n": max(used | {int(x["n"]) for x in rows if x.get("day") == day}, default=0) + 1,
+            r = {"day": day, "n": max(used | {int(x["n"]) for x in rows}, default=0) + 1,
                  "ability": a["needed"], "state": "filed", "asks": []}
             rows.append(r)
         if not again:
@@ -218,6 +227,19 @@ def git(repo: str | Path, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as e:
         return subprocess.CompletedProcess([], 127, "", str(e))
+
+
+def tidy(folder: Path) -> list[str]:
+    """A need's worker ended: each git worktree it left under its folder (a linked one's .git is a file) removed when clean,
+    by `git worktree remove`, never forced, its branch kept (2026-11-10: 207 left, none ever removed); one line for each
+    that stays, for the worker's note."""
+    kept = []
+    for wt in sorted(p.parent for p in folder.glob("*/.git") if p.is_file()):
+        st = git(wt, "status", "--porcelain")
+        if st.returncode == 0 and not st.stdout.strip() and git(wt, "worktree", "remove", str(wt)).returncode == 0:
+            continue
+        kept.append(words.WORKTREE_KEPT.format(name=wt.name, why=words.WORKTREE_CHANGES if st.stdout.strip() else words.WORKTREE_REFUSED))
+    return kept
 
 
 def plugins(confs: dict[str, dict[str, Any]], own: Path) -> dict[str, dict[str, str]]:

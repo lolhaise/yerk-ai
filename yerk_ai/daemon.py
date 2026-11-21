@@ -24,34 +24,36 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory,
-               mentions, needs, pictures, pipeline, render, reverse_image, shape, status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, logins, mcp_server, memory,
+               mentions, needs, pictures, pipeline, render, shape, status, taste, texts, transcribe, usage, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
-from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
-                     override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
-                     write_private)
-from .engine import RoomSpec, SessionTable
+from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, added, assistants, budgets, discord_id, fast_on, flag, load_toml,
+                     models, override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted,
+                     uncapped, write_private)
+from .engine import FAST_MODELS, RoomSpec, SessionTable, fast_probe
 from .ledger import Ledger
 from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
-from .room import Channel, Inbound, Room
+from .room import MIDTURN, Channel, Inbound, Room
+from .texting import check as tcheck, hands as thands, holds as tholds, intake as tintake, link as tlink, people as tpeople, \
+    sender as tsender, writer as twriter
 from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
-              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
-              "mcp__yerk__attachments", "mcp__yerk__zoom"]
+              "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
+              "mcp__yerk__attachments", "mcp__yerk__zoom", "mcp__yerk__texting", "mcp__yerk__show", "mcp__yerk__people"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -132,6 +134,9 @@ class Yerkd:
         self.owner_names = (me,) if me and me != "me" else ()
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
+        self.listed = {n: people(n, c) for n, c in self.room_confs.items()}   # rooms.toml's; tool_people's join them
+        for n in (n for n in self.room_confs if added(state, n)):
+            self.join_added(n)
         for n in (n for n, c in self.room_confs.items() if trusted(c)):
             self.walled(n)                         # a trusted room's wall that cannot be built stops the start here
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
@@ -186,6 +191,8 @@ class Yerkd:
         self.beat = beat.Beat(self.ledger, beat.folder(state, self.memory.root), pids=self.room_pids)
         self.started, self.commit = time.time(), deploy.head(REPO)   # what runs, for yerk deploy's proof
         self.link: Any = None                                         # the channel adapter: is it connected
+        self.holds: tholds.Holds | None = None                         # texting's cards and the owner's word on them
+        self.texting_to = ""                                           # the one room texting may show anything in (texting_room)
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -201,7 +208,7 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        code = self.code_reads() if self.owner(name) else []          # the checkout that runs: an owner room checks a claim there
+        code = [*self.code_reads(), *self.worker_reads(name), *self.docs_reads(name)] if self.owner(name) else []   # the checkout that runs, each worker's folder, Yerk's docs: a claim checked there
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
                                                     "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
@@ -220,7 +227,7 @@ class Yerkd:
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
-                        extra_args=extra, token=token, add_dirs=dirs)
+                        extra_args=extra, token=token, add_dirs=dirs, fast=fast_on(self.state, name))   # engine.fast_reaches decides
 
     def cut_said(self, name: str, parts: list[context.Part]) -> None:
         """Each part a session start sent with lines of its own dropped to fit its key (whole lines, never a blank, a `[from`
@@ -301,6 +308,13 @@ class Yerkd:
         w = int(self.room_confs[name].get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
         return min(max(w, 100000), 1000000) if w else 0
 
+    async def login_save(self, room: str, name: str, site: str, user: str, password: str) -> dict[str, Any]:
+        """/login (need 127): the owner's own login saved as NAME.login in the private folder's secrets, which no room
+        reads; the log line names the login and its site, never the user's password."""
+        r = await asyncio.to_thread(logins.save, self.private, name, site, user, password)
+        log.info("room %s: /login %s %s", room, "saved" if r["ok"] else "refused", f"{r['name']} for {r['site']}" if r["ok"] else "")
+        return r
+
     def secrets_at(self) -> tuple[list[Path], list[Path]]:
         """(folders, files) no room reads or sends: both secrets folders; every room's token files, each account's token
         file and the secret files yerkd.toml names, wherever they are."""
@@ -323,6 +337,41 @@ class Yerkd:
         entries around the private and state folders when it holds one (a clone's example layer). Rules, never an --add-dir,
         which Claude Code's sandbox opens to the room's shell for writing; never_read's denies still beat them."""
         return [f"Read(/{p}/**)" if p.is_dir() else f"Read(/{p})" for p in around(REPO.resolve(), [self.private.resolve(), self.state.resolve()])]
+
+    def worktree_reads(self) -> list[str]:
+        """Read rules opening each worker's git worktrees (workers.WORKTREES in its folder under the workers' root) to an owner
+        room's Read, Grep and Glob (need 110 of 2026-11-18: a room relaying a worker's result Grepped the worker's worktree for
+        the change it claimed, the read was refused, and the claim went out on the report's word): a pattern each, so a worker
+        started after the room's process is reached too, never the worker's own files (its report, brief and stream): a
+        sealed room's whole reach of the workers (worker_reads). None when the root is, holds or sits inside the private
+        folder, holds the state folder or sits inside it anywhere but its workers folder, where a pattern could reach a layer,
+        a room's folder or the trash. Rules, never an --add-dir; never_read's denies still beat them."""
+        root, private, state = self.workers.conf.root.resolve(), self.private.resolve(), self.state.resolve()
+        if root.is_relative_to(private) or private.is_relative_to(root) or state.is_relative_to(root) or (
+                root.is_relative_to(state) and not root.is_relative_to(state / "workers")):
+            return []
+        return [f"Read(/{root}/*/{w}/**)" for w in workers.WORKTREES]
+
+    def worker_reads(self, room: str) -> list[str]:
+        """Read rules opening each worker's own folder whole to an owner room's Read, Grep and Glob, beyond its worktrees (need
+        123 of 2026-11-19: a room relaying a worker's result had its Glob of the worker's folder and its Read of the patch the
+        worker left there refused, since that worker made no worktree, and gave the patch on the report's word): one pattern
+        over the workers' root, which Claude Code reads as each worker's folder and all under it (its report, brief, tasks,
+        stream, a patch, its worktrees), so a worker started after the room's process is reached too. A sealed room keeps to
+        the worktrees, since a worker's brief and stream carry the lines of the room that started it; none where
+        worktree_reads opens none. A rule, never an --add-dir; never_read's denies still beat it."""
+        rules = self.worktree_reads()
+        return rules if not rules or self.reader(room).sealed else [f"Read(/{self.workers.conf.root.resolve()}/*/**)"]
+
+    def docs_reads(self, room: str) -> list[str]:
+        """Read rules opening what Yerk keeps on its harness to an owner room's Read, Grep and Glob (need 124 of 2026-11-19: a
+        room asked to check a worker's re-pinned docs sentences against the fetched page, today's doctor findings read first,
+        had its Grep of both refused): the docs root (the Claude docs `yerk docs` fetches, the doctor's reports on the rules)
+        and the doctor's last run, doctor.json. A sealed room gets the fetched pages alone, of class shared, since a shape
+        report or a finding names other rooms' rules and files. Rules, never an --add-dir; never_read's denies still beat them."""
+        if self.reader(room).sealed:
+            return [f"Read(/{self.memory.docs}/claude/**)"]
+        return [f"Read(/{self.memory.docs}/**)", f"Read(/{(self.state / doctor.LAST).resolve()})"]
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
@@ -371,11 +420,13 @@ class Yerkd:
             paged = False
         if paged:                                                # its replies render on its page too
             channel = self.page.mirror(channel)
+        if (midturn := str(s.get("precompact_midturn", "off"))) not in MIDTURN:   # off, as unset, and said once
+            log.warning("room %s: precompact_midturn = %r is none of off, log and on, so it is off", name, s["precompact_midturn"])
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
                     compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0)),
                              float(s.get("idle_compact_within", 0))), precompact=float(s.get("precompact_within", 0)),
-                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))))
+                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))), midturn=midturn)
         room.cite = self.day_cite                                # a long tail names its oldest exchanges by their lines
         self.rooms[name], self.channels[name] = room, channel
         if paged:
@@ -565,6 +616,44 @@ class Yerkd:
         log.info("page: %s, %s", room or "?", f"{', '.join(sorted(req))} to {r['tabs']} tab(s)" if r["ok"] else r["error"][:160])
         return {**r, "opened": opened} if opened is not None else r
 
+    async def tool_show(self, room: str, path: str, screen: str = "") -> dict[str, Any]:
+        """The `show` tool: a file of the calling room's own folders (may_send's rule, as render's) opened on the owner's
+        screen, in the owner's rooms only, since a room's shell reaches no screen: a type a browser shows itself (page.SHOWN),
+        never one the PC would run. On a named screen (`screen`, else [page] screen) of a Windows PC under WSL, a window of its
+        own of the default browser, maximized there and raised, the display woken, as the page's (page.place) by the file's
+        Windows path (page.windows_path); else, or when nothing opened, by the box's opener, where it puts it."""
+        if not self.owner(room):
+            return {"ok": False, "error": words.SHOW_OWNER_ONLY}
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.SHOW_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.SHOW_NO_FILE.format(name=p.name)}
+        if p.suffix.lower() not in page.SHOWN:
+            return {"ok": False, "error": words.SHOW_TYPE.format(name=p.name)}
+        lines: list[str] = []
+        try:
+            screen = page.screen_name(screen) or self.screen_named(lines)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        if not (target := await asyncio.to_thread(page.windows_path, p) if (here := page.wsl()) else str(p)):
+            return {"ok": False, "error": words.SHOW_NO_PATH.format(name=p.name)}
+        if not page.PLAIN.fullmatch(target):  # a name the room chose, run as a command on the PC by wslview's PowerShell
+            return {"ok": False, "error": words.SHOW_NAME.format(name=p.name)}
+        got = await asyncio.to_thread(page.place, target, screen, room, file=True) if screen and here else {
+            "ok": False, "opened": False, "again": True, "why": words.SHOW_SCREEN_NOT_HERE}
+        if got["ok"]:
+            lines += [words.SHOW_OPENED_SCREEN.format(name=p.name, screen=screen, n=got["n"], of=got["of"]),
+                      words.SHOW_LOCKED if got["locked"] else words.SHOW_AT.format(**{k: got[k] for k in "xywh"})]
+        elif screen:
+            lines.append(words.PAGE_NOT_PLACED.format(screen=screen, why=got["why"]))
+        if got.get("again"):                  # nothing opened, the screen there or none named: the box's opener
+            why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), target)
+            lines.append(words.SHOW_NOT_OPENED.format(name=p.name, why=why) if why else words.SHOW_OPENED.format(name=p.name))
+            got["opened"] = not why
+        log.info("show: room %s, %s, %s", room, p.name, "; ".join(lines)[:200])
+        return {"ok": True, "line": "; ".join(lines)} if got["ok"] or got["opened"] else {"ok": False, "error": "; ".join(lines)}
+
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
         was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, with who talks when on the Meta
@@ -631,6 +720,9 @@ class Yerkd:
         root = self.state / "rooms" / room / "work" / watch.FOLDER
         r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
         r = {**r, "note": "; ".join(x for x in (r["note"], more) if x)} if more and r["ok"] else r
+        if r.pop("shut", False):              # an Instagram post shut to a logged-out reader: the way, by the room's own tools
+            r["error"] = words.WATCH_SHUT.format(why=r["error"], way=words.WATCH_SHUT_BROWSER if watch.browses(self.room_confs[room])
+                                                 else words.WATCH_SHUT_NO_BROWSER)
         how = "a file of the room's" if p else "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
         said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {r['source'] or 'no'} transcript, {how}"
                 if r["ok"] else r["error"][:160])
@@ -665,19 +757,6 @@ class Yerkd:
             return {"ok": False, "error": note}
         return {"ok": True, "message": mid, "files": saved, "note": note, "next": words.ATTACH_NEXT}
 
-    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]:
-        """The `reverse_image_search` tool: a picture from the calling room's own folders (may_send's rule, as render's) looked
-        up on the web by Google Cloud Vision's web detection off the loop (reverse_image.run), on the key in the private
-        folder, each call Google answers a spend row."""
-        p = Path(path).expanduser().resolve()
-        if room not in self.rooms or not self.may_send(room, p):
-            return {"ok": False, "error": words.REVERSE_NOT_HERE.format(name=p.name)}
-        if not p.is_file():
-            return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
-        r = await asyncio.to_thread(reverse_image.run, p, self.private / reverse_image.KEY, self.booker(room, "reverse_image_search"))
-        log.info("reverse_image_search: %s, %s", room, f"{p.name}, {len(r['pages'])} page(s)" if r["ok"] else r["error"][:160])
-        return r
-
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]:
         """The `github_state` tool: a branch or a pull request of Yerk's own repository ([needs] repo, else the checkout's
         origin) as GitHub has it now, read off the loop on the pipeline's token (github.look), from an owner's room only,
@@ -693,12 +772,17 @@ class Yerkd:
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:
         """The `seen` tool: what a room read on a picture it was sent, filed beside it (pictures.file) for its recall, in any
-        room (a person's: class room, memory.INBOXES). Only a picture in the calling room's own inbox, the header by code."""
+        room (a person's: class room, memory.INBOXES). Only a picture in the calling room's own inbox, the header by code.
+        Nothing is written when a line of `text` or `shows` holds a key, a password or token line (doctor.SECRETS) or a saved
+        login's password (logins.passwords): the answer names the line and its kind, never the value or the line."""
         p, inbox = Path(path).expanduser().resolve(), (self.state / "rooms" / room / "work" / "inbox").resolve()
         if room not in self.rooms or p.parent.parent != inbox or not pictures.is_picture(p) or not p.is_file():
             return {"ok": False, "error": words.SEEN_NOT_HERE.format(name=p.name)}
         if not shows.strip():
             return {"ok": False, "error": words.SEEN_NO_SHOWS}
+        if hit := await asyncio.to_thread(lambda: doctor.first_secret({"text": text, "shows": shows}, logins.passwords(self.private))):
+            log.info("seen: %s, %s refused, line %d of %s (%s)", room, p.name, hit[1], hit[0], hit[2])
+            return {"ok": False, "error": words.SEEN_SECRET.format(n=hit[1], part=hit[0], kind=hit[2])}
         out = await asyncio.to_thread(pictures.file, room, p, text, shows, self.memory.tz)
         log.info("seen: %s, %s, %d characters of its words", room, p.name, len(text))
         return {"ok": True, "file": str(out), "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}
@@ -735,9 +819,10 @@ class Yerkd:
             return r
         if not r["again"] and not r["folded"] and self.pipeline.auto():   # [needs] auto: built now, or queued
             await self.pipeline.filed(r, room)
-        elif not r["again"]:                              # a retried call is said once
+        elif not r["again"]:                              # a retried call is said once; NEED_FILED's {n} is in its command too
             await self.jobs.alert(None, (words.NEED_AGAIN if r["folded"] else words.NEED_FILED).format(
-                n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
+                n=needs.called(self.state, r) if r["folded"] else r["n"], room=room, ability=words.line(r["ability"], 80),
+                day=r["day"], count=r["count"]), 0)
         log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
         return {**r, "next": words.FILED_NEXT.format(clause=words.NEED_CLAUSE)}
 
@@ -807,12 +892,254 @@ class Yerkd:
 
     def owner_servers(self) -> list[Any]:
         """The MCP tables of the owner's rooms, where an add-on's mac.json is looked for (page.addon_file); never a person's."""
-        return [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()]
+        return texts.owner_servers(self.room_confs)
 
     def imessage(self) -> dict[str, Any]:
         """[imessage] as the `text` tool reaches the Mac's bridge: yerkd.toml's own way, else the Mac and its bridge's socket
         an owner room's add-on names in its mac.json (texts.reach), as `texts` and the page reach that Mac."""
-        return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
+        return texts.way(self.conf, self.room_confs, self.state)
+
+    def texting(self) -> list[Any]:
+        """[texting] mode dry or live: the read-only link to the Mac's bridge, the intake and, with a report room, the writer,
+        the check, the holds and the sender with its hands (texting/), to run as tasks. No table, mode off, a reply list that
+        does not load or no way to the bridge: none, so nothing connects or is written; a table set off drops, with a log line,
+        what a live run left to send."""
+        conf = dict(self.conf.get("texting") or {})
+        if str(conf.get("mode") or "off") not in ("dry", "live"):
+            if "texting" in self.conf and (left := tsender.switched_off(self.ledger)):
+                log.warning("texting is off: %d text(s) a live run left to send dropped, none sent", len(left))
+            return []
+        self.texting_to = self.texting_room(conf)
+        try:
+            who = tpeople.load(tpeople.path(self.private, conf))
+            took = tintake.Intake(conf, who, self.ledger, self.daily.capture, self.texting_post)
+        except (OSError, ValueError, TypeError) as e:          # `yerk doctor` names it
+            log.error("texting is off: %s", e)
+            return []
+        if not (argv := texts.transport(self.imessage())):
+            log.error("texting is off: no way to the Mac's bridge ([imessage] host and socket, or a mac.json)")
+            return []
+        link = tlink.Link(who, self.state, took.take, self.to_machine, argv=argv, mode=str(conf["mode"]))
+        if (report := str(conf.get("report") or "")) not in self.room_confs:
+            return [link.start(), took.run()]
+        named = [a for n in self.room_confs[report].get("accounts") or [] for a in self.accounts if a.name == n]    # its order
+        wrote = twriter.Writer(conf, tpeople.path(self.private, conf), self.state, self.ledger, report, link.thread,
+                               lambda text: self.texting_recall(report, text), lambda now: self.place_for(report, now),
+                               named + [a for a in self.accounts if a not in named], self.cooldowns, self.failures,
+                               room_settings(self.room_confs[report], self.state, report, self.models)["model"][0],
+                               head=texts.head(self.imessage()))       # a photo in their texts is looked at over the hands' ssh
+        out = "text-out" in self.gates.external                # [gates] off = ["text-out"]: no text goes, one left waiting included
+        self.holds = tholds.Holds(conf, tpeople.path(self.private, conf), self.state, self.ledger, self.texting_to, wrote.last,
+                                  self.texting_show, out=out, window_s=self.gates.window_s, word=self.gates.word)
+        file = tpeople.path(self.private, conf)
+        hands = thands.Live(file, str(conf.get("outbox") or ""), texts.head(self.imessage()) if out else []) \
+            if conf["mode"] == "live" else thands.Dry(file, self.state)          # the hands, chosen once: nothing shared
+        try:
+            send = tsender.Sender(conf, file, self.ledger, link.thread, hands, self.holds.edits, self.texting_post, self.texting_to,
+                                  status=link.more, out=out, machine=self.to_machine,
+                                  day_file=self.state / "texting" / "daily.json")
+        except ValueError as e:                               # `yerk doctor` names it
+            log.error("texting is off: %s", e)
+            self.holds = None
+            return []
+        took.withdraw, took.claim, took.stop = self.holds.withdraw, send.claim, send.cancel
+        return [link.start(), took.run(), wrote.run(), tcheck.Check(conf, wrote).run(), self.holds.run(), send.run()]
+
+    def texting_told(self, room: str) -> str:
+        """The block in the `report` room's context every turn while [texting] is dry or live (J29): what texting is, that a
+        card is the code's and the owner's word on one is taken before the turn, and what is the room's to answer; "" anywhere else."""
+        conf = dict(self.conf.get("texting") or {})
+        if (mode := str(conf.get("mode") or "off")) not in ("dry", "live") or room != conf.get("report") or not self.owner(room) \
+                or self.room_confs[room].get("people"):
+            return ""
+        return words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID[mode])
+
+    def texting_room(self, conf: dict[str, Any]) -> str:
+        """The one room texting may show anything in (J25): live, `report`; dry, `dry_report`, none when it is empty. Only an
+        owner room with no people: another is refused here, once at the start, and is shown no card, line or notice."""
+        name = str(conf.get("report" if conf.get("mode") == "live" else "dry_report") or "")
+        if name and (not self.owner(name) or self.room_confs[name].get("people")):
+            log.error(words.TEXTING_NO_CARD_ROOM.format(room=name))
+            return ""
+        return name
+
+    async def texting_show(self, room: str, text: str, mid: str = "") -> str:
+        """A card (no `mid`), an edit of one, or a word's answer, in texting_room's room and nowhere else: its message id,
+        or "" when it did not go."""
+        if not room or room != self.texting_to or room not in self.channels:
+            return ""
+        try:
+            if mid:
+                await self.channels[room].edit_post(room, mid, text)
+                return mid
+            return str((await self.channels[room].send_text(room, text) or [""])[0])
+        except Exception as e:                                # a card not shown is never sendable; the next pass tries again
+            log.warning("texting: %s in %s did not go: %s", "an edit" if mid else "a card", room, e)
+            return ""
+
+    async def texting_word(self, room: str, sender: str, text: str, ref: str | None) -> bool:
+        """Asked by the channel before a message in a room's own channel starts a turn: True, it was the owner's word on a
+        text card and is answered there."""
+        return self.holds is not None and await self.holds.word(room, sender, text, ref)
+
+    def texting_recall(self, room: str, text: str) -> str:
+        """What `room` is handed for `text`, for the writer's pack: its recall part as its hook renders it and its recall
+        tool's search. Off the loop."""
+        names, topics, past, absent = self.recall_for(room, text)
+        cap = context.NONE if context.uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["recall"])
+        hits = self.search(room, text, docs=False).get("hits") or []
+        return "\n".join([hooks.render_recall(names, topics, cap, past, absent), *(f"{h['cite']} {h['text']}" for h in hits)])
+
+    async def texting_post(self, room: str, line: str) -> None:
+        if room and room == self.texting_to:                   # texting_room's room alone (J25)
+            log.info("texting: %s", await self.posted(room, line, "texting"))
+
+    async def tool_texting(self, room: str, op: str, person: str = "", value: str = "", said: str = "") -> dict[str, Any]:
+        """The `texting` tool, in the [texting] report room only (another owner room is told which room; a person's room one
+        fixed line that names no room and is the same with texting on or off): `help`; a person's sheet, day or newest decision,
+        read (texting_read); or one change to their sheet or standing release (people.change), only on the owner's own words
+        of this turn (`said`, owner_said)."""
+        conf = dict(self.conf.get("texting") or {})
+        if room not in self.rooms or not self.owner(room):         # a person's room: one line, the same whatever the mode
+            return {"ok": False, "line": words.TEXTING_ONLY}
+        if str(conf.get("mode") or "off") not in ("dry", "live"):
+            return {"ok": False, "line": words.TEXTING_OFF}
+        if room != (report := str(conf.get("report") or "")):
+            return {"ok": False, "line": words.TEXTING_WHERE.format(room=report)}
+        if op == "help":
+            return {"ok": True, "line": words.TEXTING_HELP}
+        file = tpeople.path(self.private, conf)
+        if op in ("sheet", "log", "why"):
+            return await asyncio.to_thread(self.texting_read, file, op, person, value)
+        if op not in tpeople.OPS:
+            return {"ok": False, "line": words.TEXTING_OPS}
+        if (m := self.owner_said(room, said)) is None:
+            return {"ok": False, "line": words.TEXTING_NOT_SAID}
+        ok, line = await asyncio.to_thread(tpeople.change, file, person, op, value, f"{room} m:{m.id} {datetime.now(self.memory.tz):%Y-%m-%d}")
+        log.info("texting: %s %s %s: %s", op, person, value[:40], "changed" if ok else "not changed")
+        return {"ok": ok, "line": line}
+
+    def owner_said(self, room: str, said: str) -> Inbound | None:
+        """The owner's own message in `room`'s running turn holding `said` (spacing and case aside), read where said_in_turn
+        reads the turn: what a change the owner ordered carries. A person's message, one of an earlier turn, or under three words
+        (a scrap any message holds would carry any change): None."""
+        want = " ".join(said.split()).casefold()
+        with self.rooms[room].lock:
+            return next((m for m in self.rooms[room].inflight
+                         if len(want.split()) >= 3 and m.sender == "owner" and want in " ".join(m.text.split()).casefold()), None)
+
+    async def tool_people(self, room: str, op: str, person: str = "", said: str = "") -> dict[str, Any]:
+        """The `people` tool: who `room` answers besides the owner, with no op; on the owner's own words of this turn (`said`,
+        owner_said), one more from their next message on, a person who wrote in its own channel, by that message (`add`, the
+        adapter's author), or one so added no more (`drop`, by handle or id). Kept in the daemon's override over rooms.toml,
+        which is never written, and joined to its `people` at each start (join_added); never where rooms.toml's `people`
+        would be refused (unpeopled)."""
+        kept, op, given = added(self.state, room), op.strip().lower(), person.strip()
+        def who(p: dict[str, str]) -> str:
+            return f"@{p['name']}" if p.get("name") else p["id"]
+        if room not in self.rooms or not op:
+            ids = people(room, self.room_confs.get(room, {}))
+            also = "".join(words.PEOPLE_ONE.format(who=who(p), day=p.get("day", "")) for p in kept if int(p["id"]) in ids)
+            n = len(ids - {int(p["id"]) for p in kept})
+            return {"ok": True, "line": words.PEOPLE_NOW.format(also=also + (words.PEOPLE_LISTED.format(n=n) if n else ""))}
+        if op not in ("add", "drop"):
+            return {"ok": False, "line": words.PEOPLE_OPS}
+        if op == "add" and (why := self.unpeopled(room)):
+            return {"ok": False, "line": why}
+        if (m := self.owner_said(room, said)) is None:
+            return {"ok": False, "line": words.PEOPLE_NOT_SAID}
+        if op == "drop":
+            listed, low = self.listed[room], given.lstrip("@").casefold()
+            hit = next((p for p in kept if low in (p["id"], p.get("name", "").casefold())), None)
+            if (int(hit["id"]) if hit else discord_id(given)) in listed:       # in rooms.toml too: the owner's file to edit
+                return {"ok": False, "line": words.PEOPLE_IN_TOML.format(who=who(hit) if hit else given)}
+            if hit is None:
+                return {"ok": False, "line": words.PEOPLE_NO_ONE.format(given=given, who=", ".join(map(who, kept)) or words.PEOPLE_NONE)}
+            self.joined(room, [p for p in kept if p is not hit])
+            log.info("people: room %s answers %s no more, on the owner's m:%s", room, hit["id"], m.id)
+            return {"ok": True, "line": words.PEOPLE_DROPPED.format(who=who(hit))}
+        at = watch.message(given) or ((None, int(given)) if re.fullmatch(r"\d{1,20}", given) else None)
+        if at is None:
+            return {"ok": False, "line": words.PEOPLE_NOT_MESSAGE.format(given=words.no_paths(given)[:120])}
+        if (author := getattr(self.channels.get(room), "author", None)) is None:
+            return {"ok": False, "line": words.WATCH_NO_DISCORD}
+        try:
+            uid, handle = await author(room, *at)
+        except watch.Failed as e:
+            return {"ok": False, "line": str(e)}
+        if not uid:
+            return {"ok": False, "line": words.PEOPLE_THE_OWNER}
+        p = {"id": str(uid), "name": handle, "day": f"{(now := datetime.now(self.memory.tz)):%b} {now.day}", "by": f"m:{m.id}"}
+        if uid in people(room, self.room_confs[room]):
+            return {"ok": True, "line": words.PEOPLE_ALREADY.format(who=who(p))}
+        self.joined(room, [*kept, p])
+        log.info("people: room %s answers %s too, on the owner's m:%s", room, uid, m.id)
+        return {"ok": True, "line": words.PEOPLE_ADDED.format(who=who(p))}
+
+    def unpeopled(self, room: str) -> str:
+        """Why `room` can answer no one but the owner, as the start refuses rooms.toml's `people` (config.people, context.walls),
+        in the people tool's words; "" when it can."""
+        conf = {**self.room_confs[room], "people": [*self.listed.get(room, ()), 1]}     # 1: one more person, any id
+        try:
+            people(room, conf)
+            context.walls(self.private, self.state, self.memory.scope.roots, {**self.room_confs, room: conf})
+        except SystemExit as e:
+            return words.PEOPLE_OWNER_ROOM if "privacy" in str(e) else words.PEOPLE_SHELL if "Bash" in str(e) else words.PEOPLE_LAYER
+        return ""
+
+    def joined(self, room: str, kept: list[dict[str, str]]) -> None:
+        """`kept`, the people the owner had `room` answer by asking, into its override, and with rooms.toml's (`listed`) its
+        `people` from the next message on: its conf, which its Room reads, and the adapter's (answer)."""
+        over = {**override(self.state, room), "people": kept}
+        (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
+        write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
+        self.join_added(room)
+        if (answer := getattr(self.channels.get(room), "answer", None)) is not None:
+            answer(room, people(room, self.room_confs[room]))
+
+    def join_added(self, room: str) -> None:
+        """The people the owner had `room` answer by asking (tool_people), joined to rooms.toml's in its conf: at the start, and
+        after each change. None on a room that can answer no one but the owner now (unpeopled: rooms.toml changed since) and no
+        [watch] assistant, each said in the log; the file keeps them for the owner's next word."""
+        try:
+            bots = assistants(self.conf)
+        except SystemExit:                       # not a list of ids: the Discord start stops on it in its own words
+            bots = frozenset()
+        ids, conf, why = [int(p["id"]) for p in added(self.state, room)], self.room_confs[room], self.unpeopled(room)
+        if ids and why:
+            log.warning("people: room %s answers none of the %d the owner added: %s", room, len(ids), why.splitlines()[0])
+        elif gone := sorted(set(ids) & bots):
+            log.warning("people: room %s answers %s no more: [watch] assistants lists them", room, ", ".join(map(str, gone)))
+        conf["people"] = [*sorted(self.listed[room]), *(i for i in dict.fromkeys(ids) if i not in self.listed[room] | bots and not why)]
+
+    def texting_read(self, file: Path, op: str, key: str, day: str) -> dict[str, Any]:
+        """`sheet`: a person's sheet and standing release; `log`: their texts and decisions on `day` (YYYY-MM-DD, default
+        today), a dry one marked; `why`: the newest decision and the writer's whole reason, kept past a close. Nothing is written."""
+        try:
+            who = tpeople.load(file)
+            on = datetime.strptime(day, "%Y-%m-%d").date() if op == "log" and day else datetime.now(self.memory.tz).date()
+        except (OSError, ValueError) as e:
+            return {"ok": False, "line": str(getattr(e, "strerror", None) or e)}
+        if (p := who.people.get(key)) is None:
+            return {"ok": False, "line": words.TEXTING_NO_ONE.format(key=key, keys=", ".join(who.people))}
+        if op == "sheet":
+            s = who.sheets[key]
+            return {"ok": True, "person": key, "first": p.first, "release": p.release, "on_file": tpeople.sheet_file(file, p).is_file(),
+                    "open": list(s.open), "knows": [{"fact": f, "source": src} for f, src in s.knows], "night": s.night,
+                    "reacts": list(s.reacts), "unanswered_share": s.unanswered_share, "pacing": s.pacing, "card": s.card}
+        def at(t: float, form: str = "%H:%M") -> str:
+            return datetime.fromtimestamp(t, self.memory.tz).strftime(form)
+        def said(r: dict[str, Any]) -> str:
+            return (words.TEXTING_LOG if "person" in r else words.TEXTING_LOG_IN).format(
+                at=at(r["t"]), who="the owner" if r.get("sender") == "owner" else p.first, chars=r.get("chars"), state=r["state"],
+                dry=" (dry)" if r.get("mode") == "dry" else "", reason=r.get("reason") or r.get("decision") or "no reason yet")
+        if op == "why":
+            row = (r := self.ledger.texting_last(key)) and {      # the check's reason when it held it, else the writer's whole: both kept past a close
+                **r, "reason": json.loads(r["verdict"] or "{}").get("reason") or r["why"] or r["reason"]}
+            return {"ok": True, "line": f"{at(row['t'], '%Y-%m-%d')} {said(row)}" if row else words.TEXTING_NO_WHY.format(first=p.first)}
+        start = datetime.combine(on, datetime.min.time(), self.memory.tz)
+        return {"ok": True, "day": str(on), "lines": [said(r) for r in self.ledger.texting_day(key, start.timestamp(),
+                                                                                            (start + timedelta(days=1)).timestamp())]}
 
     async def tool_texts(self, room: str, limit: int = 0) -> dict[str, Any]:
         """The `texts` tool: the owner's recent texts, read from the Mac's Messages database (inbox.read), from an owner's
@@ -921,37 +1248,54 @@ class Yerkd:
             then = words.PICTURES_STOP.format(left=sum(map(len, left)))
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         line = words.PICTURES_BATCH.format(room=room, n=n, of=of, how=how, filed=filed, count=len(mine), then=then)
-        if (to := str(row["room"])) in self.channels:
-            with contextlib.suppress(Exception):
-                await self.channels[to].notify(to, line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="pictures backfill: its line went to the machine room")
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=await self.posted(str(row["room"]), line, "pictures backfill"))
         log.info("%s", line)
         return True
+
+    async def posted(self, to: str, line: str, what: str) -> str:
+        """A worker's end in one line in its room, never a relay turn; an error posting it is swallowed. The worker row's note
+        from what happened: the line went, or it could not be posted and why."""
+        why = words.NO_CHANNEL_HERE.format(room=to)
+        if to in self.channels:
+            try:
+                await self.channels[to].notify(to, line)
+                return words.LINE_POSTED.format(what=what)
+            except Exception as e:
+                why = words.line(str(e) or type(e).__name__, 160)
+        return words.LINE_NOT_POSTED.format(what=what, why=why)
 
     async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
         account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
-        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py)."""
+        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py). A builder that
+        cannot start holds the need with why under [needs] auto, as a fix's or a read's does; on the hand road it is filed."""
         day, n = str(req.get("day") or ""), int(req.get("n") or 0)
         if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": "", "fixes": 0},
                                    lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
             row = needs.find(needs.load(self.state), day, n)
             return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
-                    words.NEED_BUSY.format(n=n, state=needs.said(row))}
+                    words.NEED_BUSY.format(n=needs.called(self.state, row), state=needs.said(row))}
         row, conf = needs.find(needs.load(self.state), day, n) or {}, self.pipeline.conf()
         found = await asyncio.to_thread(needs.plugins, self.room_confs, REPO)      # the plug-in repositories a fix may live in
         there = await asyncio.to_thread(needs.ahead, found, f"need-{day}-{n}")
         out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or ""), found, there),
                                        account=self.pipeline.account(), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
                                        tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
-        await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        if out.get("ok") or not self.pipeline.auto():
+            await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        else:                                            # said in the machine room, and the next queued need starts
+            await self.pipeline.stop({**row, "day": day, "n": n}, "held", words.NEED_NO_BUILDER.format(error=out.get("error")))
         log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
         return {**out, "day": day, "n": n}
 
     async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
-        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck. A
-        cold read or a fix worker goes to the pipeline (Pipeline.ended); False for any other worker."""
+        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck (one
+        cut off by a stop nobody asked for, workers.cut_off, is queued with no worker and nothing counted, and the queue starts
+        it on the first tick after the restart, since on a box shutdown the daemon is stopping too; one that died for memory,
+        workers.for_memory, is held with that, since it would only run out again). A cold read or a fix
+        worker goes to the pipeline (Pipeline.ended); False for any other worker. First, any need worker's clean worktrees go (needs.tidy), so
+        the next worker can take the branch, and its note names each that stays."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
         except (OSError, ValueError):
@@ -959,24 +1303,34 @@ class Yerkd:
         if not isinstance(job, dict):
             return False
         day, n = str(job.get("day")), int(job.get("n") or 0)
+        kept = await asyncio.to_thread(needs.tidy, Path(row["staging"]))
         if job.get("role") in ("read", "fix"):
-            return await self.pipeline.ended(row, end, str(job["role"]), day, n)
+            done = await self.pipeline.ended(row, end, str(job["role"]), day, n)
+            if kept:                                     # after the note ended wrote
+                said = str((self.ledger.worker_get(str(row["id"])) or {}).get("relay_note") or "")
+                self.ledger.worker_set(str(row["id"]), relay_note="; ".join([said, *kept]))
+            return done
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done", plugs)
+        if r is not None and r.get("state") == "filed" and self.pipeline.auto() and workers.cut_off(end):   # no verdict: the next tick's
+            r = await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "queued", "worker": ""},
+                                        lambda x: x.get("state") == "filed")
+        note = words.LINE_NONE.format(what="need build")
         if r is not None:
-            ab, st = words.line(str(r["ability"]), 80), r.get("state")
-            line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
-                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+            ab, st, num = words.line(str(r["ability"]), 80), r.get("state"), needs.called(self.state, r)
+            line = (words.NEED_PR.format(n=num, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
+                n=num, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_CUT_BUILD.format(n=num, ability=ab)
+                if st == "queued" else words.NEED_FAILED.format(n=num, how=how, ability=ab))
             line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
-            if (to := str(row["room"])) in self.channels:
-                with contextlib.suppress(Exception):
-                    await self.channels[to].notify(to, line)
+            note = await self.posted(str(row["room"]), line, "need build")
             log.info("%s", line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="; ".join([note, *kept]))
         if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
-            if (fails := int(r.get("fails") or 0) + 1) >= 2:
+            if workers.for_memory(end):                  # never built again by itself: it would run out of memory again
+                await self.pipeline.stop(r, "held", f"its builder {how}")
+            elif (fails := int(r.get("fails") or 0) + 1) >= 2:
                 await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
             elif await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"fails": fails}):
                 await self.need_build({"day": day, "n": n})
@@ -1110,7 +1464,7 @@ class Yerkd:
         return {**r, "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on) if r.get("topic") else words.RULE_CLAUSE.format(job=r["job"]))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
+        """The `worker` tool (rooms only: no server a worker is given holds it). `yerk worker` comes through
         /control, which keeps every form, for any room."""
         named = str(req.get("room") or "") if req.get("action") == "start" else ""
         return self.owner_only(room, named) or await self.workers.handle(room, req)
@@ -1160,12 +1514,48 @@ class Yerkd:
             (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
             write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
         now, on = room_settings(conf, self.state, room, self.models), pinned(self.state, room, [*names.values()])
+        if (dropped := over.get("fast") is True and now["model"][0] not in FAST_MODELS):   # off Fable 5.2: fast mode goes with it
+            over.pop("fast")
+            write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
         if ([v for v, _ in now.values()], on) != ([v for v, _ in before.values()], pin) and room in self.rooms:
             await asyncio.to_thread(self.rooms[room].respec)        # an idle process's close, off the loop
         log.info("settings: room %s on %s, effort %s, account %s", room, now["model"][0], now["effort"][0] or "default", on or "by order")
         line = (words.NEXT_REPLY if want or level or acct else words.THIS_ROOM).format(
             model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default", on=words.ON.format(account=on) if on else "")
-        return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "")}
+        return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "") + (f"\n{words.FAST_OFF}" if dropped else "")}
+
+    async def fast_command(self, room: str, choice: str) -> dict[str, Any]:
+        """/fast: on, off, or nothing for the room's state. On is kept only in a room on Fable 5.2 and only when Claude Code
+        itself, asked on the account the room is on now (engine.fast_probe, a local command), turns it on; the next reply's
+        process then launches with it (Room.respec, as a changed effort does); off drops it the same way. Never "on" when
+        Claude Code refused it: the line is its refusal, in plain words, and nothing is kept."""
+        want, over = choice.strip().lower(), override(self.state, room)
+        model, r = room_settings(self.room_confs[room], self.state, room, self.models)["model"][0], self.rooms.get(room)
+        if want not in ("", "on", "off"):
+            return {"ok": False, "line": words.FAST_CHOICES.format(choice=words.line(want, 20))}
+        if not want:
+            reported = [words.FAST_SAID.format(state=r.fast_state)] if r and r.fast_state else []
+            return {"ok": True, "line": "\n".join([words.FAST_NOW.format(setting="on" if over.get("fast") is True else "off"), *reported])}
+        if want == "on" and model not in FAST_MODELS:
+            return {"ok": False, "line": words.FAST_ONLY.format(model=words.model_name(model) if model else words.USUAL)}
+        if want == "on":
+            acct = r.account_now() if r else self._account_for(room, model)
+            state, said = await asyncio.to_thread(fast_probe, acct, model)
+            log.info("fast: room %s asked on account %s: %s", room, acct.name, state or "no answer")
+            if state != "on":
+                return {"ok": False, "line": words.FAST_NOT_ON.format(why=words.fast_why(said, acct.name))}
+        if (over.get("fast") is True) != (want == "on"):
+            over.pop("fast", None)
+            over.update({"fast": True} if want == "on" else {})
+            (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
+            write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
+            if r:
+                await asyncio.to_thread(r.respec)          # an idle process's close, off the loop; a running turn ends as it began
+        return {"ok": True, "line": words.FAST_ON_NEXT if want == "on" else words.FAST_OFF}
+
+    def _account_for(self, room: str, model: str) -> Account:
+        """The account a room with no runner would start on: the one it is put on, else the first free for `model`."""
+        return pick(self.accounts, self.cooldowns, first=pinned(self.state, room, [a.name for a in self.accounts]), model=model)
 
     async def model_command(self, room: str, choice: str, account: str = "") -> dict[str, Any]:
         """/model: its one argument an account, a model or both (config.account_and_model), default clearing both, through the
@@ -1529,8 +1919,8 @@ class Yerkd:
             return {"decision": "block", "reason": reason} if reason else {}
         if event == "SessionStart":
             if payload.get("source") == "compact":
-                if name:                          # the topic rules ride again after it, each once (context.topics)
-                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)
+                if name and self.sessions.by_session(sid) == name:    # the bound session's: its topic rules ride again after it,
+                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)    # each once (context.topics); a copy's leaves the record
                 return await asyncio.to_thread(hooks.session_start, payload, self.state, lambda r: self.compact_pack(r, sid), name)
             prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
             if name and prev:                 # told only when the replaced session had answered something
@@ -1548,7 +1938,7 @@ class Yerkd:
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
-                                      self.taste_for, self.place_for, self.rules_topic)
+                                      self.taste_for, self.place_for, self.rules_topic, self.texting_told)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
@@ -1576,7 +1966,7 @@ class Yerkd:
                                   way=words.DELETE_WAY if self.owner(name) else "")
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
-        if v is None and (what := gates.restart_hit(tool, ti, self.private)):
+        if v is None and (what := gates.restart_hit(tool, ti, self.private, str(payload.get("cwd") or self.state / "rooms" / name / "work"))):
             why = (words.REBUILDING if self.rebuild_running()
                    else words.IN_PROGRESS if any(r.human_turn() for r in self.rooms.values()) else "")
             if why:
@@ -1594,7 +1984,7 @@ class Yerkd:
             rule, what, call = hit
             key = gates.call_key(tool, mail[0] if mail else ti)    # an email with every field and its files' sha256, as the tool sends it
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
-                     else emails.preview(mail[0], mail[1], str(dict(self.conf.get("gmail") or {}).get("user") or "")) if mail
+                     else emails.preview(mail[0], mail[1], dict(self.conf.get("gmail") or {})) if mail
                      else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, gates.bound_to(tool, cwd), self.gates.window_s)
             if rel:
@@ -1726,6 +2116,10 @@ class Yerkd:
         each account's meters now (the card's), else only a reading under a minute old is used."""
         out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger,
                                       self.rooms, live=bool((payload or {}).get("live")))
+        named = getattr(self.link, "channel_name", None)      # a watched channel by its name where the adapter knows it
+        for r in out["rooms"]:
+            if named and r.get("watch") and (name := named(r["watch"])):
+                r["watch_name"] = name
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
@@ -1790,12 +2184,29 @@ class Yerkd:
         while True:
             await asyncio.sleep(every)
             for room in self.rooms.values():
-                await asyncio.to_thread(room.idle_compact)     # first: a room it starts is busy, so the reap leaves it open
+                await asyncio.to_thread(room.idle_compact)     # first: a room it holds is busy, so the reap leaves it open (a copy holds nothing)
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event
             except Exception:
                 log.exception("workers: the reconcile pass failed")
+
+    async def keep_meters(self, every: float = 30.0) -> None:
+        """Each account's live reading kept under usage.EVERY old for /status's first answer: one step of usage.keep (one
+        account read at most, through nice) in a thread, then `every` seconds' sleep, forever; none with no account. A step
+        that raises is a warning, once for each distinct message, and the next step runs: a keeper that died unseen would
+        bring the stale card back. A reading it files ends a rate limit's rest it shows over (usage.back)."""
+        tried: dict[str, float] = {}
+        said: set[str] = set()
+        while True:
+            if self.accounts:
+                try:
+                    await asyncio.to_thread(usage.keep, self.accounts, self.state, tried, cooldowns=self.cooldowns)
+                except Exception as e:
+                    if (why := f"{type(e).__name__}: {e}") not in said:
+                        said.add(why)
+                        log.warning("usage: a step of the meters' keeper failed, the next runs in %g s: %s", every, why)
+            await asyncio.sleep(every)
 
     async def refresh_inbox(self, every: float) -> None:
         """The light check behind the `texts` tool: every `every` seconds, read the owner's newest texts off the Mac if it
@@ -1830,7 +2241,7 @@ class Yerkd:
                         else f"a {type(d['owner']).__name__}, not a Discord user id")
         dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
                             guard=guard, state=self.state, capture=self.daily.capture,
-                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard,   # the slash commands
+                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard, word=self.texting_word,
                             assistants=assistants(self.conf, frozenset({owner, *(i for n, c in self.room_confs.items() for i in people(n, c))})))
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
@@ -1841,6 +2252,7 @@ class Yerkd:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
         self.page.begin(asyncio.get_running_loop())
+        self.pipeline.begin()                            # before any task: a need's claim whose builder never started, queued
         moved = self.move_held()                         # before any room starts; said after the connect
 
         async def say_moved() -> None:
@@ -1855,7 +2267,8 @@ class Yerkd:
         poll = float(dict(self.conf.get("imessage") or {}).get("poll_seconds", inbox.POLL))
         checks = [self.refresh_inbox(poll)] if poll > 0 else []      # [imessage] poll_seconds = 0: the texts copy is off
         tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                                                   self.beat.tick(self.listening), self.pipeline.watch(), *checks, dc.start())]
+                                                   self.beat.tick(self.listening), self.keep_meters(), self.pipeline.watch(), *checks,
+                                                   *self.texting(), dc.start())]
         await self.until_stopped(tasks, dc.close)
 
 
@@ -1886,6 +2299,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
+    logging.getLogger("mcp").setLevel(logging.WARNING)   # the MCP library logs every request at INFO: two thirds of the journal
     priv, state = private_dir(a.private), state_dir(a.state)
     claim(state)                                 # before the ledger opens: a second daemon writes nothing
     y = Yerkd(priv, state, port=a.port, idle_minutes=a.idle_minutes,

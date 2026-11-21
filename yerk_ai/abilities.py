@@ -6,22 +6,45 @@ and comes from the file, never from a guess (decision 16; the list itself, decis
 """
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from pathlib import Path
 from typing import Any
 
-from . import addons, github, words
+from . import addons, emails, github, words
 from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
 SELF = "abilities"                  # "what can you do": its answer is every ability's name by state
+FROM = "email-name"                 # its answer says whether [gmail] name is set here (emails.here), never the name
 HOW = {"built": "How it works:", "described": "How it would be built:"}     # its `how` lines
 
 
+_KEPT: dict[tuple[tuple[str, int, int] | None, ...], dict[str, dict[str, Any]]] = {}     # the last read, by its files' stamps
+
+
+def _stamp(f: Path) -> tuple[str, int, int] | None:
+    """A file's path, size and modification time; None when it cannot be looked at (the read then says why)."""
+    try:
+        st = f.stat()
+    except OSError:
+        return None
+    return str(f), st.st_size, st.st_mtime_ns
+
+
 def manifest(state: Path | None = None) -> dict[str, dict[str, Any]]:
-    """The core's abilities.toml, with each add-on installed under `state` by its own entry (addons.py)."""
-    return dict(load_toml(table("abilities.toml"))["abilities"]) | (addons.installed(state) if state else {})
+    """The core's abilities.toml, with each add-on installed under `state` by its own entry (addons.py). The last one read
+    is kept by each of those files' path, size and modification time, the add-ons installed among them, so a change, or
+    an add-on that comes or goes, is seen at the next message and an unchanged manifest is parsed once (cleanup F8-09:
+    every message parsed the 161 KB file). The entries are shared: read them, never write them."""
+    core = table("abilities.toml")
+    stamp = tuple(map(_stamp, [core, *(sorted((state / addons.DIR).glob(f"*/{addons.MANIFEST}")) if state else [])]))
+    if (kept := _KEPT.get(stamp)) is None:        # the stamps first: a write during the read changes them for the next call
+        kept = dict(load_toml(core)["abilities"]) | (addons.installed(state) if state else {})
+        _KEPT.clear()
+        _KEPT[stamp] = kept
+    return dict(kept)
 
 
 def has(key: Path | None) -> bool:
@@ -95,6 +118,8 @@ def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: An
         out.append(f"Here: {s.embeddings_model} at {s.embeddings_dim} dimensions, {s.embeddings_width} kept in memory, "
                    f"units {s.embeddings_units} ([memory] in yerkd.toml; yerk config get memory says what each "
                    "setting buys and costs)")
+    if name == FROM and (here := emails.here(getattr(s, "private", None))):
+        out.append(f"Here: {here}")
     if ab.get("key"):
         out.append(f"How to add the key: {ab['key']}")
     out.append(f"Free path: {ab['free_path']}")
@@ -112,12 +137,18 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     if name == SELF:
         return " ".join([f"{name}, a Yerk AI ability ({said}): {ab['what']}", *census(tab, s)])
     how = "; ".join(str(x).split(":", 1)[0] for x in ab.get("how", []))
-    up = built_part(ab, tab)
+    up, here = built_part(ab, tab), emails.here(getattr(s, "private", None)) if name == FROM else ""
     parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"{HOW[ab.get('state', 'built')]} {how}." if how else "",
              f"Needs: {ab['needs']}.", f"Cost: {ab.get('price') or 'nothing, it runs on the box'}.",
-             f"Free path: {ab['free_path']}.", f"Built part: {up}." if up else "",
+             f"Free path: {ab['free_path']}.", f"Here: {here}." if here else "", f"Built part: {up}." if up else "",
              f"Why it is not built: {ab['why_not']}" if ab.get("why_not") else ""]
     return " ".join(x for x in parts if x)
+
+
+@functools.cache
+def phrase(text: str) -> re.Pattern[str]:
+    """One `asked_as` phrase as a whole-word pattern, compiled once: the manifest's phrases outnumber re's own cache (512)."""
+    return re.compile(rf"\b{re.escape(text)}\b")
 
 
 def asked(prompt: str, s: Any, tab: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
@@ -131,4 +162,4 @@ def asked(prompt: str, s: Any, tab: dict[str, dict[str, Any]] | None = None) -> 
         return []
     low = prompt.lower()
     return [{"key": name, "text": brief(name, ab, tab, s), "cite": f"yerk explain {name}"} for name, ab in tab.items()
-            if any(re.search(rf"\b{re.escape(str(p).lower())}\b", low) for p in ab.get("asked_as", []))]
+            if any(phrase(str(p).lower()).search(low) for p in ab.get("asked_as", []))]

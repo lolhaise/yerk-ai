@@ -8,9 +8,13 @@ import asyncio
 import hashlib
 import io
 import json
+import os
+import stat
 import subprocess
 import sys
+import threading
 import time
+import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -32,11 +36,15 @@ HOUR = 3600
 
 class FakeSystemd:
     """systemd as sync and the runner rely on it: unit files in a folder, every call recorded, a timer
-    known once enabled; its next and last fire times are whatever the test puts there."""
+    known once enabled; its next and last fire times are whatever the test puts there, and a service
+    runs while the test has it in `active`."""
 
     def __init__(self, folder):
-        self.folder, self.calls, self.enabled, self.next, self.last = folder, [], {}, {}, {}
+        self.folder, self.calls, self.enabled, self.next, self.last, self.active = folder, [], {}, {}, {}, set()
         folder.mkdir(parents=True, exist_ok=True)
+
+    def running(self, unit):
+        return unit in self.active
 
     def read(self, unit):
         p = self.folder / unit
@@ -231,6 +239,66 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     assert jobs.phone("x" * 60) == "x" * 37 + "\N{HORIZONTAL ELLIPSIS}" and jobs.phone("short") == "short"
 
 
+TWO_JOBS = ('[jobs.kettle]\nkind = "script"\nschedule = "*:0/5"\ntz = "UTC"\nroom = "r"\ncommand = "true"\n\n'
+            '[jobs.lamp]\nkind = "agent"\nschedule = "Mon..Fri 09:00"\ntz = "America/Toronto"\nroom = "r"\nmessage = "m"\n')
+
+
+def venv_bin(root):
+    """A venv's bin as venv and uv make it on Linux, and the system's bin it points into: the venv's `python` a link to the
+    system's one file (a stand-in; the fake systemd runs nothing), its `python3` and `python3.13` links to `python` beside it."""
+    (system := root / "system" / "bin").mkdir(parents=True)
+    (system / "python3.13").write_text("a stand-in interpreter\n")
+    (system / "python3").symlink_to("python3.13")
+    (b := root / "venv" / "bin").mkdir(parents=True)
+    (b / "python").symlink_to(system / "python3.13")
+    for name in ("python3", "python3.13"):
+        (b / name).symlink_to("python")
+    return b, system
+
+
+def on(python):
+    return Env(str(python), ENV.repo, ENV.private, ENV.state)
+
+
+def test_two_spellings_of_one_interpreter_plan_every_job_unchanged_both_ways_round(tmp_path):
+    b, _ = venv_bin(tmp_path)
+    path = write_jobs(tmp_path / "jobs.toml", TWO_JOBS)
+    for first, then in (("python", "python3"), ("python3", "python"), ("python3.13", "python3")):   # the daemon's, the yerk command's
+        sd = FakeSystemd(tmp_path / f"units-{first}")
+        assert jobs.sync(path, sd, on(b / first))[0].added == ["kettle", "lamp"]
+        n = len(sd.calls)
+        p, _ = jobs.sync(path, sd, on(b / then))
+        assert (p.added, p.changed, p.unchanged) == ([], [], ["kettle", "lamp"]) and len(sd.calls) == n    # nothing rewritten or restarted
+        assert jobs.diff_lines(p) == ["= 2 unchanged: kettle, lamp"]
+        # the daemon's own spelling, the one the units already hold when it synced last: the first sync after the deploy rewrites none
+        assert f"ExecStart={jobs.unit_line(str(b / 'python'), '-P', '-m', 'yerk_ai.jobs', 'run', 'lamp')}\n" in sd.read("yerk-job-lamp.service")
+
+
+def test_a_unit_on_another_interpreter_file_plans_its_job_changed(tmp_path):
+    b, system = venv_bin(tmp_path)
+    other, _ = venv_bin(tmp_path / "other")
+    (old := tmp_path / "old" / "bin").mkdir(parents=True)          # a box whose `python` is Python 2: two files in one folder
+    (old / "python").write_text("python 2\n")
+    (old / "python3").write_text("python 3\n")
+    path = write_jobs(tmp_path / "jobs.toml", TWO_JOBS)
+    # the system's python3 is the venv's file and runs without the venv; another venv; the folder's other file
+    for i, (was, now) in enumerate(((b / "python3", system / "python3"), (b / "python", other / "python"), (old / "python3", old / "python"))):
+        sd = FakeSystemd(tmp_path / f"units-{i}")
+        jobs.sync(path, sd, on(was))
+        assert jobs.plan(path, sd, on(now)).changed == ["kettle", "lamp"] and jobs.plan(path, sd, on(was)).changed == []
+    assert f"ExecStart={jobs.unit_line(str(old / 'python3'), '-P')}" in sd.read("yerk-job-kettle.service")   # never the folder's other file
+
+
+def test_one_jobs_unit_text_is_the_same_from_either_spelling_and_an_install_with_only_python3_keeps_python3(tmp_path):
+    b, system = venv_bin(tmp_path)
+    job = make_job("kettle", {"kind": "script", "schedule": "*:0/5", "tz": "UTC", "room": "r", "command": "true"})
+    assert jobs.unit_texts(job, on(b / "python")) == jobs.unit_texts(job, on(b / "python3")) == jobs.unit_texts(job, on(b / "python3.13"))
+    # no virtual environment and no `python` in the folder: the unit names python3, a name that is there
+    timer, service = jobs.unit_texts(job, on(system / "python3.13"))
+    assert (timer, service) == jobs.unit_texts(job, on(system / "python3"))
+    assert f"ExecStart={jobs.unit_line(str(system / 'python3'), '-P')} -m yerk_ai.jobs run kettle\n" in service
+
+
 def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     sd = FakeSystemd(tmp_path / "units")
     path = write_jobs(tmp_path / "jobs.toml", '[jobs.tokyo]\nkind = "script"\nschedule = "*-*-* 09:00"\ntz = "Asia/Tokyo"\n'
@@ -253,8 +321,13 @@ def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     assert jobs.status_lines(path, sd, now) == [f"{jobs.NOT_DONE} jobs: the timer list could not be read"]
 
 
-def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path):
+def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path, monkeypatch):
     sd = jobs.Systemd(folder=tmp_path / "units", stamps=tmp_path / "stamps")
+    states = {f"yerk-job-{s}.service": s for s in ("active", "activating", "deactivating", "inactive", "failed")}
+    monkeypatch.setattr(jobs.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(
+        cmd, 0 if cmd[2:] == ["is-active", "yerk-job-active.service"] else 3, states[cmd[3]] + "\n", ""))
+    assert [u for u in states if sd.running(u)] == ["yerk-job-active.service", "yerk-job-activating.service"]
+    monkeypatch.undo()
     sd.write("yerk-job-x.timer", jobs.HEADER + "x.\n[Timer]\n")
     sd.write("yerk-job-x.service", jobs.HEADER + "x.\n[Service]\n")
     (tmp_path / "units" / "yerk-job-hand.timer").write_text("[Timer]\n")          # not ours: never listed, never removed
@@ -373,6 +446,98 @@ def test_a_script_run_with_no_daemon_is_ledgered_undelivered_and_delivered_late_
         rec.sent[0][1].endswith("\nwhile you were out")
 
 
+def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_the_units_own_limit(setup, tmp_path, monkeypatch):
+    """At boot the job timers start a few seconds before yerkd. An agent job's hand-off that finds no daemon listening
+    (nothing on the port, or the pid of a yerkd.json from before the box went down) is tried again every few seconds, the
+    one-shot still in the file, until the unit's own limit less a margin; then it gives up as before. A daemon that answered
+    is not asked again. A script and a note give up at once, as before: the start sweep delivers them late."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    shot = '[jobs.boot]\nkind = "agent"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n'
+    path = write_jobs(priv / "jobs.toml", shot)
+    jobs.sync(path, sd, ENV)
+    monkeypatch.setattr(jobs, "RETRY_EVERY", 0.0, raising=False)          # raising=False: main has none
+    calls = []
+
+    def boot(payload):
+        calls.append(payload)
+        assert "[jobs.boot]" in path.read_text() and sd.ours() == ["boot"]          # not removed while it waits
+        if len(calls) == 1:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        if len(calls) == 2:
+            raise ProcessLookupError(3, "No such process")
+        return {"ok": True}
+    assert (jobs.run("boot", priv, state, units=sd, handoff=boot), len(calls)) == (0, 3)
+    r, = s.ledger.job_runs(job="boot")
+    assert (r["exit"], r["delivery"]) == (None, None) and sd.ours() == [] and "[jobs.boot]" not in path.read_text()
+    limit = jobs.start_limit(jobs.make_job("boot", {"kind": "agent", "at": "2099-01-02 09:00", "tz": "UTC", "room": "r",
+                                                    "message": "m"}))
+    assert limit == 120                                    # the TimeoutStartSec the unit is written with
+
+    def refused(payload):
+        calls.append(payload)
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+    for ago, waits in ((limit - jobs.RETRY_SPARE + 1, False), (limit - jobs.RETRY_SPARE - 2, True)):
+        write_jobs(path, shot)
+        jobs.sync(path, sd, ENV)
+        calls.clear()
+        monkeypatch.setattr(jobs, "RETRY_EVERY", 0.5)
+        t0 = time.time()
+        assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=t0 - ago) == 1
+        assert (len(calls) > 1, time.time() - t0 < 5) == (waits, True) and sd.ours() == []
+        r = s.ledger.job_runs(job="boot")[0]
+        assert (r["exit"], r["result"], r["delivery"]) == ("not run", "did not start",
+                                                           "undelivered: the daemon is not running (URLError)")
+    for answered in (urllib.error.HTTPError("http://127.0.0.1:1/control", 500, "boom", {}, None), TimeoutError("slow")):
+        write_jobs(path, shot)                              # it answered, or took the request: never asked twice
+        calls.clear()
+
+        def took(payload, e=answered):
+            calls.append(payload)
+            raise e
+        assert jobs.run("boot", priv, state, units=sd, handoff=took) == 1 and len(calls) == 1
+    for kind, what in (("script", 'command = "echo while you were out"'), ("note", 'message = "the note"')):
+        write_jobs(path, f'[jobs.boot]\nkind = "{kind}"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\n{what}\n')
+        jobs.sync(path, sd, ENV)
+        calls.clear()
+        ago = jobs.start_limit(jobs.load(path, 0)[0]["boot"]) - jobs.RETRY_SPARE - 2      # time left to wait, were it an agent
+        assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=time.time() - ago) == 1 and len(calls) == 1
+        r = s.ledger.job_runs(job="boot")[0]
+        assert (r["kind"], r["delivery"], sd.ours()) == (kind, "undelivered: the daemon is not running (URLError)", [])
+
+
+def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):
+    """A script run whose unit was stopped mid-run (its start limit, or any stop) never writes its end. The daemon's sweep
+    after a restart closes it once its fired time plus its cap plus the margin has passed: the row gets its end and says it
+    was cut, and the failed-run alert goes out, once. A run of a job no longer in the file is closed the same way on the
+    default script cap, and nothing is sent for it: nobody is left to tell. A run that may still be going and an agent run
+    are left as they are."""
+    s = setup
+    rec, ops = Rec(), Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops},
+                                    conf={"ops_room": "ops"})
+    write_jobs(priv / "jobs.toml", '[jobs.slow]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ncap = 1\ncommand = "sleep 600"\n'
+                                   '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n')
+    now = time.time()
+
+    def started(job, kind, ago):                          # the row a run writes as it starts (jobs.run), and nothing after
+        return s.ledger.job_run_add(job=job, kind=kind, room="r", unit=f"{jobs.UNIT}{job}", planned=now - ago, fired=now - ago)
+    cut, going, agent, gone, recent = started("slow", "script", 181), started("slow", "script", 120), \
+        started("think", "agent", 999), started("old", "script", 9999), started("old", "script", 700)
+    asyncio.run(j.reattach())
+    r = s.ledger.job_run_get(cut)
+    assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 181 + 180, "cut", "cut", "alert", "n1")
+    assert ops.notified == [("ops", W.job_line("slow", "failed", result="signal"))]
+    assert ops.notified[0][1] == f"{W.NOT_DONE} job slow failed: it was killed"
+    r = s.ledger.job_run_get(gone)                          # its job is gone: the default script cap, 10 min plus the margin
+    assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 9999 + 720, "cut", "cut", "none", None)
+    assert [s.ledger.job_run_get(i)["ended"] for i in (going, agent, recent)] == [None, None, None]
+    asyncio.run(j.reattach())                                                     # closed once, told once
+    assert len(ops.notified) == 1 and rec.notified == rec.sent == []
+
+
 def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays(setup, tmp_path):
     s = setup
     rec = Rec()
@@ -426,6 +591,81 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     assert rec.notified == [("r", f"{W.NOT_DONE} job crash failed: it ended with an error")]
     assert s.ledger.job_run_get(run_crash)["note"] == f"worker {crash['id']}: exit-code, exited 3"
     assert len(s.chan.replies) == 1                      # the one relay; the other three posted nothing
+
+
+def test_quiet_job_cards_name_their_job_and_show_the_reports_line_so_each_run_is_told_apart(setup, tmp_path, capsys):
+    """need-2026-11-16-100: a room's six quiet job cards read alike ("worker finished clean, nothing to add", the time,
+    "report saved"): four runs of a forecast job whose reports each held its one line, two of another job with nothing, all
+    answering NO_REPLY. The job brief says the card shows REPORT.md's line, yet a quiet card hid it and named no job, and
+    on a phone the report command is out of reach. Fired as jobs, each card now names its job, a quiet run with a line in
+    its report shows that line whole, and one with nothing says so as before; neither asks its room for a turn, and the
+    worker list and report name the job, in the tool's answer and `yerk worker list|report`. The job's brief asks every run
+    for that line, a NO_REPLY run's too, where it said to write the same text as the last message: the token itself."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    write_jobs(priv / "jobs.toml",
+               '[jobs.rain-odds]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+               'message = "FAKE report=\\"Rain at the coast on Saturday: median 12 mm (5-95: 3 to 30)\\" result=\\"NO_REPLY\\""\n\n'
+               '[jobs.calm-check]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+               'message = "FAKE report=\\"NO_REPLY\\" result=\\"NO_REPLY\\""\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        out = {}
+        for name in ("rain-odds", "calm-check"):
+            assert await asyncio.to_thread(jobs.run, name, priv, state, sd, handoff) == 0
+            out[name] = await ended(s.ledger, s.ledger.job_runs(job=name)[0]["worker"])
+            await asyncio.sleep(0.2)                     # the hook's ledger writes after the worker row
+        return out
+    rows = asyncio.run(go())
+    rain, calm = rows["rain-odds"]["id"], rows["calm-check"]["id"]
+    prompt = (Path(rows["calm-check"]["staging"]) / "PROMPT.md").read_text()   # a line on every run, a quiet one's too
+    assert f"one-line result (what it found or did) as the first line of REPORT.md in your folder, even when your last " \
+           f"message is {W.NO_REPLY}: the card shows it with the job's name." in prompt
+    card = {k.removeprefix("worker:"): t.splitlines() for k, t, _, _ in rec.settled}
+    assert card[rain][:3] == [f"{W.DONE} worker finished clean", "Rain at the coast on Saturday: median 12", "mm (5-95: 3 to 30)"]
+    assert card[rain][3].startswith("-# job rain-odds, done in ") and card[rain][-1] == f"-# report saved: `yerk worker report {rain}`"
+    assert card[calm][0] == f"{W.DONE} worker {W.QUIET_WORKER}" and card[calm][1].startswith("-# job calm-check, done in ")
+    assert all(W.width(x) <= W.PHONE and x != W.NO_REPLY for t in card.values() for x in t)
+    assert s.chan.replies == []                          # neither asked its room for a turn: silence, as before
+    capsys.readouterr()
+    for name, wid in (("rain-odds", rain), ("calm-check", calm)):
+        assert (rows[name]["job"], rows[name]["relay"], rows[name]["relay_note"]) == (name, "skipped", "the job answered NO_REPLY")
+        assert s.ledger.job_runs(job=name)[0]["delivery"] == "silent (NO_REPLY)"
+        assert asyncio.run(w.handle("r", {"action": "report", "id": wid}))["job"] == name          # the worker tool's report
+        assert cli.main(["worker", "report", wid, "--state", str(state)]) == 0
+        assert capsys.readouterr().out.startswith(f"worker {wid} done, job {name}, account ")
+    listed = asyncio.run(w.handle("r", {"action": "list"}))["workers"]                             # the worker tool's list
+    assert {x["id"]: x["job"] for x in listed} == {rain: "rain-odds", calm: "calm-check"}
+    assert cli.main(["worker", "list", "--state", str(state)]) == 0
+    out = capsys.readouterr().out
+    assert f"{rain} done for job rain-odds in r on " in out and f"{calm} done for job calm-check in r on " in out
+
+
+def test_a_job_workers_end_for_memory_reads_as_its_card_reads_it(setup, tmp_path):
+    rec, told = Rec(), []
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": setup.room()}, {"r": rec})
+
+    async def relay(row, end, text=None, after=None):
+        told.append(text)
+        return ""
+    w.relay = relay
+    ends = [{"exit": "died", "result_code": "signal", "status": "KILL", "oom_kill": 1},       # the main process, for memory
+            {"exit": "timed out", "result_code": "timeout", "status": "TERM", "oom_kill": 2},
+            {"exit": "done", "result_code": "success", "status": "0", "oom_kill": 1}]
+    for i, end in enumerate(ends):
+        (tmp_path / f"w{i}").mkdir()
+        asyncio.run(j.worker_done({"id": f"w{i}", "job": "nightly", "room": "r", "staging": str(tmp_path / f"w{i}"), "started": 1000.0,
+                                   "cap": 600.0}, {**end, "finished": 1060.0, "result": "", "detail": ""}))
+    assert rec.notified == [("r", f"{W.NOT_DONE} job nightly failed: it ran out of memory"),
+                            ("r", W.job_line("nightly", "timed out", 600.0) + "\n" + W.OOM_LOST[1].format(n=2))]
+    assert f"ended done after 1m 00s; {W.OOM_LOST[0]}. Its message for the room" in told[0]
 
 
 def test_an_agent_jobs_worker_runs_at_the_jobs_own_model_and_thinking_level_not_the_rooms(setup, tmp_path, capsys):
@@ -516,6 +756,134 @@ def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(set
     # a job whose timer fires after it left the file: said, ledgered, exit 2
     assert jobs.run("gone", priv, state, units=sd, handoff=lambda p: {"ok": True}) == 2
     assert s.ledger.job_runs(job="gone")[0]["result"] == "no such job: not in the jobs file"
+
+
+def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_takes_them_out(setup, tmp_path):
+    """Two one-shots at one minute: the first to finish syncs while the other still runs. That one keeps its place in the
+    file and both its units (counted unchanged, never checked for a next fire), so systemd does not stop it; its own run
+    takes it out. A past one-shot whose own unit is not running (its run was cut) is refused and its units go, as before
+    this fix; so is one with no units."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    at = datetime.fromtimestamp(time.time() - 120, UTC).strftime("%Y-%m-%d %H:%M")
+    shot = '[jobs.{n}]\nkind = "script"\nat = "' + at + '"\ntz = "UTC"\nroom = "r"\ncommand = "echo {n}"\n'
+    path = write_jobs(priv / "jobs.toml", shot.format(n="first") + "\n" + shot.format(n="second"))
+    jobs.sync(path, sd, ENV, now=time.time() - HOUR)              # written while both were still to come
+    second, n = (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")), len(sd.calls)
+    checked = []
+    sd.check = lambda spec: checked.append(spec) or f"{spec!r} never fires again (it is in the past)"
+    handoff = lambda payload: asyncio.run(j.handle("", payload["job"]))  # noqa: E731  (the daemon's /control)
+    sd.active = {"yerk-job-first.service", "yerk-job-second.service"}           # both units running
+    assert jobs.run("first", priv, state, units=sd, handoff=handoff) == 0
+    assert sd.ours() == ["second"] and (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")) == second
+    assert "[jobs.second]" in path.read_text() and "[jobs.first]" not in path.read_text()
+    assert not [c for c in sd.calls[n:] if "second" in str(c)] and checked == []      # not disabled, removed or rewritten
+    sd.next["yerk-job-second.timer"], sd.last["yerk-job-second.timer"] = None, time.time() - 120     # fired: no next
+    assert jobs.status_lines(path, sd) == [f"{W.WORKING} second: running"]             # yerk status reads it as the sync
+    listed, told = jobs.schedule_list(path, sd), asyncio.run(j.handle("", {"action": "list"}))     # the command, the tool
+    assert listed["lines"] == told["lines"] == [f"second: running; {jobs.load(path, 0)[0]['second'].describe()}, room r, script"]
+    assert listed["errors"] == told["errors"] == {} and [r["name"] for r in listed["jobs"] if not r.get("stray")] == ["second"]
+    p, _ = jobs.sync(path, sd, ENV)                                # any other sync keeps it too
+    assert (p.unchanged, p.removed, p.errors, checked) == (["second"], [], {}, [])
+    assert jobs.run("second", priv, state, units=sd, handoff=handoff) == 0
+    assert sd.ours() == [] and "[jobs.second]" not in path.read_text() and [t for _, t, _ in rec.sent] == ["first", "second"]
+    write_jobs(path, shot.format(n="cut"))                         # its run was cut (a box shutdown): its unit is not running
+    sd.check = lambda spec: ""                                     # written while it was still to come
+    jobs.sync(path, sd, ENV, now=time.time() - HOUR)
+    assert sd.ours() == ["cut"]
+    assert jobs.status_lines(path, sd) == [f"{W.NOT_DONE} timer cut: not in the jobs file", f"{W.NOT_DONE} cut: cannot be scheduled"]
+    n = len(sd.calls)
+    p, _ = jobs.sync(path, sd, ENV)                                # the next sync removes it as before
+    assert (p.removed, p.unchanged, sd.ours()) == (["cut"], [], []) and p.errors["cut"].endswith("is in the past")
+    assert sd.calls[n:] == [("disable", "yerk-job-cut.timer"), ("remove", "yerk-job-cut.timer"),
+                            ("remove", "yerk-job-cut.service"), ("reload",)]
+    write_jobs(path, shot.format(n="late"))                        # never scheduled: refused as before
+    p, _ = jobs.sync(path, sd, ENV)
+    assert p.errors["late"].endswith("is in the past") and (p.unchanged, sd.ours()) == ([], [])
+
+
+def test_a_job_fired_in_the_instant_a_one_shot_takes_itself_out_of_the_jobs_file_still_starts(setup, tmp_path, monkeypatch):
+    """need-2026-11-16-101: a one-shot's run ended and took itself out of the jobs file in the second a script started
+    another job's service. That job's runner found it and ledgered its run, but the daemon's fire answered "no job": add
+    and remove wrote the file in place, and load, which fire calls, takes no lock, so it read the file empty or cut, every
+    job gone. Each new text is now swapped in whole: a fire that lands while the one-shot's run rewrites the file finds
+    its job in the file as it was and starts the worker, and the one-shot still leaves the file and its units go."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    path = write_jobs(priv / "jobs.toml", '[jobs.steady]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+                      'message = "FAKE report=\\"checked\\" result=\\"NO_REPLY\\""\n\n'
+                      '[jobs.once]\nkind = "script"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\ncommand = "true"\n')
+    jobs.sync(path, sd, ENV)
+    swap, fired = os.replace, []
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+
+        def mid_rewrite(src, dst):               # the one-shot's run takes it out of the file: steady fires in that instant
+            if Path(dst) == path.resolve() and not fired:
+                fired.append((jobs.run("steady", priv, state, sd, handoff), "[jobs.once]" in path.read_text()))
+            return swap(src, dst)
+        monkeypatch.setattr(os, "replace", mid_rewrite)
+        assert await asyncio.to_thread(jobs.run, "once", priv, state, sd, handoff) == 0
+        assert fired == [(0, True)]                       # it fired mid-rewrite, the file as it was until the swap
+        run, = s.ledger.job_runs(job="steady")
+        assert (run["exit"], run["result"], run["delivery"]) == (None, None, None) and run["worker"]   # started, not "no job"
+        return run, await ended(s.ledger, run["worker"])
+    run, worker = asyncio.run(go())
+    assert (worker["id"], worker["job"], worker["exit"]) == (run["worker"], "steady", "done")
+    assert "[jobs.once]" not in path.read_text() and "[jobs.steady]" in path.read_text() and sd.ours() == ["steady"]
+
+
+def test_each_rewrite_of_the_jobs_file_is_swapped_in_whole_so_a_read_at_any_instant_finds_every_job(tmp_path):
+    """need-2026-11-16-101: load, which the daemon's fire, a job's runner and a sync each call, takes no lock, and add and
+    remove wrote the file in place, so a read in the instant of a rewrite found it empty or cut. Each new text is now
+    written beside the file and swapped in with one rename: a read that had the file open still reads it whole, a reader
+    beside a hundred rewrites never misses a job, a rewrite that fails leaves the file as it was with no temp file beside
+    it, the file is 0600 as every private file, and a jobs file that is a symlink keeps its link."""
+    keep = '[jobs.steady]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "m"\n'
+    path = write_jobs(tmp_path / "private" / "jobs.toml", keep)
+    path.chmod(0o644)
+    shot = jobs.fields_for("script", "2099-01-02 09:00", "true", "r", "UTC")
+    for change in (lambda: jobs.add(path, "once", shot), lambda: jobs.remove(path, "once")):
+        before = path.read_text()
+        with open(path) as held:                         # a read that had the file open when the rewrite began
+            change()
+            assert held.read() == before                 # never emptied or cut under it
+    assert path.read_text() == keep and stat.S_IMODE(path.stat().st_mode) == 0o600
+    stop, ready, reads, missed = threading.Event(), threading.Event(), [0], []
+
+    def read():                                          # as the daemon's fire, a runner and a sync read it
+        while not stop.is_set():
+            reads[0] += 1
+            if "steady" not in jobs.load(path, now=0)[0]:
+                missed.append(reads[0])
+            ready.set()
+    reader = threading.Thread(target=read)
+    reader.start()
+    try:
+        assert ready.wait(10)
+        for _ in range(100):
+            jobs.add(path, "once", shot)
+            jobs.remove(path, "once")
+    finally:
+        stop.set()
+        reader.join()
+    assert (missed, path.read_text()) == ([], keep), f"{len(missed)} of {reads[0]} reads found no job"
+    with pytest.raises(UnicodeEncodeError):              # a rewrite that fails partway: the file as it was, no temp file
+        jobs.rewrite(path, keep + 'note = "\ud800"\n')
+    assert path.read_text() == keep and sorted(p.name for p in path.parent.iterdir()) == [".jobs.toml.lock", "jobs.toml"]
+    real = write_jobs(tmp_path / "kept" / "jobs.toml", keep)       # a symlinked jobs file: the file it points at is swapped
+    (link := tmp_path / "linked" / "jobs.toml").parent.mkdir()
+    link.symlink_to(real)
+    jobs.add(link, "once", shot)
+    assert link.is_symlink() and "[jobs.once]" in real.read_text() and link.read_text() == real.read_text()
 
 
 # notes: a reminder its room's own session tells
@@ -880,3 +1248,182 @@ def test_the_example_nightly_rules_job_reads_exit_1_as_proposals_to_read_and_2_a
         (y := b / "yerk").write_text(f"#!/bin/sh\n[ \"$*\" = \"curate --rules\" ] || exit 9\nexit {code}\n")
         y.chmod(0o755)
         assert subprocess.run(["/bin/sh", "-c", job.payload], env={"PATH": f"{b}:/usr/bin:/bin"}).returncode == rc
+
+
+def test_an_agent_job_names_add_ons_and_a_note_or_a_script_naming_them_is_refused_by_the_key():
+    base = {"schedule": "Mon 10:00", "tz": "UTC", "room": "r"}
+    job = make_job("look", {**base, "kind": "agent", "message": "look", "addons": ["mcp__hands__browser", "mailbox"]})
+    assert job.addons == ("mcp__hands__browser", "mailbox") and job.runs_on() == {"addons": "mcp__hands__browser mailbox"}
+    assert make_job("plain", {**base, "kind": "agent", "message": "look"}).addons == () and "addons" in jobs.KEYS
+    for kind, what, said in (("note", {"message": "x"}, "a note runs nothing, so it takes no `addons`"),
+                             ("script", {"command": "true"}, "a script job runs no worker; `addons` is for agent jobs"),
+                             ("agent", {"message": "x"}, "`addons` must be a list of the room's add-on tools or servers")):
+        with pytest.raises(JobError) as e:
+            make_job("x", {**base, "kind": kind, **what, "addons": ["mailbox"] if kind != "agent" else "mailbox"})
+        assert str(e.value).startswith(said)
+
+
+MAILBOX = {"model": "m", "timezone": "UTC", "allow": ["mcp__mailbox__search", "mcp__abacus__sum"],
+           "mcp": {"mailbox": {"type": "stdio", "command": "mailbox"}, "abacus": {"type": "stdio", "command": "abacus"}}}
+QUIET = 'FAKE report="NO_REPLY" result="NO_REPLY"'
+
+
+def fired(j, w, s, sd, priv, state, name):
+    """The job fired as its unit fires it, and its worker's row once it ended."""
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        assert await asyncio.to_thread(jobs.run, name, priv, state, sd, handoff) == 0
+        return await ended(s.ledger, s.ledger.job_runs(job=name)[0]["worker"])
+    return asyncio.run(go())
+
+
+def test_a_fired_agent_job_whose_brief_names_a_path_its_unit_hides_tells_its_worker_in_the_prompt(setup, tmp_path):
+    """A job's run reads no start answer (Jobs.fire keeps the worker's id): its worker hears of the path in PROMPT.md."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    s.units.keep(w.state, (w.state / "rooms",))                    # the daemon's launcher: every room's folder hidden
+    other = w.state / "rooms" / "other" / "work"
+    write_jobs(priv / "jobs.toml", '[jobs.peek]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
+               f'message = "Read {other}/notes.md. FAKE report=\\"NO_REPLY\\" result=\\"NO_REPLY\\""\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+    row = fired(j, w, s, sd, priv, state, "peek")
+    prompt = (Path(row["staging"]) / "PROMPT.md").read_text()
+    assert f"- Not there for you, since your unit hides them: {other}/notes.md. " in prompt
+
+
+def test_a_booked_agent_job_names_add_ons_its_room_has_and_its_fired_worker_gets_them(setup, tmp_path, capsys):
+    """The schedule tool and `yerk schedule add` take `addons`, checked against the job's room when it is booked with
+    room_addons' own sentence, nothing written when refused; the list names them and the fired worker has them."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()}, room_confs={"r": MAILBOX})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    w.room_confs["r"] = MAILBOX
+    path = write_jobs(priv / "jobs.toml", "# the owner's comment stays\n")
+    add = lambda **k: asyncio.run(j.handle("r", {"action": "add", "kind": "agent", "when": "Mon..Fri 09:00", "what": QUIET,  # noqa: E731
+                                                 "deliver": "silent", **k}))
+    booked = add(name="inbox", addons=["mcp__mailbox__search"])
+    assert booked["ok"] and booked["addons"] == "mcp__mailbox__search", booked
+    assert 'room = "r"\naddons = ["mcp__mailbox__search"]\ndeliver = "silent"\n' in path.read_text()
+    before = path.read_bytes()
+    assert add(name="odd", addons=["mcp__mailbox__send"]) == {"ok": False, "error": "this room has no add-on tool "
+                                                              "'mcp__mailbox__send'; its add-on tools: mcp__mailbox__search, mcp__abacus__sum"}
+    assert add(name="odd", kind="note", what="x", addons=["mailbox"])["error"].startswith("a note runs nothing, so it takes no `addons`")
+    assert path.read_bytes() == before and sd.ours() == ["inbox"]
+    listed = asyncio.run(j.handle("r", {"action": "list"}))
+    assert listed["lines"][0].endswith("room r, agent, addons mcp__mailbox__search") and listed["jobs"][0]["addons"] == "mcp__mailbox__search"
+    row = fired(j, w, s, sd, priv, state, "inbox")
+    spec = json.loads((Path(row["staging"]) / "worker.json").read_text())
+    assert spec["addon_tools"] == ["mcp__mailbox__search"] and row["job"] == "inbox"
+    assert list(json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]) == ["mailbox"]
+    capsys.readouterr()
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(jobs, "Systemd", lambda: sd)
+    monkey.setattr(cli, "rooms", lambda p: {"r": MAILBOX})
+    try:
+        rc = cli.main(["schedule", "add", "cli-inbox", "--when", "*:0/45", "--what", "look", "--room", "r", "--addon", "mailbox",
+                       "--private", str(priv), "--state", str(state)])
+        odd = cli.main(["schedule", "add", "cli-odd", "--when", "*:0/45", "--what", "look", "--room", "r", "--addon", "mcp__web__fetch",
+                        "--private", str(priv), "--state", str(state)])
+    finally:
+        monkey.undo()
+    out, err = capsys.readouterr()
+    assert (rc, odd) == (0, 1) and ", addons mailbox; next " in out and err.startswith("this room has no add-on tool 'mcp__web__fetch'")
+    assert jobs.load(path)[0]["cli-inbox"].addons == ("mailbox",) and "cli-odd" not in path.read_text()
+
+
+def test_a_hand_edited_jobs_add_on_its_room_has_not_is_named_at_the_sync_and_never_scheduled(tmp_path):
+    priv = tmp_path / "private"
+    priv.mkdir()
+    (priv / "rooms.toml").write_text('[rooms.r]\nchannel = "discord:1"\nallow = ["mcp__mailbox__search"]\n\n'
+                                     '[rooms.r.mcp.mailbox]\ntype = "stdio"\ncommand = "mailbox"\n')
+    path = write_jobs(priv / "jobs.toml", '[jobs.good]\nkind = "agent"\nschedule = "Mon 09:00"\ntz = "UTC"\nroom = "r"\n'
+                      'addons = ["mailbox"]\nmessage = "look"\n\n[jobs.odd]\nkind = "agent"\nschedule = "Mon 09:00"\ntz = "UTC"\n'
+                      'room = "r"\naddons = ["mcp__mailbox__send"]\nmessage = "look"\n')
+    sd = FakeSystemd(tmp_path / "units")
+    p, _ = jobs.sync(path, sd, Env(ENV.python, ENV.repo, priv, ENV.state))
+    assert p.added == ["good"] and sd.ours() == ["good"]
+    assert p.errors == {"odd": "this room has no add-on tool 'mcp__mailbox__send'; its add-on tools: mcp__mailbox__search"}
+    p, _ = jobs.sync(path, sd, ENV)                                    # where the rooms file cannot be read: left to the fire
+    assert p.errors == {} and sorted(sd.ours()) == ["good", "odd"]
+
+
+def test_a_rooms_file_that_refuses_to_load_never_ends_a_sync_and_the_jobs_add_ons_wait_for_the_fire(tmp_path):
+    """Found by the judge's breaks. A rooms file the reader refuses stops a start with SystemExit, and a sync also runs
+    inside the running daemon (the schedule tool's add and remove), where that exit would end the daemon. The add-ons'
+    check is skipped instead and left to the fire."""
+    priv = tmp_path / "private"
+    priv.mkdir()
+    (priv / "rooms.toml").write_text('[defaults]\nbogus = 1\n\n[rooms.r]\nchannel = "discord:1"\n')
+    path = write_jobs(priv / "jobs.toml", '[jobs.inbox]\nkind = "agent"\nschedule = "Mon 09:00"\ntz = "UTC"\nroom = "r"\n'
+                      'addons = ["mailbox"]\nmessage = "look"\n')
+    sd = FakeSystemd(tmp_path / "units")
+    p, _ = jobs.sync(path, sd, Env(ENV.python, ENV.repo, priv, ENV.state))
+    assert p.errors == {} and sd.ours() == ["inbox"]
+
+
+def test_a_jobs_add_on_name_that_is_not_an_add_ons_shape_is_refused_by_its_own_table():
+    """Found by the judge's breaks. A name with a space or a dot, or an empty one, is refused when the job is read, before
+    any room is asked: where the rooms file cannot be read nothing else would refuse it until the fire."""
+    base = {"kind": "agent", "schedule": "Mon 10:00", "tz": "UTC", "room": "r", "message": "look"}
+    for bad in ("not a tool", "mcp__mailbox.search", ""):
+        with pytest.raises(JobError) as e:
+            make_job("x", {**base, "addons": [bad]})
+        assert str(e.value).startswith("`addons` must be a list of the room's add-on tools or servers")
+
+
+def test_a_job_naming_no_add_on_in_a_room_giving_every_worker_one_starts_a_worker_that_has_it(setup, tmp_path):
+    """The case itself, seen live: a booked agent job named no add-on (none could), its brief needed the room's mail
+    tool, and its worker started without one. Its room's worker_addons now reach the job's worker with nothing named."""
+    s = setup
+    conf = {**MAILBOX, "worker_addons": ["mailbox"]}
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()}, room_confs={"r": conf})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    w.room_confs["r"] = conf
+    path = write_jobs(priv / "jobs.toml", '[jobs.inbox]\nkind = "agent"\nschedule = "Mon..Fri 09:00"\ntz = "UTC"\nroom = "r"\n'
+                      f"deliver = \"silent\"\nmessage = '{QUIET}'\n")
+    jobs.sync(path, sd, j.env())
+    row = fired(j, w, s, sd, priv, state, "inbox")
+    folder = Path(row["staging"])
+    spec = json.loads((folder / "worker.json").read_text())
+    assert spec["addon_tools"] == ["mcp__mailbox__search"] and row["job"] == "inbox"
+    assert list(json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]) == ["mailbox"]
+    assert "- You have the room's own mcp__mailbox__search too." in (folder / "PROMPT.md").read_text()
+
+
+def test_the_schedule_and_worker_tools_hand_addons_on_and_say_what_a_worker_has(monkeypatch, tmp_path):
+    """The schedule tool's `addons` reaches the daemon as the worker tool's does, and both tools say what a worker has: a
+    shell, files and the web, of the room's tools only the add-ons the room gives every worker, those named and recall and
+    read_memory where the install gives workers those (2026-11-18: a worker given both was told it had none)."""
+    from yerk_ai import mcp_server
+    asked: list[dict] = []
+
+    class Daemon:
+        async def tool_schedule(self, room, req):
+            return asked.append(req) or {"ok": True}
+        tool_worker = tool_schedule
+
+    async def none(*a, **k):
+        return {}
+    server = mcp_server.build(Daemon(), 0, none)
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: "r")
+    asyncio.run(server.call_tool("schedule", {"action": "add", "name": "inbox", "when": "Mon 09:00", "what": "look", "addons": ["mailbox"]}))
+    asyncio.run(server.call_tool("worker", {"action": "start", "brief": "look"}))
+    assert asked[0]["addons"] == ["mailbox"] and asked[1]["addons"] == []
+    said = {t.name: " ".join(str(t.description).split()) for t in asyncio.run(server.list_tools())}
+    assert ("it has a shell, files and the web, of your tools only the add-ons this room gives every worker, those `addons` "
+            "names and recall and read_memory where the install gives workers those, never send, text or email, so a light "
+            "timed check needing your tools is a note") in said["schedule"]
+    assert '<example>"remind me Saturday at 10 to call the clinic"' in said["schedule"]                    # the example kept
+    assert ("unnamed it has a shell, files, the web and the add-ons this room gives every worker, and reads this room's memory "
+            "with recall and read_memory where the install gives workers those; a step needing `confirmed` it leaves ready for "
+            "you") in said["worker"]
+    monkeypatch.setattr(cli, "_control", lambda state, payload, timeout: asked.append(payload["worker"]) or {"ok": True})
+    (brief := tmp_path / "brief.md").write_text("look")
+    assert cli.main(["worker", "start", "--brief", str(brief), "--room", "r", "--addon", "mailbox", "--addon", "mcp__abacus__sum"]) == 0
+    assert asked[2]["addons"] == ["mailbox", "mcp__abacus__sum"]

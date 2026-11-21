@@ -636,7 +636,8 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     taken, pairs = dict[str, str](), [(c if p.is_relative_to(s.root) else f"{p}:{k}", new) for (p, k), c in zip(olds[False], named)]
     for (p, k), c in zip(olds[True], edit):
         with daily_lock(s.daily):
-            lines = p.read_text().split("\n")
+            rows = p.read_text().splitlines(keepends=True)               # numbered as read() counts, each line's own end kept
+            lines, ends = [x.splitlines()[0] for x in rows], [x[len(x.splitlines()[0]):] for x in rows]
             by = BY.findall(lines[k - 1]) or ([later(s).get(c, "")] if mentions.OLD in lines[k - 1] else [])
             if by and by[0] != new:         # another correction marked it first (F6)
                 taken[c] = f"{c}: already superseded" + (f" by {by[0]}" if BY.search(lines[k - 1]) else "")
@@ -645,7 +646,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                 oc, orid = (ln.cls, ln.rid) if ln and p.parent == s.daily.resolve() else file_class(p)
                 shown = oc not in ("room", "shared") or nc[0] == "shared" or nc == (oc, orid)    # no private cite on it (F1)
                 lines[k - 1] = mark(lines[k - 1], new if shown else "")
-                write_private(p, "\n".join(lines))
+                write_private(p, "".join(x + e for x, e in zip(lines, ends)))
                 pairs += [] if shown else [(c, new)]
     if pairs:
         with daily_lock(s.daily), os.fdopen(os.open(s.root / LATER, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
@@ -937,10 +938,10 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
         return {"ok": False, "error": f"{path} is not readable from room {reader.name or '?'}: its class keeps it to " "the owner's rooms"}
     out: list[str] = []
     total = 0
-    with real.open(encoding="utf-8", errors="replace") as f:
-        for total, line in enumerate(f, 1):
-            if start <= total < start + lines:
-                out.append(marked(line.rstrip("\n"), real.parent.name == "facts", mark_of(real)))
+    # lines as the index numbers them (memindex.chunks_of: str.splitlines, which breaks at a vertical tab too), so a cite opens on its line
+    for total, line in enumerate(real.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if start <= total < start + lines:
+            out.append(marked(line, real.parent.name == "facts", mark_of(real)))
     text = "\n".join(out)
     if reader and (not reader.owner or reader.sealed) and daylog:
         text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True, daily=s.daily) or ""
@@ -957,6 +958,12 @@ SHARE = 0.4          # the keyword rank's part of the fused score, the meaning r
 RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
                      # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
+READ_ON = 2000       # a room that may not read everything reads on at most this many keyword rows past the pool (memindex.search), past the
+                     # first own chunk of each name a sealed room was measured on, live, Nov 12 (rank 494 at most). Its filter costs 50 to 400
+                     # microseconds a row, the most outside the day logs with many rooms (file_class walks every room's inbox): 0.12 to 0.9 s at
+                     # the bound on a made-up index, with no room or 20, the owner's read 0.03 s (live, 5,000 rows read in 0.3 to 0.8 s)
+MEANING_MOST = 400   # and asks yerk-index for this many meaning rows, the most its handler serves (embeddings.Server.search): over
+                     # 440,000 made-up vectors 0.90 s against 0.89 s for the pool, the scan being the cost, and 401 kB of answer against 81
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
 log = logging.getLogger("yerk.memory")
 
@@ -1071,12 +1078,17 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
     k = max(1, min(int(k), 20))
+    def mine(path: str, text: str) -> bool:
+        """What a room ranks, its pool drawn from these alone: in its own `also` roots, and a chunk it reads whole (R2), since one read in
+        part ranks on words it may not see (its own line beside a hidden one reaches it by its pack, its topic hits and read_memory)."""
+        return (not s.scoped or s.scope.contains(Path(path))) and allowed_text(reader, Path(path), text, daily=s.daily) == text
+    keep = mine if s.scoped or reader and (not reader.owner or reader.sealed) else None     # an unscoped owner room: no filter, as before
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs, keep=keep, most=READ_ON)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -1086,17 +1098,14 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
+    state, vectors = meaning(s, query, pool=MEANING_MOST if keep else POOL, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
-    if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
-        keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
     if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
         vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
-    if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
-        keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
-                             for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
-    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
+    if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
+        vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
+    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
     hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
@@ -1251,24 +1260,49 @@ def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) ->
     return [(today - timedelta(days=n)).isoformat() for n in range(days)]
 
 
+_PAST_DAYS: dict[Path, tuple[tuple[int, int], list[str], dict[tuple[str, str], list[tuple[int, Line]]]]] = {}
+_PAST_LOCK = threading.Lock()
+
+
+def _day_lines(f: Path, room: str, rid: str, today: bool) -> tuple[list[str], list[tuple[int, Line]]]:
+    """A day log's lines and, parsed, the ones naming the room by id or name (a day log holds every chat's lines: the
+    substring first). A past day's are kept while its size and modification time hold and read again when either changes;
+    today's, the one that grows, every time (cleanup F3-06: every message read and parsed 14 files whole)."""
+    st = f.stat()                                  # before the read: a write after it moves the stamp the next call compares
+    stamp = (st.st_size, st.st_mtime_ns)
+    with _PAST_LOCK:
+        kept = None if today else _PAST_DAYS.get(f)
+    if kept is None or kept[0] != stamp:
+        kept = (stamp, f.read_text(errors="replace").splitlines(), {})
+        if not today:
+            with _PAST_LOCK:
+                _PAST_DAYS[f] = kept
+    if (room, rid) not in kept[2]:
+        kept[2][(room, rid)] = [(n, ln) for n, raw in enumerate(kept[1]) if (rid in raw or room in raw) and (ln := parse_line(raw))]
+    return kept[1], kept[2][(room, rid)]
+
+
 def room_lines(s: Settings, room: str, now: datetime | None = None,
                rid: str | None = None, owner: bool = True, first: int = 0) -> Iterator[tuple[str, int, Line, list[str]]]:
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
     14 days from `first` days back (1: yesterday on), newest day first: by the room's stable id (`rid`, default its name), and, for an owner
     room (`owner`, the view every caller but the daemon's non-owner rooms has), by name on a line
     written before ids. A room that is not an owner room gets only its id's lines of class room or
-    shared, as read_memory shows them: a former room's name is not its history (R2). The room's own day
-    files are small, so they are read straight from disk: fresher than the index (which trails by a
-    pass) and a few milliseconds per message."""
+    shared, as read_memory shows them: a former room's name is not its history (R2). The day files are
+    read from disk, fresher than the index (which trails by a pass); a past day's parsed lines are kept
+    while the file is unchanged (_day_lines), so a message reads today's file only."""
     rid = rid or room
-    for day in window(s, now)[first:]:
+    days = window(s, now)
+    with _PAST_LOCK:                               # a day the window has left is never read again: its lines go
+        for gone in [p for p in _PAST_DAYS if p.parent == s.daily and p.stem not in days]:
+            del _PAST_DAYS[gone]
+    for day in days[first:]:
         f = s.daily / f"{day}.md"
         if not f.is_file():
             continue
-        lines = f.read_text(errors="replace").splitlines()
-        for n, raw in enumerate(lines):
-            ln = parse_line(raw) if rid in raw or room in raw else None    # a day log holds every chat's lines: the substring first
-            if ln and (ln.of_room(room, rid) if owner else ln.cls in ("room", "shared") and ln.rid == rid):
+        lines, named = _day_lines(f, room, rid, day == days[0])
+        for n, ln in named:
+            if ln.of_room(room, rid) if owner else ln.cls in ("room", "shared") and ln.rid == rid:
                 yield day, n, ln, lines
 
 

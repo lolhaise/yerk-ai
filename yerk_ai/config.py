@@ -6,7 +6,9 @@ import copy
 import json
 import logging
 import os
+import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,7 @@ REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
 _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
+_EXAMPLE_SAID = False                                    # private_dir has said the example layer on stderr
 # <state>/rooms/<room>/starts/, beside assembled.jsonl: each session's start file as it began (<id>.md) and the texts news tells
 # it was built from (<id>.json), so a resumed session keeps the system prompt it started with (engine.kept_start, context.news)
 STARTS = "starts"
@@ -90,10 +93,19 @@ def uncapped(b: dict[str, Any]) -> bool:
     return bool(b.get("limits", {}).get("uncapped"))
 
 
-def private_dir(arg: str | None = None) -> Path:
-    """--private, then $YERK_PRIVATE, then the fake example layer shipped with the repo."""
+def private_dir(arg: str | None = None, *, quiet: bool = False) -> Path:
+    """--private, then $YERK_PRIVATE, then the fake example layer shipped with the repo, said on stderr the first time a
+    process falls back to it, so a command never answers about the example rooms against the real state folder unsaid.
+    `quiet`: a caller that never answers on that layer (`yerk deploy` takes the daemon's own, `yerk add` refuses there)."""
+    global _EXAMPLE_SAID
     p = arg or os.environ.get("YERK_PRIVATE")
-    return Path(p).expanduser() if p else EXAMPLE_PRIVATE
+    if p:
+        return Path(p).expanduser()
+    if not (quiet or _EXAMPLE_SAID):
+        from . import words
+        _EXAMPLE_SAID = True
+        print(f"{words.WORKING} {words.EXAMPLE_LAYER}", file=sys.stderr)
+    return EXAMPLE_PRIVATE
 
 
 def state_dir(arg: str | None = None) -> Path:
@@ -114,8 +126,8 @@ ROOM_WORDS = {
     "allow": "permission rules beyond Read (the tool goes in `tools` too); the gates run first. An owner room carries [defaults] allow unless it sets its own",
     "allow_remove": "tools an owner room does without, out of the allow it inherits from [defaults]",
     "also": "which of yerkd.toml's [memory] also roots reach the room's recall, read_memory and names (unset: all of them)",
-    "card": "steps: a room with people shows the owner rooms' progress card, the model's newest line and one row per step, done or not done "
-    "(unset or any other value: its newest holding line and a step count)",
+    "card": "count: a room with people shows its newest holding line and a step count, never a step's words "
+    "(unset, steps or any other value: the owner rooms' card, the model's newest line and one row per step, done or not done)",
     "channel": "the chat the room is, discord:<channel id>",
     "class": "the class the room's day-log lines carry: private, room or shared (default: private in an owner room, room in any other)",
     "compact_window": "tokens the session keeps before Claude Code compacts (unset: budgets.toml [session]; 0: the model's own)",
@@ -138,6 +150,9 @@ ROOM_WORDS = {
     "people": "Discord user ids answered in the room besides the owner, as sender person (unset: the owner only); needs privacy family or shared",
     "persona": "the persona file, the session start's persona part",
     "pinned_memory": "the pinned memory file, the session start's pinned_memory part",
+    "precompact_midturn": "on: a turn that reaches precompact_within's band mid-turn starts that copy at the call that reached it, once a "
+    "turn, its exchange given to the copy as one request already answered; log: one line saying it would have, nothing started; off, the "
+    "default, also for any other value (said once at the start)",
     "precompact_within": "the share of compact_window under Claude Code's own line within which a turn's end compacts a copy of the "
     "session, the room left free, and the copy becomes its session once compacted, at a turn's end (unset: budgets.toml [session]; 0: never)",
     "privacy": "owner (the default): the owner's room, which reads the whole memory; any other value walls the room: its own lines and the shared files only",
@@ -156,10 +171,13 @@ ROOM_WORDS = {
     "topic_recall": "the room's own lines on the message's topic, and the search of a question about the past, in its recall part (default true)",
     "voice": "the room's voice file, the session start's room_voice part",
     "watch": "discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered",
-    "watch_audit": "true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 right "
-    "but missing something, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)",
+    "watch_audit": "true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 only "
+    "when something is actually wrong and it changes what the person would say or do, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)",
     "watch_assistant": "the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, "
     "not to this room (default: the other assistant)",
+    "worker_addons": "the room's own add-on tools every worker started from it gets, each named as a worker start's addons names one (a "
+    "tool as allow has it, or a server's name for each of its tools allow names); one allow has not, or on a server whose table passes a "
+    "credential, is skipped and the worker starts. An owner room carries [defaults] worker_addons unless it sets its own; [] gives none",
     "watch_wait": "seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's "
     "progress card's last edit while the card is up, at most three times this (default 150)",
 }
@@ -206,6 +224,9 @@ YERKD_WORDS = {
                  "places": "the named places, {\"places\": [{\"label\", \"lat\", \"lon\", \"radius_m\"}]}, only read",
                  "stale_after": "no place part when the newest fix is older than this (default 3h)"},
     "workers": {"root": "where workers' folders go (default <state>/workers)", "cap_minutes": "minutes before a worker is stopped (default 65)",
+                "memory_max": "a worker's memory ceiling, bytes or a whole number with K, M, G or T after it, with no swap past it: "
+                              "the kernel kills the process inside the worker using the most memory and the worker goes on; anything "
+                              "else is not a size and the default is used (default 4G)",
                 "model": "a worker's model (default: the room's)", "account": "the account workers run on (default: the first not resting)",
                 "effort": "a worker's thinking level, one of low, medium, high, xhigh, max (default: the room's live level)",
                 "tools": "a worker's built-in tools (default Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, TodoWrite)",
@@ -227,7 +248,10 @@ YERKD_WORDS = {
                "classes": "a chat id's class or room, \"shared\" or \"room:<a room's id>\" (default private)",
                "skip": "chat ids a server import leaves out"},
     "gmail": {"user": "the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)",
-              "password_file": "a file holding its app password, never printed", "name": "the name an email goes out under (default none)"},
+              "password_file": "a file holding its app password, never printed",
+              "name": "the name an email goes out under beside the address, as your own Gmail sends mail (default none: the bare "
+                      "address, which `yerk doctor` names each day)",
+              "smtp_host": "the mail server the `email` tool sends through (default smtp.gmail.com)", "smtp_port": "that server's port (default 465)"},
     "imessage": {"host": "the ssh host of the owner's Mac, the `text` tool's way to it (none, with socket: `ssh` and "
                          "`imessage_socket` in a mac.json beside an owner room's add-on's server, the hands plug-in's, else no room texts)",
                  "socket": "the Mac's bridge socket there, serving imsg's JSON-RPC", "socat": "socat on the Mac (default /opt/homebrew/bin/socat)",
@@ -238,6 +262,44 @@ YERKD_WORDS = {
                  "poll_seconds": "seconds between the light checks that copy the owner's newest texts to the box whenever the "
                                  "Mac answers, so the `texts` tool can read them while the Mac sleeps (default 120; 0 turns the "
                                  "copy off and the tool answers only when the Mac is awake)"},
+    "texting": {"mode": "off, dry or live (default off, as with no table: nothing connects); dry reads the reply list's 1:1 "
+                        "threads on the Mac's bridge, reached as [imessage] reaches it, and does all live does but send: each text "
+                        "that would go waits its time, is checked against the thread again and is written as a job file; live "
+                        "hands it to the Mac's runner over ssh to that Mac, once",
+                "report": "the owner room (no people) that is told what texting must tell the owner, the missed texts and a card "
+                          "for each text that waits for the owner's word, which is read there; never while dry",
+                "dry_report": "dry only: an owner room (no people) that is told it in report's place, the cards marked DRY, "
+                              "where send only says it would (default none: nothing is posted while dry)",
+                "people": "the reply list, a file under the private folder only the owner can read (default texting/people.toml)",
+                "burst_quiet": "seconds of quiet that close a burst of one person's texts into one decision (default 20)",
+                "burst_cap": "seconds after a burst's first text that it is closed anyway (default 120)",
+                "catch_up_hours": "a text older than this when its burst closes is missed: listed once, not answered (default 6)",
+                "model": "the model that decides what to answer as the owner (default: the report room's model)",
+                "effort": "its thinking effort (default high)",
+                "parallel": "decisions that run at once, one person each (default 2)",
+                "decide_seconds": "seconds one decision may take; past it the text is held with no clean answer (default 240)",
+                "check_model": "the model of the check, which reads only the thread, the person's sheet, their texts and the "
+                               "draft before a reply or tapback may go (default: the writer's model)",
+                "check_seconds": "seconds one check may take; past it the draft is held with no clean answer (default 120)",
+                "fallback": "a second model the writer and the check run on when every account refuses theirs, the row then "
+                            "naming it beside the account (default none: the text is held)",
+                "outbox": "live only: the Mac runner's outbox, a whole path on the Mac each text's job is written into "
+                          "(default none: live sends nothing)",
+                "first_shot": "[low, high] seconds a text waits when the owner's own text is their side's newest and younger "
+                              "than first_shot_window (default [150, 240])",
+                "first_shot_window": "seconds the owner's own text counts as just sent (default 300)",
+                "send_delay": "[low, high] seconds after the owner's send on a card before its text goes, any hour (default [0, 30])",
+                "quiet": "[start, end] quiet hours, local HH:MM: a text due inside them to a person whose sheet holds at night "
+                         "waits for their end and a morning draw (default [\"23:30\", \"07:30\"])",
+                "morning": "[low, high] minutes after quiet hours end that such a text goes (default [10, 90])",
+                "claim_seconds": "seconds after a job is handed in which a text of the owner's side on the thread is taken "
+                                 "as that job sent; none by then, unseen and never sent again (default 180)",
+                "stale_minutes": "minutes past its time a text that could not be handed is dropped and listed once, never "
+                                 "sent late (default 30)",
+                "never_say": "names an assistant goes by on this install: a draft that holds one, as whole words in any case, is "
+                             "held before any model reads it (default none)",
+                "hold_hours": "hours a held text's card waits for the owner's word; past it the card says expired, not sent, "
+                              "and nothing can send it (default 6)"},
     "needs": {"account": "the account `yerk needs build` runs on (default [curate] account, else the workers' pick)",
               "cap_minutes": "a builder's minutes before it is stopped (default 60)",
               "auto": "the pipeline: a filed need is built, checked, read cold, merged, deployed and live with no person, one at a "
@@ -247,7 +309,10 @@ YERKD_WORDS = {
               "checks_minutes": "minutes a PR's head waits for all its checks before the need is stuck (default 40)",
               "contexts": "how many CI checks a head gets before they count as all in (default 7)",
               "repo": "the GitHub OWNER/NAME of the pipeline's PRs (default: from the daemon tree's origin)",
-              "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)"},
+              "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)",
+              "sensitive": "what a need's change may not touch and still merge on the cold read alone: a path, a folder/ or plugin:NAME; "
+                           "one touched holds the need for a deeper check, a person merges (default pipeline.SENSITIVE, replaced "
+                           "whole; [] none, the pipeline's road as before)"},
     "curate": {"account": "the one account the night's curation runs on", "logs": "more files in the private folder read as the owner's own stream",
                "model": "the model its worker calls run on, the conversion's too (default opus)",
                "cap_minutes": "the minutes one worker call may run (default 45)"},
@@ -259,10 +324,16 @@ YERKD_WORDS = {
                "tree": "the daemon's checkout (default: the unit's working folder)",
                "tests": "the fast tests run before a restart (default test_scrub, test_budget, test_card and test_style)",
                "quiet_seconds": "how long every room must have had no message either way, a person's or its own, before the restart (default 240)",
+               "copy_seconds": "how long the restart waits for a room's copy that is compacting, which a restart drops (default 300; 0 never waits)",
                "cap_minutes": "the longest a deploy waits for that quiet (default 60)", "proof_seconds": "how long the proof may take (default 60)"},
     "retention": {"logs": "days the daemon's logs keep", "assembled": "days the rooms' assembled.jsonl keep",
                   "transcripts": "days Claude Code's transcripts keep", "ledger": "days of the ledger's timing rows",
+                  "jobs": "days a job run's folder keeps after the run ended, and a run still undelivered keeps it",
                   "workers": "days a finished worker's folder keeps",
+                  "pytest": "days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days",
+                  "built": "days what a finished worker's run built keeps in its folder: each virtual environment (a folder holding "
+                           "pyvenv.cfg) and each folder named __pycache__, .mypy_cache, .ruff_cache, .pytest_cache or node_modules; "
+                           "the rest of its folder keeps `workers` days",
                   "scratch": "days a room's scratch, its work folder but inbox/ and any top folder holding a file named KEEP, keeps",
                   "scratch_mb": "megabytes a room's scratch keeps, its oldest files out first", "trash": "days the trash keeps what left",
                   "scratch_trash": "days the trash keeps a room's scratch"},
@@ -276,25 +347,37 @@ YERKD_WORDS = {
 
 
 # [defaults] in rooms.toml: the one tool set every owner room carries (one best way for every
-# queue 0 for its"), turn and the last part closes the; case before the next run starts. The example note says the sample
+# room, with no hand edit per room), allow, the mcp servers and the add-ons a worker gets (worker_addons); each room keeps its own sandbox. An inherited key sits in a
 # room's table before the first of the room's own keys named here for it, where rooms.toml.example writes it, else last.
-DEFAULT_KEYS = ("allow", "mcp")
-BEFORE = {"allow": ("also", "sealed", "thinking_panel", "mcp", "sandbox"), "mcp": ("sandbox",)}
+DEFAULT_KEYS = ("allow", "mcp", "worker_addons")
+BEFORE = {"allow": ("also", "sealed", "thinking_panel", "mcp", "sandbox"), "mcp": ("sandbox",), "worker_addons": ("mcp", "sandbox")}
+ADDON_NAME = re.compile(r"^(?:mcp__)?[A-Za-z0-9_-]+$")     # a worker add-on's shape: a server's name, or one of its tools
 
 
 def room_defaults(doc: dict[str, Any]) -> dict[str, Any]:
-    """rooms.toml's [defaults], {} for none: allow and mcp.<name> tables only; any other key, or one of another shape,
-    stops the start with one line naming it."""
+    """rooms.toml's [defaults], {} for none: allow, worker_addons and mcp.<name> tables only; any other key, or one of another
+    shape, stops the start with one line naming it."""
     base = doc.get("defaults", {})
     if not isinstance(base, dict):
         raise SystemExit("rooms.toml: defaults must be a table, [defaults], holding allow and mcp tables")
     for k in (k for k in base if k not in DEFAULT_KEYS):
-        raise SystemExit(f"rooms.toml: [defaults] {k}: a default carries allow and mcp tables only; set {k} in each room")
+        raise SystemExit(f"rooms.toml: [defaults] {k}: a default carries allow, worker_addons and mcp tables only; set {k} in each room")
     if not isinstance(base.get("allow", []), list) or not all(isinstance(x, str) for x in base.get("allow", [])):
         raise SystemExit(f'rooms.toml: [defaults] allow must be a list of tool names, like allow = ["mcp__web__web_fetch"], not {base["allow"]!r}')
     if not isinstance(m := base.get("mcp", {}), dict) or not all(isinstance(v, dict) for v in m.values()):
         raise SystemExit("rooms.toml: [defaults] mcp must be a table of servers, like [defaults.mcp.web], each one a table")
+    worker_addons("[defaults]", base)
     return base
+
+
+def worker_addons(where: str, conf: dict[str, Any]) -> list[str]:
+    """A room's worker_addons (or [defaults]', `where` naming it), [] unset; one that is not a list of add-on names (a server's
+    name or one of its tools, ADDON_NAME) stops the start with one line, as a [defaults] allow of another shape does."""
+    want = conf.get("worker_addons", [])
+    if not isinstance(want, list) or not all(isinstance(x, str) and ADDON_NAME.match(x) for x in want):
+        raise SystemExit(f'rooms.toml: {where} worker_addons must be a list of add-on tools or servers, like worker_addons = '
+                         f'["mcp__web__web_fetch"] or ["web"], not {want!r}')
+    return want
 
 
 def filled(server: dict[str, Any], name: str) -> dict[str, Any]:
@@ -309,12 +392,15 @@ def filled(server: dict[str, Any], name: str) -> dict[str, Any]:
 
 def inherit(name: str, conf: dict[str, Any], base: dict[str, Any]) -> None:
     """An owner room under [defaults] (`base`), in place: the default allow less the room's allow_remove, unless the room
-    has its own allow, and each default mcp server, filled, unless the room has its own mcp.<name> table of that name;
-    a key of the room's own replaces the default whole, its other servers kept after the defaults'."""
+    has its own allow, the default worker_addons unless the room has its own ([] for none), and each default mcp server,
+    filled, unless the room has its own mcp.<name> table of that name; a key of the room's own replaces the default whole,
+    its other servers kept after the defaults'."""
     drop = conf.get("allow_remove", [])
     if not isinstance(drop, list):
         raise SystemExit(f'rooms.toml: {name}: allow_remove must be a list of tool names, like allow_remove = ["mcp__web__web_fetch"], not {drop!r}')
     add: dict[str, Any] = {} if "allow" in conf or "allow" not in base else {"allow": [t for t in base["allow"] if t not in drop]}
+    if "worker_addons" in base and "worker_addons" not in conf:
+        add["worker_addons"] = list(base["worker_addons"])
     if base.get("mcp") and isinstance(own := conf.get("mcp", {}), dict):        # an mcp of another shape: the daemon names it
         add["mcp"] = {s: own[s] if s in own else filled(v, name) for s, v in base["mcp"].items()}
         add["mcp"] |= {s: v for s, v in own.items() if s not in base["mcp"]}
@@ -343,6 +429,7 @@ def rooms(private: Path, text: str | None = None, own: bool = False) -> dict[str
         people(n, c)                                    # a `people` that is not a list of ids stops the start here
         if not isinstance(c.get("watch_audit", False), bool):   # so does a `watch_audit` that is not true or false
             raise SystemExit(f"rooms.toml: {n}: watch_audit must be true or false, like watch_audit = true, not {c['watch_audit']!r}")
+        worker_addons(f"{n}:", c)                       # and a `worker_addons` that is not a list of add-on names
     return rs
 
 
@@ -431,6 +518,13 @@ def override(state: Path, name: str) -> dict[str, Any]:
         return {}
 
 
+def added(state: Path, name: str) -> list[dict[str, str]]:
+    """The people the owner had a room answer by asking (the people tool), from its override: each {"id", "name", "day",
+    "by"} whose id is a Discord user id; [] when none."""
+    raw = override(state, name).get("people")
+    return [{k: str(v) for k, v in p.items()} for p in raw if isinstance(p, dict) and discord_id(p.get("id"))] if isinstance(raw, list) else []
+
+
 def room_settings(conf: dict[str, Any], state: Path, name: str, listed: dict[str, str]) -> dict[str, tuple[str, str]]:
     """A room's model and effort, each with where it comes from: the room's override over rooms.toml. A value
     off the models list (`listed`) or the levels is ignored, logged once: a stale or planted file never runs."""
@@ -455,6 +549,12 @@ def pinned(state: Path, name: str, names: list[str]) -> str:
         _IGNORED.add((name, "account", v))
         log.warning("room %s: the override's account %r is not in accounts.toml; the room's order is used", name, v[:80])
     return v if v in names else ""
+
+
+def fast_on(state: Path, name: str) -> bool:
+    """The room's own /fast on, in its override (the only writer is /fast; rooms.toml has no such key). It reaches Claude Code
+    only through engine.fast_reaches."""
+    return override(state, name).get("fast") is True
 
 
 DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")

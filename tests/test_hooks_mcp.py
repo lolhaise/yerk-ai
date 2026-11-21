@@ -14,7 +14,7 @@ import pytest
 
 from starlette.testclient import TestClient
 
-from yerk_ai import context, hooks, mcp_server
+from yerk_ai import context, hooks, mcp_server, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
 from yerk_ai.daemon import YERK_TOOLS, Yerkd
 from fake_channel import ConsoleChannel
@@ -35,6 +35,41 @@ def test_user_prompt_submit_adds_the_clock_and_metadata_for_the_bound_room(tmp_p
     assert hooks.user_prompt_submit({"session_id": "other"}, tmp_path, rs, meta, b) == hooks.UNBOUND   # never a silent {}
 
 
+def test_the_texting_block_is_in_the_report_rooms_context_alone_in_dry_and_live_and_absent_with_texting_off(tmp_path):
+    shutil.copytree(EXAMPLE_PRIVATE, private := tmp_path / "private")
+    now, b, made = datetime(2026, 1, 7, 12, 0, tzinfo=timezone.utc), budgets(), iter(range(99))
+
+    def ctx(table: str, room: str) -> str:
+        (private / "yerkd.toml").write_text(table)
+        (state := tmp_path / f"state{next(made)}").mkdir()
+        d = Yerkd(private, state)
+        d.room_confs["person-room"] = {**d.room_confs["example-room"], "privacy": "family", "people": [1]}
+        d.room_confs["family-room"] = {**d.room_confs["example-room"], "privacy": "family"}       # not the owner's, nobody listed
+        d.room_confs["shared-room"] = {**d.room_confs["example-room"], "people": [1]}             # the owner's, with a person in it
+        out = hooks.user_prompt_submit({"session_id": "sid-1", "prompt": "hi"}, tmp_path, d.room_confs, lambda r, p: ("owner", None),
+                                       b, now=now, room=room, texting=d.texting_told)
+        return str(out["hookSpecificOutput"]["additionalContext"])
+    for mode in ("dry", "live"):
+        on = f'[texting]\nmode = "{mode}"\nreport = "example-room"\n'
+        said, block = ctx(on, "example-room"), words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID[mode])
+        assert block in said and context.hook_parts("UserPromptSubmit", said)["texting"] == context.chars(block)
+        assert all("[texting]" not in ctx(on, r) for r in ("example-quiet", "person-room"))       # another owner room, a person's
+        for r in ("person-room", "family-room", "shared-room"):       # named or not, never a room that is not the owner's alone
+            assert "[texting]" not in ctx(on.replace("example-room", r), r)
+    assert all("[texting]" not in ctx(t, "example-room") for t in ("", '[texting]\nmode = "off"\nreport = "example-room"\n'))
+
+
+def test_the_daemons_own_hook_hands_the_report_room_the_texting_block(tmp_path):
+    shutil.copytree(EXAMPLE_PRIVATE, private := tmp_path / "private")
+    (private / "yerkd.toml").write_text('[texting]\nmode = "dry"\nreport = "example-room"\n')
+    (state := tmp_path / "state").mkdir()
+    y = Yerkd(private, state)
+    y.add_room("example-room", ConsoleChannel())
+    SessionTable(state / "sessions.json").bind("example-room", "sid-1", "one")
+    out = asyncio.run(y.hook({"hook_event_name": "UserPromptSubmit", "session_id": "sid-1", "prompt": "hi"}))
+    assert words.TEXTING_TOLD.format(mode=words.TEXTING_MODE_SAID["dry"]) in out["hookSpecificOutput"]["additionalContext"]
+
+
 def daemon(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     y.add_room("example-room", ConsoleChannel())
@@ -52,12 +87,13 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
+def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
-                          "voice_note", "seen", "render", "watch", "need", "text", "email", "delete", "reverse_image_search",
-                          "github_state", "page", "texts", "attachments", "zoom"}
+                          "voice_note", "seen", "render", "watch", "need", "text", "email", "delete",
+                          "github_state", "page", "texts", "texting", "attachments", "zoom", "show", "people"}
+    assert list(tools["people"].inputSchema["properties"]) == ["op", "person", "said"]
     assert list(tools["zoom"].inputSchema["properties"]) == ["path", "x0", "y0", "x1", "y1"] and "`zoom`" in context.MECHANICS.read_text()
     assert list(tools["attachments"].inputSchema["properties"]) == ["message", "name"]
     assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "chat", "open", "where",
@@ -65,7 +101,8 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
     assert list(tools["email"].inputSchema["properties"]) == ["to", "subject", "text", "files"]
     assert list(tools["texts"].inputSchema["properties"]) == ["limit"]
-    assert list(tools["reverse_image_search"].inputSchema["properties"]) == ["path"]
+    assert list(tools["texting"].inputSchema["properties"]) == ["op", "person", "value", "said"]
+    assert not any(x in tools["texting"].description for x in ("sheet", "release", "class", "decision", "log", "knows", "report"))
     assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]
     assert list(tools["delete"].inputSchema["properties"]) == ["paths"]
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
@@ -79,7 +116,8 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
     assert "`account` an account's name (tried first, the others behind it)" in str(tools["settings"].description)
     assert list(tools["schedule"].inputSchema["properties"]) == ["action", "name", "when", "what", "kind", "tz",
-                                                                "deliver", "room", "cap_minutes", "account", "model", "effort"]
+                                                                "deliver", "room", "cap_minutes", "account", "model", "effort",
+                                                                "addons"]
     said = " ".join(str(tools["schedule"].description).split())   # an agent job's worker on its own level and model (need 79)
     assert "`effort` its thinking level, low, medium, high, xhigh or max, and `model` one from the install's list, default this room's live ones" in said
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]
@@ -87,9 +125,10 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["recall"].inputSchema["properties"]) == ["query", "k"]
     assert list(tools["read_memory"].inputSchema["properties"]) == ["path", "from_line", "lines"]
     assert list(tools["worker"].inputSchema["properties"]) == ["action", "brief", "id", "room", "tasks", "cap_minutes",
-                                                              "account", "model", "effort"]
+                                                              "account", "model", "effort", "addons"]
     said = " ".join(str(tools["worker"].description).split())   # lines joined: Python 3.12 keeps a docstring's indent, 3.13 strips it
     assert "the room hears the result, or nothing if its last message is exactly NO_REPLY" in said
+    assert "`addons` (your own add-on tools it gets too" in said and "a step needing `confirmed` it leaves ready for you" in said
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json").read_text())
     assert cfg["mcpServers"]["yerk"]["alwaysLoad"] is True and list(cfg["mcpServers"]) == ["yerk"]
     assert cfg["mcpServers"]["yerk"]["timeout"] == 600_000            # past Claude Code's 60 s, so a transcribe call can finish
@@ -340,10 +379,13 @@ def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
     assert "layer" not in y.room_confs["example-room"]
     spec = y.spec_for("example-room")
     layer = context.layer_dir(private, y.room_confs["example-room"])
-    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)") and r not in y.code_reads()]
+    opened = [*y.code_reads(), *y.worker_reads("example-room"), *y.docs_reads("example-room")]
+    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)") and r not in opened]
     folders = [layer, *spec.add_dirs] + [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in rules]
     assert layer == private.resolve() and rules and all(f.resolve() == layer for f in folders)
     code = [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in y.code_reads()]     # the checkout that runs, read too
+    code.append(y.workers.conf.root.resolve())                                               # each worker's folder in it, too
+    code += [y.memory.docs, tmp_path / "state" / "doctor.json"]                              # the fetched docs, the doctor's findings
     for secret in (y.secret_file, y.worker_secret_file):
         assert secret.is_relative_to(tmp_path / "state") and oct(secret.stat().st_mode & 0o777) == "0o600"
         assert not any(secret.resolve().is_relative_to(f.resolve()) for f in [*folders, *code]), secret.name

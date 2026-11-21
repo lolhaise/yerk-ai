@@ -17,7 +17,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import cli, mcp_server, workers
+from yerk_ai import cli, gates, mcp_server, workers
 from yerk_ai import words as W
 from yerk_ai.accounts import Account, Cooldowns, store_token
 from yerk_ai.config import table
@@ -33,14 +33,23 @@ MANAGER_ENV = {"HOME": "/nonexistent-home", "USER": "someone", "LANG": "C.UTF-8"
                "SSH_AUTH_SOCK": "/tmp/planted-agent.sock", "GPG_AGENT_INFO": "planted"}  # two the worker must not get
 
 
-class Units:
+class Units(workers.Systemd):
     """systemd-run's part, as the code relies on it: argv runs with exactly the given environment on
     top of the manager's, in its folder, output appended to the files; the cap kills it (result
     timeout); a stop kills its process group (result success, killed TERM, as systemd reports a
-    stopped service); ExecStopPost runs `post` with SERVICE_RESULT, EXIT_CODE and EXIT_STATUS."""
+    stopped service); ExecStopPost runs `post` with SERVICE_RESULT, EXIT_CODE and EXIT_STATUS. The
+    rest is the launcher's own: given a state folder and hidden paths, its fence's question (unseen)."""
 
-    def __init__(self):
+    def __init__(self, state=None, hidden=()):
+        super().__init__(state, hidden)
         self.calls, self.procs, self.stopped = [], {}, set()
+
+    def keep(self, *a, **kw):
+        """This stand-in, holding what the daemon gives its launcher (the state folder, the hidden paths); a bare
+        Systemd() (`yerk status`'s) keeps what it holds."""
+        if a or kw:
+            super().__init__(*a, **kw)
+        return self
 
     def start(self, unit, argv, env, cwd, out, err, cap, post):
         self.calls.append({"unit": unit, "argv": list(argv), "env": dict(env), "cwd": cwd, "cap": cap, "post": post})
@@ -387,7 +396,8 @@ def test_a_unit_that_ended_while_no_list_had_it_completes_from_its_exit_file(set
 def test_a_last_message_of_exactly_no_reply_settles_a_quiet_card_live_and_at_a_re_attach(setup):
     """A worker whose last message is exactly NO_REPLY, read as jobs.py's worker_done reads it (its last result event, else
     the report's first line), settles quiet when the daemon sees its exit file and when a restart finds it ended: the done
-    mark and QUIET_WORKER, never the token, no rows, the footer as ever. Any other last message settles as before."""
+    mark, never the token, no rows, the footer as ever; QUIET_WORKER when the report's first line is the token too, else
+    "finished clean" over that line (need-2026-11-16-100: a quiet card hid it). Any other last message settles as before."""
     s = setup
 
     def away(wid, report, last=None):                    # it ended while no daemon was up: its exit file, report and rows
@@ -414,10 +424,12 @@ def test_a_last_message_of_exactly_no_reply_settles_a_quiet_card_live_and_at_a_r
     cards = {k.removeprefix("worker:"): t for k, t, _, _ in s.chan.settled}
     assert cards[died].splitlines()[:2] == [f"{W.NOT_DONE} worker died: it ended with an error", W.NO_REPLY]
     for wid, result in ((live, W.NO_REPLY), ("qu1e70", W.NO_REPLY), ("qu1e71", "merge")):
-        head, *foot = cards[wid].splitlines()
-        assert head == f"{W.DONE} worker {W.QUIET_WORKER}" and len(foot) == 2 and foot[0].startswith("-# done in ")
-        assert foot[1] == f"-# report saved: `yerk worker report {wid}`" and all(W.width(x) <= W.PHONE for x in foot)
-        assert W.NO_REPLY not in cards[wid] and "look at the feed" not in cards[wid] and "merge" not in cards[wid]
+        head, *said, done, saved = cards[wid].splitlines()
+        assert [head, *said] == ([f"{W.DONE} worker {W.QUIET_WORKER}"] if result == W.NO_REPLY else
+                                 [f"{W.DONE} worker finished clean", "merge"])     # the report's own line, never the token
+        assert done.startswith("-# done in ") and saved == f"-# report saved: `yerk worker report {wid}`"
+        assert W.NO_REPLY not in cards[wid] and "look at the feed" not in cards[wid] and "job" not in cards[wid]
+        assert all(W.width(x) <= W.PHONE for x in cards[wid].splitlines())
         assert (s.ledger.worker_get(wid)["exit"], s.ledger.worker_get(wid)["result"]) == ("done", result)   # the row as ever
     assert cards["n0rma1"].splitlines()[:4] == [f"{W.WORKING} worker finished, 1 of 2 ticked", "merge",
                                                 f"{W.DONE} look at the feed", f"{W.WAITING} decide"]
@@ -444,6 +456,106 @@ def test_a_settled_card_reads_as_before_for_any_other_end_and_the_quiet_one_keep
     quiet = workers.card_text(row, items, end(result=W.NO_REPLY, quiet=True), accounts=2, look=W.Look(paths="owner"))
     assert quiet.splitlines() == [f"{W.DONE} worker finished clean, nothing to add", "-# done in 3 min, account one", saved,
                                   "-# /w/abc123/REPORT.md"]
+
+
+def test_a_jobs_worker_card_names_its_job_and_a_quiet_one_shows_its_one_line_result_whole():
+    """need-2026-11-16-100: six quiet job cards in a room read alike, "worker finished clean, nothing to add", the time and
+    "report saved", though four were one job whose reports each held a forecast's one line and two another job's runs with
+    nothing: the card hid the report's line whenever the last message was NO_REPLY and never named the job, so on a phone
+    they could not be told apart. A job's worker now names its job first in the footer, waiting, running and settled; a
+    quiet end shows the report's first line under "finished clean", whole over two phone lines (cut at one, a forecast
+    loses its number), and keeps QUIET_WORKER when that line is the token too or there is no report. Every settled card's
+    line wraps alike, a longer one cut with "..."; a long name is cut to phone width; a worker no job started has no job."""
+    row = {"id": "abc123", "cap": 900.0, "started": 1000.0, "account": "one", "report": "/w/abc123/REPORT.md",
+           "tasks": "/w/abc123/TASKS.md", "room": "r", "job": "price-watch"}
+    items, saved = [(True, "look at the feed"), (False, "decide")], "-# report saved: `yerk worker report abc123`"
+    said = "Rain at the coast on Saturday: median 12 mm (5-95: 3 to 30)"         # 59 columns: two phone lines
+    whole = ["Rain at the coast on Saturday: median 12", "mm (5-95: 3 to 30)"]
+
+    def end(result=said, state="done", **more):
+        return {"exit": state, "finished": 1181.0, "result": result, "has_report": True,
+                "result_code": "exit-code" if state == "died" else "success", **more}
+
+    def card(r=row, e=None, **kw):
+        lines = workers.card_text(r, items, e, now=1185.0, **kw).splitlines()
+        assert all(W.width(x) <= W.PHONE for x in lines) and W.NO_REPLY not in lines, lines
+        return lines
+    assert card(e=end(quiet=True)) == [f"{W.DONE} worker finished clean", *whole, "-# job price-watch, done in 3 min", saved]
+    assert card(e=end(quiet=True), accounts=2)[3:5] == ["-# job price-watch, done in 3 min", "-# account one"]
+    for nothing in (end(W.NO_REPLY, quiet=True), end(quiet=True, has_report=False)):
+        assert card(e=nothing)[:2] == [f"{W.DONE} worker {W.QUIET_WORKER}", "-# job price-watch, done in 3 min"]
+    assert card(e=end(state="died")) == [f"{W.NOT_DONE} worker died: it ended with an error", *whole, f"{W.DONE} look at the feed",
+                                         f"{W.NOT_DONE} decide", "-# job price-watch, ran 3 min of 15", saved]
+    longer = card(e=end(f"{said}, then dry until the next front on Thursday", quiet=True))
+    assert longer[1] == whole[0] and longer[2].startswith(whole[1]) and longer[2].endswith("...") and len(longer) == 5
+    assert card()[-2:] == ["-# job price-watch, worker abc123", "-# 3 min of 15"]                    # running
+    assert card({**row, "waiting": 1, "line": 2})[-1] == "-# job price-watch, worker abc123"         # in line
+    named = card({**row, "job": "a-" * 29 + "zz"}, end(quiet=True))
+    assert named[3].startswith("-# job a-a-a-") and named[3].endswith("...") and named[4] == "-# done in 3 min"
+    plain = {k: v for k, v in row.items() if k != "job"}
+    assert card(plain, end(quiet=True)) == [f"{W.DONE} worker finished clean", *whole, "-# done in 3 min", saved]
+    assert card(plain)[-1] == "-# worker abc123, 3 min of 15" and card({**plain, "job": None})[-1] == card(plain)[-1]
+
+
+def settle(s, wid, exit):
+    """A worker whose unit wrote `exit`, settled through Workers.complete: its card's lines, its ledger exit_detail and the
+    first line of its relay."""
+    seen = {}
+
+    async def go():
+        unlisted(s, wid, 30, exit={**exit, "ended": time.time()})
+        w = s.make({"r": Busy()})
+
+        async def hook(row, end):
+            seen["end"] = end
+            return True
+        w.hooks.append(hook)
+        await w.complete(wid)
+    asyncio.run(go())
+    row = s.ledger.worker_get(wid)
+    card = next(t for k, t, _, _ in s.chan.settled if k == f"worker:{wid}").splitlines()
+    assert all(W.width(x) <= W.PHONE for x in card)
+    return card, row["exit_detail"], workers.relay_text(row, seen["end"], 1500).splitlines()[0]
+
+
+def test_a_death_for_memory_says_memory_on_the_card_the_relay_and_the_ledger_and_a_kill_with_no_count_reads_as_before(setup):
+    # 2026-11-11, units on the box: OOMPolicy=continue ends a main process the kernel killed for memory as signal, KILL;
+    # OOMPolicy=stop said oom-kill, exited 143, as seen live
+    for wid, exit, detail in (("oomkil", {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 1}, "signal, killed KILL"),
+                              ("oomstp", {"result": "oom-kill", "code": "exited", "status": "143"}, "oom-kill, exited 143")):
+        card, said, relay = settle(setup, wid, exit)
+        assert card[:2] == [f"{W.NOT_DONE} worker died: it ran out of memory", "merge"] and said == f"{detail}; it ran out of memory"
+        assert relay.startswith(f"[worker {wid} finished] died: it ran out of memory, ") and relay.count("memory") == 1
+    for wid, exit in (("kill00", {"result": "signal", "code": "killed", "status": "KILL"}),
+                      ("kill01", {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 0})):
+        card, said, relay = settle(setup, wid, exit)
+        assert (card[:2], said) == ([f"{W.NOT_DONE} worker died: it was killed", "merge"], "signal, killed KILL")
+        assert relay.startswith(f"[worker {wid} finished] died: it was killed, ") and "memory" not in relay
+
+
+def test_a_worker_that_lost_a_process_to_memory_and_ended_any_other_way_says_so_in_one_line_and_none_without(setup):
+    one, two = W.OOM_LOST[0], W.OOM_LOST[1].format(n=2)
+    for wid, exit, head, line in (
+            ("lost01", {"result": "success", "code": "exited", "status": "0", "oom_kill": 1}, "finished clean", one),
+            ("lost02", {"result": "timeout", "code": "killed", "status": "TERM", "oom_kill": 2}, "stopped: timed out at 30 min", two),
+            ("lost03", {"result": "exit-code", "code": "exited", "status": "3", "oom_kill": 1}, "died: it ended with an error", one),
+            ("lost04", {"result": "exit-code", "code": "exited", "status": "143", "oom_kill": 1}, "died: it ended with an error", one),
+            ("none00", {"result": "success", "code": "exited", "status": "0", "oom_kill": 0}, "finished clean", None)):
+        card, said, relay = settle(setup, wid, exit)
+        detail = f"{exit['result']}, {exit['code']} {exit['status']}"
+        assert card[0].endswith(f"worker {head}") and relay.startswith(f"[worker {wid} finished] {head}, "), wid
+        if line is None:
+            assert card[1] == "merge" and said == detail and "memory" not in relay
+        else:
+            assert card[1:3] == [line, "merge"] and said == f"{detail}; {line}" and relay.endswith(f"; {line}"), wid
+
+
+def test_a_death_for_memory_is_never_a_stop_nobody_asked_for_and_a_real_one_still_is():
+    died = lambda **x: {"exit": "died", **x}  # noqa: E731
+    assert not workers.cut_off(died(result_code="oom-kill", status="143"))      # seen live: the fix started again
+    assert not workers.cut_off(died(result_code="signal", status="KILL", oom_kill=1))
+    assert all(workers.cut_off(died(result_code=r, status=st, **more)) for r, st in (("exit-code", "143"), ("signal", "TERM"))
+               for more in ({}, {"oom_kill": 1}))       # a process lost to memory earlier, then the TERM: still cut off
 
 
 def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_relay_turn_live_or_at_a_re_attach(setup, monkeypatch):
@@ -483,7 +595,8 @@ def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_rel
         assert (row["exit"], row["relay"], row["relay_note"]) == ("done", "skipped", "the worker answered NO_REPLY"), wid
         assert s.ledger.inbound_get(f"relay-{wid}") is None, wid          # no turn was asked of the room's session
         card = next(t for k, t, _, _ in s.chan.settled if k == f"worker:{wid}")
-        assert card.splitlines()[0] == f"{W.DONE} worker {W.QUIET_WORKER}" and W.NO_REPLY not in card
+        head = [f"{W.DONE} worker {W.QUIET_WORKER}"] if wid == quiet["id"] else [f"{W.DONE} worker finished clean", "merge"]
+        assert card.splitlines()[:len(head)] == head and W.NO_REPLY not in card    # qu1e72's report says merge (unlisted)
     assert [inbound for _, inbound in s.chan.replies] == [[f"relay-{said}"], [f"relay-{died}"]]   # each told, in order
     assert [s.ledger.worker_get(x)["relay"] for x in (said, died)] == ["relayed", "relayed"]
     listed = {r["id"]: (r["relay"], r["relay_note"]) for r in workers.listing(s.ledger)}
@@ -715,6 +828,109 @@ def test_a_worker_gets_only_the_read_only_yerk_tools_from_config_never_send_work
     assert sorted(t.name for t in asyncio.run(srv.list_tools())) == ["read_memory", "recall"]
 
 
+def preamble(prompt):
+    """A PROMPT.md's own lines, before the brief it carries, which is appended after them: what a test of them reads."""
+    return prompt[:prompt.index("\nThe brief (also in ")]
+
+
+BOTH = ("- You have no room session and no subagents. Of Yerk AI's tools you have mcp__yerk__recall and mcp__yerk__read_memory "
+        "and no other: they read the memory of the room that started you, as the room does. Where the brief depends on what the "
+        "owner or the room said, decided or keeps on file, look there first. Your cap is 65 minutes; past it the run is stopped.")
+
+
+def test_a_worker_given_no_yerk_ai_tool_reads_todays_line_to_the_letter_at_any_cap_and_its_add_on_line_right_after(setup):
+    """With no [workers] yerk_tools the line is the one every worker read before, byte for byte, at the default cap and at
+    another, and with an add-on given its line comes right after it."""
+    s = setup
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp))
+    w.room_confs["r"] = COUNTING
+    for kw, line in (({}, "- You have no room session, no Yerk AI tools and no subagents. Your cap is 65 minutes; past it the run is stopped.\n"),
+                     ({"cap_minutes": 10},
+                      "- You have no room session, no Yerk AI tools and no subagents. Your cap is 10 minutes; past it the run is stopped.\n")):
+        bare = preamble(started(w, "r", "look", **kw)[1]).splitlines(keepends=True)
+        given = preamble(started(w, "r", "look", addons=["mcp__abacus__sum"], **kw)[1]).splitlines(keepends=True)
+        assert bare[5] == given[5] == line and "mcp__yerk__" not in "".join(bare + given)
+        assert given[6].startswith("- You have the room's own mcp__abacus__sum too. A step that needs the owner's word (`confirmed`)")
+        assert bare[6].startswith("- Your tool calls pass Yerk AI's gates") and given[7] == bare[6]
+
+
+def test_a_worker_given_both_read_only_tools_is_told_them_by_the_names_its_tool_list_shows_and_what_they_are_for(setup):
+    """Seen live: two workers given recall and read_memory read in their prompts that they had no Yerk AI tools, so a
+    worker read the memory only when its brief named a tool. The line names what it is granted (--allowedTools), no more."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()}, yerk_tools=["recall", "read_memory"])
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="told"', account="one")
+        return out, await ended(s.ledger, out["id"], relay=False)
+    out, row = asyncio.run(go())
+    folder = Path(out["staging"])
+    own = preamble((folder / "PROMPT.md").read_text())
+    argv = json.loads((folder / "fake-record.json").read_text())["argv"]
+    granted = set(argv[argv.index("--allowedTools") + 1].split(","))
+    assert set(re.findall(r"mcp__yerk__\w+", own)) == granted == {"mcp__yerk__recall", "mcp__yerk__read_memory"}
+    assert "no Yerk AI tools" not in own and own.splitlines()[5] == BOTH and row["exit"] == "done"
+    assert json.loads((folder / "worker.json").read_text())["yerk_tools"] == ["recall", "read_memory"]
+
+
+def test_a_worker_given_recall_alone_is_told_that_one_in_words_for_one_and_never_read_memory(setup):
+    s = setup
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=["recall"])
+    out, prompt = started(w, "r", "look")
+    own = preamble(prompt)
+    assert own.splitlines()[5] == ("- You have no room session and no subagents. Of Yerk AI's tools you have mcp__yerk__recall and "
+                                   "no other: it reads the memory of the room that started you, as the room does. Where the brief "
+                                   "depends on what the owner or the room said, decided or keeps on file, look there first. Your cap "
+                                   "is 65 minutes; past it the run is stopped.")
+    assert "read_memory" not in own and "they read" not in own and set(re.findall(r"mcp__yerk__\w+", own)) == {"mcp__yerk__recall"}
+    spec = json.loads((Path(out["staging"]) / "worker.json").read_text())
+    assert spec["yerk_tools"] == ["recall"] and json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]["yerk"]["args"][-1] == "recall"
+
+
+def test_a_setting_naming_tools_a_worker_may_not_get_puts_none_of_them_in_its_prompt(setup, caplog):
+    """The line names what the worker gets, kept to WORKER_TOOLS, never the raw setting: send, worker, schedule and hold
+    are dropped with a warning when yerkd.toml is read, and a Settings built by hand with them names none either."""
+    s = setup
+    raw = ["recall", "send", "mcp__yerk__worker", "schedule", "hold"]
+    for given, names in ((workers.settings(s.tmp, {"yerk_tools": raw}).yerk_tools, {"mcp__yerk__recall"}),
+                         (raw, {"mcp__yerk__recall"}), (["send", "worker", "schedule"], set())):
+        w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=given)
+        out, prompt = started(w, "r", "look")
+        own = preamble(prompt)
+        assert set(re.findall(r"mcp__yerk__\w+", own)) == names, own
+        assert set(json.loads((Path(out["staging"]) / "worker.json").read_text()).get("yerk_tools", [])) == {n[11:] for n in names}
+    assert own.splitlines()[5] == ("- You have no room session, no Yerk AI tools and no subagents. Your cap is 65 minutes; past it the "
+                                   "run is stopped.") and "schedule" in caplog.text
+
+
+def test_a_worker_given_both_and_an_add_on_reads_two_lines_each_naming_its_own_tools_and_the_confirmed_sentence_as_before(setup):
+    s = setup
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=["recall", "read_memory"])
+    w.room_confs["r"] = COUNTING
+    out, prompt = started(w, "r", "look", addons=["mcp__abacus__sum"])
+    lines = preamble(prompt).splitlines()
+    assert lines[5] == BOTH and out["addons"] == ["mcp__abacus__sum"]
+    assert lines[6] == ("- You have the room's own mcp__abacus__sum too. A step that needs the owner's word (`confirmed`) is refused, "
+                        "since nobody is here to give it: leave that step ready, and say in your report what waits for the word, for "
+                        "the room to do once the owner says it.")
+    assert lines[7].startswith("- Your tool calls pass Yerk AI's gates")
+
+
+def test_a_brief_quoting_the_old_line_or_naming_a_tool_changes_nothing_in_the_preamble_read_alone(setup):
+    """The brief is appended after the preamble, so the tests above read the preamble alone: a brief that says "no Yerk AI
+    tools", names a tool or quotes the brief's own header leaves what they read as the grant makes it."""
+    s = setup
+    brief = ("The old line: - You have no room session, no Yerk AI tools and no subagents. Use mcp__yerk__send, "
+             "mcp__yerk__read_memory and mcp__yerk__schedule.\nThe brief (also in nowhere):\n")
+    for given, names in (([], set()), (["recall"], {"mcp__yerk__recall"})):
+        w = s.make({"r": Busy()}, launcher=Record(s.tmp), yerk_tools=given)
+        prompt = started(w, "r", brief)[1]
+        own = preamble(prompt)
+        assert set(re.findall(r"mcp__yerk__\w+", own)) == names and ("no Yerk AI tools" in own) == (not given)
+        assert prompt.endswith(brief.strip() + "\n") and own.count("- You have no room session") == 1
+
+
 def test_two_completions_within_a_minute_are_two_relays_in_order_never_merged(setup):
     s = setup
     room = s.room()
@@ -763,10 +979,11 @@ def test_a_relay_into_a_closed_room_resumes_the_rooms_own_session(setup):
 
 
 # the sandbox: what a worker's unit sees of the state folder, and which rooms may use workers
-class Record:
-    """A launcher that only records: nothing runs, no systemd, no model."""
+class Record(workers.Systemd):
+    """A launcher that only records: nothing runs, no systemd, no model; its fence's question is the launcher's own."""
 
-    def __init__(self):
+    def __init__(self, state=None, hidden=()):
+        super().__init__(state, hidden)
         self.calls = []
 
     def start(self, unit, argv, env, cwd, out, err, cap, post):
@@ -814,6 +1031,71 @@ def test_the_unit_sees_the_state_folder_read_only_its_own_folder_writable_and_no
     assert (tmp_path / "d" / "rooms").is_dir() and (tmp_path / "d" / "secrets" / "pages").is_dir()   # there before a unit starts
 
 
+def unit_props(monkeypatch, launcher, folder):
+    """The -p properties `launcher` hands systemd-run for one worker in `folder`, nothing run."""
+    lines = []
+    monkeypatch.setattr(workers.subprocess, "run", lambda cmd, **kw: lines.append(cmd) or NS(returncode=0, stderr=""))
+    launcher.start("yerk-worker-abc123", ["true"], {}, folder, folder / "o", folder / "e", 60, ["true"])
+    return [lines[0][i + 1] for i, a in enumerate(lines[0][:lines[0].index("--")]) if a == "-p"]
+
+
+def test_a_worker_unit_has_a_4g_memory_ceiling_no_swap_and_outlives_a_kill_for_memory(tmp_path, monkeypatch):
+    # 2026-11-11: a worker reproducing an out-of-memory bug took 16G and 3.2G of swap on a 20G box, and the box froze
+    for launcher in (workers.Systemd(), workers.Systemd(tmp_path / "state", (tmp_path / "state" / "rooms",))):
+        props = unit_props(monkeypatch, launcher, tmp_path / "state" / "workers" / "abc123")
+        assert [p for p in props if p.startswith(("Memory", "OOM"))] == ["MemoryMax=4G", "MemorySwapMax=0", "OOMPolicy=continue"]
+        assert "RuntimeMaxSec=60" in props and "KillMode=control-group" in props    # the time cap and the stop as they were
+
+
+def test_the_exit_record_carries_the_units_kills_for_memory_and_a_count_it_cannot_read_leaves_it_as_before(tmp_path, monkeypatch):
+    # ExecStopPost runs in the unit's own cgroup and reads its memory.events there (systemd 259, two units on the box, 2026-11-11)
+    unit = "user.slice/app.slice/yerk-worker-abc123.service"
+    events, d = tmp_path / "fs" / unit / "memory.events", tmp_path / "w"
+    events.parent.mkdir(parents=True)
+    d.mkdir()
+    (tmp_path / "cgroup").write_text(f"0::/{unit}\n")
+    monkeypatch.setattr(workers, "OWN_CGROUP", tmp_path / "cgroup")
+    monkeypatch.setattr(workers, "CGROUP", tmp_path / "fs")
+    for k, v in {"SERVICE_RESULT": "success", "EXIT_CODE": "exited", "EXIT_STATUS": "0", "INVOCATION_ID": "e3f0"}.items():
+        monkeypatch.setenv(k, v)
+
+    def record():
+        assert workers.post(d) == 0
+        return json.loads((d / "exit.json").read_text())
+    events.write_text("low 0\nhigh 0\nmax 63\noom 2\noom_kill 2\noom_group_kill 0\n")
+    assert {k: v for k, v in record().items() if k != "ended"} == {"result": "success", "code": "exited", "status": "0", "oom_kill": 2}
+    events.write_text("low 0\nhigh 0\n")                       # no count in it
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+    events.unlink()                                             # the cgroup already gone
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+    events.write_text("oom_kill 1\n")
+    monkeypatch.delenv("INVOCATION_ID")                         # not in a unit: the count would be another cgroup's
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+
+
+def launched_with(s, monkeypatch, conf):
+    """The -p properties of a worker's unit on an install whose [workers] is `conf`: its settings, and the launcher Workers builds."""
+    w = workers.Workers(s.ledger, workers.settings(s.tmp, conf), s.accounts, Cooldowns(None), {}, {}, {})
+    return w.conf, unit_props(monkeypatch, w.launcher, s.tmp / "workers" / "abc123")
+
+
+def test_an_install_sets_its_own_worker_memory_ceiling_in_workers_memory_max(setup, monkeypatch, caplog):
+    for given, sent in (("6G", "6G"), ("512m", "512M"), (" 2t ", "2T"), (3221225472, "3221225472"), ("1048576K", "1048576K")):
+        conf, props = launched_with(setup, monkeypatch, {"memory_max": given})
+        assert f"MemoryMax={sent}" in props and "MemorySwapMax=0" in props and "OOMPolicy=continue" in props
+        assert conf.memory_max == sent and "memory_max" not in caplog.text
+
+
+def test_a_memory_max_that_is_not_a_size_never_reaches_systemd_the_default_does_with_a_warning(setup, monkeypatch, caplog):
+    for bad in ("lots", "4 GB", "4GB", "1.5G", "50%", "infinity", "", "0", 0, -1, 2.5, True, ["4G"], "20000000000000000T"):
+        caplog.clear()
+        conf, props = launched_with(setup, monkeypatch, {"memory_max": bad})
+        assert [p for p in props if p.startswith("MemoryMax=")] == ["MemoryMax=4G"] and conf.memory_max == "4G"
+        assert f"memory_max {bad!r} is not a size; a worker gets 4G" in caplog.text
+    caplog.clear()
+    assert launched_with(setup, monkeypatch, {})[0].memory_max == "4G" and not caplog.text   # unset: the default, said nowhere
+
+
 def test_the_unit_does_not_see_the_private_layers_secrets_but_its_own_accounts_token(tmp_path):
     # a worker read the install's provider keys from the private layer's secrets/ and spent with them outside the
     # daemon's tools, their gates and the ledger (2026-10-31); the folder holds every account's token too
@@ -828,6 +1110,174 @@ def test_the_unit_does_not_see_the_private_layers_secrets_but_its_own_accounts_t
             assert [x for x in p if str(keys) in x] == [f"TemporaryFileSystem={keys}:ro", f"BindReadOnlyPaths=-{own}"]
         else:                                         # no token there: not there at all, and with no secrets/ it still starts
             assert [x for x in p if str(keys) in x] == [f"InaccessiblePaths=-{keys}"]
+
+
+# what a start says of the paths its brief names that the unit hides (Systemd.unseen): told, never refused
+def fence_of(t):
+    """The daemon's four hidden paths on the setup's state folder `t`: the install's secret, every room's folder, the private
+    layer's secrets/ (the setup's, holding each account's token, as the default does) and the pages' keys."""
+    return (t / "yerk" / "yerk-http.secret", t / "rooms", t / "secrets", t / "yerk" / "pages")
+
+
+def started(w, room, brief, **kw):
+    """`start`'s answer and the PROMPT.md it wrote."""
+    out = asyncio.run(w.start(room, brief, account="one", **kw))
+    return out, (Path(out["staging"]) / "PROMPT.md").read_text()
+
+
+def test_a_brief_naming_another_rooms_work_folder_starts_and_its_answer_and_prompt_say_the_worker_cannot_see_it(setup, caplog):
+    # seen live: a brief's third source was another room's work folder; the start said nothing and the worker ran
+    # one source short. The unit is right to hide it; the start now says so, and the worker is told
+    s = setup
+    caplog.set_level("INFO", logger="yerk.workers")
+    units = Record(s.tmp, fence_of(s.tmp))
+    w = s.make({"r": Busy(), "other": Busy()}, launcher=units)
+    own, other = s.tmp / "rooms" / "r" / "work", s.tmp / "rooms" / "other" / "work"
+    brief = (f"Three sources.\n1. {own}/a.md\n2. The checkout {ROOT}.\n"
+             f"3. Another room's work folder {other}/: notes.md and the list*.txt reads.\nAgain: {other}.\n")
+    out, prompt = started(w, "r", brief)
+    assert out["ok"] and out["unseen"] == [str(other)]
+    assert out["unseen_note"] == W.WORKER_UNSEEN.format(paths=other, work=own) and str(own) in out["unseen_note"]
+    line = (f"- Not there for you, since your unit hides them: {other}. The brief names them; name them in your report's "
+            "first lines, with what you did without them.\n")
+    assert line in prompt and prompt.index(line) < prompt.index("The brief (also in")
+    assert [c["unit"] for c in units.calls] == [out["unit"]]                  # launched as before
+    assert (Path(out["staging"]) / "BRIEF.md").read_text() == brief            # the brief as given
+    assert f"worker {out['id']}: its brief names 1 path(s) its unit hides" in caplog.text and str(other) not in caplog.text
+
+
+def test_a_brief_naming_only_what_the_worker_sees_gets_todays_answer_and_prompt(setup, caplog):
+    s = setup
+    caplog.set_level("INFO", logger="yerk.workers")
+    own = s.tmp / "rooms" / "r" / "work"
+    brief = (f"Write in {s.tmp / 'workers'}, read {own}, {own / 'notes' / 'a.md'} and `{ROOT / 'yerk_ai'}`, "
+             f"then ~/notes/today.md and {Path.home() / 'Documents'}; your token is {s.accounts[0].token_file}.")
+    fenced, plain = s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp))), s.make({"r": Busy()}, launcher=Record())
+    (out, prompt), (was, before) = started(fenced, "r", brief), started(plain, "r", brief)   # no state folder: no fence
+    assert sorted(out) == sorted(was) == ["account", "cap_minutes", "card", "effort", "id", "model", "ok", "report", "room",
+                                          "staging", "tasks", "unit"]
+    assert prompt.replace(out["id"], "ID") == before.replace(was["id"], "ID") and "Not there for you" not in prompt
+    assert "hides" not in caplog.text
+
+
+def test_unseen_hides_every_rooms_folder_but_the_workers_rooms_work_folder_and_every_secret_but_its_own_token(setup):
+    s = setup
+    unit, rooms, keys = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms", s.tmp / "secrets"
+    token, other = str(keys / "claude-one.token"), str(keys / "claude-two.token")
+    ask = lambda *ps, room="r", bind="", tok=token: unit.unseen(room, bind, tok, [str(p) for p in ps])  # noqa: E731
+    assert ask(rooms / "r" / "settings.json", rooms / "r", rooms, rooms / "r" / "work" / "x.md", rooms / "r" / "work") == \
+        [str(rooms / "r" / "settings.json"), str(rooms / "r"), str(rooms)]   # its room outside work and the root alone
+    assert ask(keys, other, token, keys / "openai.key") == [str(keys), other, str(keys / "openai.key")]
+    assert ask(token, tok="") == [token]                                        # no token of its own: none comes back
+    assert ask(s.tmp / "yerk" / "yerk-http.secret", s.tmp / "yerk" / "pages" / "r.key", s.tmp / "yerk") == \
+        [str(s.tmp / "yerk" / "yerk-http.secret"), str(s.tmp / "yerk" / "pages" / "r.key")]
+    # given `bind` (a pictures backfill): the bound room's work folder is seen, the calling room's own is hidden
+    assert ask(rooms / "r" / "work" / "inbox", rooms / "ops" / "work", room="ops", bind="r") == [str(rooms / "ops" / "work")]
+    w = s.make({"ops": Busy(), "r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp)))
+    out, _ = started(w, "ops", f"Describe {rooms / 'r' / 'work' / 'inbox' / 'p.png'}; not {rooms / 'ops' / 'work'}.",
+                     more={"bind": "r"})
+    assert out["unseen"] == [str(rooms / "ops" / "work")] and str(rooms / "r" / "work") in out["unseen_note"]
+    assert ask(rooms, rooms, rooms / "r") == [str(rooms), str(rooms / "r")]                    # each once
+    assert workers.Systemd(None, fence_of(s.tmp)).unseen("r", "", token, [str(rooms / "other")]) == []   # no state folder
+
+
+def test_a_brief_names_its_paths_in_backticks_quotes_brackets_at_a_sentences_end_and_as_globs_each_once(setup, monkeypatch):
+    s = setup
+    monkeypatch.setenv("HOME", str(s.tmp / "home"))
+    o = s.tmp / "rooms" / "other"
+    assert workers.named(f"See `{o}/a`, \"{o}/b\" and '{o}/c' ({o}/d) [{o}/e] {{{o}/f}}. Then {o}/g; {o}/h: {o}/i? "
+                         f"{o}/j! ~/k/l. {o}/*.txt and {o}/x?.md. Again {o}/a. https://example.com/x a/b TemporaryFileSystem={o}/m") \
+        == [f"{o}/{x}" for x in "abcdefghij"] + [str(s.tmp / "home" / "k" / "l"), f"{o}/*.txt", f"{o}/x?.md", f"{o}/m"]
+    unit = workers.Systemd(s.tmp, fence_of(s.tmp))
+    home = s.tmp / "rooms" / "r" / "work"
+    assert unit.unseen("r", "", "", [f"{home}/list*.txt", f"{s.tmp}/rooms/*/work", f"{s.tmp}/rooms*", f"{s.tmp}/room?"]) == \
+        [f"{s.tmp}/rooms/*/work", f"{s.tmp}/rooms*"]                             # a glob by the part before its wildcard
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp)))
+    five = [str(o / n / "work") for n in ("a", "b", "c", "d", "e")]
+    out, prompt = started(w, "r", "Read " + ", ".join(five) + f" and ~/notes, then {five[0]} again.")
+    assert out["unseen"] == five and out["unseen_note"].startswith(f"this worker cannot see {', '.join(five[:3])} and 2 more, and")
+    assert f"hides them: {', '.join(five)}." in prompt                          # the worker is told every one
+
+
+def test_a_link_in_the_rooms_work_folder_into_a_hidden_folder_is_hidden(setup):
+    s = setup
+    work, other = s.tmp / "rooms" / "r" / "work", s.tmp / "rooms" / "other" / "work"
+    work.mkdir(parents=True)
+    other.mkdir(parents=True)
+    (work / "theirs").symlink_to(other)
+    (work / "mine").symlink_to(work)
+    unit = workers.Systemd(s.tmp, fence_of(s.tmp))
+    assert unit.unseen("r", "", "", [str(work / "theirs"), str(work / "theirs" / "notes.md"), str(work / "mine")]) == \
+        [str(work / "theirs"), str(work / "theirs" / "notes.md")]
+
+
+def test_a_start_with_no_state_folder_names_nothing_and_a_worker_in_line_gets_the_same_answer(setup):
+    s = setup
+    brief = f"Read {s.tmp / 'rooms' / 'other' / 'work'}."
+    out, prompt = started(s.make({"r": Busy()}, launcher=Record(None, fence_of(s.tmp))), "r", brief)
+    assert "unseen" not in out and "Not there for you" not in prompt
+    w = s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp)), per_account=1)
+    (first, _), (second, told) = started(w, "r", brief), started(w, "r", brief)
+    assert "waiting" not in first and second["waiting"] == W.WAITING_ACCOUNT and second["line"] == 1
+    assert first["unseen"] == second["unseen"] == [brief[5:-1]] and first["unseen_note"] == second["unseen_note"]
+    assert "Not there for you" in told
+    (s.tmp / "brief.md").write_text(brief)
+    assert asyncio.run(w.start("r", brief_file=str(s.tmp / "brief.md"), account="two"))["unseen"] == first["unseen"]
+
+
+def test_unseen_and_the_units_properties_agree_on_every_path(setup):
+    # the question and the fence read one _fence: for the same hidden paths, each sample is hidden by unseen exactly when
+    # it is under a TemporaryFileSystem or an InaccessiblePaths of sandbox's and under no Bind line
+    s = setup
+    unit, rooms, keys = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms", s.tmp / "secrets"
+    token, folder = keys / "claude-one.token", s.tmp / "workers" / "abc123"
+    samples = [rooms, rooms / "r", rooms / "r" / "settings.json", rooms / "r" / "work", rooms / "r" / "work" / "a.md",
+               rooms / "ops", rooms / "ops" / "work", rooms / "ops" / "work" / "inbox" / "p.png", rooms / "other" / "work",
+               keys, token, keys / "claude-two.token", keys / "deep" / "x", s.tmp / "yerk", s.tmp / "yerk" / "yerk-http.secret",
+               s.tmp / "yerk" / "pages", s.tmp / "yerk" / "pages" / "r.key", s.tmp, folder, s.tmp / "ledger.sqlite", ROOT,
+               Path.home()]
+    folder.mkdir(parents=True)
+    for spec, token_env in (({"room": "r"}, str(token)), ({"room": "ops", "bind": "r"}, str(token)), ({"room": "r"}, ""),
+                            ({"room": "../r"}, str(token))):
+        (folder / "worker.json").write_text(json.dumps(spec))
+        props = unit.sandbox(folder, {"YERK_TOKEN_FILE": token_env} if token_env else {})[1::2]
+        gone = [Path(re.sub(r"^\w+=-?|:ro$", "", p)) for p in props if p.startswith(("TemporaryFileSystem=", "InaccessiblePaths="))]
+        back = [Path(p.split("=-", 1)[1]) for p in props if p.startswith(("BindPaths=", "BindReadOnlyPaths="))]
+        by_props = [str(q) for q in samples if any(q.is_relative_to(g) for g in gone) and not any(q.is_relative_to(b) for b in back)]
+        assert unit.unseen(spec["room"], spec.get("bind", ""), token_env, [str(q) for q in samples]) == by_props, spec
+        assert len(by_props) >= 9, spec                                         # the fixture hides something
+
+
+def test_a_room_name_that_is_a_path_gets_nothing_back_a_link_out_of_a_hidden_folder_stays_hidden_and_a_token_not_there_is_none(setup):
+    # three guards the fence and its question share that no test held: the agreement test above cannot see them, since
+    # both of its sides read one _fence
+    s = setup
+    unit, rooms = workers.Systemd(s.tmp, fence_of(s.tmp)), s.tmp / "rooms"
+    folder, theirs = s.tmp / "workers" / "abc123", rooms / "r" / "work" / "a.md"
+    folder.mkdir(parents=True)
+    # the room whose work folder comes back is a name, never a path: rooms/../r/work is a folder outside rooms/, and a
+    # BindPaths line is read and write
+    for spec in ({"room": "../r"}, {"room": "a/b"}, {"room": "."}, {"room": ".."}, {"room": "r", "bind": "../b"}, {"room": "r", "bind": "."}):
+        (folder / "worker.json").write_text(json.dumps(spec))
+        props = unit.sandbox(folder, {})[1::2]
+        assert f"TemporaryFileSystem={rooms}:ro" in props and not any(x.startswith("Bind") for x in props), spec
+        assert unit.unseen(spec["room"], spec.get("bind", ""), "", [str(s.tmp / "r" / "work"), str(theirs)]) == [str(theirs)], spec
+    (folder / "worker.json").write_text(json.dumps({"room": "r"}))
+    assert [x for x in unit.sandbox(folder, {})[1::2] if x.startswith("Bind")] == [f"BindPaths=-{rooms / 'r' / 'work'}"]
+    # a path is judged as written too: a link inside a hidden folder that points out of it is still not there for the worker
+    opened, link = s.tmp / "open", rooms / "other" / "work" / "out"
+    opened.mkdir()
+    link.parent.mkdir(parents=True)
+    link.symlink_to(opened)
+    assert unit.unseen("r", "", "", [str(link / "notes.md"), str(opened / "notes.md")]) == [str(link / "notes.md")]
+    # an account whose token file is not there has no token of its own: none is handed to its unit, and a brief naming
+    # that path is told it is hidden, as the unit hides it
+    one = s.accounts[0]
+    assert workers.own_token(one) == str(one.token_file)
+    one.token_file.unlink()
+    assert workers.own_token(one) == ""
+    out, prompt = started(s.make({"r": Busy()}, launcher=Record(s.tmp, fence_of(s.tmp))), "r", f"Your token is {one.token_file}.")
+    assert out["unseen"] == [str(one.token_file)] and str(one.token_file) in prompt
 
 
 def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps_every_form(tmp_path):
@@ -902,3 +1352,149 @@ def test_a_worker_runs_at_the_calls_effort_else_config_else_the_rooms_and_refuse
         assert json.loads((Path(out["staging"]) / "worker.json").read_text())["effort"] == level
     assert d["ok"] is False and "no effort level 'turbo'" in d["error"]
     assert sorted(p.name for p in (s.tmp / "workers").iterdir()) == before      # a refusal leaves no folder behind
+
+
+HANDS = {"type": "stdio", "command": "/usr/bin/node", "args": ["/opt/example/hands/server.mjs"], "env": {"YERK_ROOM": "r"},
+         "timeout": 120000}
+ROOM = {"model": "m", "allow": ["mcp__hands__browser", "mcp__hands__desktop", "mcp__web__web_fetch"],
+        "mcp": {"hands": HANDS, "web": {"type": "stdio", "command": "web", "env": {"WEB_API_KEY": "placeholder"}}}}
+
+
+def test_a_worker_gets_the_rooms_own_addon_tools_it_names_its_server_as_the_room_runs_it_and_nothing_else(setup):
+    """Need 83 of 2026-11-10: a room asked for a worker to fill web forms in the browser, and the worker it started had no
+    browser tool at all. A start's `addons` gives it the room's own add-on tools, by name or by server."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = ROOM
+        w.begin(asyncio.get_running_loop())
+        one = await w.start("r", 'FAKE report="browsed"', account="one", addons=["mcp__hands__browser"])
+        both = await w.start("r", 'FAKE report="both"', account="one", addons=["hands"])
+        return one, both, await ended(s.ledger, one["id"]), await ended(s.ledger, both["id"])
+    one, both, row, _ = asyncio.run(go())
+    folder = Path(one["staging"])
+    argv = json.loads((folder / "fake-record.json").read_text())["argv"]
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__hands__browser" and "--strict-mcp-config" in argv
+    cfg = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text())["mcpServers"]
+    assert list(cfg) == ["hands"]                                   # no web, and no yerk server: none was configured
+    assert cfg["hands"]["args"] == HANDS["args"] and cfg["hands"]["env"] == {
+        "YERK_ROOM": "r", "YERK_WORKER": one["id"], "YERK_WORK_DIR": str(folder), "YERK_TOOL_TIMEOUT": "120000"}
+    spec = json.loads((folder / "worker.json").read_text())
+    assert spec["addon_tools"] == one["addons"] == ["mcp__hands__browser"] and row["exit"] == "done"
+    prompt = (folder / "PROMPT.md").read_text()
+    assert "the room's own mcp__hands__browser too" in prompt and "`confirmed`) is refused" in prompt
+    assert both["addons"] == ["mcp__hands__browser", "mcp__hands__desktop"]
+    plain = json.loads((Path(both["staging"]) / "worker.json").read_text())
+    assert gates.given("mcp__hands__desktop", plain) and not gates.given("mcp__web__web_fetch", plain)
+
+
+@pytest.mark.parametrize(("want", "why"), [(["mcp__hands__mail"], "no add-on tool 'mcp__hands__mail'"),
+                                           (["mcp__yerk__send"], "no add-on tool 'mcp__yerk__send'"),
+                                           (["web"], "passes a credential")])
+def test_a_worker_never_gets_an_addon_tool_its_room_has_not_or_one_whose_table_hands_over_a_credential(setup, want, why):
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = ROOM
+        return await w.start("r", 'FAKE report="x"', account="one", addons=want)
+    out = asyncio.run(go())
+    assert out["ok"] is False and why in out["error"] and "mcp__hands__browser" in out["error"] + ROOM["allow"][0]
+    assert s.units.calls == [] and not (s.tmp / "workers").exists()       # refused whole: no folder, no unit
+
+
+def test_the_worker_tool_hands_the_rooms_browser_to_a_worker_from_an_owner_room_only(tmp_path):
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    y.workers.launcher = units = Record()
+    y.room_confs["example-room"] = {**ROOM, "privacy": "owner"}
+    y.room_confs["family"] = {**ROOM, "privacy": "family"}
+    for name in ("example-room", "family"):
+        y.rooms[name] = NS()
+    ask = {"action": "start", "brief": "fill the example form", "addons": ["mcp__hands__browser"]}
+
+    async def go():
+        return await y.tool_worker("example-room", ask), await y.tool_worker("family", ask)
+    own, family = asyncio.run(go())
+    assert own["ok"] and own["addons"] == ["mcp__hands__browser"] and family == {"ok": False, "line": W.WORKERS_OWNER_ONLY}
+    spec = json.loads((Path(own["staging"]) / "worker.json").read_text())
+    servers = json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]
+    assert spec["addon_tools"] == ["mcp__hands__browser"] and servers["hands"]["env"]["YERK_WORKER"] == own["id"]
+    assert [c["unit"] for c in units.calls] == [own["unit"]]
+
+
+ABACUS = {"type": "stdio", "command": "/usr/bin/node", "args": ["/opt/example/abacus/server.mjs"], "env": {"YERK_ROOM": "r"}}
+COUNTING = {"model": "m", "allow": ["mcp__abacus__sum", "mcp__abacus__chart", "mcp__web__web_fetch"],          # a made-up add-on
+            "mcp": {"abacus": ABACUS, "web": {"type": "stdio", "command": "web", "env": {"WEB_API_KEY": "placeholder"}}}}
+
+
+def test_a_worker_started_naming_no_add_on_gets_the_ones_its_room_gives_every_worker(setup):
+    """Seen live: a booked agent job told to search the owner's mail started a worker with no mail tool, since a job
+    could name no add-on and no start got one unnamed. A room's worker_addons go to every worker started from it; a room
+    with none starts the same worker as before, no add-on and no MCP server."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy(), "q": Busy()})
+        w.room_confs["r"] = {**COUNTING, "worker_addons": ["mcp__abacus__sum"]}
+        w.room_confs["q"] = COUNTING
+        w.begin(asyncio.get_running_loop())
+        out, bare = await w.start("r", 'FAKE report="read"', account="one"), await w.start("q", 'FAKE report="x"', account="one")
+        return out, await ended(s.ledger, out["id"]), bare, await ended(s.ledger, bare["id"])
+    out, row, bare, _ = asyncio.run(go())
+    folder = Path(out["staging"])
+    spec = json.loads((folder / "worker.json").read_text())
+    assert spec["addon_tools"] == out["addons"] == ["mcp__abacus__sum"] and row["exit"] == "done"
+    cfg = json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]
+    assert list(cfg) == ["abacus"] and cfg["abacus"]["env"]["YERK_WORKER"] == out["id"]
+    prompt = (folder / "PROMPT.md").read_text()
+    assert "- You have the room's own mcp__abacus__sum too." in prompt and "`confirmed`) is refused" in prompt
+    argv = json.loads((folder / "fake-record.json").read_text())["argv"]
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__abacus__sum"
+    plain = json.loads((Path(bare["staging"]) / "worker.json").read_text())
+    assert "addon_tools" not in plain and "mcp_config" not in plain and "addons" not in bare
+    assert not (Path(bare["staging"]) / "mcp.json").exists() and "the room's own" not in (Path(bare["staging"]) / "PROMPT.md").read_text()
+
+
+@pytest.mark.parametrize(("defaults", "warned"), [(["mcp__abacus__erase"], False), (["web", "mcp__web__web_fetch"], True)])
+def test_a_default_the_room_cannot_give_is_skipped_and_the_worker_starts_but_named_it_refuses_the_start(setup, caplog, defaults,
+                                                                                                         warned):
+    """A default is never a refusal: one the room's allow has not is skipped, one whose server's table passes a credential
+    skipped with one warning, and the worker starts with the rest. The same add-on named by the start is refused whole."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = {**COUNTING, "worker_addons": [*defaults, "mcp__abacus__sum"]}
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="x"', account="one")
+        await ended(s.ledger, out["id"])
+        return out, await w.start("r", 'FAKE report="x"', account="one", addons=defaults[:1])
+    with caplog.at_level("WARNING", logger="yerk.workers"):
+        out, named = asyncio.run(go())
+    assert out["ok"] and out["addons"] == ["mcp__abacus__sum"]
+    assert list(json.loads((Path(out["staging"]) / "mcp.json").read_text())["mcpServers"]) == ["abacus"]   # no key handed over
+    said = [r.getMessage() for r in caplog.records if "worker_addons" in r.getMessage()]
+    assert len(said) == warned and all("passes a credential" in x for x in said)       # one warning for the server, not one a tool
+    assert named["ok"] is False and ("passes a credential" if warned else "no add-on tool 'mcp__abacus__erase'") in named["error"]
+
+
+def test_the_rooms_add_ons_and_the_ones_a_start_names_are_one_list_with_no_repeat(setup):
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = {**COUNTING, "allow": [*COUNTING["allow"], "mcp__slate__note"], "worker_addons": ["abacus", "mcp__abacus__sum", "slate"],
+                             "mcp": {**COUNTING["mcp"], "slate": {"type": "stdio", "command": "slate"}}}
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="x"', account="one", addons=["mcp__abacus__sum"])
+        await ended(s.ledger, out["id"])
+        return out
+    out = asyncio.run(go())
+    folder = Path(out["staging"])
+    assert json.loads((folder / "worker.json").read_text())["addon_tools"] == out["addons"] == [
+        "mcp__abacus__sum", "mcp__abacus__chart", "mcp__slate__note"]
+    assert list(json.loads((folder / "mcp.json").read_text())["mcpServers"]) == ["abacus", "slate"]
+    assert "- You have the room's own mcp__abacus__sum, mcp__abacus__chart, mcp__slate__note too." in (folder / "PROMPT.md").read_text()

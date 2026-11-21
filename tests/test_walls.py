@@ -75,6 +75,7 @@ RESTART_SHAPES = [
     "systemctl --user kill -s KILL yerkd-test",
     "/usr/bin/pkill -f yerkd",
     "timeout 5 killall yerkd",
+    "kill $(pgrep -f yerkd)",
 ]
 
 
@@ -96,6 +97,49 @@ def test_a_worker_is_refused_a_restart_in_every_shape(tmp_path):
     spec = {"room": "r", "gate": {"trash": ["trash"], "private": str(tmp_path / "private")}}
     for command in RESTART_SHAPES:
         out = gates.worker_check({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(tmp_path)}, tmp_path, spec)
+        assert out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", command
+
+
+# Cleanup F5-09: the restart rule read a restart as it would run but a write to a start-up file as typed, so the write
+# passed in a nested shell or by its relative name after a `cd`. It now reads the write as own_gate_hit reads one.
+def _start_up_files(tmp_path: Path) -> Path:
+    private = tmp_path / "private"
+    private.mkdir()
+    for name in gates.RESTART_FILES:
+        (private / name).write_text("x")
+    return private
+
+
+START_UP_WRITES = [                               # {p} is the private folder; each writes one start-up file
+    'bash -c "echo x >> {p}/yerkd.toml"', "cd {p} && sed -i s/a/b/ yerkd.toml", "sh -c 'cp /x/y {p}/rooms.toml'",
+    "timeout 9 tee -a {p}/accounts.toml < new", "env A=1 perl -pi -e s/a/b/ {p}/yerkd.toml", "cp /x/rooms.toml {p}/",
+    "cd {p}; echo x > ./accounts.toml", "echo x >> {p}/yerkd.toml", "mv new.toml {p}/yerkd.toml", "dd if=new of={p}/rooms.toml",
+    "cat > notes.md <<'EOF'\nx\nEOF\nsed -i s/a/b/ {p}/yerkd.toml",   # after a heredoc: unwrap reads the text as written
+]
+
+
+@pytest.mark.parametrize("shape", START_UP_WRITES)
+def test_a_write_to_a_start_up_file_is_seen_in_every_shape(shape, tmp_path):
+    private = _start_up_files(tmp_path)
+    command = shape.format(p=private)
+    assert (gates.restart_hit("Bash", {"command": command}, private) or "").startswith("a write to "), command
+
+
+@pytest.mark.parametrize("shape", [
+    "grep -n port {p}/yerkd.toml", "sed -n 1,20p {p}/yerkd.toml 2>&1 | head -5", "cp {p}/yerkd.toml /var/tmp/kept.toml",
+    "diff {p}/rooms.toml rooms.toml > /dev/null", "cat {p}/accounts.toml | wc -l > count.txt", "echo x > {p}/notes.toml",
+])
+def test_a_read_of_a_start_up_file_is_no_write(shape, tmp_path):
+    private = _start_up_files(tmp_path)
+    command = shape.format(p=private)
+    assert gates.restart_hit("Bash", {"command": command}, private) is None, command
+
+
+def test_a_worker_is_refused_a_write_to_a_start_up_file_by_its_relative_name(tmp_path):
+    private = _start_up_files(tmp_path)
+    spec = {"room": "r", "gate": {"trash": ["trash"], "private": str(private)}}
+    for command in ("sed -i s/a/b/ yerkd.toml", "echo x > rooms.toml", "cp new.toml accounts.toml"):
+        out = gates.worker_check({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(private)}, tmp_path, spec)
         assert out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", command
 
 

@@ -197,8 +197,8 @@ def test_a_model_thinking_with_nothing_said_shows_as_thinking_in_the_owner_rooms
     for ev in tool(1, "b", "Read", {"file_path": "/x/units.md"}) + thinking(2):   # a new block after the row: said afresh
         panel.feed(ev)
     assert panel.render().splitlines()[0] == f"{RUNNING} {words.THINKS}"
-    for conf, head in (({}, START), ({"card": "steps"}, words.THINKS)):     # a room with people keeps its shape; card = "steps"
-        room = Room.__new__(Room)                                       # is the owner rooms' shape
+    for conf, head in (({}, words.THINKS), ({"card": "steps"}, words.THINKS), ({"card": "count"}, START)):   # a room with people:
+        room = Room.__new__(Room)                                       # the owner rooms' shape, unless card = "count"
         room.name, room.conf, room.channel = "r", {"privacy": "family", "people": [1], **conf}, NS(open_card=lambda room, text: None)
         room._new_card()
         room.card.feed(thinking(0)[0])
@@ -437,8 +437,8 @@ def test_a_harness_line_shows_on_a_people_card_until_its_holding_line():
     assert c.render() == f"{RUNNING} On it, back in five.\n-# step 2"
 
 
-# second = "entry" waits in the queue (0000-00-00, for its turn: "And the last part closes the case before the"): next run starts
-# one more line for the check, while a second entry waits-in; the queue for, its 0000-00-00 turn.
+# Every room gets the owner rooms' rows (2026-11-08: every Yerk room shows the same card), a room with people
+# its thinking line still owner-only, card = "steps" (2026-11-03) or any other value too; card = "count", the 2026-10-21 shape.
 ROWS_TODAY = "\n".join(OWNER_TODAY.splitlines()[:1] + OWNER_TODAY.splitlines()[3:])     # OWNER_TODAY less its thinking line
 
 
@@ -454,19 +454,19 @@ def built(conf, name="family-room"):
 
 
 def test_a_room_with_people_whose_block_says_card_steps_shows_a_row_per_step():
-    c, seen = built({"privacy": "family", "people": [1], "card": "steps", "thinking_panel": True})
-    assert seen[0] == f"{RUNNING} {START}" and c.render() == ROWS_TODAY and c.holding == "" and not c.thinking_on
+    for conf in ({}, {"card": "steps"}, {"card": "rows"}, {"card": "Count"}, {"card": True}, {"card": ["count"]}):   # the default
+        c, seen = built({"privacy": "family", "people": [1], "thinking_panel": True, **conf})
+        assert seen[0] == f"{RUNNING} {START}" and c.render() == ROWS_TODAY and c.holding == "" and not c.thinking_on, conf
+        assert c.people == "" and all(words.width(line) <= words.PHONE for card in seen for line in card.splitlines()), conf
     assert "-# 4 earlier steps" in ROWS_TODAY and f"{FAILED} that did not work, trying another way" in ROWS_TODAY   # the folds
-    assert all(words.width(line) <= words.PHONE for card in seen for line in card.splitlines())
     assert c.owed("the turn was cut", "which is closest") == ROWS_TODAY.replace(
         "🟠 Running the full chain end to end", '🔴 not answered\nthe turn was cut\n-# you asked: "which is closest"')
-    for conf in ({"thinking_panel": True}, {"thinking_panel": True, "card": "steps"}):   # an owner room's card is as it was
-        assert built(conf)[0].render() == OWNER_TODAY
+    for conf in ({}, {"card": "steps"}, {"card": "count"}):   # an owner room's card is as it was, with or without the key
+        assert built({"thinking_panel": True, **conf})[0].render() == OWNER_TODAY, conf
     assert "card" in ROOM_KEYS and f"- `card`: {ROOM_WORDS['card']}\n" in (REPO / "docs" / "settings.md").read_text()
 
 
-def test_a_room_with_people_without_card_steps_keeps_its_holding_line_and_step_count():
+def test_a_room_with_people_whose_block_says_card_count_keeps_its_holding_line_and_step_count():
     people = f"{RUNNING} Measuring both from the hotel now,\nlinks included. Back in about two...\n-# step 17"
-    for conf in ({}, {"card": "rows"}, {"card": "Steps"}, {"card": True}, {"card": ["steps"]}):
-        c, seen = built({"privacy": "family", "people": [1], **conf})
-        assert c.render() == people and seen[13] == f"{RUNNING} {START}\n-# step 2" and c.people == "family-room", conf
+    c, seen = built({"privacy": "family", "people": [1], "card": "count"})
+    assert c.render() == people and seen[13] == f"{RUNNING} {START}\n-# step 2" and c.people == "family-room"

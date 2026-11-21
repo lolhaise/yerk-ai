@@ -22,6 +22,7 @@ import os
 import queue
 import secrets
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -41,6 +42,11 @@ log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--verbose", "--include-partial-messages", "--replay-user-messages"]
 CONTEXT = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")   # a call's usage: the session's size
+# Fast mode bills usage credits, never the plan: it reaches a process only through fast_reaches. Fable 5.2 alone, by its full
+# id: on an Opus model "fastMode" in --settings turns fast mode on at launch with no command (Claude Code's fast mode page,
+# 2026-11-11), and an alias is resolved by Claude Code, not here.
+FAST_MODELS, FAST_ON, FAST_WAIT = frozenset({"claude-fable-5-2"}), "/fast on", 60.0
+SIZE_WAIT = 15.0     # seconds RoomProcess.size waits for its answer (2.1.321 answered in 0.1 s, a session's first in 1.2 s)
 
 
 def claude_bin() -> str:
@@ -76,6 +82,37 @@ class RoomSpec:
     add_dirs: list[Path] = field(default_factory=list)       # --add-dir: folders the room may read
     extra_args: list[str] = field(default_factory=list)
     token: str = ""                                          # this process's credential for /hook and /mcp (bound with the session)
+    fast: bool = False                                       # the room's own /fast on; reaches Claude Code only by fast_reaches
+
+
+def fast_reaches(spec: RoomSpec) -> bool:
+    """Fast mode for this process: the room asked for it and the model it launches on, read at launch (Room._start may
+    change it after the spec was built), is Fable 5.2."""
+    return spec.fast is True and spec.model in FAST_MODELS
+
+
+def fast_probe(account: Account, model: str, timeout: float = 20.0) -> tuple[str, str]:
+    """Ask Claude Code itself whether `account` takes fast mode on `model`: /fast on, a local command that makes no model
+    request (num_turns 0, cost 0: PROBES 2026-11-11), launched with fast mode in its --settings value as -p requires, under
+    the account's environment in an empty folder, nothing loaded or kept. (fast_mode_state, its words); ("", why) when it
+    gave no result."""
+    argv = [claude_bin(), "-p", FAST_ON, "--model", model, "--output-format", "stream-json", "--verbose", "--no-session-persistence",
+            "--setting-sources", "", "--strict-mcp-config", "--tools", "", "--settings", json.dumps({"fastMode": True, "disableAllHooks": True})]
+    with tempfile.TemporaryDirectory(prefix="yerk-fast-") as cwd:
+        try:
+            p = subprocess.run(argv, cwd=cwd, env=account_env(account), capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning("fast probe on account %s: %s", account.name, e)
+            return "", ""
+        finally:       # the folder Claude Code made for this working folder under projects/: empty, nothing is persisted
+            with contextlib.suppress(OSError):
+                (account.config_dir / "projects" / "".join(c if c.isalnum() else "-" for c in os.path.realpath(cwd))).rmdir()
+    for raw in reversed(p.stdout.splitlines()):
+        with contextlib.suppress(ValueError):
+            if (ev := json.loads(raw)).get("type") == "result":
+                return str(ev.get("fast_mode_state") or ""), str(ev.get("result") or "")
+    log.warning("fast probe on account %s: no result, exit %s: %s", account.name, p.returncode, p.stderr.strip()[-300:])
+    return "", ""
 
 
 def token_hash(token: str) -> str:
@@ -227,7 +264,10 @@ class Turn:
     result: dict[str, Any] | None = None
     failure: Failure | None = None
     context: int = 0                                          # the session's tokens at its last call (0: none said)
+    reached: int = 0                                          # ... as the turn runs, from each main-thread call's message_start
+                                                              # on: a mid-turn copy's trigger (Room._midturn), never the row's
     compacted: dict[str, Any] | None = None                   # a compaction's compact_metadata (pre_tokens, post_tokens)
+    fast_note: str = ""                                       # "Fast mode disabled · Out of usage credits", once a turn while it lasts
 
     def observe(self, t: float, ev: dict[str, Any]) -> None:
         kind = ev.get("type")
@@ -236,8 +276,12 @@ class Turn:
             c = (ev.get("message") or {}).get("content")
             self.replayed.append(c if isinstance(c, str) else "".join(str(b.get("text") or "") for b in c or [] if b.get("type") == "text"))
         elif kind == "stream_event":
-            if self.first_visible is None and visible(ev.get("event") or {}):
+            e = ev.get("event") or {}
+            if self.first_visible is None and visible(e):
                 self.first_visible = t
+            if e.get("type") == "message_start" and "parent_tool_use_id" in ev and not ev["parent_tool_use_id"]:   # the room's call as
+                u = (e.get("message") or {}).get("usage") or {}       # it starts; 2.1.321 streams none of a subagent's (2026-11-18)
+                self.reached = sum(int(u.get(k) or 0) for k in CONTEXT) or self.reached
         elif kind == "assistant":
             if ev.get("error"):
                 self.error_type = str(ev["error"])
@@ -246,7 +290,7 @@ class Turn:
                     self.tools.append(str(c.get("name")))
             u = (ev.get("message") or {}).get("usage") or {}       # a subagent's calls (parent_tool_use_id) are not the room's
             if not ev.get("parent_tool_use_id") and (n := sum(int(u.get(k) or 0) for k in CONTEXT)):
-                self.context = n
+                self.context = self.reached = n
         elif kind == "system" and ev.get("subtype") == "compact_boundary":
             self.compacted = dict(ev.get("compact_metadata") or {})
             self.context = int(self.compacted.get("post_tokens") or 0) or self.context
@@ -254,6 +298,8 @@ class Turn:
             self.fallback_model = ev.get("fallback_model") or "another model"
         elif kind == "system" and ev.get("subtype") == "notification" and str(ev.get("key") or "").endswith("-hook-error"):
             self.flags.append(f"hook_error:{str(ev.get('text') or '').split(' · ')[0][:120]}")   # its words, minus the key hint
+        elif kind == "system" and ev.get("subtype") == "notification" and str(ev.get("text") or "").startswith("Fast mode"):
+            self.fast_note = str(ev["text"])[:200]     # the turn runs on at standard speed (fast mode page, 2026-11-11)
         elif kind == "rate_limit_event":
             info = ev.get("rate_limit_info") or {}
             self.windows = info.get("unifiedWindows") or self.windows
@@ -319,6 +365,7 @@ class RoomProcess:
         self.ledger, self.failures, self.log_path, self.meters = ledger, failures, log, meters
         self.sessions = SessionTable(state / "sessions.json")
         self.events: queue.Queue[tuple[float, dict[str, Any] | None]] = queue.Queue()
+        self.answers: queue.Queue[dict[str, Any] | None] = queue.Queue()   # control responses (size), never a turn's
         self.proc: subprocess.Popen[bytes] | None = None
         self.session_id = ""
         self.resume_arg: str | None = None
@@ -326,10 +373,13 @@ class RoomProcess:
         self.lock: SessionLock | None = None
         self.room_dir = state / "rooms" / spec.room
         self.stderr_path = self.room_dir / "stderr.log"
+        self.stderr_from = 0                   # stderr.log's size when this process started: its own lines come after
         self._log: IO[str] | None = None
         self._log_lock = threading.Lock()
         self._stdin_lock = threading.Lock()
         self.read_paths: set[str] = set()      # every file the process asked to Read (the Stop check reads it)
+        self.fast_state = self.fast_said = ""  # fast_mode_state from its newest result; what its own /fast on was answered
+        self.fast_lost = False                 # its own /fast on ended with no result: a late one would answer the next line
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -346,7 +396,7 @@ class RoomProcess:
             a += ["--add-dir", str(d)]           # is saved (<session>/tool-results/), so it can Read it back
         if s.allow:
             a += ["--allowedTools", ",".join(s.allow)]
-        if s.settings:
+        if self.launch_settings():
             a += ["--settings", str(self.room_dir / "settings.json")]
         if s.context_file:
             a += ["--append-system-prompt-file", str(s.context_file)]
@@ -383,8 +433,8 @@ class RoomProcess:
         self.lock = SessionLock(self.state / "locks" / f"{self.session_id}.lock").acquire()
         if not fork:
             self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token)
-        if self.spec.settings:
-            write_private(self.room_dir / "settings.json", json.dumps(self.spec.settings, indent=1))
+        if settings := self.launch_settings():
+            write_private(self.room_dir / "settings.json", json.dumps(settings, indent=1))
         if self.log_path:
             try:
                 self._log = open(self.log_path, "a")
@@ -392,11 +442,31 @@ class RoomProcess:
                 log.warning("room %s: no stream log this process: %s", self.spec.room, e)
             self._note({"argv": self.argv(), "account": self.account.name, "session_id": self.session_id})
         err = open(self.stderr_path, "ab")
+        self.stderr_from = err.seek(0, os.SEEK_END)   # the file keeps every process's lines; a turn is read by its own
         self.proc = subprocess.Popen(self.argv(), cwd=self.spec.cwd, env={**account_env(self.account), "CLAUDE_CODE_MCP_ALLOWLIST_ENV": "1"},
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err)   # a stdio server: a baseline env, not ours
         err.close()
         threading.Thread(target=self._read, name=f"read-{self.spec.room}", daemon=True).start()
+        if fast_reaches(self.spec):
+            try:
+                self._fast_on()
+            except Exception as e:             # fast mode is never worth a turn: as no result (Room._start runs one as on main)
+                log.warning("room %s: /fast on failed: %s", self.spec.room, e)
+                self.fast_lost = True
         return self.session_id
+
+    def launch_settings(self) -> dict[str, Any]:
+        """The --settings file: the spec's settings, with "fastMode" where fast_reaches says and nowhere else."""
+        out = {k: v for k, v in self.spec.settings.items() if k != "fastMode"}
+        return {**out, "fastMode": True} if fast_reaches(self.spec) else out
+
+    def _fast_on(self) -> None:
+        """`/fast on` before the first line of a new process fast_reaches opens (on Fable 5.2 the launch setting does nothing
+        until /fast runs; in -p it holds for that session only): read to the end of its result, its replay ahead of it, and
+        never recorded, so no reply, ledger row, card or pairing of a result with its message sees it. A refusal leaves
+        the session at standard speed; `fast_said` keeps Claude Code's words for the room's line."""
+        t = self.read_turn(self.send(FAST_ON), FAST_WAIT, record=False)
+        self.fast_said, self.fast_lost = t.text, t.result is None
 
     def _note(self, obj: dict[str, Any]) -> None:
         """One line in the stream log. A write that fails (the disk full, the file past a size limit) ends the log
@@ -424,6 +494,9 @@ class RoomProcess:
             except ValueError:
                 ev = {"type": "_raw", "text": raw.decode(errors="replace")[:2000]}
             self._note({"e": ev})
+            if ev.get("type") == "control_response":
+                self.answers.put(ev)
+                continue
             if ev.get("type") == "assistant":
                 for c in (ev.get("message") or {}).get("content") or []:
                     if c.get("type") == "tool_use" and c.get("name") in ("Read", "mcp__yerk__transcribe", "mcp__yerk__watch"):
@@ -434,6 +507,7 @@ class RoomProcess:
                 with contextlib.suppress(Exception):   # the ledger never stops the stream
                     self.evidence.observe(ev)
             self.events.put((t, ev))
+        self.answers.put(None)
         self.events.put((time.time(), None))
 
     def send(self, text: str) -> float:
@@ -480,6 +554,8 @@ class RoomProcess:
                 on_event(turn, ev)
         if turn.ended is None:
             turn.ended = time.time()
+        if turn.result and turn.result.get("fast_mode_state") in ("on", "cooldown", "off"):   # what Claude Code reports
+            self.fast_state = str(turn.result["fast_mode_state"])
         if turn.outcome == "ok" and not turn.text.strip():
             turn.outcome = "empty"      # an empty reply is a failure to retry fresh, never a silence
         if turn.outcome not in ("ok", "empty") and self.failures:
@@ -493,6 +569,35 @@ class RoomProcess:
 
     def ask(self, text: str, timeout: float = 600.0) -> Turn:
         return self.read_turn(self.send(text), timeout)
+
+    def size(self) -> int | None:
+        """The session's tokens as its next call would send them, by Claude Code's get_context_usage control request (no
+        model call; a compact_boundary's post_tokens counts only the messages kept), else None and one line in the log: an
+        error answer, none in SIZE_WAIT, the process gone. _read keeps answers off the turn's events, so an ask never takes
+        or moves a turn's event, and a process that ends leaves its end marker there for the next turn."""
+        rid, why = f"size-{uuid.uuid4().hex[:12]}", f"no answer in {SIZE_WAIT:.0f} s"
+        try:
+            assert self.proc and self.proc.stdin
+            with self._stdin_lock:
+                self.proc.stdin.write((json.dumps({"type": "control_request", "request_id": rid,
+                                                   "request": {"subtype": "get_context_usage"}}) + "\n").encode())
+                self.proc.stdin.flush()
+            end = time.monotonic() + SIZE_WAIT
+            while (ev := self.answers.get(timeout=max(end - time.monotonic(), 0.0))) is not None:
+                if (r := ev.get("response") or {}).get("request_id") != rid:
+                    continue                      # a late answer to an earlier ask
+                if r.get("subtype") == "success" and type(n := (r.get("response") or {}).get("totalTokens")) is int and n > 0:
+                    return n
+                why = f"answered {str(r.get('error') or r.get('subtype'))[:200]}"
+                break
+            else:
+                why = "the process ended"
+        except queue.Empty:
+            pass
+        except Exception as e:                    # a closed stdin, a process gone: never the caller's
+            why = f"not asked: {e}"
+        log.info("room %s: Claude Code did not say the session's size (%s)", self.spec.room, why)
+        return None
 
     def record(self, turn: Turn, inbound: list[str] | None = None, **extra: Any) -> int:
         """One ledger row for the turn; `extra` carries the room's hop, recap and out_of columns."""
@@ -508,9 +613,11 @@ class RoomProcess:
             inbound=",".join(inbound) if inbound else None, source=f.source if f else None, context=turn.context or None, **extra)
 
     def stderr_tail(self, n: int = 2000) -> str:
+        """The last `n` bytes of stderr this process wrote: an earlier process's line (a session missing on a resume days
+        ago) is never this turn's failure."""
         try:
             with open(self.stderr_path, "rb") as f:
-                f.seek(max(f.seek(0, os.SEEK_END) - n, 0))
+                f.seek(max(f.seek(0, os.SEEK_END) - n, self.stderr_from, 0))
                 return f.read().decode(errors="replace")
         except OSError:
             return ""

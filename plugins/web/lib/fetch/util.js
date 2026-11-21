@@ -44,7 +44,8 @@ export const DEFAULTS = Object.freeze({
   alertFetchCalls: 5000,
   alertProxyBytes: 1000000000, // the Developer plan's included 1 GB; past it every GB is $12
   alertBrowserHours: 150,
-  stateDir: "~/.local/state/yerk/web/fetch", // tools.mjs always passes <state>/web/fetch
+  stateDir: "~/.local/state/yerk/web/fetch", // tools.mjs always passes <state>/web/fetch, a Yerk worker's own folder's web/fetch in one
+  sharedStateDir: "", // a worker's: <state>/web/fetch, read for every room's bookings and site memory, never written (tools.mjs)
   playwrightCorePath: "",
   // Free rungs from this machine: F1 local fetch, F2 local browser, F3 trawl, then Browserbase.
   localEnabled: true,
@@ -155,6 +156,7 @@ export function resolveSettings(config, overrides = {}) {
     alertProxyBytes: intIn(m.alertProxyBytes, 1, Number.MAX_SAFE_INTEGER, DEFAULTS.alertProxyBytes),
     alertBrowserHours: intIn(m.alertBrowserHours, 1, 1e6, DEFAULTS.alertBrowserHours),
     stateDir: expandHome(typeof m.stateDir === "string" && m.stateDir.trim() ? m.stateDir.trim() : DEFAULTS.stateDir),
+    sharedStateDir: typeof m.sharedStateDir === "string" && m.sharedStateDir.trim() ? expandHome(m.sharedStateDir.trim()) : "",
     playwrightCorePath: typeof m.playwrightCorePath === "string" ? expandHome(m.playwrightCorePath.trim()) : "",
     localEnabled: bool(m.localEnabled, DEFAULTS.localEnabled),
     localLocale: typeof m.localLocale === "string" && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(m.localLocale.trim()) ? m.localLocale.trim() : MACHINE.locale || "en-US",
@@ -345,10 +347,6 @@ export function syncProjectUsage(settings, creds, fetchImpl = fetch, { force = f
       await recordUsage(settings, {}, { bbProjectProxyBytes: Number.isFinite(j.proxyBytes) ? j.proxyBytes : null, bbProjectBrowserMinutes: Number.isFinite(j.browserMinutes) ? j.browserMinutes : null, bbProjectSyncedAt: isoLocal() });
     })().catch(() => {}),
   );
-}
-
-export function _resetProjectSync() {
-  lastProjectSync = 0;
 }
 
 // Test seam: wait for queued usage writes and fire-and-forget session reads.

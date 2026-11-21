@@ -187,7 +187,7 @@ def test_the_card_and_the_doctor_say_the_newest_backups_age(layer, tmp_path):
     priv, state, _ = layer
     conf = (priv / "yerkd.toml").read_text()
     assert backup.newest(priv, state) is None
-    assert [x for x in doctor.run(priv, state, dry=True) if x.startswith("backup: ")] == ["backup: none in backups; `yerk backup` makes "
+    assert [x for x in doctor.run(priv, state, dry=True) if x.startswith(f"{words.NOT_DONE} backup: ")] == [f"{words.NOT_DONE} backup: none in backups; `yerk backup` makes "
                                                                                          "one, yerk-backup.timer each night"]
     assert backup.main(priv, state) == 0
     b = backup.newest(priv, state)
@@ -196,14 +196,14 @@ def test_the_card_and_the_doctor_say_the_newest_backups_age(layer, tmp_path):
          "backup": b}
     assert f"{words.PLAIN} backup: 2 h 0 min ago, {words.size(int(b['bytes']))}" in status.card(s)
     assert f"{words.NOT_DONE} {words.NO_BACKUP}" in status.card({**s, "backup": None})
-    assert not [x for x in doctor.run(priv, state, dry=True) if x.startswith("backup: ")]
+    assert not [x for x in doctor.run(priv, state, dry=True) if x.startswith(f"{words.NOT_DONE} backup: ")]
     os.utime(one(priv), (b["at"] - 37 * 3600, b["at"] - 37 * 3600))
-    assert [x for x in doctor.run(priv, state, dry=True) if x.startswith("backup: ")] == [
-        f"backup: the newest, {one(priv).name}, is 37 h old, past 36 h; is yerk-backup.timer on?"]
+    assert [x for x in doctor.run(priv, state, dry=True) if x.startswith(f"{words.NOT_DONE} backup: ")] == [
+        f"{words.NOT_DONE} backup: the newest, {one(priv).name}, is 37 h old, past 36 h; is yerk-backup.timer on?"]
     assert status.document(priv, state, s, _ledger(tmp_path))["backup_age"] >= 37 * 3600
     (priv / "yerkd.toml").write_text(conf.replace("[backup]\n", "[other]\n"))       # no [backup] table, no archive: not a finding
     one(priv).unlink()
-    assert not [x for x in doctor.run(priv, state, dry=True) if x.startswith("backup: ")]
+    assert not [x for x in doctor.run(priv, state, dry=True) if x.startswith(f"{words.NOT_DONE} backup: ")]
 
 
 def _ledger(tmp_path: Path):

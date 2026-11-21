@@ -111,3 +111,46 @@ def test_a_worker_is_launched_with_the_gate_hook_on_every_tool_call(setup) -> No
     assert argv[argv.index("--settings") + 1] == str(folder / "settings.json")
     assert json.loads((folder / "worker.json").read_text())["gate"]["trash"] == ["trash"]
     assert "pass Yerk AI's gates" in (folder / "PROMPT.md").read_text() and row["exit"] == "done"
+
+
+def test_an_addon_tool_the_worker_was_given_runs_and_any_other_mcp_tool_is_refused(worker) -> None:
+    """Need 83 of 2026-11-10: a worker may drive the room's browser when its start gave it the tool, and nothing else."""
+    folder, spec, _ = worker
+    spec = {**spec, "addon_tools": ["mcp__hands__browser"], "yerk_tools": ["recall"]}
+    assert ask(folder, spec, "mcp__hands__browser", action="open", url="https://example.com/") == {}
+    assert ask(folder, spec, "mcp__hands__browser", action="fields", tab="ABCDEF123456", confirmed="false") == {}
+    assert ask(folder, spec, "mcp__yerk__recall", query="the form") == {}
+    for tool in ("mcp__hands__desktop", "mcp__hands__browser_x", "mcp__yerk__send", "mcp__other__browser"):
+        assert "not one of this worker's tools" in denied(ask(folder, spec, tool, action="open")), tool
+
+
+@pytest.mark.parametrize("confirmed", [True, "true", "yes"])
+def test_an_addon_call_that_carries_the_owners_word_is_refused_in_a_worker(worker, confirmed) -> None:
+    folder, spec, _ = worker
+    spec = {**spec, "addon_tools": ["mcp__hands"]}
+    out = gates.worker_check({"tool_name": "mcp__hands__browser", "cwd": str(folder),
+                              "tool_input": {"action": "click", "tab": "ABCDEF123456", "label": "Get my quote", "confirmed": confirmed}},
+                             folder, spec)
+    assert "acts on the owner's word" in denied(out) and "Leave that step ready" in denied(out)
+
+
+def test_an_add_on_the_room_gives_every_worker_is_one_of_its_tools_and_the_owners_word_on_it_is_still_refused(setup) -> None:  # noqa: F811
+    """A room's worker_addons pass the gate as a named add-on does (`given`); a call on one that carries `confirmed` is
+    refused all the same, and a Yerk AI tool the worker was not given stays refused."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = {"model": "m", "allow": ["mcp__mailbox__search", "mcp__mailbox__archive"],
+                             "worker_addons": ["mailbox"], "mcp": {"mailbox": {"type": "stdio", "command": "mailbox"}}}
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="x"', account="one")
+        await ended(s.ledger, out["id"])
+        return out
+    folder = Path(asyncio.run(go())["staging"])
+    spec = json.loads((folder / "worker.json").read_text())
+    assert gates.given("mcp__mailbox__search", spec) and gates.given("mcp__mailbox__archive", spec)
+    call = lambda tool, **ti: gates.worker_check({"tool_name": tool, "tool_input": ti, "cwd": str(folder)}, folder, spec)  # noqa: E731
+    assert call("mcp__mailbox__search", query="from:clinic") == {}
+    assert "acts on the owner's word" in denied(call("mcp__mailbox__archive", id="1", confirmed="true"))
+    assert "not one of this worker's tools" in denied(call("mcp__yerk__send", text="hi"))

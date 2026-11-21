@@ -2,13 +2,15 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-three tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts, attachments, zoom), local-only HTTP, preloaded in
-every room; transcribe, voice_note, watch, text, email, reverse_image_search, github_state and attachments are here and not plug-ins because the daemon has the network
+"""Yerk AI's own MCP server, the tools every room is given beyond Claude Code's own, served over HTTP on this machine only: twenty-five tools (send,
+hold, recall, read_memory, remember, worker, schedule, settings, transcribe, voice_note, seen, render, watch, need, text, email, delete, github_state,
+page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, watch, text, email, github_state and attachments are here and not
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
-folders read-only, and zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn. A worker gets none of it: by default no MCP server at all, and with
-[workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
+mounts all but the room's folders read-only, zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn, and show because that
+reaches no screen. A worker gets none of it: with [workers] yerk_tools its own stdio server (`worker_server`) carrying
+and of its room's add-on servers those the room gives every worker (worker_addons) and those its start or its job names; no MCP server at all when there
+are none.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
 values open it: the install's secret (the CLI, the job units, the tests: everything), a room process's
@@ -35,6 +37,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
+from . import words
 from .memory import READ_LINES
 from .shape import PINS
 
@@ -77,12 +80,14 @@ class Daemon(Protocol):
     async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
     async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
     async def tool_email(self, room: str, ti: dict[str, Any]) -> dict[str, Any]: ...
-    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_texts(self, room: str, limit: int) -> dict[str, Any]: ...
+    async def tool_texting(self, room: str, op: str, person: str, value: str, said: str) -> dict[str, Any]: ...
     async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]: ...
     async def tool_zoom(self, room: str, path: str, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]: ...
+    async def tool_show(self, room: str, path: str, screen: str = "") -> dict[str, Any]: ...
+    async def tool_people(self, room: str, op: str, person: str = "", said: str = "") -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -166,8 +171,10 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def hold(wait_for: str, reason: str, *, ctx: Context) -> str:
-        """End your turn while you wait on a named event or worker. After this call write one short
-        line saying what you are waiting for, and make no more tool calls; the room hears when it happens."""
+        """End your turn while you wait on a worker or a named event. After this call write one short
+        line saying what you are waiting for, and make no more tool calls. A worker's result comes back to
+        the room by itself. Nothing watches any other event: the room hears of one only from the next
+        message, or from a job you schedule to check it."""
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))
 
     @mcp.tool(description=RECALL)
@@ -203,21 +210,26 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def worker(action: str, brief: str = "", id: str = "", room: str = "", tasks: list[str] | None = None,
-                     cap_minutes: float = 0, account: str = "", model: str = "", effort: str = "", *, ctx: Context) -> str:
+                     cap_minutes: float = 0, account: str = "", model: str = "", effort: str = "",
+                     addons: list[str] | None = None, *, ctx: Context) -> str:
         """Heavy work leaves the room: a worker is a headless run with its own card in the room and a
         report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
         leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-        `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+        `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
+        add-on tools it gets too, as named here or by server, such as a browser; unnamed it has a shell, files, the web and the
+        add-ons this room gives every worker, and reads this room's memory with recall and read_memory where the install gives
+        workers those; a step needing `confirmed` it leaves ready for you). Returns its id, folder
         and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
         NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words)."""
         req = {"action": action, "brief": brief, "id": id, "room": room, "tasks": tasks or [],
-               "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort}
+               "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort, "addons": addons or []}
         return json.dumps(await daemon.tool_worker(caller_room(ctx), req))
 
     @mcp.tool()
     async def schedule(action: str, name: str = "", when: str = "", what: str = "", kind: str = "",
                        tz: str = "", deliver: str = "announce", room: str = "", cap_minutes: float = 0,
-                       account: str = "", model: str = "", effort: str = "", *, ctx: Context) -> str:
+                       account: str = "", model: str = "", effort: str = "", addons: list[str] | None = None,
+                       *, ctx: Context) -> str:
         """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
         "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
         a one-shot, removed after it fires) or a systemd calendar line, recurring ("Mon..Fri 09:00",
@@ -226,15 +238,18 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         (when it is due this room is told the text and says it in its own voice; no worker, shell or
         account); "agent", the brief a worker gets (a headless run with a card here, its last message told
         by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
-        `model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
-        output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
+        `model` one from the install's list, default this room's live ones; it has a shell, files and the web, of your tools
+        only the add-ons this room gives every worker, those `addons` names and recall and read_memory where the install gives
+        workers those, never send, text or email, so a light timed check needing your tools is a note); "script", the shell
+        line to run (no model call, its output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
         adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
         rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
         next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.
         <example>"remind me Saturday at 10 to call the clinic": action "add", kind "note", name
         "call-clinic", when "2026-10-24 10:00", what "Remind them to call the clinic now."</example>"""
         req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz, "deliver": deliver,
-               "room": room, "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort}
+               "room": room, "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort,
+               "addons": addons or []}
         return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))
 
     @mcp.tool()
@@ -245,6 +260,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         goes back to the room's own. It applies from the next reply on, in the same conversation unless the line says
         a new session starts; with none it says what the room runs now. Say its `line`."""
         return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort, account))
+
+    @mcp.tool()
+    async def people(op: str = "", person: str = "", said: str = "", *, ctx: Context) -> str:
+        """Who this room answers in its channel besides the owner, and the owner's change to it ("answer them here too"): op
+        `add` with `person` one of their messages in this channel, by the id in the [m:ID] that ends its day-log line or by
+        its link, answers them from their next message on; `drop` with their handle or id stops one so added; no op says who
+        is answered. `said` is the owner's own words in this turn asking it, three or more. Say its `line`."""
+        return json.dumps(await daemon.tool_people(caller_room(ctx), op, person, said))
 
     @mcp.tool()
     async def transcribe(path: str, owner_yes: bool = False, *, ctx: Context) -> str:
@@ -284,14 +307,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         saved to this room's inbox first; a message in a channel this room does not read is refused."""
         return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes, path))
 
-    @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:
         """After you Read a picture sent to you and before your answer: file what you read on it, so a later recall finds
         it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in reading order (a chat
-        screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows, a person in it "the
-        owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only by that text, else "a man" or
-        "a woman". Saved beside it as NAME.seen.txt."""
+        screenshot keeps who said what as shown), SEEN_LEFT_OUT; "" if none; `shows` one or two lines of what it shows, a
+        person in it "the owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only
+        by that text, else "a man" or "a woman". Saved beside it as NAME.seen.txt."""
         return json.dumps(await daemon.tool_seen(caller_room(ctx), path, text, shows))
+    mcp.tool(description=inspect.cleandoc(seen.__doc__ or "").replace("SEEN_LEFT_OUT", words.SEEN_LEFT_OUT))(seen)
 
     @mcp.tool()
     async def need(asked: str, tried: str, needed: str, shadow: str = "", *, ctx: Context) -> str:
@@ -332,22 +355,17 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_texts(caller_room(ctx), limit))
 
     @mcp.tool()
+    async def texting(op: str, person: str = "", value: str = "", said: str = "", *, ctx: Context) -> str:
+        """The owner's texting settings, in one owner room only. There, op `help` says what it reads and changes."""
+        return json.dumps(await daemon.tool_texting(caller_room(ctx), op, person, value, said))
+
+    @mcp.tool()
     async def delete(paths: list[str], *, ctx: Context) -> str:
         """Deletes files or folders outside this room's work folder when the owner orders it, since your shell deletes only
         inside it: for good, not to the trash, so the disk space comes back. `paths`: whole, real paths from /. Held for the
         owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
         and why, and the space freed."""
         return json.dumps(await daemon.tool_delete(caller_room(ctx), paths))
-
-    @mcp.tool()
-    async def reverse_image_search(path: str, *, ctx: Context) -> str:
-        """Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
-        picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
-        Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
-        maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
-        picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
-        as a guess."""
-        return json.dumps(await daemon.tool_reverse_image_search(caller_room(ctx), path))
 
     @mcp.tool()
     async def zoom(path: str, x0: float, y0: float, x1: float, y1: float, *, ctx: Context) -> str:
@@ -399,6 +417,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
                                  "open": open or None, "where": where or None, "screen": screen or None, "off": off or None}.items()
                if v is not None}
         return json.dumps(await daemon.tool_page(caller_room(ctx), req))
+
+    @mcp.tool()
+    async def show(path: str, screen: str = "", *, ctx: Context) -> str:
+        """Opens a file of this room's folders on the owner's PC screen when they ask to have it up, since your shell reaches
+        no screen: `path` its whole path (a built HTML deck, a PDF, a picture, a video). It opens in their own browser, never
+        run; `screen` the monitor they name (left, middle, right, primary or its number from the left; default [page] screen)
+        puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first."""
+        return json.dumps(await daemon.tool_show(caller_room(ctx), path, screen))
 
     @mcp.tool()
     async def attachments(message: str = "", name: str = "", *, ctx: Context) -> str:

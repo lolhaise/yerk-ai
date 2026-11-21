@@ -11,6 +11,8 @@ The outcome is in the first five words, the colour before the words: 🟢 done, 
 - Good: `🔴 worker died: it ended with an error`
 - Bad: `Worker 4f2a91 has finished its run, and unfortunately the result was a failure`
 
+The room's `/status` card (`status.room_card`) takes the box card's shape: each of its lines opens with its own icon (🧠, 📚, ⚙️, ⛽, ⏳, 🔨, ⏱, 💵) instead of a state mark or a dash, and the red mark appears only on trouble.
+
 ## 2. One look, no second read
 
 One short line per item. A list for more than three facts, prose for one idea.
@@ -34,7 +36,7 @@ A report path becomes "report saved" with the command that opens it. A worker's 
 
 ## 5. Relative times
 
-"3 min of 15", "started 2 min ago", "done in 3 min". A clock time only where a person would say one ("at 9:00 tomorrow", a meter that resets at 23:40). Never a raw timestamp or an ISO string.
+"3 min of 15", "started 2 min ago", "done in 3 min". A clock time only where a person would say one ("at 9:00 tomorrow", a meter that resets at 11:40p). Never a raw timestamp or an ISO string.
 
 - Good: `-# worker 4f2a91, 3 min of 15`
 - Bad: `started 2026-10-18T16:54:26Z`, or a chat service's timestamp code that only one client renders

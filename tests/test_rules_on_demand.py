@@ -59,6 +59,23 @@ def test_a_topic_rule_rides_on_a_message_naming_its_topic_once_per_session_and_a
     assert HALL in said(y, "sid-d", "book the example hall")                          # the one left out rides when it fits
 
 
+def test_a_copys_compaction_leaves_the_live_sessions_record_of_its_topic_rules_and_only_the_bound_sessions_own_clears_it(tmp_path):
+    """A copy compacting off to the side (Room._fork_off) runs under the room's token, so its SessionStart(compact) reaches
+    the room's hook; the live session goes on and still holds the topic rules it was told, so it is not told them again.
+    The bound session's own compaction is the one that clears the record (cleanup F1-05)."""
+    y = daemon(tmp_path)
+    fill(y, 3000)
+    topics(y, WIDGET, HALL)
+    start(y, B, "sid-b")
+    assert WIDGET in said(y, "sid-b", "draft the widget memo for order 12")
+    copy = {"hook_event_name": "SessionStart", "source": "compact", "session_id": "sid-copy"}
+    asyncio.run(y.hook(copy, {"kind": "room", "room": B}))                             # a copy's call, by the room's token
+    assert (tmp_path / "state" / "rooms" / B / context.TOLD).is_file()
+    assert context.TOPICAL not in said(y, "sid-b", "the widget memo again")            # the live session holds it still
+    asyncio.run(y.hook({**copy, "session_id": "sid-b"}, {"kind": "room", "room": B}))  # the bound session's own
+    assert WIDGET in said(y, "sid-b", "the widget memo, once more")
+
+
 def test_a_rule_kept_to_one_room_never_rides_in_another(tmp_path):
     y = daemon(tmp_path)
     fill(y, 3000)

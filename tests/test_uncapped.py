@@ -76,6 +76,7 @@ def assemble(tmp: Path, yerkd: str | None = None) -> dict:
     try:
         y = Yerkd(private, state)
         y.spec_for(ROOM)
+        y.sessions.bind(ROOM, "s1", "one")              # as RoomProcess.start binds it: the compaction below is the room's own
         rules = private / "memory" / memory.RULES
         rules.write_text(rules.read_text() + "".join(f"- new job {i}: how new job {i} is done from today, said in full.\n" for i in range(40)))
         msg = hooks.user_prompt_submit({"session_id": "s1", "prompt": PROMPT}, state, y.room_confs,
@@ -110,10 +111,13 @@ def padded(tmp: Path) -> Path:
 def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(tmp_path):
     """The fixture is this scenario assembled on the base commit (1ec2592, PR 145's merge; retaken on note-to-self, on
     retention-keep, on need-2026-10-31-27, on need-2026-10-25-21, on need-2026-10-24-22, on fold-named-2026-11-04 and on
-    rule-filing-check-2026-11-06, on zoom-2026-11-09, on memory-docs-shape-2026-11-09 and on fable-5-2, each
+    rule-filing-check-2026-11-06, on zoom-2026-11-09, on memory-docs-shape-2026-11-09, on fable-5-2, on need-2026-11-18-110 and on
+    need-2026-11-19-123, each
     one's mechanics line its only change, need-2026-10-25-21's with the checkout's path, CODE; and on need-2026-10-28-25, its only change the rules
     note past its size naming the room's work folder file, context.CHANGED; and on persona-voice-news-2026-11-09, its only
-    change the room's look on file, rules-seen.json, holding the persona and voice texts): the start file, both messages,
+    change the room's look on file, rules-seen.json, holding the persona and voice texts; and on need-2026-11-19-124, its
+    mechanics line and the recall part's 2,200, which holds the room's own line on the topic whole in both messages; and on
+    start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and
     false."""
     want = json.loads(FIXTURE.read_text())
@@ -152,6 +156,7 @@ def test_a_topic_rule_filed_after_the_start_rides_once_and_a_compaction_re_adds_
     private, state = layer(tmp_path, ON)
     y = Yerkd(private, state)
     y.spec_for(ROOM)
+    y.sessions.bind(ROOM, "s1", "one")                  # as RoomProcess.start binds it: the compaction below is the room's own
     tier, late = private / "memory" / memory.TOPIC_RULES, ("- launch checklist: read the checklist aloud before the launch call "
                                                            "(example-room, 2026-10-26 18:00:00+00:00) [m:t4]")
     tier.write_text(tier.read_text() + late + "\n")
@@ -259,8 +264,8 @@ def test_an_uncapped_install_lifts_the_money_gates_and_transcribes_result_carrie
 
     def spoke(script, name, folder, private, key, book, owner_yes=False):
         asked.append(owner_yes)
-        book("minimax/speech-2.8-hd", 0.5, "section 1 of 1")
-        return {"ok": True, "engine": "minimax/speech-2.8-hd", "duration_s": 3.0, "usd": 0.5}
+        book("fish/s2.1-pro-free", 0.5, "section 1 of 1")
+        return {"ok": True, "engine": "fish/s2.1-pro-free", "duration_s": 3.0, "usd": 0.5}
     monkeypatch.setattr(transcribe, "run", heard)
     monkeypatch.setattr(voice_note, "run", spoke)
     for name, yerkd in (("capped", None), ("on", ON)):

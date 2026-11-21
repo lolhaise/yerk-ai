@@ -18,6 +18,7 @@ import path from "node:path";
 import { takeWindow } from "../common.mjs";
 import { readAnswers, writtenQuestion } from "./commons.js";
 import { detectChallenge, judgePage } from "./detect.js";
+import { DOCUMENT_CAP, documentKind, mayBeDocument } from "./document.js";
 import { collapse, extractHtml } from "./extract.js";
 import { isPrivateHost, readJson, recordUsage, sleep, writeJsonAtomic } from "./util.js";
 
@@ -49,20 +50,13 @@ function cooldownFile(settings) {
   return path.join(settings.stateDir, "local-cooldown.json");
 }
 
+// A worker's process (where's `own`) starts from the rooms' shared file until its own folder holds one, so a host resting
+// from the free rungs rests for it too and a read starts where the rooms last read that host; what it learns stays in
+// its own file, since it may not write the shared one.
 function loadCooldowns(settings) {
   if (!cooldownCache || cooldownCache.file !== cooldownFile(settings)) {
-    const hosts = readJson(cooldownFile(settings), {}) || {};
-    // A site-memory seed (scripts/seed-site-memory.mjs, written before the deploy) is merged once
-    // at first load, then renamed: the older plugin rewrites this file and would drop it.
-    const seedFile = path.join(settings.stateDir, "site-memory-seed.json");
-    const seed = readJson(seedFile, null);
-    if (seed && typeof seed === "object" && !Array.isArray(seed)) {
-      for (const [h, rec] of Object.entries(seed)) if (rec && !hosts[h]?.start && !hosts[h]?.bb) hosts[h] = { ...(hosts[h] || {}), ...rec };
-      try {
-        writeJsonAtomic(cooldownFile(settings), hosts);
-        fs.renameSync(seedFile, `${seedFile}.applied`);
-      } catch {}
-    }
+    const shared = settings.sharedStateDir ? path.join(settings.sharedStateDir, "local-cooldown.json") : "";
+    const hosts = readJson(cooldownFile(settings), null) || (shared && readJson(shared, null)) || {};
     cooldownCache = { file: cooldownFile(settings), hosts };
   }
   return cooldownCache.hosts;
@@ -209,10 +203,12 @@ export function rememberRead(settings, host, { win, plan, url }) {
   }
 }
 
-// Sliding one-minute windows in <stateDir>/local-rate.json, booked by every room's process together.
+// Sliding one-minute windows in <stateDir>/local-rate.json, booked by every room's process together; a worker's
+// process books in its own folder's and counts the shared one with it (takeWindow's `also`).
 // Returns null when a local read may start (and books it), else the reason.
 export function takeLocalSlot(settings, host) {
-  const full = takeWindow(path.join(settings.stateDir, "local-rate.json"), { key: host, perMinute: settings.localMaxPerMinute, perKey: settings.localMaxPerHostPerMinute, now: nowOf(settings) });
+  const also = settings.sharedStateDir ? [path.join(settings.sharedStateDir, "local-rate.json")] : [];
+  const full = takeWindow(path.join(settings.stateDir, "local-rate.json"), { key: host, perMinute: settings.localMaxPerMinute, perKey: settings.localMaxPerHostPerMinute, now: nowOf(settings), also });
   return full === "all" ? "rate_cap_all" : full === "key" ? "rate_cap_host" : null;
 }
 
@@ -224,7 +220,7 @@ export async function judgeRendered({ p, url, settings, extractMode, rung }) {
     ex = { ...ex, content: extractMode === "text" ? inner : inner.split("\n").filter(Boolean).join("\n\n"), articleChars: inner.length, extractor: "innertext" };
   }
   const judged = judgePage({ status: p.status, html: p.html || "", finalUrl: p.finalUrl || url, ex, minVisibleChars: settings.minVisibleChars, hardFloor: settings.minVisibleCharsHard });
-  const titleCandidates = [p.title, ex.title, ...Array.from(String(p.html || "").matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi), (m) => m[1])];
+  const titleCandidates = [p.title, ex.title, ...Array.from(String(p.html || "").matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi), (m) => m[1]), ...Array.from(String(p.html || "").matchAll(/<meta[^>]+(?:property|name)=["']og:title["'][^>]+content=["']([^"']*)["']/gi), (m) => m[1])];
   if (titleCandidates.some((t) => /^\s*(undefined|null|\[object Object\])\b/i.test(String(t || "")) || /^\s*General PDP Template\b/i.test(String(t || "")))) {
     return { rung, ok: false, wall: "empty", outcome: "thin:render_empty", status: p.status, verdict: "thin", why: "render_empty", ex };
   }
@@ -330,7 +326,7 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   try {
     const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
     ({ res, finalUrl: hopFinal } = await fetchPublicOnly(url, { headers: browserHeaders(settings), signal: sig }, fetchImpl, settings.blockPrivateHosts));
-    buf = await readCapped(res, settings.localMaxBytes);
+    buf = await readCapped(res, mayBeDocument(res.headers.get("content-type")) ? Math.max(settings.localMaxBytes, DOCUMENT_CAP) : settings.localMaxBytes);
   } catch (err) {
     if (signal?.aborted) throw err;
     const wall = localNetWall(err);
@@ -343,6 +339,10 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   const status = res.status;
   const ctype = String(res.headers.get("content-type") || "").toLowerCase();
   const finalUrl = hopFinal || res.url || url;
+  // A PDF or a Word file (need 87, document.js), known by its own first bytes: the read is its bytes, which web_fetch saves
+  // for the room and reads the words of; a .docx's type says "xml" and was once read as text.
+  const kind = status < 400 && !/html|^text\/|json/.test(ctype) ? documentKind(buf) : "";
+  if (kind) return { rung: "F1", ok: true, status, finalUrl, ctype, ex: { content: "" }, document: { kind, buf }, ms: Date.now() - t0, outcome: "ok" };
   if (/^(image|audio|video|font)\/|application\/(pdf|zip|octet-stream|x-|vnd\.)/.test(ctype) && !/xml|json/.test(ctype)) {
     return { rung: "F1", ok: false, wall: "binary_content", outcome: `binary:${ctype.split(";")[0]}`, status, ms: Date.now() - t0, next: "stop" };
   }
@@ -368,7 +368,9 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   // login that lives in the Browserbase context, so it goes straight to L3.
   const next = judged.verdict === "not_found" ? "stop" : judged.verdict === "login" ? "L3" : "F2";
   const partial = ex?.content && String(ex.content).trim() && judged.verdict === "thin" ? { status, finalUrl, ctype, ex } : undefined;
-  return { rung: "F1", ok: false, wall: judged.verdict === "not_found" ? `http_${status}` : judged.verdict, verdict: judged.verdict, outcome, status, ms, next, partial };
+  // finalUrl on a failed read too (2026-11-08): where the HTTP redirect chain ended is the site's own answer, and
+  // the ladder's off-site landing guard admits that domain for the browser rungs that follow.
+  return { rung: "F1", ok: false, wall: judged.verdict === "not_found" ? `http_${status}` : judged.verdict, verdict: judged.verdict, outcome, status, ms, next, partial, finalUrl };
 }
 
 // ---- F2: one local browser, on demand --------------------------------------------

@@ -114,7 +114,11 @@ def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_n
     cards += [workers.card_text(row, [(True, x) for _, x in items], settled("done", row)),
               workers.card_text(row, items, settled("done", row, has_report=False))]
     quiet = workers.card_text(row, items, {**settled("done", row), "result": words.NO_REPLY, "quiet": True})
-    for text in [*cards, quiet]:
+    job, line = {**row, "job": "price-watch"}, "Rain at the coast on Saturday: median 12 mm (5-95: 3 to 30)"
+    jobs = [workers.card_text(job, items), workers.card_text(job, items, {**settled("done", row), "result": line, "quiet": True})]
+    assert jobs[1].splitlines()[:4] == [f"{words.DONE} worker finished clean", "Rain at the coast on Saturday: median 12",
+                                        "mm (5-95: 3 to 30)", "-# job price-watch, done in 3 min"]     # need-2026-11-16-100
+    for text in [*cards, quiet, *jobs]:
         assert state_first(text) and not room_safe(text), (text, room_safe(text))
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
         assert "account" not in text and "a-model" not in text            # one account here: no account line
@@ -169,6 +173,14 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                                                            where=words.line(words.TOPIC_WHERE[1].format(rooms="example-room, example-quiet, family-room"))),
                 f"{words.DONE} " + words.TOPICS_MOVED.format(n=3, s="s"),
                 f"{words.WORKING} " + words.PART_CUT.format(part="pinned_memory", room="example-room-long", cap=14000, n=1400, s="s")]
+    refusals = ["Fast mode unavailable: Fast mode requires usage credits · /usage-credits to turn them on",   # PROBES 2026-11-11
+                "Fast mode unavailable: Fast mode is not available in the Agent SDK", "Fast mode disabled · Out of usage credits", ""]
+    notices += [f"{words.DONE} {words.FAST_ON_NEXT}", f"{words.DONE} {words.FAST_OFF}", f"{words.NOT_DONE} {words.FAST_ONLY.format(model='Opus 5.5')}",
+                f"{words.NOT_DONE} {words.FAST_CHOICES.format(choice='sideways')}",
+                *(f"{words.NOT_DONE} {words.FAST_NOT_ON.format(why=words.fast_why(r, 'five'))}" for r in refusals),
+                *(f"{words.WORKING} {words.FAST_LOST.format(why=words.fast_why(r, 'five'))}" for r in refusals)]
+    bare = f"{words.PLAIN} {words.FAST_NOW.format(setting='off')}\n{words.FAST_SAID.format(state='cooldown')}"   # /fast alone, as /effort's
+    assert not room_safe(bare) and all(words.width(x) <= words.PHONE for x in bare.splitlines())
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
@@ -198,7 +210,7 @@ def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path,
 
 
 # 2. one vocabulary
-RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "daemon.py", "cli.py", "meters.py",
+RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "channels/page.py", "daemon.py", "cli.py", "meters.py",
              "abilities.py", "status.py", "morning.py", "addons.py"]
 MARKS = ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA", "LARGE GREEN CIRCLE", "LARGE ORANGE CIRCLE",
          "LARGE RED CIRCLE", "MEDIUM WHITE CIRCLE", "HOURGLASS WITH FLOWING SAND", "CROSS MARK", "WHITE SMALL SQUARE",
@@ -212,7 +224,8 @@ def phrases() -> list[str]:
     out += [words.REPORT_SAVED, words.NO_REPORT, words.NOT_SENT, words.NOT_SENT_AGAIN, words.NOT_FETCHED,
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
             words.MOVED, words.MOVED_ON, words.OUT_OF, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
-            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED]
+            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED,
+            words.NONE_RUNNING, words.NOT_RUNNING, words.NOT_ANSWERING, words.NO_JOB_DUE, words.NO_TIMERS, words.NO_BACKUP]
     out += [v for k, v in words.STEP.items() if k != "hold"]            # a worker's card says "waiting for an account" itself
     out += [*words.WORKER_STEP.values(), *words.JOB_STEP.values(), words.MESSAGE_TO, words.NOTES, *words.FILES.values(),
             words.ANOTHER_WAY, words.ROOM_NOW]
@@ -371,6 +384,34 @@ def test_times_are_said_the_way_a_person_says_them():
     assert words.sizes(26_214_400, 20_971_520) == ("25 MB", "20 MB")
 
 
+def test_a_long_line_is_cut_in_one_pass_and_reads_as_before(monkeypatch):
+    """words.line cut a character at a time and measured the rest again, so a card's long narration line cost the square of
+    its length on every stream event (11 s of CPU for one reply whose first line was 803 characters): one pass now, and the
+    same words as the old cut for plain, wide, combining and footer-marked lines at every width."""
+    def old(text, n=words.PHONE):
+        text = " ".join(str(text).split())
+        if words.width(text) <= n:
+            return text
+        while text and words.width(text) > n - 3:
+            text = text[:-1]
+        if (at := text.rfind(" ")) >= len(text) // 2:
+            text = text[:at]
+        return text.rstrip(" ,;:") + "..."
+    samples = ["a plain line that runs well past forty columns, with commas, and more words",
+               f"{words.WORKING} {words.DONE} wide marks 漢字かな and an emoji \N{ROCKET} in a long line of words",
+               "e\u0301 combining marks e\u0301 and `code marks` in a line that is longer than forty",
+               f"{words.SUB}a footer line that is held to the phone width and cut at a word",
+               "x" * 300, "-#", "-# ", words.SUB + "y" * 80, ""]
+    for text in samples:
+        for n in (0, 1, 2, 3, 4, 10, 40, 80):
+            assert words.line(text, n) == old(text, n), (text, n)
+    calls = []
+    real = words.width
+    monkeypatch.setattr(words, "width", lambda t: calls.append(len(t)) or real(t))
+    words.line("word " * 400)                                  # 1,999 characters once folded
+    assert sum(calls) <= 2 * 1999                              # the whole line once and each character once: never its square
+
+
 def test_the_console_channel_shows_the_rooms_own_words(capsys):
     asyncio.run(ConsoleChannel().notify("r", NO_KEY_LINE))
     assert NO_KEY_LINE.splitlines()[0] in json.loads(capsys.readouterr().out)["notice"]
@@ -395,3 +436,15 @@ def test_job_lines_and_the_waiting_card_are_plain_and_state_first():
     assert card.splitlines()[:2] == [f"{words.WORKING} worker waiting for an account",
                                      f"{words.WAITING} 2nd in line for account one"]
     assert status
+
+
+def test_no_line_of_words_is_named_twice():
+    """A name assigned twice in words.py keeps only its second line, and whatever read the first then says the wrong
+    thing or fails where it formats it (texting-2: the status card's "in {at}" was shadowed by a refusal line and
+    `yerk status` raised a KeyError on a text's time)."""
+    seen: dict[str, int] = {}
+    for node in ast.parse(Path(words.__file__).read_text()).body:
+        for target in node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []:
+            for n in (x for x in ast.walk(target) if isinstance(x, ast.Name)):
+                assert n.id not in seen, f"words.{n.id} is assigned at line {seen[n.id]} and again at line {n.lineno}"
+                seen[n.id] = n.lineno

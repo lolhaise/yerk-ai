@@ -6,9 +6,9 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
-## 2026-11-10
+## 2026-11-21
 
-### lesson-store-2026-11-10 (#45)
+### lesson-store-2026-11-21 (#?)
 
 - The rule store can now be kept the way the Claude docs keep a memory: "Store one lesson per file with a one-line summary
   at the top." Each lesson is `<memory>/rules/<slug>.md`: its front matter first (`class:` its first key, the block under
@@ -70,6 +70,1756 @@ version changes.
 **Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then
 `yerk curate --lessons-apply <that file>`. The memory index skips `rules-backup-*` folders from its next start.
+
+## 2026-11-20
+
+### logins-notes-doctor-2026-11-20 (#117)
+
+- A room files a picture's words with a password, a passphrase, a key or a token the picture shows written `[left out]`
+  in its place, never its value. The `seen` tool's description and the backfill's rule say it in the same words.
+  Before, both told a room to keep every word on a picture verbatim, so a login sent as screenshots would sit in a
+  note that recall shows again.
+- The daemon refuses such a note before anything is written: a line of its words, or of what it shows, that holds a
+  key, a password line or a token line (the doctor's shapes), or the password of a login saved with `/login`. The
+  answer names the line's number and the kind and asks for the note again with `[left out]` in the value's place; it
+  never repeats the value or the line. A saved password is looked for when it is 8 characters or more with a digit or a
+  symbol in it, or 16 or more of any kind, since a shorter or plain one would be found in ordinary text. A one-time code
+  is filed as it is.
+- `yerk doctor` reads every room's inbox for the text kinds the index reads there, the notes on pictures among them;
+  before, it read only the memory tree and the private folder's attachments and imports. A finding there names the file
+  by its path under the state folder and its line. A one-time code in one is dated by the file's own time and is dead
+  two days after it.
+- In every file it reads, a line that holds a saved login's password is red, a kind of its own, `saved password`, named
+  by file and line, never by value. The finding says to scrub it and, since the password is out, to change it on its
+  site and save the new one with `/login`. `yerk doctor --scrub` swaps the value for `[scrubbed]` on that line, the file
+  copied first, as for a shaped line.
+- **Upgrading**: budgets.toml's `yerk_tools` rises from 29,300 to 29,400 for the `seen` entry's 119 more characters,
+  and the session-start total rises from 133,708 to 133,808. `[code] lines` rises from 33,548 to 33,625. Each raise has
+  its dated reason in the file. The first doctor run after the deploy reads the inboxes, so a note filed before this
+  that holds a secret is named then; `yerk doctor --scrub` takes its value out.
+
+### need-2026-11-20-127 (#116)
+
+- A login you hand over is saved as a secret, and a room signs in with it without ever seeing the password. `/login`
+  in any of your rooms takes a name, the site, the user and the password. A slash command reaches the daemon, never a
+  room's session, so no room reads it. The daemon writes it to `secrets/NAME.login` in the private folder (0600, in a
+  0700 folder). The answer, which only you see, names the login, its site and its user, never the password. Saving
+  the same name again replaces the password; a name that is not lowercase letters, digits and hyphens, a site that is
+  not a host name, an empty or multi-line user or password, and a link where the file goes are refused, and nothing is
+  written. Before this, a room you sent a new site's login in pictures could not file it: its shell cannot write the
+  secrets folder, the browser's keep saves only a key a page shows, and typing the password through a tool call puts
+  it in the room's kept transcript.
+- Signing in rides on the browser plug-in, which is kept outside this repository (hands-mcp, branch
+  need-2026-11-20-127 at 9f7c3ca, 184 cases). Its `type` takes `login` and `part` (user or password), and the plug-in
+  reads the file itself. So the password is in no tool call's arguments and no reply. It types only on a page of the
+  login's own site over https (its host or a subdomain of it), puts the password only into a password field and the
+  user only into a text field, and never types on a payment page. A name that is not saved gets the list of saved
+  ones, by name and site. Every saved password is scrubbed from every reply after, as a kept key is.
+- The site is checked against the address the browser itself gives for the tab, never against what the page's own
+  script answers, so a page of another site that claims the login's address gets nothing typed. The user and the
+  password reach the browser's driver on its stdin, never on a command line, where any process of the same user could
+  read them.
+- The abilities entry `logins` tells a room handed a login in a message or a picture to ask for `/login`, never to type
+  it out or file it in memory.
+- **Upgrading**: budgets.toml's `mcp__hands__` rises from 10,470 to 10,616 for the browser entry's 146 more bytes, and
+  the session-start total rises from 133,562 to 133,708. `[code] lines` rises from 33,467 to 33,548. Each raise has its
+  dated reason in the file. The new slash command is registered at yerkd's next start.
+
+### video-other-browser (#115)
+
+- A room whose browser is not signed in to Instagram on the computer it asked now reads a locked reel in the other
+  computer's browser by itself. The browser plug-in's video action (kept outside this repository; on the owner's box
+  hands-mcp main at e3b605e since 2026-11-20) answers a browser that is not signed in with the other computer's browser
+  to call, and says to ask the owner to sign one in only when neither is. Before, it sent the room to the owner first,
+  though a room on a box where one of two browsers is signed in settles that with one more call. Shown that day on the
+  owner's box with one link: one computer's browser answered that it is not signed in and named the other, and the
+  other saved the video.
+- Here, the manifest says the same. The browser entry's line on the computer the owner names gains the one case a read
+  moves without the owner naming it, a tool's own reply that says to call the other one; a browser that is down is
+  still told to the owner, never read around. The locked-reels entry says that miss the same way. Two cases pin the new
+  words.
+- The same plug-in change holds each guard of the video action by a case of its own, fetches a file only over https
+  from a host Instagram's own files come from and follows a redirect only to one, closes the tab it opened on every way
+  out, and says how many of a post's videos past its first 10 were not saved.
+- Nothing in the harness's code changes, so no budget line moves.
+
+### shot-fits-click (#113)
+
+- A spot a room reads off a picture of its tab is where a click by position on that tab lands, on a screen drawn at any
+  scale. A picture was the screen's own pixels (2560 by 1239 for a page of 2048 by 991 drawn at 1.25, twice the page on
+  a Mac), a click takes the page's pixels, and Read shows a picture at most 2000 pixels on its longer edge, shrunk
+  again past that. Measured 2026-11-20 on a test page with three buttons, at 1.25: a spot multiplied back as Read's
+  line says missed and hit bare page, and a spot passed as shown hit only because the two sizes nearly cancel on that
+  one screen. A picture is now the page's own pixels at most, its longer edge 2000 at most, which Read shows with no
+  shrink, and the plug-in divides a spot read off it by the picture's scale before anything reads or clicks the
+  point. By hand that day, through the browser's tool on a fresh tab: a button read off such a picture at 1543,701,
+  divided by its scale, is 1580,718, the button's own middle, and the press there landed. Then through the
+  plug-in itself, at 1.25 and on a screen drawn at 2: each button clicked at the spot read off the picture, and
+  hit.
+- The reply to a picture gives its size beside its path, and every reply to a click by position names the spot as the
+  room gave it, never the page's. A spot outside the picture, or a click on a tab that is another size now than when
+  its picture was taken, clicks nothing and says to take a new picture. A tab never pictured, and a click by label,
+  answer as before.
+- A picture comes back in under a second from any of a room's tabs, the one a minimized window shows too, where a
+  tab's first picture waited 25 seconds and failed. The browser's window is never shown on the owner's screen for one:
+  the plug-in showed it for a retry after that wait, and that is gone. A tab that gives no picture in 25 seconds is
+  named with the way on: open the page again in a new tab and shoot that one.
+- The plug-in's change is live on its main since 2026-11-20, by a fast-forward to hands-mcp `shot-fits-click` at
+  ccdaaa9 (over 7acb28e): 167 of 167 of its offline tests green, its stand-in for the browser's tool printing what
+  that tool prints and one row reading the tool itself for the words the plug-in rests on. Its tool entries are
+  10,409 bytes, one fewer, so no budget line moves.
+- Why: the change before this one said a picture's pixels are not the click's and left that for a change of its own.
+
+**Upgrading**: nothing to do. This block is the record of a change in the browser plug-in, which is outside this
+repo; a room has it from its next process start.
+
+### sweep-built-trees (#111)
+
+- The nightly sweep takes what a finished worker's run built to test a day after the worker finished, where it waited
+  the folder's whole 30 days: each virtual environment (a folder holding a file named pyvenv.cfg, whatever the folder's
+  name: `.venv`, `venv-3.12`, `venv-3.13`) and each folder named `__pycache__`, `.mypy_cache`, `.ruff_cache`,
+  `.pytest_cache` or `node_modules`, anywhere in the worker's folder, each moved whole into the trash under
+  `workers/<id>/` at its own path, where the trash's own days delete it. On the box that measured it, that was 43 GB of
+  the workers folder's 53 GB: 133 environments (32 GB) and 2,513 cache folders (11 GB). The rest of the folder (its
+  brief, prompt, report, tasks, exit record and stream, a worktree's sources) waits its 30 days as before, and a worker
+  still running, or finished less than a day ago, keeps everything. A tree a process holds open or runs in stays that
+  night and goes on the next.
+- A link is never followed or moved, a `pyvenv.cfg` that is a link or a folder marks nothing, and the worker's own
+  folder is never taken this way, whatever it holds. A worker's folder that is itself a link out of the workers folder
+  is no longer walked for its pytest temp trees either.
+- `yerk retention --dry-run`, retention.json and the morning line name the new kind `built`; pytest temp trees keep
+  their own kind and their own days. One walk finds both and goes into neither: on that box's folder, 142,364 folders
+  and 515,464 entries where the pytest walk alone listed 258,183 and 1,617,360.
+- **Upgrading**: nothing to change. `[retention] built` in yerkd.toml sets the days (default 1). The first sweep after
+  the deploy moves every environment and cache folder of each worker finished between 1 and 30 days before into the
+  trash, about 43 GB on that box, and the trash deletes it 7 days later; `yerk retention --dry-run` says the count and
+  the bytes first. budgets.toml: `[code] lines` 33,415 to 33,435.
+
+### click-by-position-lands (#112)
+
+- A room's click by position says what it did. The reply names what the click landed on: a control by its tag and
+  its words (`BUTTON "Count it"`), anything else by its tag alone, so a field's value or a key a page shows never
+  comes back in it. A click the page did not get is said as "browser clicked nothing", with the way on (the control
+  by its label, or a new picture and the spot where it is now; for a spot outside what the tab shows, a spot inside
+  it): nothing is read after it, it counts as a failure, and the same spot failing twice is not tried a third time.
+  A click that cannot be known, a press into a frame of another site or on a page that could not be read, is said as
+  sent, never as clicked, with what the tab shows after it.
+- It lands on a tab that has not been drawn yet. Every tab the browser opens for a room has no window on the owner's
+  screen, and such a tab, opened and clicked by position with no picture taken of it first, took the mouse's move and
+  no press, while the reply said "browser clicked". Once a picture had been taken of the tab the click did land, after
+  5 seconds. It lands now either way, in under a second: measured 2026-11-20 on test pages that report each press
+  they get.
+- A click by label answers as before, and so does a click by position whose tool itself fails.
+- Not in this change, and the reason a click from a picture can still miss: a picture's pixels are not the click's.
+  On a screen drawn at 1.25 or at 2 times, the picture is that much larger than the page a click measures, so a spot
+  read off the picture is clicked that much too far from the top left corner. The reply now shows it, by naming what
+  was hit; the fix is a change of its own.
+- The plug-in's change is live on its main since 2026-11-20, by a fast-forward to hands-mcp
+  `click-by-position-lands` at 7acb28e (over 902312e): 154 of 154 of its offline tests green, its stand-in for the
+  browser's click tool printing what that tool prints and one row reading the tool itself for the words the reply
+  rests on. Its tool entries are byte for byte as they were, so no budget line moves. The same branch pins one more
+  page of need 125's as a payment page: a choice drawn by role and not shown, "Bill me" not chosen beside another
+  one chosen, holds its words.
+- Why: on 2026-11-20, judging need 125, a click by position on a page opened and not pictured was answered
+  "browser clicked" three times while the page got no press.
+
+**Upgrading**: nothing to do. This block is the record of a change in the browser plug-in, which is outside this
+repo; a room has it from its next process start.
+
+### meter-reading-light (#114)
+
+- A meter reading no longer reads the account's transcripts. The daemon reads each account's meters every 15 minutes,
+  with nobody talking, and a card's live ask reads them too, each by Claude Code's own `/usage`; that Claude Code read
+  transcripts in the account's `projects` folder, which the meters never need (they come from the service). Measured
+  2026-11-20 on one box, one reading took 6.42 s and asked read() for 3,031,635,682 bytes, 644,719,616 of them from
+  the disk, with 847 files open, 836 of them transcripts (2,949 MB); where every account's config folder links one
+  shared `projects` folder, a round of four readings asked for about 12 GB. With the folder hidden, the same reading
+  gave the same two meter lines from 1,123,331 and 932,074 bytes, 222,208 and 1,024 of them from the disk, with 11
+  files open, in 4.05 and 3.77 s.
+- A reading now runs in bubblewrap (`bwrap`, which Claude Code's own sandbox uses) with an empty folder over the
+  account's `projects` folder, for that one process; where `projects` is a link, over the folder it names. Nothing else
+  is hidden: the config folder, whose login the reading reads and where Claude Code writes its own files, stays as it
+  is, and the real folder is never touched.
+- With no `bwrap` on the box, or no `projects` folder, a reading runs as before. Where bwrap itself fails (no meters,
+  and its own `bwrap:` line first), the same reading runs once more without it, the log says so once (`usage: the
+  transcripts could not be hidden from a reading (...); reading without it`), and that process reads without it from
+  then on (the daemon until its next start). Any other failure is said as before, with no second run.
+- A reading's Claude Code gets no input: run from a shell with a pipe on stdin, one waited 3 seconds for it.
+- **Upgrading**: nothing to change. budgets.toml: `[code] lines` 33,435 to 33,467.
+
+## 2026-11-19
+
+### need-2026-11-19-125 (#109)
+
+- A room can send an order form you ordered now when the page gives an invoice as its payment method, such as "Payment
+  method: Bill me": it ticks the terms box and presses Place order or Submit order on your word. The hands plug-in's
+  browser read a button whose whole words are Place order or Submit order as a pay button wherever it showed, so an
+  order's review step that asked for no card or bank details was a payment page, and its terms box and its Submit
+  Order were refused, your word or not.
+- Such an order button still makes a payment page, as it always did, unless the page earns the exception, and every
+  list the exception uses is of what lets a page through, so a miss on one is a refusal: a payment method on the page
+  has an invoice as its value, in force (Bill me, Invoice, Invoice me, Pay by invoice, Bill my account or Bill to my
+  account; a radio, an option, a button or a link counts only when the page marks it chosen); no payment method on the
+  page names anything else, so "Payment method: X" refuses for every X that is no invoice, a card, a bank, a wallet or
+  a made-up name alike; none of the payment marks shows; and nothing the browser cannot read is drawn: no frame of
+  another site it cannot read into, at any size from 10 by 10 pixels, in the page, in a box of its own site or in a
+  web component, a bot check's own frame aside (reCAPTCHA by its host and its path, never by Google's host alone), and
+  no object or embed that is no image. A page that fails says why beside the order button: no payment method that is
+  an invoice, a payment method named that is no invoice, a choice not chosen that the browser cannot tie to its words,
+  a frame of another site or an embedded object with its host and its size, or more boxes or frames than it reads.
+- Only a payment method says invoice. A sentence such as "billed on your next invoice" counts for nothing: the build
+  before this one let a page through on one, even on sentences no list of negations, questions and conditions holds
+  ("Nothing will be billed on your next invoice."). A page that says invoice only in a sentence is a payment page, as
+  before this pull request.
+- A choice is tied to its words, or its page says nothing: a radio or a checkbox, the page's own or one drawn by role
+  (a radio, a checkbox, a switch or a menu's radio), holds its own words (its label, its aria-label, the words it
+  names, a role one's own words, else its parent's when the parent holds no other control) and the words drawn on its
+  row, so "Bill me" beside a choice not chosen is no invoice, whether the choice has no label, a label that says only
+  "Select", or is an empty box a component library draws; one with no words at all and not chosen leaves nothing in
+  its page or box in force. The cost, and it is wanted: a checkbox or a switch not chosen on Bill me's own row,
+  labelled or not, makes the page a payment page. What the browser did not read refuses too: a page or a box with no
+  answer on its payment methods, and more boxes or frames than it returns.
+- The payment marks stay beside the invoice payment method as a second look: a card field, a payment frame, a saved
+  card, a payment service's address, another pay button, bank details (a bank account's number field, an IBAN, a sort
+  code, a bank word with its digits after it), a masked number (•••• 4242), and a card, wallet or balance the page
+  names. The first build rested on them alone, and this pull request's three cold reads each found one more way of
+  paying they did not name ("Visa 1234", "Chequing account ending 1234", a card form in a 300 by 44 frame of another
+  site), each a click that would have paid on your word, so the build was made again on the rule above.
+- On an order form each field set, click, typed value and file, the order button's own click included, waits for your
+  word in the room (the browser's `confirmed`). An open or a read of the page, and the refusal, say it is one, that
+  the page gives an invoice as its payment method with the value it matched, and what it checked and found absent
+  (never "it takes no card or bank details" as fact), and ask the room to tell you what the page says the order costs
+  and how it is billed. A button whose words make a payment (Pay, Buy now, Checkout, Submit payment) still makes a
+  payment page wherever it shows and is never clicked, a hidden one included, and neither is an order button on any
+  other page.
+- The plug-in's change is on its branch `need-2026-11-19-125` (902312e, over 27b806e, 2b2de89, 0479c2e, e9d762d and
+  654ecaa): 142 of 142 of its offline tests green, thirty-one running the page probe in Playwright's headless shell,
+  among them the review step in its own shape with the reCAPTCHA badge its site draws (an order form, by its payment
+  method alone) and each way of paying and each choice markup above, native or by role, beside it (a payment page).
+  Its tool entries are unchanged, so no budgets.toml line moves. `yerk explain order-forms` has the ability, found by
+  asks such as "submit the order" and "bill me"; `free-bookings` no longer says an amount on a page marks a payment
+  page, which the browser never read; `upsell-pages` no longer lists Place order among the buttons that mark a payment
+  page wherever they show. The README's Add-ons line names it beside `free-bookings`, at 11,986 of its 12,000 bytes,
+  the private folder's last line no longer repeating the Install paragraph's pointer to the guide.
+- Why: on 2026-11-19 a room asked to order an item to an address on your word filled the order form to its review
+  step, with "Bill me" as its payment method, and was refused its terms box and its Submit Order as on a payment page.
+  It filed the need (need 125 of 2026-11-19); on your word the order then went in through the desktop tool, which
+  reads nothing of a page, so the careful tool refused what the blind one clicked.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`need-2026-11-19-125` (902312e, 142 cases). A room sends such an order from its next process start after that. Nothing
+in rooms.toml, yerkd.toml or budgets.toml changes.
+
+### need-2026-11-19-126 (#110)
+
+- A room with people answers one more person in its channel when the owner asks there. Who a room answers was
+  rooms.toml's `people` alone, which no room reads or writes, so a person's room asked by the owner to answer a second
+  person in its channel, whose message was filed as "other" with no reply, had no way to, and answered that person's
+  question inside its reply to the owner.
+- The new `people` tool, in every room: with no op it says who the room answers; `add` answers a person who wrote in
+  the room's own channel, named by one of their messages (its id, the `[m:ID]` that ends its day-log line, or its
+  link), from their next message on, in the channel the room watches too; `drop` answers one so added no more, by
+  handle or id. Each change only on the owner's own words of that turn (`said`), never a person's.
+- Never the owner, Yerk itself, a bot, a webhook or another assistant; never in a room where rooms.toml's `people` is
+  refused at the start (an owner room, which reads the owner's whole memory; a shell or a read folder outside a trusted
+  room; a room with no layer of its own): each said in words, before any message is read.
+- Kept in the daemon's own override file under the state folder, beside the model and thinking level set from the
+  room, over rooms.toml, which is never written. Every start joins them to rooms.toml's list; one the start may no
+  longer join (the room since made an owner room, the person since listed in `[watch] assistants`) is joined nowhere,
+  said in the log, and the start goes on. One listed in rooms.toml is the owner's to edit there.
+- In a room that answers more than one person, a line above each person's message names who sent it, by the name the
+  server shows them by and their handle, so a person's room never answers its second person as its first; the owner's
+  messages, and a room with one person, read as before.
+- `yerk room add` never lets one a room answers by asking into a new person's room made like it, as it never lets in
+  rooms.toml's people; `yerk import` files their old lines behind that room's wall as a person's, never as "other".
+- `yerk explain room-people` has it, found by asks such as "answer them too"; the README's line on who a room answers
+  says so.
+- **Upgrading**: nothing to change; each room is handed the tool at its next process start. budgets.toml: Yerk AI's
+  tools 28,600 to 29,300 for the tool (about 779 as sent), the session start's total 132,862 to 133,562, and
+  `[code] lines` 33,260 to 33,415.
+
+### need-2026-11-19-124 (#108)
+
+- An owner room reads Yerk's own fetched docs pages and the doctor's findings now. Its Read, Grep and Glob reached its
+  own folders, the checkout that runs and each worker's folder, so a room asked to check a worker's re-pinned docs
+  sentences against the fetched page, with that day's doctor findings read first, had its Grep of both refused, and
+  checked the sentences against another log's quotes of the page.
+- Every owner room's settings now carry two more read rules: the docs folder in the state folder (the Claude docs pages
+  `yerk docs` fetches, `docs/claude/`, and the doctor's reports on the rules, `docs/shape/`) and the doctor's last run,
+  `doctor.json` (its findings and the last day's repairs). Never an added folder its shell could write, and the secrets'
+  denies still beat them.
+- A sealed room's rule opens the fetched pages alone, since a shape report or a finding names other rooms' rules and
+  files. A room whose privacy is not owner reaches the docs by recall and read_memory, as before, and the findings not
+  at all.
+- The mechanics' docs line names `doctor.json` beside the two docs folders and says where all three are: in Yerk's
+  state folder, a room's work folder's path before `rooms/`, with `read_memory` reading the docs in any room and an
+  owner room's Read and Grep all three. Before, it named the two folders by their memory paths alone, and a room looked
+  for them in its work folder and in the checkout.
+- `yerk explain harness-docs` has it, found by asks such as "the docs page" and "doctor findings"; the README's line on
+  a room's read rules and the guide's "Yerk knows its harness" say so.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rules. budgets.toml: the mechanics
+  line 8,700 to 8,900 for the docs line, the session start's total 132,662 to 132,862, the per-message recall line
+  2,100 to 2,200 and its cap 5,750 to 5,850 (with this entry's name and need-2026-11-19-123's `worker-folder` both in,
+  "what can you do" came to 2,110 and rides whole or not at all; a message's recall on a hit may run 100 characters
+  longer), and `[code] lines` 33,250 to 33,260.
+
+### need-2026-11-19-123 (#106)
+
+- An owner room reads a worker's own folder now, beyond its worktrees. Its Read, Grep and Glob reached the checkout that
+  runs and each worker's `wt` and `<plug-in>-wt` worktrees, so a room asked to relay a finished worker's result with its
+  patch checked had its Glob of the worker's folder and its Read of the patch the worker left there refused, since that
+  worker made no worktree, and gave the patch on the report's word.
+- Every owner room's settings now carry one read rule over the workers' root, which Claude Code reads as each worker's
+  folder and all under it: its report, brief, tasks and stream, a patch or any file it wrote, and its worktrees. A
+  pattern, so a worker started after the room's process is reached too; never an added folder its shell could write, and
+  the secrets' denies still beat it. The `worker` tool's report names the folder, as before.
+- A sealed room keeps the worktree rules alone, since a worker's brief and stream carry the lines of the room that
+  started it. A room whose privacy is not owner reads its own folders only, as before.
+- No rule, for the worktrees or the folder, when `[workers] root` is, holds or sits inside the private folder, holds the
+  state folder, or, new, sits inside the state folder anywhere but its workers folder (its rooms' folders, the trash),
+  since each entry under the root is read whole.
+- The relay of a report past its cap no longer says the rest is in a report "which this room does not open"; it says
+  the rest is in the report, true in every room.
+- The mechanics' code line says a worker's own work is in its folder (its report, a patch, its stream and worktrees) and
+  that a sealed room reads the worktrees. New ability entry `worker-folder` (`yerk explain worker-folder`), found by asks
+  such as "read the worker's patch"; `worker-code`'s entry says the folder is open beside it. The README's and the
+  GUIDE's lines on a room's read rules name the folder.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rule. budgets.toml: the mechanics
+  line 8,600 to 8,700 for the code line's clause, the session start's total 132,562 to 132,662, and `[code] lines`
+  33,238 to 33,250.
+
+### job-units-one-spelling (#107)
+
+- A sync from the command line no longer rewrites every job's unit and restarts every timer. A job's unit names the
+  interpreter its run starts with, and each writer named it its own way: the daemon `.venv/bin/python`, the `yerk`
+  command `.venv/bin/python3` (its first line), one file under two names. Whichever synced after the other took every
+  unit for changed, wrote it again, restarted its timer, and the answer listed every job as "(changed)". Every writer
+  now names it one way: the interpreter folder's own `python` when that is the same file, else its `python3` when that
+  is, else the path as it is, so an install with no virtual environment and only `python3` keeps `python3`. A unit on
+  another interpreter file (another venv, or the system's Python that a venv's `python` links to) is still changed.
+- **Upgrading**: nothing to change. The first sync after the deploy rewrites no unit that names `.venv/bin/python`, the
+  daemon's spelling, which every unit holds when the daemon synced last; a unit a command-line sync left on
+  `.venv/bin/python3` is rewritten once, to `.venv/bin/python`, and never again. budgets.toml: `[code] lines` 33,227
+  to 33,238.
+
+### doctor-code-and-pins (#105)
+
+- `yerk doctor` no longer takes a payment reference for a login code. From 2026-11-14 it was red every day on a fact
+  file's undated payment line: after "confirmation code starting", the window after the cue word took the reference's
+  first letter, the four digits after it read as the code, and the line said to rotate the key. A one-time code's
+  digits now stand alone, a whole word: digits with a letter or a digit directly before them are no hit. Every cue word
+  stays, so "your confirmation code is 482913", "verification code: 482913" and "security code 4821" are hits as before.
+- A one-time code is its own finding, orange: "one-time codes: N in N files, first FILE:LINE; a code works once and soon
+  expires, so there is nothing to change, and `yerk doctor --scrub` takes it out if you want it gone". It never says to
+  rotate. A key, a password line and a token line stay one red line in today's words; with both kinds found, both lines
+  are said. A line that holds a code beside a key, a password or a token is counted with that one, in red.
+- A spent code is no hit wherever it sits. The two-day rule that kept old mail's codes quiet under imports/ now holds in
+  the day logs, notes and fact files too: a day log's line is dated by its day, an entry anywhere by its own
+  `- YYYY-MM-DD HH:MM` (the lines under it share it). A line with no date is still said. `yerk doctor --scrub` leaves a
+  line that is no hit as it is, byte for byte.
+- The import of an OpenClaw box (`yerk import openclaw:`) withholds lines by the doctor's shapes, so it no longer
+  withholds a reference's tail after a cue word either. The texts and mail importers keep their own shapes, unchanged.
+- The seven orange "docs moved" lines are gone. The Claude Fable 5.2 prompting page was reworded on 2026-11-13, and
+  seven sentences the lesson checks quote were no longer on it word for word. Each is re-pinned to the page's sentence
+  as it reads now, so every refusal and finding quotes what the page says: the caution, exception, approvals,
+  style-limit, built-up, think-less and reasoning pins. None was retired; each still says what its check enforces.
+- A pin's bold lead is quoted with it. The page opens two bullets with a bold lead: "Be explicit about exceptions." is a
+  sentence by itself and is the exception pin, and the style-limit pin is the lead with the sentence that leans on it,
+  "Style rules for writing: Claude Fable 5.2 follows them closely, so a hard limit ... can make its prose choppy." Pins
+  now match with the bold marks left out, as they already matched with a link's address left out.
+- **Upgrading**: nothing to change. budgets.toml: `[code] lines` 33,217 to 33,227.
+
+### worker-preamble-tools (#104)
+
+- A worker given Yerk AI's read-only tools is told it has them. An install can give every worker `recall` and
+  `read_memory` (`[workers] yerk_tools` in yerkd.toml), and two workers given both read in their PROMPT.md that they had
+  "no room session, no Yerk AI tools and no subagents", so a worker read the memory only when its brief named a tool.
+- Now that line names the tools it has as its tool list shows them (`mcp__yerk__recall`, `mcp__yerk__read_memory`, or
+  the one it was given), says it has no other Yerk AI tool, that they read the memory of the room that started it as
+  the room does, and that a brief depending on what the owner or the room said, decided or keeps on file is looked up
+  there first. The names come from the one list the start writes to worker.json and the unit turns into
+  `--allowedTools`, kept to recall and read_memory, so a name the setting holds that a worker may not get is never said.
+- With none given the line is today's, byte for byte, and an add-on's line still follows it, its `confirmed` sentence
+  as before.
+- The `worker` tool's words say a worker started with no add-on named reads this room's memory with recall and
+  read_memory where the install gives workers those; the `schedule` tool's say an agent job's worker has them among the
+  room's tools on the same condition. The words are the same on every install. The module lines that said a worker has
+  no MCP server, and a job's worker has of the room's tools only add-ons, say what stays true.
+- **Upgrading**: nothing to change. budgets.toml: `[session_start.claude_code] yerk_tools` 28,400 to 28,600, `total`
+  132,362 to 132,562, `[code] lines` 33,214 to 33,217.
+
+## 2026-11-18
+
+### start-names-unseen-paths (#103)
+
+- A worker's start says which paths in its brief the worker cannot see. A brief named another room's work folder as a
+  source; the unit hid it, as it hides every room's folder but the worker's own room's work folder, the start said
+  nothing, and the worker ran one source short. Now the `worker` tool's answer (and `yerk worker start`'s) carries
+  `unseen`, each such path once in the brief's order, and `unseen_note`, one sentence naming three of them and the
+  count of the rest, the work folder a worker does see, and that it runs without them.
+- The worker's PROMPT.md has one more line then, naming every such path and asking for them in the report's first lines
+  with what was done without them, so a job's run and a need's builder, which read no answer, are told too.
+- The start is never refused and the brief never changed: a brief may quote a path it does not ask the worker to read.
+  With no such path the answer and the prompt are as before, byte for byte, and the fence is the same.
+- What counts is read from the code that builds the fence (`Systemd.unseen` beside `Systemd.sandbox`, one `_fence` for
+  both): absolute and `~/` paths, a glob by the part before its first wildcard, each as written and resolved, so a link
+  into a hidden folder counts.
+- The GUIDE's line on a worker's unit names the work folder it sees and the start's answer; its line on an owner room
+  reading Yerk's code names a worker's worktrees beside the checkout.
+- **Upgrading**: nothing to change. budgets.toml: `[code] lines` 33,149 to 33,214.
+
+### need-2026-11-18-111 (#102)
+
+- An Instagram reel or post that Instagram shuts to a logged-out reader (an account that limits who sees its posts, an
+  age check, a login-only post) can be watched now. `watch` reads as a logged-out reader, as yt-dlp does, so such a post
+  came back as "Instagram sent an empty media response", and the signed-in browser's background tab painted a black frame
+  with no sound, so a room sent a reel to watch heard nothing of it.
+- `watch` now says that wall in one line, Instagram's own first sentence and never yt-dlp's advice on cookies flags, and
+  names the way by what the room has: a room with an add-on's browser tool is told its `video` action reads the post
+  signed in and saves its video in the room's work folder, then to watch that path; a room with none is told the video
+  itself was not seen, never to answer off its caption or its cover. Only a post, a reel or a tv link is marked so, the
+  links that `video` reads: a story or a highlight shut to a logged-out reader (yt-dlp's "This content is unreachable"
+  and "You need to log in to access this content") is said in yt-dlp's own words, as before, since `video` refuses its
+  link and would send the room back to watch. Any other site's login and Instagram's other words read as before.
+- The hands plug-in's browser gains `video` (its branch need-2026-11-18-111, a049bf2): the post's own page asks
+  Instagram's web API for the post, as its player does, and hands saves each part's video file under
+  `hands-videos/instagram-<code>/` in the room's work folder, an MP4 under 300 MB, the folder walked without following a
+  link. The session never leaves the browser: no cookie is read or copied, and the file's signed address never reaches the
+  room. Not signed in, a post the account cannot see, photos only, Instagram's ask to wait and a refused file are each said.
+- New ability entry `locked-reels` (`yerk explain locked-reels`), its built part `watch`, whose entry names it.
+
+**Upgrading**: budgets.toml's `mcp__hands__` line rises to 10,470 and the session-start total to 132,362 for the browser's
+longer entry, and the code ceiling to 33,149; both come with the merge. The plug-in's main takes the branch at the same
+merge, and the rooms that attach it pick it up at their next start.
+
+### need-2026-11-18-110 (#101)
+
+- An owner room reads a worker's own change now. Its Read, Grep and Glob reached its own folders and the checkout that
+  runs, so a room asked to relay a finished worker's result with the worker's code claims checked had its Grep of the
+  worker's worktree refused, and told the change on the report's word.
+- Every owner room's settings carry a read rule per worktree name over the workers' root: `wt` (Yerk's) and
+  `<plug-in>-wt` (a plug-in's) in a worker's folder, the names every need brief gives them. A pattern, so a worker
+  started after the room's process is reached too; never the worker's own files (its report, brief and stream), never
+  an added folder its shell could write, and the secrets' denies still beat it. None when `[workers] root` is, holds or
+  sits inside the private folder, or holds the state folder.
+- The `worker` tool's report (and `yerk worker report --json`) names the worktrees a worker left, and the mechanics'
+  code line says a worker's change is in them, beside the checkout, so a claim about a change is checked there before
+  it is said. A need's builder's clean worktree still goes when it ends, and a worker's folder with the 30-day sweep.
+- A room whose privacy is not owner reads its own folders only, as before.
+- `yerk explain worker-code` has it, found by asks such as "read the worker's worktree"; the README's line on a room's
+  read rules names the worktrees.
+- **Upgrading**: nothing to change; each owner room's next process start writes the rule. budgets.toml: the mechanics
+  line 8,500 to 8,600 for the code line's clause, the session start's total 131,923 to 132,023, and `[code] lines`
+  33,087 to 33,109.
+
+### deploy-waits-for-copy (#100)
+
+- `yerk deploy` now waits for a room's copy that is compacting before it restarts the daemon, instead of dropping it. A
+  restart drops a copy in flight, and the room then runs high until the next one lands: on 2026-11-18 a deploy restarted
+  the daemon 62 s into a busy room's copy and the room ran past 820,000 tokens through three more turns. The
+  quiet window alone could not hold it: copies take 90 to 171 s, longer than a `quiet_seconds` of 60.
+- The wait has a bound, the new `[deploy] copy_seconds` (default 300; 0 never waits), so a copy that hangs never holds
+  every deploy. Past it the deploy restarts all the same and its card says so in one line, the room and how long its copy
+  had been going. While it waits, the reason names the room and the copy's time, as the turn and message reasons do.
+- The /status answer (and so `yerk status --json`) gives each room a `copy`: the seconds since its copy in flight
+  started, while it compacts or waits to be taken at the running turn's end; null when there is none. The card is
+  unchanged. A daemon older than this says no `copy`, which reads as no copy, so the first deploy of it waits for none.
+
+**Upgrading**: nothing to do. Set `copy_seconds` under `[deploy]` in yerkd.toml only to change the bound.
+
+### need-2026-11-18-109 (#98)
+
+- A worker given the web plug-in reads pages now. Its unit sees Yerk's state folder read-only, and the plug-in kept the
+  free rungs' rate window there, so every web_fetch in a worker failed before any read ("EROFS: read-only file system",
+  on the window's lock file), as a picture's web_image did, and a worker sent to read a list of job postings read each
+  one by a plain GET from its shell instead: no blocked-page check, no stealth browser, no cap.
+- The plug-in now knows it runs in a worker (the `YERK_WORKER` id and `YERK_WORK_DIR` folder Yerk's worker start already
+  hands an add-on) and keeps its state in `web/` in the worker's own folder: its rate window, site memory, call logs,
+  meters and its stealth browser's profile. Yerk's state folder stays read-only to the worker, whose shell shares the
+  plug-in's mounts, so a worker writes nothing a room's process reads; the worker's sandbox is unchanged.
+- The caps hold with every room's: each free read in a worker counts the one window every room's process books with its
+  own (30 reads a minute, 6 a host) and books in its own; You.com's 100 searches a day count the same way. A worker's site
+  memory starts from the rooms' (a host resting from the free rungs rests for it too) and what it learns stays in its
+  folder. The rooms do not count a worker's window, which its shell could write.
+- A worker reads no key (its unit has no secrets/), so it runs the free rungs and the keyless search engines only, and
+  web_research does not run there, as before. A page's PDF or Word file and a picture still save in the room's work
+  folder. A room's process and its files are as they were.
+- `yerk explain worker-web` has it, found by asks such as "web_fetch in a worker"; the README's Add-ons line names it, its
+  note that the plug-in is outside `[code]` left to docs/GUIDE.md, Web reach, so the README stays under 12,000 bytes.
+- **Upgrading**: nothing to change; the next worker given the plug-in (a start's `addons` or its room's `worker_addons`
+  naming its server, web-ladder in rooms.toml.example) runs it this way. No tool's description changed, so budgets.toml
+  is as it was.
+
+### worker-room-tools (#99)
+
+- A worker now starts with the add-on tools its room gives every worker. The new room key `worker_addons` in rooms.toml
+  names them, each the way a worker start's `addons` names one: a tool as the room's `allow` has it, or a server's name
+  for each of its tools `allow` names. Every start from the room gets them, whoever starts it: the `worker` tool, `yerk
+  worker start`, a booked agent job, the daemon's own workers. An owner room carries `[defaults] worker_addons` unless it
+  sets its own, `worker_addons = []` gives a room's workers none, and a room whose privacy is not owner gets only the ones
+  it sets itself. A value that is not a list of add-on names stops the start with one line, as a wrong `[defaults] allow` does.
+- A default is never a refusal: one the room's `allow` has not is skipped, and one on a server whose table passes a
+  credential is skipped with one warning in the log; the worker starts either way. An add-on a start names itself is still
+  refused whole when the room cannot give it. The defaults and the named ones are one list with no repeat, and the
+  worker's PROMPT.md names every one. The gate is unchanged: a call that carries the owner's word (`confirmed`) is refused.
+- An agent job can name add-ons: `addons = [...]` in jobs.toml, `addons` on the `schedule` tool, `--addon` on `yerk
+  schedule add`. They are checked against the job's room when it is booked, with the sentence a worker start gives, and
+  nothing is written when they are refused; `yerk jobs sync` checks a hand-edited job the same way where it can read
+  rooms.toml and names it as one that cannot be scheduled. A note or a script that names `addons` is refused by the key.
+  `yerk jobs list` and the tool's list name a job's add-ons. `yerk worker start --addon NAME` names one from the command line.
+- The `schedule` tool now says what an agent job's worker has: a shell, files and the web, of the room's tools only the
+  add-ons the room gives every worker and those `addons` names, never send, text or email, so a light timed check that
+  needs the room's tools is a note. The `worker` tool says what a worker has with none named. Nothing changes where no
+  room sets `worker_addons` and no job names `addons`.
+
+**Upgrading**: budgets.toml's `yerk_tools` goes from 28,000 to 28,400 and the total from 131,523 to 131,923 for the longer
+tool words, and [code] lines to 33,069. To give a room's workers an add-on, add `worker_addons = [...]` to the room, or to
+`[defaults]` for every owner room, then restart yerkd.
+
+### precompact-midturn (#97)
+
+- A room can now start its compaction copy in the middle of a long turn, not only as a turn ends. Until now a room learned
+  its session's size only when a turn ended, so a turn that started under the copy's band (`precompact_within` of the
+  window under Claude Code's line) and grew across the whole band in one go ended in the held compaction, and a message
+  sent then waited about two minutes. In the 96 hours to 2026-11-18, 7 of 1,189 turns grew that much.
+- The new room key `precompact_midturn` turns it on: `on` starts the copy at the call whose size first reaches the band,
+  read from that call's first stream event (`message_start`), at most once a turn, under every rule a turn-end copy keeps
+  (none while one compacts or waits to be taken, none while the daemon stops, a compaction holds the room, the turn was
+  stopped or the next run starts a fresh session, never without a live process). The copy compacts while the turn runs
+  and the room takes it as the turn ends, so the turn-end compaction reads the copy's size. `log` writes one line, "would
+  have started a copy mid-turn at N of its W tokens, ... s into the turn", and starts nothing. `off` is the default, also
+  for any other value, which is said once in the log at the start. It reads as `precompact_within` does: budgets.toml
+  `[session]`, a room's own key over it.
+- The turn the copy was made in reaches the copy as the first exchange of the text its first message carries, ahead of it
+  a line saying it was already running when the summary was written, that it is one request asked once, and that it
+  finished on the live session and nothing in it is to be done again; that exchange is never cut for `copy_tail`. A turn
+  that ends with no reply (a /stop, a failure it cannot get past) drops the copy made in it.
+- The size a turn records (the ledger's `context` column, the room card) is fed exactly as before; the mid-turn figure is
+  a field of its own. A subagent's calls are not the room's size: Claude Code 2.1.321 streams no `message_start` for
+  them, and one that named a subagent, or no thread at all, would be left out.
+
+- **Upgrading**: nothing to change; no room changes until its block or budgets.toml `[session]` sets
+  `precompact_midturn`. budgets.toml: `[code] lines` 32,917 to 32,980, with its dated note; docs/budgets.md and
+  docs/settings.md are what `yerk docs own` writes from it and from the key's words.
+
+## 2026-11-17
+
+### needs-risky-paths-wait (#96)
+
+- A need whose change touches risky code now waits for a deeper check before it merges. Until now every need the needs
+  pipeline carried merged on its one cold read, a change to how a text goes out in the owner's name the same as a word on
+  a card. Review is now matched to risk, and the change sets the tier, never who or what built it: the rule the Claude
+  Code team keeps for agent-written changes, which the owner asked for on 2026-11-17, in its first, strict step. Decision
+  40 stands for everything not on the list: such a need travels exactly as before.
+- When a need's cold read says `merge`, before anything is merged or landed, the pipeline reads the paths the pull
+  request's head changes against its merge base with `origin/main`, with git in the daemon's own tree and no network (a
+  rename counts as both its paths). One on the list, or a branch the need carries in a listed plug-in, holds the need. Its
+  line in the machine room opens "the cold read said merge; it waits for a deeper check" and names the first three things
+  it touches with how many more, on lines of phone width; `yerk needs list` shows the same why on its one line. A change
+  git cannot read is held the same way, with git's own words: an unreadable change is never taken as a safe one.
+- The need's row in `<state>/needs.json` carries the hold in a field of its own, `deeper`: the head it judged, the paths
+  and the plug-ins it touches (and `unread`, git's words, when git could not read it), so a later step can find the needs
+  that wait and release them. Any other stop of that need clears it, so a held need with one is one that waits.
+- The list, `SENSITIVE` in yerk_ai/pipeline.py, each entry beside what going wrong there means: `yerk_ai/texting/`,
+  `yerk_ai/emails.py`, `yerk_ai/gates.py`, `yerk_ai/hooks.py`, `yerk_ai/deletes.py`, `yerk_ai/accounts.py`,
+  `yerk_ai/git_askpass.py`, `yerk_ai/github.py`, `yerk_ai/deploy.py`, `yerk_ai/pipeline.py`, `yerk_ai/needs.py`,
+  `yerk_ai/workers.py`, `.github/`, `pyproject.toml`, `uv.lock`, `units/` and `plugin:hands`. A folder entry takes every
+  file below it and never a longer name that only starts the same. The list in force is the running daemon's, its own
+  code and the install's yerkd.toml, never the pull request's tree, and the file that holds the default is on it, so a
+  change cannot loosen the list that judges it. Every need is judged on the head its cold read read, so a fix worker's
+  later commit on a listed path stops it too.
+- A person releases a need that waits as any held need: merges its pull request and runs `yerk needs done DAY N PR`, and
+  the deploy and live follow, that road unchanged.
+- budgets.toml: `[code] lines` 32,816 to 32,875, with its dated note; docs/budgets.md and docs/settings.md are what `yerk
+  docs own` writes. docs/GUIDE.md has a new section, Needs that wait for a deeper check, and the pipeline's header says
+  the step.
+- The tests: 22 new in tests/test_needs_pipeline.py, each named for the risk it pins: a listed path held with nothing
+  merged, landed or deployed and the field on the row; a change off the list merged exactly as on main; `[]` merging as on
+  main and reading nothing; a list in yerkd.toml replacing the default (two cases); a change git cannot read held, a head
+  the tree lacks and a tree with no origin/main; a branch in the hands plug-in held; a folder taking a file below it and
+  no entry taking a longer name; release by `yerk needs done` to deploy and live; a pull request that loosens the list in
+  its own tree judged by the running one; seven paths named as three and how many more at phone width; a fix worker's
+  later commit on a listed path; any other stop clearing the field; a setting that is no list read as the default list
+  (three cases); a listed file moved off its path still seen by its old one; main moving on with a listed path holding
+  no change that leaves it alone; a head that is no sha waiting, never handed to git (three cases). The last eight pin
+  what four of the judge's twenty mutants survived without. The file's other tests run with `[needs] sensitive = []`,
+  decision 40's road exactly, since their heads are no commits git could read.
+- **Upgrading**: nothing to change for the default. `[needs] sensitive` in yerkd.toml replaces the list whole and `[]`
+  turns the wait off (yerkd.toml.example writes the default out); yerkd reads it at its start. A need that waits stays
+  held until a person merges it and runs `yerk needs done`.
+
+### verify-recipe (#95)
+
+- A change can now be proven on the running daemon before its last commit, offline and in about 10 seconds, and not only
+  on its tests. No test had ever seen the daemon do its own work: both harnesses that run `Yerkd.run_discord`
+  (tests/test_slash.py, tests/test_watch.py) swap the HTTP server, the reaper, the beat, the meters' keeper and the
+  workers' pump for functions that return at once. With `self.keep_meters()` taken out of run_discord's task list, every
+  test of the five files that cover status-meters-kept-fresh still passed and the box's checks were green on a tree whose
+  keeper would never have run; the only proof that it runs was taken by hand on the live daemon after the deploy.
+- `tests/verify_daemon.py` runs yerkd's own `main()` on a scratch copy of the example layer and a scratch state folder,
+  both in a new temporary folder it removes at the end, with every long-lived task `run_discord` starts running as on an
+  install and only the outside world replaced: Claude Code by tests/fake_worker_claude.py and tests/fake_claude.py,
+  Discord's client by an in-process gateway built on the tests' own (`Chan`, `Msg`, `Bot`, `It`), systemd by the worker
+  tests' `Units` and a notify socket of the run's own, stand-ins on PATH for systemctl, systemd-run and ssh (the Mac,
+  answering with no texts), and no network (a connect past loopback is refused and counted). It refuses to start on the
+  live install's state folder or private layer, takes a port the kernel hands out free, and points HOME, YERK_STATE and
+  YERK_PRIVATE into its scratch folder while it runs.
+- It drives the daemon from outside and prints one line a check, state first: `/status` over the HTTP port with its
+  rooms; a message in a room answered there, with its inbound and turn rows; the slash `/status` answered once, then
+  edited once; the gateway ready with the slash commands registered; the keeper's reading for each account in
+  usage.json; READY=1 and WATCHDOG=1 on the notify socket; the pipeline's watch asking its own round; the inbox check's
+  copy; a worker started through `/control` the way `yerk worker start` asks, ending with its card settled and its exit
+  record, and its result waiting for the room to go quiet until the pump relays it; the reaper closing a room's idle
+  process; the stop by SIGTERM through the daemon's own path (STOPPING=1, every task ended, `main()` returning 0); no
+  thread or process of the run left; nothing reaching the network or changing systemd. The tasks come from the list
+  `run_discord` hands its stop wait: one it starts that the run has no check for fails the run by name, so a task added
+  later is never left unseen. A failed line names its step and what it saw: the HTTP answer, the file's content, the last
+  lines of the daemon's journal. Every wait has a deadline. Periods shortened for the run are named in its output: the
+  keeper's and the pipeline watch's `every` (their parameters' defaults), `workers.PUMP_EVERY`, `usage.FRESH` (a reading
+  a second old is a kept one, as one a minute old is on an install), `--idle-minutes 0.03`, `[workers] idle_seconds` and
+  `[imessage] poll_seconds` in the scratch yerkd.toml.
+- `.claude/skills/verify/SKILL.md` is the recorded recipe: at the repo root it replaces Claude Code's bundled `/verify`,
+  and other agents in the repo follow it. It says how to run the checks, how to drive the one feature a change touches
+  against the same scratch daemon (`--drive FILE`, whose `drive(run)` sends a message, calls a slash command, starts a
+  worker and reads the ledger and the state files), and that a report pastes the run's own lines as its evidence.
+- Each of these, on a scratch copy of the tree, fails the run and names the step: keep_meters, reap, beat.tick or
+  serve_http taken out of run_discord's list; `workers.begin` taken out of run_discord; `register()` taken out of the
+  gateway's ready. A long-lived task that returns or raises by itself ends the daemon, and the run names that task in a
+  line of its own (the keeper returning at its start: `Yerkd.keep_meters`). tests/test_verify_daemon.py runs it once in the suite. tests/fake_worker_claude.py hands `claude -p
+  /usage` to fake_claude.py, as it hands a room's process, so one YERK_CLAUDE serves the whole daemon. docs/GUIDE.md says
+  how a contributor checks a change. No line of yerk_ai/ changes.
+- **Upgrading**: nothing to change.
+
+### watch-test-waits-on-events (#94)
+
+- tests/test_watch.py's proof that a watched channel is read as the room's own and never written to no longer fails now
+  and then on a loaded box. On the box's own checks it was the first failure in 10 of 647 commits, on 3.12, 3.13 and
+  3.14 alike, each time "1 failed" beside one to two thousand passed, and each red was run again until it was green.
+  Nine copies at once at nice 19 in the heavy slice made it fail 45 times in 911 runs, every time on its fold line: the
+  second message, sent mid-turn, came back as a reply of its own.
+- The cause was the test and its fake, not the room. The test sent the second message once the room was `reading`,
+  which the room sets when it has written the first line to Claude Code's stdin, maybe before the process read it. Under
+  load the fake started late, so both lines were in the pipe at its first read: Python's buffered stdin took both, and
+  SLOW's 1.5 s `select` on the descriptor never saw the second, so the fake answered them apart after waiting 1.5 s. The
+  room had done its part each time: the ledger had the second message folded into the running turn, written 0.05 to
+  0.07 s after the first, and both answers were posted in the room's own channel only.
+- The fake (tests/fake_claude.py) has a new line marker, HOLD_OPEN: the turn stays open until another line comes, however
+  late, read through stdin's own buffer, with no clock. The test's first message uses it, so the fold waits on the second
+  line itself. No sleep, no retry, no longer timeout. Every assertion stays as it was: the message itself, the wait for
+  its answer and the fold assertion say HOLD_OPEN where they said SLOW, and nothing else changed. SLOW is unchanged for
+  the tests that use its 1.5 s, some of which prove that a message coming after it is not folded.
+- The proof: 300 runs on each of 3.12, 3.13 and 3.14 under the same load, all green, and tests/test_watch.py whole green
+  on each. Then, with twelve copies at once, 200 more on each Python, all green, while main's test beside them failed
+  131 times in 600 runs, every time on the fold line.
+- **Upgrading**: nothing to change. No line of yerk_ai/ changed, so budgets.toml is as it was.
+
+### need-2026-11-17-104 (#92)
+
+- An account's rest now ends when its usage comes back early. A rate limit rests an account for the model it hit until
+  the reset the limit names, often days off. When that usage came back before the reset (the model's own week at 0% and
+  the week near empty, the reset unchanged), the rest stood anyway: the picker skipped the account and put a worker on a
+  busy one, where it waited, and the only way around it was to start the worker on that account by name.
+- A live reading of an account now ends its rate limit's rest when it was taken after the rest began and no meter that
+  binds the rest's model is full in it (the 5-hour session, the week, and that model's own week, so Fable's own week
+  never holds a rest on Opus). The readings are the ones yerkd already takes: the keeper's, about every 15 minutes for each
+  account through `nice` (status-meters-kept-fresh), and the one `/status` asks for, which ends such a rest before the
+  card draws it. So the next pick, a room's turn or a worker's start, takes the account again within about 15 minutes of
+  its usage coming back, and `/model`, `yerk accounts` and the card show it free. yerkd's log has a line for each. A
+  reading from before the rest, or one still full, ends nothing, and no Claude Code is started for it.
+- Only a rate limit's rest ends this way: a billing, login or hand rest is no usage and stands to its end. A limit no
+  `/usage` meter shows is tried once: when a turn hits it again before the end a reading took away, that rest stays to
+  its end whatever a reading says, so no turn after it hops on the same wall every time the keeper reads; a reply on the
+  account trusts the readings again.
+- The rest file is now written through a temp file of each writer's own, 0600, since a room's thread and the keeper can
+  write it at once.
+- The ability is `usage-back` (`yerk explain usage-back`), found by a room asking why a worker is waiting for an account,
+  why an account is still resting, or about usage that came back. budgets.toml: `[code] lines` 32,803 to 32,845, with
+  its dated note; docs/budgets.md is what `yerk docs own` writes. docs/GUIDE.md, How a room runs, says it beside the rate
+  limit's rest. The README says `/usage` runs every 15 minutes and ends such a rest, kept under its 12,000 bytes by
+  dropping a repeat ("it never prints or logs one", which Who it trusts says of every credential) and five shorter
+  phrasings with the same meaning.
+- The tests: 7 new, in tests/test_observe.py (the wall: two accounts resting on Fable, a reading from before the rest and
+  one still full end nothing, the keeper's reading ends the one whose usage is back and the picker takes it again, a
+  restart keeping it so, a billing rest left; only a rate limit's rest ends, on the meters that bind its model; a limit
+  no meter shows is ended once, then its next rest stays; the card's own reading ends a rest before it draws the
+  account; the daemon's keeper ends one, says so in its log, and the next worker starts there), tests/test_accounts.py
+  (lift keeps the rest's end and its repeats, and a failure before that end stays) and tests/test_abilities.py (the ask
+  that finds usage-back).
+- **Upgrading**: nothing to do. A rest already resting on a rate limit ends at the first reading of its usage back; one
+  written without the time it began is left to its end.
+
+### status-failed-read-keeps-reading (#93)
+
+- One `/usage` call that fails no longer brings the stale `/status` card back. Since status-meters-kept-fresh yerkd keeps
+  each account's live reading under 15 minutes old, but a card's live ask that failed (no answer in 15 s, output it could
+  not read, no meters printed) was filed in `<state>/usage.json` over the account's good reading. The keeper then took
+  the account as read a moment ago and left it for 15 minutes, and each card meanwhile showed the stream's reading, hours
+  old with its age under it and without the model's own week. The live card, the one edited in after the ask, was handed
+  no kept reading at all, so it showed the stream's even with a good reading minutes old in the file.
+- A failed live ask now leaves a good kept reading in the file as it was: its numbers, its time, its source. The card that
+  asked is still handed the failure, and the failure still counts as the try for a minute, so a second card inside that
+  minute starts no second Claude Code for that account and gets the same failure back; that try is held in yerkd's
+  memory, never in the file over a good reading. An account whose kept entry is itself an error, or that has none, takes
+  the failure in the file as before.
+- The keeper files a good background reading over an error whatever that error's time, so an error a card filed while
+  the background read ran no longer drops the good reading. A good reading a card filed meanwhile still stays, and a
+  failed background read still never replaces a good one.
+- The live card, `yerk status` in a terminal included, shows an account whose ask failed with the newest reading it holds:
+  the kept reading whole where it is newer than the stream's or the stream has none, else the stream's numbers with the
+  kept model's own week while that week runs. The one age line under the account says how old that is, as it says for
+  any reading not live on that card. In the payload the meter carries `live_error`, why the ask failed, beside it; the
+  kept reading has `source` `kept` and its own `at`, as on the first answer. A card where every ask succeeds is the same
+  byte for byte.
+- Two lines of the keeper had no test: one now fails when the keeper is not among the tasks yerkd starts, and one when it
+  does not wait between two steps.
+- budgets.toml: `[code] lines` 32,803 to 32,816, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md is unchanged: what it says of `/status`, `yerk status` and `--json` still holds.
+- The tests: 11 new, in tests/test_observe.py (a failed ask leaves the good kept reading in the file and hands back the
+  failure; a second card inside the minute asks nothing and gets that failure, and after it asks again; an account kept as
+  an error or not kept takes the failure in the file; after a failed ask the keeper reads the account once its good
+  reading is 15 minutes old; a good background read replaces an error a card filed meanwhile, never a good reading),
+  tests/test_room_card.py (a failed ask on the live card: the kept reading 10 minutes old and one age line, not the
+  stream's 8 hours; the kept reading older than the stream's: the stream's numbers with the kept model's week; every ask
+  good: main's card byte for byte), tests/test_slash.py (`/status` whose ask fails: the edit, once, carries the kept
+  numbers) and tests/test_reliability.py (the keeper is one of the tasks yerkd starts; it waits between two steps). The
+  `/status` harness in tests/test_slash.py can have the /usage call fail, and its `run_discord` harness marks that the
+  keeper started.
+- **Upgrading**: nothing to change.
+
+## 2026-11-16
+
+### status-meters-kept-fresh (#91)
+
+- `/status` typed in a room is now current from its first answer. Since status-card-at-once that answer is built from
+  what is on hand, and an account no room's turn had run on since the morning showed its stream's reading, 8 h 13 min
+  old, with `last reading 8 h 13 min ago` under it, its week 57% where the live meter said 59% (the owner's ask, that
+  evening). A card that asks nothing can only be as fresh as what yerkd holds, so yerkd now keeps each account's live
+  reading fresh, and the card uses the newest reading it holds.
+- yerkd reads each account's meters again in the background. Every 30 seconds it takes the account whose kept `/usage`
+  reading is oldest among those 15 minutes old or more and not tried in the last 15 minutes, and runs `claude -p /usage`
+  on it once, through `nice -n 19` so it never competes with a room's turn; the result goes into `<state>/usage.json` as
+  the card's live ask files one. One account a step, so never two background reads at once. One read, measured on the
+  box that evening: 8.6 s and 10.5 s of wall time, about 7 to 9 CPU-seconds and about 350 MB at its peak, so each account
+  once every 15 minutes is about 3.6% of one core for four accounts. After a start every reading is older than that, so
+  the first steps read the accounts one after another, 30 seconds apart.
+- A background read that fails leaves a good kept reading as it was and is tried again 15 minutes later (the try is kept
+  in memory, not in the file); an account with no good reading kept takes the failure as the card's own ask would. A
+  reading a card's live ask files while a background read runs stays: the background read's older result never
+  overwrites it. A step that raises is one warning in yerkd's log for each distinct message, and the next step runs.
+- A card built with no live ask (the room's first answer, `yerk status --json`, the `/status` HTTP answer without
+  `live`) shows an account's last live reading whole (its 5-hour, its week and the model's own week, a window whose reset
+  has passed left out) where it is newer than the stream's reading or the stream has none; else, as before, the stream's
+  numbers with the model's own week from that reading. In the payload that meter has `source` `kept` and its own `at`, so
+  a program tells it from a live reading (`live`) and from the stream's (`stream`); `/status` still reads it as not live,
+  so the line under the tank saying the meters are being asked, and the one edit, still come while no reading is under a
+  minute old.
+- The account's age line counts the kept reading's own time as it counts the stream's, so it shows only when what the
+  line shows is an hour old or more: with the background reads running, only when an account could not be read for an
+  hour.
+- The live card, `yerk status` in a terminal included, is the same byte for byte, and so is the first answer for an
+  account whose stream reading is newer than its kept one. budgets.toml: `[code] lines` 32,751 to 32,803, with its dated
+  note; docs/budgets.md is what `yerk docs own` writes. docs/GUIDE.md, where `yerk status --json` is described, says
+  what the background reads do and what `kept` means.
+- The tests: 10 new, in tests/test_room_card.py (stream 8 hours old and kept 10 minutes: the kept reading whole and no age
+  line, and the payload marks it; stream 2 minutes and kept 10: main's card byte for byte; kept 2 hours and newer: its
+  numbers and one age line, a passed window left out; every reading under a minute old on two accounts: main's card byte
+  for byte), tests/test_slash.py (`/status` with the account as the owner found it: the kept week and model in the first
+  answer, the line under the tank, the edit once), tests/test_observe.py (a step reads only the oldest past 15 minutes,
+  then the next, then none; a failed read leaves a good reading and waits 15 minutes, an account with none takes the
+  error; a card's reading filed meanwhile stays; the background argv starts with `nice -n 19` and the card's does not)
+  and tests/test_reliability.py (the keeper says each failing step's message once, runs the next, ends with the daemon's
+  tasks and never steps with no account). Two tests of status-card-model-meter change where the kept reading is the
+  newer: the age line's test keeps only its case with the stream's reading the newer (its two others are the new tests'
+  shapes), and an account no stream has reported shows its kept reading whole, "no reading yet" only with none kept. The
+  two harnesses that run `run_discord` (tests/test_slash.py, tests/test_watch.py) hold the keeper as they hold the reaper.
+- **Upgrading**: nothing to change. After the restart yerkd reads every account once, 30 seconds apart, then each about
+  every 15 minutes.
+
+### texting-9b-cards (#90)
+
+- With `[texting]` on, a card for a text that waits for you no longer shows the writer's reasoning. A card with a draft
+  says why in the code's own few words: `why: dating, your call` for a class that waits (two: `why: dating, money, your
+  call`), `why: no source for: …` when the draft says something about you that nothing backs, else `why: your call`.
+  Until now it printed the writer's question, the class words and its why joined into a paragraph that mostly repeated
+  what the card already shows. The code's own check holds with the same words, and a card made from your edit reads
+  `why: your words; dating, your call` or `why: your words; the code finds nothing`. A card the check's model call
+  held, or one with release off, reads as before.
+- A card with no draft (a plan: your answer is the text) gives the one question only you can answer, shows no empty
+  `draft:` line and offers `edit <text>` and `skip` alone. Until now it offered `send` too, and your send on one queued
+  a row with no text: the sender's hand-off raised on it and the sender stopped, for everyone, until yerkd was
+  restarted. Your send on such a card, as a reply or bare, sends nothing and says so, and a row with no text that
+  reaches the sender is dropped, never handed.
+- The writer's whole reasoning is kept in the ledger, in a new column of the texting row written once at the decision
+  and never again, and in the practice file's line in dry. The `texting` tool's `why` reads it back for the newest
+  decision, also after the text went or was skipped, where until now that answer was only the state the card closed
+  with; for a text the check held it gives the check's reason. The writer is handed the whole reasoning of what
+  already waits on you, as before; `log` is unchanged.
+- A statement's number is the code's, by its place. Two statements the writer numbered 1 and 1 are two the check must
+  confirm, where until now a verdict confirming number 1 once let the other go confirmed by nobody.
+- budgets.toml: `[code] lines` 32,743 to 32,751, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md, Texts as you, says how a card gives its why, that a card with no draft takes no `send`, and that the
+  `texting` tool's `why` reads the reasoning back.
+- The tests: 10 new, in tests/test_texting_writer.py (the card's line for a drafted class hold; a card with a draft
+  carries only the code's words and one with none the question; a reply and a none; a card the writer held, six lines,
+  its whole reason the same after a newer burst, a send, a skip and an expiry; the held fence; a ledger made before the
+  column), test_texting_people.py (the tool's `why` after a send and for a text the check held, `log` unchanged),
+  test_texting_check.py (statements numbered by place, and a verdict that confirms only the first holds and names the
+  second), test_texting_holds.py (a card with no draft only asks, and your send on it sends nothing) and
+  test_texting_sender.py (a queued row with no text is dropped and the sender runs on). The practice file's test reads
+  `why`; the card, edit and pre-check tests read the new words.
+- **Upgrading**: nothing to change. The ledger gains the column by itself at the next start; a row made before it has
+  no kept reason, and the tool's `why` and the writer read its `reason` as before.
+
+### status-card-model-meter (#86)
+
+- `/status` typed in a room now shows each account's model's own week from its first answer. Since status-card-at-once
+  the first answer showed `wk 44%` alone, and the model's own week came only with the edit about 15 seconds later; the
+  owner asked within the hour why the card did not show it (the owner's ask, 2026-11-16). No room's stream reads that
+  meter, only `claude -p /usage` does, and the first answer asks nothing.
+- A card built with no live ask (the room's first answer, `yerk status --json`, the `/status` HTTP answer without
+  `live`) now takes the model's own week from the account's last `/usage` reading, which `<state>/usage.json` keeps
+  whatever its age, when the account has no reading under a minute old: `wk 44% · Fable ⚠️83%`, the week and the
+  5-hour numbers still the stream's, the newer ones. Nothing is asked for it and no Claude Code is started. A model's
+  week whose reset has passed, or was never read, is not shown: its number is wrong. An account whose last call failed,
+  or that no stream has reported yet, shows what it showed before.
+- While that reading is under an hour old the card says nothing about its age: the live numbers are seconds away. At an
+  hour or more the account's own age line says so (`①: last reading 2 h 0 min ago`). Where the stream's reading earns
+  that line too it is still one line, saying the older of the two ages, so no number on the account's line is older
+  than the line says.
+- In the payload the carried entry has the time of the reading it came from beside it (`model.at`, never in a live
+  reading's), and the account's meter stays the stream's, so `/status` still reads it as not live: the line under the
+  tank saying the meters are being asked, and the one edit, still come.
+- The live card, `yerk status` in a terminal included, is the same byte for byte, and so is a card whose readings are
+  all under a minute old. STYLE.md's sentence about the room's `/status` card now names the hourglass that line opens
+  with. budgets.toml: `[code] lines` 32,731 to 32,743, with its dated note; docs/budgets.md is what `yerk docs own`
+  writes. No README or docs/GUIDE.md text describes `/status` in a room, so neither changes.
+- The tests: 6 new, in tests/test_room_card.py (from the files alone, a live reading kept ten minutes puts the model's
+  week beside the stream's newer week with no age line, and the payload marks it; kept two hours, the age line says so
+  once, and with the stream's reading old too one line with the older age; a kept week whose reset has passed or was
+  never read is not shown; no kept reading, a failed one or no stream reading leave the card as it was; a reading under
+  a minute old and the live card print what main printed) and tests/test_slash.py (`/status` with the account as in the
+  first: the first answer has the line under the tank and the model's week on the account's line, and the edit comes
+  once).
+- **Upgrading**: nothing to do.
+
+### texting-9a (#87)
+
+- With `[texting]` on, a text the owner answers himself while its draft is being written is left alone. Until now the
+  writer's call coming back wrote its draft over his answer, so the draft was checked and timed as if he had said
+  nothing, and when it needed his word a card was shown for a text he had answered seconds before. The read of the
+  thread before a send still stopped it, so nothing wrong went. The decision is kept for the record (what it was, its
+  seconds and tokens), and in dry its line in the practice file says `answered_first`. A draft still being decided
+  whose texts he answered with nothing else having moved it is closed as answered by him: left as it was, the writer's
+  next pass would decide it again, one call a pass (no path reaches that today).
+- A tapback is seen. The Mac's bridge hands one over only when asked, and texting never asked, so none ever reached it.
+  The link now asks. A tapback of the owner's own stops a waiting text and takes its card back, as his own text does,
+  both when the watch hands it over and in the read of the thread before a send, where the bridge lists it on the row it
+  sits on; one taken away is filed and is nothing else; one of theirs is filed and opens no decision, as before.
+- A tapback texting sent is recognised as sent. Until now each one was marked "may not have gone, not sent again" three
+  minutes after it was handed, `yerk status` showed texting not done for a day and the morning line counted it, though
+  it went. A claimed tapback is kept by its row id, the one name the bridge's thread read gives it.
+- The writer and the check see each row's tapbacks on its thread line: whose (the owner's, theirs, or texting's own as
+  `auto`) and which. A thread with none is handed to both byte for byte as before.
+- budgets.toml: `[code] lines` 32,706 to 32,731, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  docs/GUIDE.md says a tapback of yours stops a text and takes its card back, as your own text does.
+- The tests: 10 new, in tests/test_texting_writer.py (his own text filed while the writer's call runs, for a reply, a
+  held and a none; the same while the check's call runs; one case for each read after the call, the row closed where only
+  its texts were answered; each kind of tapback
+  on the writer's and the check's thread line, and today's stdin for a thread with none), test_texting_link.py (the
+  ask on every chat at a first start and a reconnect), test_texting_intake.py (their tapback and its removal from the
+  watch) and test_texting_sender.py (his own tapback as his answer and its removal as nothing; theirs and texting's own
+  claimed one on the thread do not stop a text, and neither does one of his older than the texts answered; texting's own
+  tapback claimed as sent through the link). The stub
+  bridges now answer as the Mac's does: a thread read lists a tapback on the row it sits on and never as a row, and a
+  watch hands one over only when asked; three sender tests moved to that shape.
+- **Upgrading**: nothing to change.
+
+### need-2026-11-16-102 (#?)
+
+- An email a room sends in your name now shows, before your word, the From line it goes out under, and says when your
+  name is missing from it. A room asked why its emails landed in people's spam found, in your Sent Mail, each email it
+  had sent under the bare address and each one you sent yourself under your name beside it. The `email` tool takes the
+  name only from `[gmail] name` in yerkd.toml, which was not set; the held email's preview showed the bare address
+  either way, and yerkd.toml is out of a room's reach, so nothing said so.
+- The preview's from line is now the From line as it goes, `from: Example Owner <address>`; with no name set it reads
+  `from: <address> (no name on it: yerkd.toml has no [gmail] name)`. The send's answer names the From line it went
+  under, so the room can say so after it went too. No name is ever made up: with none set an email still goes under
+  the bare address.
+- `yerk doctor` says it each day while it lasts, one orange line with the line to add: `[gmail] name: none, so each
+  email goes out under the bare address, ...; set name = "<your name>" under [gmail] in yerkd.toml`, then the restart.
+  An install with a name set, or with no Gmail to send from, hears nothing of it.
+- A room asked why its emails land in spam, or whether your name is on them, is handed the new ability `email-name`
+  (`yerk explain email-name`) with a Here line saying whether the name is set on this install, read from yerkd.toml as
+  the doctor reads it, never the name or the address, so it answers without the file it cannot read.
+- A `[gmail] name` with a line break in it goes on the From line as one line; before, the email failed to build. A
+  name past ASCII reads in the preview as written, never in its wire encoding.
+- budgets.toml: `[code] lines` 32,659 to 32,706, with its dated note; docs/budgets.md and docs/settings.md (`[gmail]
+  name`'s description) are what `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes
+  by five shorter phrasings with the same meaning.
+- The tests: 4 new, in tests/test_emails.py (with no name, the preview's from line marked before the word, the From
+  line in the answer after it, the bare address sent and a blank name no name; a name with line breaks one line, never
+  a header of its own, and one past ASCII shown as written), tests/test_doctor.py (the orange line with the line to
+  add, quiet with a name or no Gmail to send from) and tests/test_abilities.py (the ask that finds email-name, its Here
+  line set and unset, never the name or the address, and `yerk explain email-name`); the held preview's test reads the
+  From line as it goes.
+- **Upgrading**: to put your name on each email, add `name = "<your name>"` under `[gmail]` in yerkd.toml, written as
+  your own Gmail writes it, then restart yerkd, which reads yerkd.toml at its start. Restart yerkd for the new preview.
+
+### status-card-at-once (#?)
+
+- `/status` typed in a room now shows its card at once. It showed nothing for about 30 seconds (the owner's ask,
+  2026-11-16): every line of the card was ready at once but the meters, and the card waited for them. Each account read
+  more than a minute ago was asked with `claude -p /usage`, a whole Claude Code start, three at a time and up to 15 s
+  each: 18 s for four accounts on a quiet box, about 30 s on a busy one, with Discord showing it thinking and not one
+  line.
+- The first answer is the room's card from what is on hand, with no Claude Code started: each account's reading under a
+  minute old, else its stream's. While an account on it has no reading under a minute old, one more line under the tank,
+  `⏳ asking the meters now`, says they are being asked; they are then asked as before, and the same message is edited
+  once to exactly the card `/status` gave until now, without that line.
+- With every account read under a minute ago, the first answer is already that card: one message, no line, no edit and
+  nothing asked.
+- An account whose read fails or runs out of time shows what the card showed for it before. An edit Discord refuses, the
+  interaction's 15 minutes gone say, is one line in the daemon's log, and the first card stays.
+- `yerk status`, the `/status` HTTP answer, the deploy's proof and the other slash commands answer as before, and every
+  line the card had is the same. budgets.toml: `[code] lines` 32,636 to 32,659, with its dated note; docs/budgets.md is
+  what `yerk docs own` writes. No README or docs/GUIDE.md text describes `/status` in a room, so neither changes.
+- The tests: 4 new, in tests/test_slash.py (with the account's `/usage` call held on an event, the first answer is out
+  before it ends, carrying the line under the tank; let go, it edits that message once, to exactly the card status_now
+  with live gives, without the line; every reading fresh, one message, no edit and no call; an edit that raises
+  `discord.HTTPException` leaves nothing out of the handler, the first answer standing and one log line with no
+  traceback). Its `/status` card test now reads the two calls and the edit; the other slash commands' tests pass untouched.
+- **Upgrading**: nothing to do.
+
+### need-2026-11-16-101 (#?)
+
+- A job fired in the same second the jobs file changes now starts. A one-shot's run ended and took itself out of the
+  file in the second a script started another job. That job's runner found it and ledgered its run, but the daemon's
+  fire answered "no job" and the run ended not run. The schedule tool's add and remove, `yerk schedule` and a one-shot
+  leaving after its run each wrote the file in place, and the fire, a job's runner and a sync read it with no lock, so a
+  read in that instant found the file empty or cut and every job gone.
+- Each new text of the jobs file is now written beside it and swapped in with one rename, so a read at any instant finds
+  the old file or the new one whole. It holds alike for a job its timer fires and one a script starts, so neither needs
+  a retry for it. A sync in that instant could take every job's timer down until the next sync; it reads the file whole
+  now too. A write that fails partway, on a full disk say, leaves the file as it was.
+- The file is written 0600, as every private file yerkd writes, and a jobs file that is a symlink keeps its link: the
+  file it points at is swapped. A hand edit is as whole as the editor writes it.
+- The ability is `job-fires` (`yerk explain job-fires`), found by a room told "no job" by a fire or asking why a job
+  fired but did not start. budgets.toml: `[code] lines` 32,629 to 32,636, with its dated note; docs/budgets.md is what
+  `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes by eight shorter phrasings with
+  the same meaning.
+- The tests: 3 new, in tests/test_jobs.py (a job fired at the instant a one-shot's run swaps its own removal into the
+  file finds its job and starts its worker, and the one-shot still leaves the file; a reader that had the file open
+  reads it whole through an add and a remove, a reader beside a hundred rewrites never misses a job, a rewrite that
+  fails leaves the file as it was and no temp file, the file is 0600 and a symlink keeps its link) and
+  tests/test_abilities.py (the ask that finds job-fires).
+- **Upgrading**: nothing to do. A jobs file that was not 0600 is at its next add or remove.
+
+### need-2026-11-16-100 (#?)
+
+- A scheduled job's worker card now names its job and shows its one-line result. A room's six quiet job cards read
+  alike, `🟢 worker finished clean, nothing to add`, the time and "report saved", though four were runs of one job whose
+  reports each held a forecast's one line and two were another job's runs with nothing to say. On a phone, where
+  `yerk worker report` is out of reach, nobody could tell them apart; the job's brief tells its worker to write that one
+  line to REPORT.md because the card shows it, and the quiet card hid it.
+- The card's small line now starts with the job's name, as in `-# job <name>, done in 4 min`, while the worker waits for
+  an account, while it runs and once it settles. A long name is cut to phone width. A worker no job started reads as
+  before.
+- A worker whose last message is exactly NO_REPLY, and whose report's first line is a result, settles as `🟢 worker
+  finished clean` over that line. `🟢 worker finished clean, nothing to add` stays for a run whose report says NO_REPLY
+  too, or that left none. Either way no turn is asked of the room, as before, and the steps stay behind
+  `yerk worker report <id>`.
+- Every settled card's report line now takes up to two phone lines, broken at a word, instead of one: cut at 40 columns,
+  a forecast's line lost its number. A longer line ends in "...".
+- A job's brief now asks every run for its one-line result as REPORT.md's first line, a NO_REPLY run's too. It said to
+  write the same text as the last message, so a quiet run that followed it wrote the token itself and its card had
+  nothing to show. A job whose own message asks for something else there still gets what it asks for.
+- The worker tool's `list` and `report` answers carry the job, and `yerk worker list` and `yerk worker report` print it,
+  so a room asked which job a card was for reads it there, not in the ledger's table.
+- The ability is `job-cards` (`yerk explain job-cards`), found by a room asked whether its cards are the same worker
+  doing the same thing. budgets.toml: `[code] lines` 32,607 to 32,629, with its dated note; docs/budgets.md is what
+  `yerk docs own` writes. The README says it in one clause, kept under its 12,000 bytes by four shorter phrasings in
+  its first section with the same meaning; docs/GUIDE.md, What you see, has the long form.
+- The tests: 3 new, in tests/test_workers.py (a job's card on fixed ends: the job in the footer waiting, running and
+  settled, a quiet result whole over two lines, the token and a missing report still nothing to add, a longer line and a
+  long name cut, no job on a plain worker's), tests/test_jobs.py (two jobs fired for real, both answering NO_REPLY:
+  each card names its job, one shows its report's line and one has nothing to add, no turn asked, the tool's list and
+  report and `yerk worker list|report` name the job, and the brief asks a quiet run for its line) and
+  tests/test_abilities.py (the ask that finds job-cards).
+  Two quiet-card tests in tests/test_workers.py now expect a real report line under "finished clean", and
+  tests/test_style.py holds a job's cards to the style rules.
+- **Upgrading**: nothing to change; a worker that ends after the deploy's restart settles this way. A card that already
+  settled keeps its text.
+
+## 2026-11-14
+
+### need-2026-11-14-97 (#?)
+
+- A room asked whether a store has an item in stock, met by a retailer whose product page a captcha or bot-check holds
+  shut, now hears that plainly instead of reading an opaque empty page. The hands browser came back empty behind the
+  challenge frame and left the room to improvise off a photo of the stock box; it now names the check and the ways that
+  still read the count.
+- The browser names a page behind a bot-check: a dedicated captcha host (such as DataDome's) in a frame on sight,
+  another challenge host or a challenge phrase only when the page's own content never arrived, so a full page that
+  merely embeds a widget on a form, a payment page or a sign-in is not one. The note says this browser cannot read or
+  pass it, and that hands does not spoof a browser or solve a check; it says the page's own content never loaded only
+  when it did not.
+- The note names the ways that still read the page, each as what it is: Yerk's web reach (web_fetch), whose ladder is
+  built for such pages, with its own stealth browser and captcha solvers (the machine's where installed, then the paid
+  cloud browser's), and names the wall when the page stays shut; or the owner reads it on their own screen. The check is
+  not called a wall left alone while the room is sent to a ladder that solves one.
+- web_fetch's cloud-browser rungs cost what the web ability's price says: a read inside the Browserbase plan's included
+  calls and hours, each paid call a spend row. Its rungs on the machine, and the owner's own screen, cost nothing. The
+  web ability's one daily cap is web_research's, not web_fetch's.
+- The ability is `store-stock` (`yerk explain store-stock`). The behaviour lives in the hands plug-in (its branch
+  need-2026-11-14-97); its browser tool entries do not change, so no budget moves and no room needs new settings.
+
+### texting-7d (#80)
+
+- Nothing changes until an install has a `[texting]` table.
+- A file sent in a thread is named to the writer, which until now was not told of it: the thread it read asked the
+  bridge for each row's text and never for its files. A photo, a video, a voice message, a sticker or another file is
+  named by its kind, in the check's thread too, and the mark a file leaves in a text is no longer shown as words.
+- A photo in the texts being answered, the newest four, is looked at: converted to a small JPEG on the Mac over the
+  hands' ssh (`[imessage] host`, or an owner room's mac.json), with its path on ssh's stdin, and shown to the writer's
+  one call. It is never stored on the box. Its ledger row says seen, too big, refused or not fetched. A video, a voice
+  message, a sticker or an older photo is named and not opened; with no host a photo stays named and unseen, and the
+  call is what it was.
+- The check stays text only and its thread names every photo as unseen. On a real call it held both replies that said
+  what a photo showed and released one that only reacted to it: a reply about what a photo shows waits for the owner's
+  word.
+- A link preview is no longer counted as a file: the writer is not told of one, and the ledger and the day log no
+  longer list it.
+- A text in a watched chat is no longer counted as a dead turn in the morning line or in `yerk status`, nor as a turn a
+  restart cut: it gets a decision and never a turn. The machine room's line read "dead turns: 4" two mornings running,
+  every one of them a text.
+- budgets.toml: `[code] lines` 32,508 to 32,607, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-7b (#79)
+
+- Nothing changes until an install has a `[texting]` table.
+- `yerk status` and `yerk doctor` say when the sender stopped. The sender writes the time of its last pass, at most every
+  15 seconds; when it is older than a minute in dry or live, the texting row reads "texting sender stopped" with the
+  time, and doctor is red while yerkd runs, with `systemctl --user restart yerkd` as the way back. An error the sender's
+  pass did not expect now stops the sender alone, never yerkd and its rooms, and the machine room gets one line naming
+  the error's kind, never a text or a person.
+- The machine room gets one line a day after 08:00, in dry and in live, counted from the ledger alone for the day to that
+  morning's 08:00: texts in, decisions by kind, held, sent (dry: would have gone), stopped because you answered first,
+  stopped because they wrote again, unseen, and the longest run of texting's own sends to one person with no text of
+  yours between. A quiet day says so in a few words; a restart never says a day twice and never skips one.
+- Your main room, the one `[texting] report` names, is told every turn while texting is dry or live what texting is,
+  that a card there is posted by the texting code and your `send`, `skip` or `edit <text>` on one is taken before the
+  turn starts, and that anything else you say about texting is the room's to answer from the `texting` tool. No other
+  room is told, a person's room least of all.
+- A text of texting's own that the Mac sent while the bridge was away, seen only after its job was settled unseen, is
+  no longer filed as your own words: its job reads sent, seen late, and it cancels nothing.
+- `yerk doctor` is red in live when the hands have no way to the Mac: no `[imessage] host` and no ssh in an owner room's
+  add-on's mac.json, or a host that begins with a dash. In dry or live it is red when nothing names the Mac's bridge
+  at all, which until now turned texting off with one log line and no other word.
+- docs/GUIDE.md has "Texts as you", the README names it, and `yerk abilities` lists text-as-you as built.
+- budgets.toml: `[code] lines` 32,385 to 32,508, with its dated note.
+### texting-7c (#78)
+
+- Nothing changes unless the owner runs `yerk texting replay --since DAY --sender`. It calls no model and sends
+  nothing: for every burst of their texts since the day in his imported threads, it times a reply as the live sender
+  would (an early, a middle and a late send time, the ends and the middle of the sender's own span) and reads the thread
+  as it stood at each time as the sender does, then prints counts only, a row a person and the total for each time: the
+  bursts, the texts it would stop because he answered first or because they wrote again, the ones it would send, and of
+  those whether he answered too within the hour, the old agent did, or nobody did. One private file under the state
+  folder's `texting/replay/` holds a line a burst; its first line names the limits (times to the minute, no tapbacks in
+  an import, a thread's file ending where its import does, the reply taken as passed when the burst closed) and says
+  whether an old agent's log was given. His answer in the same minute as their last text counts as answered first, by
+  the file's order. `--of` a finished replay's file keeps only the bursts whose reply passed the check in that run. An
+  answer the old agent sent (`--old-log`) never counts as his.
+- **Upgrading**: nothing to change.
+
+## 2026-11-13
+
+### need-2026-11-13-91 (#?)
+
+- A room opens a file of its own folders on your PC's screen when you ask to have it up: a slide deck it built as a web
+  page, a PDF, a picture, text, a video or a sound. Before, a room asked during a timed exam to bring up the deck it had
+  built had no way: the browser plug-in opens only web addresses in its own browser, a server started in the room's
+  shell is not reachable from the PC, and a command to open the file through Windows was refused outside the room's
+  sandbox.
+- The new `show` tool, in every room: `path` the file, `screen` the monitor (left, middle, right, primary or its number
+  from the left; else `[page] screen`, the live page's). yerkd opens it, since it runs outside the sandbox: on a WSL
+  box, the file's Windows path, as `wslpath -w` names it, goes to Windows' own PowerShell in its environment, never on a
+  command line, and opens in a new window of your default browser (Chrome, Edge, Brave, Vivaldi, Opera or Firefox),
+  moved to that monitor, maximized and raised without taking the focus, the display woken with no click, as the live
+  page opens. With no screen named, or on a box that is not a Windows PC, the box's own opener opens it. A reload there
+  shows the file's newest save.
+- Never a file the PC would run: only what a browser shows itself is opened, so a script, a program, a shortcut or an
+  Office file is refused in words, a document with the way through `render` to a PDF. Only the room's own folders (its
+  work folder and the files sent to it, never a secret), and only in your own rooms.
+- Said in words, opened once at most: a screen that is not there, a browser yerkd opens no window of, a window that
+  never showed, a locked screen.
+- A file whose name, or a folder's above it, holds anything but a to z, digits, spaces and . _ - ( ) is refused in
+  words, with the way (a copy under a plain name): the box's opener under WSL with wslu, wslview, puts the path inside
+  PowerShell's double quotes, where a `$( )` in a name the room chose would run as a command on your PC outside the
+  sandbox (the pull request's cold read).
+- The ability is `show` (`yerk explain show`). The hands plug-in's browser, asked to open a file (a file: address or
+  a path), still refuses, and its words now name `show` (its branch need-2026-11-13-91); its tool entries do not change.
+- budgets.toml: `yerk_tools` 27,250 to 28,000 and the session start's total 130,773 to 131,523 for the tool's entry
+  (about 761 characters as sent), and `[code] lines` 32,167 to 32,259, each with its dated note.
+
+### texting-6 (#76)
+
+- Nothing changes until an install has a `[texting]` table.
+- In dry, each text that would go now waits its own time: a reply released by the owner's word goes 0 to 30 seconds after
+  it; one that may go on its own waits as the person's sheet says the owner answers them, counted from their text, or
+  2.5 to 4 minutes when the owner himself has just written in the thread; a text due in quiet hours to a person whose
+  sheet holds at night waits for the morning, 10 to 90 minutes after they end. At that time the thread is read again,
+  and the text is written as a job file under the state folder's `texting/dry/` only when every text it answers is still
+  there as it was and neither the owner nor the person has written since. Its card says "would have gone" with the time,
+  or "not sent: you answered first", "they wrote again" or "they took it back".
+- In live, the same text is handed to the Mac's own runner over ssh, once, parts of a reply in order, and never after
+  the owner's own text or a newer text of theirs. A text the Mac took and that never showed up in the thread is unseen,
+  shown in status and on its card, and never sent again. Texting's own sends are told apart from the owner's: they
+  answer nothing and withdraw no card.
+- A decision made in live says so in its row and the dry file is written in dry only; the status line that said a live
+  install still decides dry is gone. `yerk status` shows the last text out, how many are held and how many unseen, and
+  `yerk doctor` checks the new keys.
+- yerkd.toml `[texting]`: new keys `outbox`, `first_shot`, `first_shot_window`, `send_delay`, `quiet`, `morning`,
+  `claim_seconds`, `stale_minutes`, each with its default in docs/settings.md.
+- budgets.toml: `[code] lines` 31,718 to 32,167, with its dated note.
+- **Upgrading**: nothing to change. `outbox` (the Mac runner's folder, a whole path) is needed before `mode = "live"`.
+
+### idle-copy (#75)
+
+- A room quiet for 25 minutes whose session holds 0.7 of its window or more is now compacted on a copy of the session in
+  every room, as a room with fast mode on has been since yesterday. A message sent while the copy compacts is answered at
+  once, in place of waiting under the card that says the conversation is being shortened, and what was said meanwhile is
+  carried to the copy, which becomes the room's session as that turn ends. With no process alive (after a restart) the
+  room's process is started first and a message sent during that start waits for it alone; a room with fast mode on still
+  waits for its next turn, as before.
+- What can still make a message wait under that card: the compaction when a turn ends right at Claude Code's own line (the
+  last resort before Claude Code compacts inside the next turn), the one before a rerun when a turn overflowed, and
+  `yerk room compact`, which someone asked for.
+- budgets.toml: `[code] lines` 31,696 to 31,718, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-6b (#74)
+
+- Texting: nothing changes on an install with no `[texting]` table. With one, the check runs from a config folder of its
+  own, `<state>/texting/check-config` (empty, 0700), in place of an account's, so it is handed the four inputs and no
+  account's settings or address. It runs on an account's one-year token and passes over an account that has none; with
+  none anywhere each draft is held with "the check needs an account token, and no account has one", and `yerk doctor`
+  says the same while texting is on. A replay counts that hold as a call no model answered.
+- `[texting] fallback` names a second model. When every account refuses the writer's or the check's model, the same call
+  is made on this one in place of holding the text, and the row's account reads `<account> (<model>)`. With no key the
+  text is held as before. A replay falls back the same way, and its `--model` flag still names the first model.
+- budgets.toml: `[code] lines` 31,677 to 31,696, with its dated note.
+- **Upgrading**: nothing to change; `yerk doctor` says so if no account has a token.
+
+### texting-7a-asof (#71)
+
+- `yerk texting replay`: the memory a replayed decision sees is held to the cut more tightly. A log named for its day is as
+  of that day, as before. Any other memory file is as of its last change: a hit from one that changed at or after the cut
+  is left out, and so is one whose name holds a later day anywhere in it. The first real run showed why: a people file kept
+  up to date and the text of a screenshot filed minutes after a cut both held what the owner sent next, and two drafts
+  matched his words because of it. The run's header says the writer now knows less than it did at the time.
+- budgets.toml: `[code] lines` 31,673 to 31,677, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-7a-fix (#70)
+
+- A one-shot call (the texting writer and check, the judges) whose account answers "You've reached your <model> limit. Switch
+  to another model" now rests that account for that model and goes on to the next one. One wording of it matched no rule, so
+  the call stopped there with no answer; the other read as billing and rested the whole account. `failures.toml`: a new
+  `model_limit` pattern ahead of `billing`.
+- `yerk texting replay`: a cut whose call no model answered (refused, timed out, no account free) is written as failed and
+  counted under `failed`, never as a held decision. `--model NAME` runs a replay's calls on that model in place of the report
+  room's; the run's header and the first line of its file name the model.
+- budgets.toml: `[code] lines` 31,657 to 31,673, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-7a (#69)
+
+- Nothing changes until an install has a `[texting]` table with a report room and someone runs the new command.
+- `yerk texting replay --since YYYY-MM-DD` shows the plan and calls nothing: each person on the reply list who has a
+  sheet, the one thread file of theirs under `imports/texts/` (by its name), how many cuts that is (each burst of their
+  texts on or after that day, at most `--limit` a person, newest first, 10 unless asked) and how many model calls a run
+  makes.
+- With `--run` it puts each cut through the writer and the check as they run live, as of the cut's minute: the thread
+  ends before the burst, the memory part is the report room's search with every line dated at or after the cut taken
+  out, and the writer has no tool. A cut whose memory search does not answer is written as failed and never decided.
+  It prints counts only, a row a person and the total (the decisions, each beside what
+  was sent next, the check's verdicts, seconds and tokens), and keeps each decision beside what went in one private
+  file under `<state>/texting/replay/`. Every cut is a real model call on the install's accounts, in the report room's
+  order.
+- It sends nothing and changes nothing the running install uses: not the ledger, the dry folder, a day log, a room or
+  the account cooldowns.
+- budgets.toml: `[code] lines` 31,256 to 31,657, with its dated note.
+- **Upgrading**: nothing to change.
+
+## 2026-11-12
+
+### room-recall-pool (#68)
+
+- A room that is not the owner's now finds its own lines about a name or a word that is common in the owner's memory. A
+  person room, a sealed room and a room with its own `also` took the 80 best matches from the whole memory and only then
+  dropped what they may not read, so where the owner's notes name someone in hundreds of places, none of the 80 was the
+  room's and its assistant said nothing was on file about people in the room's own files. Such a room now reads on past
+  what it may not read, at most 2,000 matches further, and deep recall on a name does the same. It still gets nothing it
+  may not read.
+- Such a room also asks the meaning search for 400 rows, the most it serves, where it asked for 80, and keeps those it
+  may read.
+- A search in such a room can take up to about a second longer when the word is common in the owner's memory
+  (measured on a made-up memory with 20 rooms, and on a real one of 440,000 chunks with nine rooms: up to 1.2 s for a
+  word the room has nothing on). An owner's room with no `also` searches as before: the same results in the same
+  order, at the same cost. An owner's room that lists its own sources draws its pool from them too: on a real
+  install's 177 recall questions the answer was in the top six as often as before (117), and at the top in 69 against
+  70.
+- budgets.toml: `[code] lines` 31,245 to 31,256, with its dated note.
+- **Upgrading**: nothing to change.
+
+### transcribe-voice-joins (#67)
+
+- On a long recording a person keeps one letter through a silence. Where a voice said nothing through the minute two
+  windows share and came back under a new letter, a short splice of each voice's speech from both sides of that break
+  goes to Muse once more, in two orders, and in a third when those two leave a letter unsure. A new letter that two
+  of them put with one earlier voice takes that voice's letter again. A splice that gives one letter to two voices a
+  window heard apart is not used, and a letter never joins a voice a window heard apart from it; a window counts two
+  letters as two voices when each spoke 5 seconds in it, since Muse now and then gives a voice a second letter for two
+  or three seconds.
+- The speakers line counts only the letters the bridges left unsure, and says `1 letter` for one. A letter that two
+  splices heard with no earlier voice is a new voice and is not counted, nor are a recording's first voices. A turn
+  Muse sends with no length is no turn (one had made a phantom first voice). The tool's result says how many letters
+  were joined (`speakers_joined`).
+- A few more seconds and a fraction of a cent a recording: the bridges are one more round of Muse requests after the
+  windows (two when a third order is sent), each a spend row (`bridge 1 of 6, 41 s`), and are not in the US$1 gate's
+  estimate, since they cannot be known before the windows are in. A bridge that fails or runs long joins nothing and
+  never costs the words or the windows' letters.
+- budgets.toml: `[code] lines` 31,083 to 31,245, with its dated note.
+- **Upgrading**: nothing to change.
+
+### transcribe-words-speakers (#66)
+
+- A recording whose first pass heard only music now comes back with the second pass's words. Where whisper-1 wrote no
+  words (a `♪` through minutes of a call) and Groq heard some, Groq's lines stand in with their own times, each marked
+  `(second pass only)`, and the file's first line counts them: `checked by a second pass: 0 of 4 segments uncertain, and
+  2 more heard by the second pass only, where the first heard no words`. A chunk the first pass heard no word in at all
+  is the second pass's, whether it wrote marks or nothing. Where neither pass heard a word, the line stays as it was.
+- Speakers come back on recordings past five minutes again. Muse gets 2-minute windows starting every minute, 16 at once,
+  each given up after 100 seconds: Meta cuts a request at about 2 minutes, and on 2026-11-12 a 2-minute window took
+  about a minute, where a 9-minute one had failed on every recording since 2026-11-10. Each second but the first and last
+  minute goes to Muse twice, so an hour is about US$0.75 with all three engines (it was US$0.61), and the US$1 gate now
+  asks from about 79 minutes (it was 98).
+- With 2-minute windows a voice that says nothing through the minute two windows share gets a new letter when it speaks
+  again, so on a long call one person can carry two or more letters. The speakers line counts the letters it could not
+  match and says so. On the 28-minute call this was found on, six letters could not be matched.
+- A slow Muse no longer holds the words for six minutes. A request that ran long (a timeout, or an error after 30
+  seconds) is never sent again, on all three engines, while a quick busy answer still gets three tries; after one Muse
+  window fails no further window starts, so the words come back once the running ones end, in about 100 seconds when
+  Muse answers nothing. The speakers line names the code and the seconds (`HTTP 504 after 121 s`), never an error page.
+- budgets.toml: `[code] lines` 31,044 to 31,083, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-5 (#65)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then a text that may not go on its own (one the writer or the check held, or one that passed for a person whose
+  standing release is off, the default) is one card in the owner's texting room (`report`): who, their texts, the exact
+  draft, why it waits, and the words. His reply `send` to the card sends exactly that text (queued for the sender),
+  `edit <text>` makes a new card from his words with the code's pre-check shown, and `skip` drops it. A bare `send` or
+  `skip` counts only while that card is the one hold open in the room. When he texts the person himself the card is
+  edited to say he answered and nothing new is posted; their next text is decided afresh. A newer text of theirs edits
+  the open card in place, and a card older than `hold_hours` says expired and cannot be sent.
+- In dry mode the cards go to the `dry_report` room, marked DRY, and `send` only says it would; with no `dry_report`
+  nothing is shown. `report` and `dry_report` must be owner rooms without people: any other is refused at the start
+  and shown nothing (`yerk doctor` says so in red, and red too when live with `text-out` in `[gates] off`).
+- A bare `approve` never approves a text's hold; every other hold works as before.
+- New `[texting]` key: `hold_hours` (default 6). The ledger's `texting` table gains a `shown` column, added at the next start.
+- budgets.toml: `[code] lines` 30,680 to 31,044, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-4 (#64)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then, in dry mode, each reply or tapback the writer decides gets a verdict from a pass that reads only the thread,
+  the person's sheet, their texts and the draft: one `claude -p` with no tool, no MCP server, no settings and an empty
+  folder, on the writer's model and accounts. The code holds first, with no call, a draft in which the writer names
+  itself ("as an AI", "auto reply") or that holds a name listed in `never_say`, has markdown, more than 3 texts or one over 400 characters, or a word of an always-held class the sheet
+  does not open. It releases only when the pass fails nothing, leaves nothing unlisted and gives every statement about
+  the owner a basis the code confirms: a row of his side in the thread, a key of the sheet, or a topic row of his. An
+  error, a timeout or a missing field is a hold.
+- The verdict goes on the decision's `texting` row (state `release-ready`, or decision `held` with the reason) and one
+  more line of the dry file. Nothing is sent or shown.
+- New `[texting]` keys: `check_model` (default the writer's model), `check_seconds` (default 120), `never_say` (the
+  names an assistant goes by on this install, default none; a topic such as AI or a bot is never held by its word alone).
+- budgets.toml: `[code] lines` 30,462 to 30,680, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-3 (#63)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then, in dry mode, each burst of a listed person's texts gets one decision: reply (one to three texts), react, none
+  or held, with its reasons and a source for every statement about the owner (a thread line of his, a memory cite or
+  the person's sheet). It is made by one `claude -p` on the report room's model and account order that reads the owner's
+  memory as the report room does, through that room's recall and read_memory alone, with no other tool. A statement
+  with no source, a class the person's sheet keeps shut, no clean answer, a call past `decide_seconds` or no account
+  free is held. A burst older than `catch_up_hours` when its turn comes is missed, never decided.
+- Each decision is written to the ledger's `texting` row and one line of `<state>/texting/dry/YYYY-MM-DD.jsonl`, and
+  nothing is sent or shown: no text, no room, no day log line. With `mode = "live"` decisions are still dry until
+  texting can send, and `yerk status` says so.
+- New `[texting]` keys: `model` (default the report room's), `effort` (default high), `parallel` (default 2),
+  `decide_seconds` (default 240).
+- budgets.toml: `[code] lines` 30,191 to 30,462, with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-2 (#62)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then each person on the reply list may have a sheet beside it (`people/<key>.toml`, or the `sheet` the list names):
+  the always-held classes open for them (health, medication, substances, faith, money, job, dating, location), facts
+  they know, at night hold or answer, tapbacks, the share left unanswered, reply times and the owner's voice card for
+  them. A missing sheet is no voice card and every class held; one that does not load keeps texting off.
+- The report room (`[texting] report`) has a `texting` tool: it reads a person's sheet, a day of their texts and
+  decisions, or the newest reason; and it opens or closes a class, adds or drops a fact, or turns a person's standing
+  release on or off, only when the owner's own message in that turn holds the words it passes. Each change is one line
+  of `sheets.log` beside the reply list. The tool's entry, which every room is sent, says only that it is the owner's
+  texting settings and that `help` in that room says the rest; another owner room is told which room, and a person's
+  room gets one fixed line that names no room, the same with texting on or off. `said` is three words or more.
+- `yerk texting sheets --check` names a sheet that does not load, a sheet missing and a file no one on the list names,
+  each with its file (and its line where the sheet gives one); it writes nothing.
+- budgets.toml: `[code] lines` 29,919 to 30,191, and `yerk_tools` 26,700 to 27,250 with the session total 130,223 to
+  130,773, each with its dated note.
+- **Upgrading**: nothing to change.
+
+### texting-1 (#61)
+
+- Nothing changes on an install until it adds a `[texting]` table to yerkd.toml: with no table, or `mode = "off"`, Yerk
+  opens no connection to the Mac, starts nothing and writes nothing for texting.
+- With `mode = "dry"` Yerk reads the 1:1 threads of the people in the reply list (`people`, a file under the private
+  folder only the owner can read) on the Mac's bridge, reached as the `text` tool reaches it, and writes each text down
+  once, across reconnects and restarts: a ledger row by its id and a private line in the day's log, which no person room
+  can read. Their texts close into one pending decision per burst (`burst_quiet`, `burst_cap`); a text older than
+  `catch_up_hours` is listed once as missed, in dry mode only in the `dry_report` room and never in `report`; a text
+  followed by the owner's own is his. Nothing is decided and nothing is sent: the connection refuses every method but the
+  three reads before anything reaches the Mac.
+- `yerk status` shows texting's mode, the bridge up or down since when and the last text in; `yerk doctor` names a
+  `[texting]` table that keeps texting off (a number, the reply list, the report rooms).
+- The machine room hears one line once the Mac's bridge has been away 5 minutes and one once it has been back 2.
+- budgets.toml: `[code] lines` 29,359 to 29,919 with its dated note.
+- **Upgrading**: nothing to change.
+
+### fast-idle (#60)
+
+- In a room with fast mode on, the compaction that runs while the room is quiet (`idle_compact_after` minutes with the
+  session at `idle_compact_at` of its window) never runs in fast mode: a copy launched without it compacts off to the
+  side and is taken, as a turn's copy is, and the next reply is fast as before. A message sent meanwhile is answered at
+  once on the room's fast session and is carried to the copy. With no process alive to copy (after a restart, or once
+  the room's process closed) it waits for the room's next turn rather than start a fast process for itself.
+- Left in fast mode, since someone is waiting behind them or asked for them: the compaction as a turn ends near Claude
+  Code's line, the one before a message that overflowed runs again, and `yerk room compact`.
+- A room with fast mode off, or on a model other than Fable 5.2, compacts while quiet as before.
+- budgets.toml: `[code] lines` 29,338 to 29,359 with its dated note.
+- **Upgrading**: nothing to change.
+
+### compact-size (#59)
+
+- Right after a compaction, `/status` in a room shows the session's real size, not the few thousand tokens the
+  compaction left of the conversation: the 📚 line, the compaction's ledger row and the number a daemon start reads
+  back are what Claude Code counts for the session's next call (the summary, the system prompt with the room's context,
+  the tools), asked of it with no model call. A copy compacted off to the side and taken gives the room its own count
+  the same way. Before, the line read about 12k all night after a late compaction while the next call carried about
+  328k, until the room's next reply.
+- budgets.toml: `[code] lines` 29,299 to 29,338 with its dated note.
+- **Upgrading**: nothing to change. It needs a Claude Code that answers `get_context_usage` (2.1.321 does); an older
+  one shows the old number.
+  A room whose newest row is a compaction written before this version shows the old number until its next reply.
+
+### fast-stays (#58)
+
+- A room with fast mode on is fast again from the first reply after a compaction, with nothing typed and nothing said:
+  the copy the room takes was launched without fast mode, so it is closed as it is taken, and the next message resumes
+  the compacted session on a process launched with it. The copy's compaction still never runs in fast mode. This
+  replaces "Once a copy is taken, the room runs at standard speed until its next new process." in fast-mode (#51).
+- A room with fast mode off, or on a model other than Fable 5.2, goes on on the copy it took, as before.
+- budgets.toml: `[code] lines` 29,286 to 29,299 with its dated note.
+- **Upgrading**: nothing to change.
+
+## 2026-11-11
+
+### oom-wording (#57)
+
+- A worker the kernel killed for memory says so: its card reads "died: it ran out of memory", and so do its relay, the
+  ledger's exit detail and a scheduled job's alert, where they read "died: it was killed". Under the memory ceiling
+  (OOMPolicy=continue) systemd reports that death as a kill by signal, so a worker's exit record now also holds how many
+  of its processes the kernel killed for memory (exit.json's `oom_kill`, read as the unit ends), and the words go by it.
+- A worker that lost a process to memory and went on (a test run past the ceiling, then a clean finish) says so in one
+  line, "one of its processes ran out of memory" (the number when more than one), on its card, in its relay, in the
+  ledger and in a scheduled job's alert or relay. A worker that lost none reads as before.
+- A death for memory is never taken for a stop nobody asked for: on 2026-11-11 a fix that ran out of memory (oom-kill,
+  exited 143) was started again as if the box had shut down. A fix or a cold read that died for memory now holds its
+  need with that reason, and a builder that did is reported failed with it and held, not built again by itself.
+- budgets.toml: `[code] lines` 29,239 to 29,286 with its dated note.
+- **Upgrading**: nothing to change.
+
+### status-broom (#56)
+
+- The room card's broom (the second line of `/status` typed in a room) is the room's compactions today, counted from
+  the ledger when the card is collected: `📚 606k/900k (67%) · 🧹 2 today`. In status-card it was the live session's
+  compactions since it began, kept in memory, so after every daemon restart (each deploy) it was not known and the card
+  left it out until the room's next new session. Now a restart keeps it, a room with none today reads `🧹 0 today`,
+  and the daemon's /status answer gives every room's `head` a number for `compactions`.
+- All three kinds count, each once: a held or idle /compact and a compacted copy taken (rows the ledger already marks
+  `compacted`), and Claude Code's own compaction inside a turn, now marked on that turn's row with the note
+  `compacted in the turn` (the ledger's note column, so no migration). A dropped copy, another room's and yesterday's
+  do not count.
+- budgets.toml: `[code] lines` 29,244 to 29,239 with its dated note (29,218 to 29,213 before worker-memory was merged in).
+- **Upgrading**: nothing to change. The card counts the day from yerkd's next start; a compaction inside a turn before
+  that start was never marked, so that day's count leaves it out.
+### worker-memory (#55)
+
+- Every worker's unit has a memory ceiling, 4G unless `[workers] memory_max` says otherwise, with no swap past it (the
+  owner's order of 2026-11-11: a worker reproducing an out-of-memory bug took 16G of RAM and 3.2G of swap on a 20G box,
+  and the box froze for 76 seconds). Past the ceiling the kernel kills the process using the most memory inside that
+  worker, never one of the box's, and systemd does not stop the worker for it (OOMPolicy=continue): a test run that
+  blows up dies alone and the worker goes on. The time cap, the sandbox and how a worker's end is read are unchanged.
+- `[workers] memory_max` in yerkd.toml: a whole number of bytes, or one with K, M, G or T after it (any case). Any other
+  value (a word, a fraction, a percentage, infinity, zero) is never handed to systemd: the log says it is not a size and
+  every worker gets 4G. docs/settings.md lists the key.
+- budgets.toml: `[code] lines` 29,218 to 29,244 with its dated note.
+- **Upgrading**: nothing to change; the ceiling holds for every worker started after yerkd's next start. An install
+  that capped its workers with a systemd drop-in (a `yerk-worker-.service.d/` folder in ~/.config/systemd/user/ setting
+  MemoryMax) can remove it and run `systemctl --user daemon-reload`, so yerkd.toml is the one place that states the
+  number: while the drop-in is there, systemd applies its number over the one Yerk AI gives.
+
+### need-2026-11-11-87 (#?)
+
+- A room reads a PDF or a Word file at a web link now: a form, a notice or a report someone links. web_fetch named any
+  such link a binary wall ("these tools read no other binary file"), so a room had the page that links to a document and
+  never the document.
+- web_fetch keeps the file's bytes where it named that wall: the plain read from this machine takes one up to 25 MB,
+  known by its own first bytes (a .docx, whose type says "xml", was read as text before); a site that refuses that read
+  is read from Browserbase Fetch's answer, at its price, as any page is. It saves the file in the room's work folder,
+  next to the pictures web_image saves, and answers with its words as it answers with a page's: a PDF's page by page,
+  a Word file's (.docx, .doc and .odt) a paragraph a line with each table row's cells side by side and a check box as
+  ☐ or ☒. The answer names the saved file: Read opens a PDF's pages (a form's boxes and ticks), and `render` makes a PDF
+  of a Word file.
+- A PDF with no text on any page is said as a scan, to Read; a dynamic XFA form, whose pages show only Adobe's "Please
+  wait..." placeholder, is read from its own template (each caption, label and fixed text, a list's choices). A file
+  that will not read (a password, no pdftotext) is still saved and named, with why. Nothing new to install for Word
+  files; a PDF's words need poppler-utils (pdftotext), already on most Linux boxes.
+- web_fetch's description gains one sentence (152 characters), so budgets.toml's `deferred_tool_names` line goes from
+  3,429 to 3,581 and the session total from 130,071 to 130,223, the dated reason beside them. `yerk explain
+  web-documents` has the ability, found by asks such as "pdf at a link" and "the form's pdf"; the README's Add-ons line
+  names it, the Install line's note on systemd units left to docs/units.md so it stays under 12,000 bytes.
+- Why: on 2026-11-11 a room asked what a province's form is and what it asks for tried web_fetch on the form's own Word
+  file and on two PDF copies of it, met the binary wall each time, and answered from the province's forms list page and
+  the search previews of a copy, saying so. It filed the need (need 87 of 2026-11-11) rather than work around the wall.
+- A crafted file costs only what its own bytes hold (the review's fix): the file-type check runs on every binary read,
+  and the readers run in the web plug-in's one process, which serves every room. A 64 KB file at any link made the
+  check ask for 16 GiB of memory (a looping chain in a Word 97-2003 header), a 4.6 KB one walked its table of contents
+  2^n ways (8 seconds at 26 deep, with 64 allowed), and a .docx or an XFA PDF of about 1 KB, which unpacks to a
+  megabyte of tags that never close, of one long name or of spaces before a letter, held the plug-in for about ten
+  minutes. Now the check takes only 512- or 4,096-byte sectors, follows each chain through each sector once, and walks
+  each entry once. It also reads at most 1 KB of an OpenDocument file's type. The XML readers stop a tag at the next
+  "<" and find each closing tag in one pass, the trailing spaces are cut by hand, and an XFA form's streams together
+  unpack to 256 MB at most. Every one of those files reads in milliseconds now: three tests in
+  plugins/web/test/tools.test.mjs, which fail or hang on the code before the fix.
+
+**Upgrading**: budgets.toml moves two lines (above); nothing in rooms.toml or yerkd.toml changes. The web plug-in is in
+this repository, so the deploy carries it: a room reads documents from its next process start. Keep poppler-utils
+installed for a PDF's words (`apt install poppler-utils`); without it a PDF is still saved for Read, and the answer says
+why its words are missing.
+
+### status-card (#54)
+
+- `/status` typed in a room answers with that room's own card, in the shape of the box's own `/status` card, instead of
+  the whole machine card (31 lines on the owner's install the day he asked, too long to read on a phone; his order of
+  2026-11-11). Three lines about the room: the model its next reply launches with and the account its session is on
+  (with no live process, the one its next turn would try: its own unless that one rests);
+  its session's tokens over its compaction window and how many times it was compacted since it began; its thinking
+  level, ending ` · Fast: on` while fast mode is on.
+- Then the tank, two lines an account in number order: the account the room is on wears `➤`, the soonest weekly reset
+  the green mark as before, a rest until other than the account's own weekly reset ends its first line with `💤` and
+  the time, then `wk next:` (and `5h next:` when a reading has a 5-hour window). Then what runs, at most four lines (this
+  room's turn first, then other rooms', then the workers, the fourth "and n more" past that), or "Quiet, nothing
+  running"; today's first-line and turn medians; on an uncapped install today's and the week's dollars; and a red line
+  only for trouble: stalls today, no backup or a stale one, a timer list that could not be read.
+- A part that cannot be read truthfully is left out: a room whose window is left to the model shows its tokens alone; a
+  session resumed at a daemon start (its earlier compactions never seen) shows no compaction count; a model or thinking
+  level nothing names (Claude Code's own default, whose id Yerk never learns) is not shown. A room with no session yet,
+  or a `/new` waiting, reads "new session". The card answers with the room's process closed too.
+- `yerk status` on the command line is unchanged, byte for byte: the operator's machine card. The daemon's /status
+  answer (and `yerk status --json` while yerkd runs) carries each room's `head`: model, effort, account, context, window
+  and compactions.
+- budgets.toml: `[code] lines` 29,066 to 29,218 with its dated note.
+- **Upgrading**: nothing to change. The card shows from yerkd's next start, and each session's compaction count starts
+  with the first new session after it.
+
+### need-2026-11-11-86 (#?)
+
+- A room can click inside a web app whose own top bar offers a paid plan now, such as your mail app with its blue Upgrade
+  button: a search's rows, a mail's file chip, the search box. The hands plug-in's browser read a button whose whole words
+  are Upgrade, Subscribe or Start free trial as a pay button wherever it showed, so the whole mailbox was a payment page
+  and every click in it was refused, your word or not.
+- Such a button makes a payment page now only inside a form, a dialog or a box (a frame of the page's own site), where it
+  is a plan's last step and an Enter in the form can press it; the form or dialog is looked for up through each web
+  component's host too. One in the app's own frame (a top bar, a side bar, a banner) makes none. A button whose words make
+  a payment (Pay, Place order, Buy now, Checkout, Donate, Submit payment) still makes a payment page wherever it shows, as
+  a card field, a payment frame, a saved card and a payment service's address do.
+- The button itself is never clicked, by its words or by position, your word or not, and neither is any pay button, a
+  hidden one a click by label still finds included: "is a pay button (its words offer a paid plan), and hands never clicks
+  one, confirmed or not". A link that offers a plan asks for your word, as before.
+- The plug-in's change is on its branch `need-2026-11-11-86` (1de35ea): 86 of 86 of its offline tests green, one running
+  the page probe in Playwright's headless shell against pages it writes, whose mail app read as a payment page on its main
+  1c6df9d. Its tool entries are unchanged (10,072 bytes as built, as on main), so no budgets.toml line moves. `yerk explain
+  upsell-pages` has the ability, found by asks such as "click inside my gmail" and "read as a payment page"; the README's
+  Add-ons line names it beside `free-bookings`, at 11,992 of its 12,000 bytes, the Install paragraph no longer repeating
+  the docs list's line on docs/units.md.
+- Why: on 2026-11-11 a room asked why it could not see a file one of your emails carried opened your mail app in the
+  browser, found the mail with its file on screen, and was refused the click on the file as on a payment page. It filed the
+  need (need 86 of 2026-11-11) and asked you to send the file into the room, rather than work around the wall. The file
+  itself comes by the mail tool's `attachment` (need-2026-11-11-85), with no click at all.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`need-2026-11-11-86` (1de35ea). A room clicks in such an app from its next process start after that. Nothing in
+rooms.toml, yerkd.toml or budgets.toml changes.
+
+### fast-mode (#51)
+
+- `/fast` in a room's own channel turns Claude Code's fast mode on or off for that room, from the next reply (the
+  owner's order of 2026-11-11). Fast mode bills usage credits, never the plan, so it reaches Claude Code only in a room
+  where the owner typed `/fast on`, and only while that room runs on Fable 5.2 by its full id, `claude-fable-5-2`
+  (`/model fable` stores it). On an Opus model the launch setting alone turns fast mode on, so no Opus process ever gets
+  it; no worker, job, curate run, beat, health check, evidence judge or need gets it either.
+- `/fast on` first asks Claude Code itself, on the account the room is on now, with the local command `/fast on` (no
+  model request, no cost), and keeps the setting only when it answers on: "fast mode on from the next reply", "billed to
+  usage credits, not the plan". Refused, nothing is kept and the line says why: "usage credits are off on account
+  five", or Claude Code's own reason. In a room on another model: "fast mode is for Fable 5.2 rooms" and the room's
+  model. `/fast off` says "fast mode off"; `/fast` alone says the room's setting and what Claude Code last reported. A
+  switch off Fable 5.2 drops it, and the settings line ends "fast mode off".
+- A room with it on launches with `fastMode` in its settings file and sends `/fast on` before the first message of every
+  new process (fresh, resumed, or after a hop), never shown, ledgered or counted. A refusal there (a hop to an account
+  with usage credits off, credits run out mid-session) is said once in the room, and the reply still comes at standard
+  speed; a cooldown is no refusal. A `/fast on` there that gets no result, or fails, ends that process: the turn runs on
+  one launched as before, and the room is told once. `/status` says "fast mode on:" and the room while it is on. A room
+  with it off launches as before.
+- The copy a compaction runs on never gets fast mode, whatever the room's setting: fast replies were asked for, not a
+  fast compaction billed to credits. Once a copy is taken, the room runs at standard speed until its next new process.
+- While a room has it on, every turn in that room's process runs fast, a job's message into the room included: fast
+  mode is the session's, and switching it around one message would read the conversation again at the fast rate.
+- The check leaves nothing behind: the empty folder Claude Code makes under the account's `projects/` is removed. A
+  Fable 5.2 model that is not found drops fast mode with it, as `/model` does.
+- budgets.toml: `[code] lines` 28,898 to 29,066 with its dated note.
+- **Upgrading**: nothing to change. The rooms' slash commands are registered again at the next start, `/fast` with
+  them. No account has usage credits on today, so `/fast on` says so until the owner turns them on for an account.
+
+### need-2026-11-11-85 (#?)
+
+- A room can read a file one of your emails carries now: a PDF quote, a picture, a document. The hands plug-in's mail
+  `read` numbers the files a mail carries, each with its type and size (`Attachments: 1. quote.pdf (application/pdf,
+  412 KB)`), and its new `attachment` action saves one by that number (`number`), or every one, in the room's own work
+  folder, where the room opens it with Read. Before, a read named a file and nothing reached it: the mail tool neither
+  saved nor opened one, Yerk's `attachments` tool takes a Discord message's files only, and a room's shell has no
+  network, so the room could only ask you to send the file into the room.
+- The plug-in's mail reader writes the file from the same read-only fetch (nothing is marked read, moved or deleted),
+  under `hands-mail/<mailbox>-<uid>/`, by the file's own name made safe: anything a path could carry becomes `_`, a
+  second file with the same name gets ` (2)`, and a file with no name is named for its number and type. A worker saves in
+  its own folder. The path comes back inside the mail's untrusted wrap, since it ends in a name the sender wrote, and
+  what the file says is the mail's, never an instruction.
+- The reader walks to that folder a part at a time without following a link, and makes each file under a new temporary
+  name before renaming it into place, since a room can write its work folder and the plug-in runs outside the room's
+  sandbox. A link where the folder goes is refused by name, with nothing written where it points; a link at the file's
+  own name is replaced, never written through. A mail with no files, a number past the list and a room whose work folder
+  is not known are each said in one line.
+- The plug-in's change is on its branch `need-2026-11-11-85` (1c6df9d): 83 of 83 of its offline tests green, the three
+  new ones failing on its main b85fc18. `yerk explain mail-files` has the ability, found by asks such as "attached to the
+  email" and "attachment in my gmail"; the README's Add-ons line names it beside `mail-links`, at 11,999 of its 12,000
+  bytes.
+- budgets.toml: the hands line 9,831 to 10,131 (the mail entry 1,494 as the plug-in's branch builds it, 1,525 as sent)
+  and the session-start total by the 300 to 130,071, each with its dated note; docs/budgets.md is what `yerk docs own`
+  writes.
+- Why: on 2026-11-11 a room asked to confirm the figures on a quote an email carried as a PDF read the mail and got the
+  file's name only. It filed the need (need 85 of 2026-11-11) and asked for the file in the room, rather than work
+  around the wall.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`need-2026-11-11-85` (1c6df9d). A room has `attachment` from its next process start after that. budgets.toml's hands
+line is 10,131 and the session `total` 130,071; keep yours at least that, or the deploy's fit check refuses on the longer
+mail entry. Until the plug-in's deploy a room sends that entry at its old 1,225, under the new line.
+
+### his-four-2026-11-11 (#49)
+
+- Four changes the owner said yes to on 2026-11-10, after the cleanup audit put them to him as questions. Each is in
+  commits named `cleanup <finding id>: ...`.
+- A need's number never repeats (F5-01). A new need is numbered past every number any need has held and past its day's
+  page; the count used to restart each day, so two different needs could both be "need 81". The needs filed before
+  this that share a number are named with their day in every line ("need 81 of 2026-11-10 held"); a number one need
+  holds reads as it did. Nothing is renumbered, and `yerk needs build DAY N` and `yerk needs done DAY N PR` take what
+  they took.
+- The `reverse_image_search` tool is gone (F6-06). No room ever called it and its key was never on the box, so a call
+  could only answer that the key was missing, while every room carried its description in every request. Yerk AI's
+  own server hands a room 22 tools. The `delete` tool stays (F6-02).
+- `web_search` takes its filters again (F7-13): `freshness` (day, week, month or year), `date_after`, `date_before`,
+  `domain_filter` (up to 20 domains to include or, each with a leading -, to exclude) and `country`. A value the tool
+  cannot use is refused in one line before any engine runs. The engines differ in what they enforce, so the answer's
+  first line says it: ", filtered by freshness week" for what the answering engine enforced, "; not enforced by this
+  engine: before 2026-11-08" for what it dropped or only worded, and ", localized to CA" for a country, which
+  localizes the results and keeps no page out. With no filter the answer is what it was.
+- One way to write a reset time (F2-11), the status card's: '5:10p' within a day, 'Fri 10a' within a week, 'Nov 20'
+  past that. `yerk status --full`, `yerk accounts`, `yerk accounts cool`, /model's resting state, the card's note when
+  every account is out of a room's model and the morning diff's account line wrote '17:10', 'Fri 10:00' or the weekday
+  alone. The morning diff's account line stays one line where its resets fit and takes the card's two where they do
+  not; the card's note, too wide, loses the end of the name of the model the turn runs on, never its time.
+- budgets.toml: `[code] lines` 29,052 to 28,898 with its dated note.
+- **Upgrading**: nothing to change. A room has the new `web_search` and is without `reverse_image_search` from its
+  next session.
+
+## 2026-11-10
+
+### cleanup-2026-11-10 (#?)
+
+- The cleanup audit of 2026-11-10: Yerk AI read in eleven regions, every finding judged, and each fix here in a commit
+  of its own named `cleanup <finding id>: ...`, so a line below leads to its commit. Pull requests 20 (F6-04, Fish
+  only), 24 (the card default) and 31 (F9-03, `fable` is claude-fable-5-2) are folded in; their own entries follow this
+  one.
+- Fixed, in turns and rooms (F1-03, F1-05, F1-06, F1-07, F1-08, F3-01, F3-03, F3-05): a failed turn is classed by its
+  own process's stderr, never by a line an earlier process left there. A message that comes in while a room's idle close
+  waits for the old process starts once that process has exited, where it used to crash on the session lock. A copy's
+  compaction no longer clears the live session's record of the topic rules it was told. After a refusal fallback the
+  room starts fresh only when failures.toml's refusal action is `fresh_next_turn`, the shipped default, so the file now
+  decides. A machine-room line that fails to post is said on the worker's row, never recorded as sent. A cite past a
+  vertical tab in a memory file opens and marks its own line, since read_memory and a correction's edit now number lines
+  as the index does. An index rebuild reloads yerk-index's store with the install's own `embeddings_units`. The
+  assembled log rolls to its next part and never writes over one; the nightly sweep cuts every part into its day in
+  order, and curate reads the whole week's parts.
+- Fixed, in the needs pipeline (F5-02, F5-03, F5-07, F5-08, F5-10, and the pipeline builder's own find): a stuck need
+  with a pull request goes back to `pr` once its head's checks are all in and final, and only when no other need is in
+  flight. A need's worker cut off by a stop nobody asked for, a shutdown say, is no verdict: the need is queued again
+  with nothing counted and the next tick starts it; a stop a person asked for stays a stop. A deploy that gave up
+  waiting for quiet sets its need back to merged, so the next tick deploys again. A builder that cannot start holds its
+  need with the reason, said, and the next queued need starts. A need worker's clean worktrees are removed when it ends;
+  its branches are kept, and a worktree with changes is named on its row. A need left building with no worker after the
+  daemon died goes back to the queue at the next start, where it used to hold the queue for good.
+- Fixed, in jobs, retention, the doctor and curate (F4-01, F4-03, F5-05, F5-06, F9-21, F10-03, F10-04, F10-14, FB-01): a
+  jobs sync no longer deletes the unit file of a one-shot that is still running, and yerk status and the jobs list read
+  a running one-shot the same way. An agent job's run waits for a daemon that is not listening yet, up to its unit's
+  limit; a script or a note gives up at once as before. The start sweep closes a script run that was cut mid-run and
+  sends its failed-run alert. Retention moves a job run's folder to the trash 14 days after it ended and was delivered,
+  never one still undelivered, and a finished worker's pytest temp trees a day after it finished, the rest of its folder
+  waiting its 30 days. The doctor's growth check and retention's lines count disk blocks, once per file, so sparse files
+  and second hard links no longer read as growth. Curate's nightly run keeps the day's rule proposals it built, so
+  `--apply` takes the numbers the card showed. A blind recall bench run exits 5 and fails the weekly unit, where it
+  passed as a success.
+- Fixed, in the gates (F5-09, F5-13, F5-14, F5-15, F5-18, F5-19): the restart rule and the hardline rules read a shell
+  line as it would really run, so a write to a start-up file in a nested shell, by a relative name or after a heredoc is
+  seen, and a wrapper or a nested shell is no way round them. `((` and `$((` read as arithmetic only when their last two
+  parentheses close together, as bash reads them, and `coproc` is peeled so the command it runs is read. The git askpass
+  helper answers only a prompt for github.com. An add-on whose install is not a table is refused with its check line,
+  not a traceback.
+- Fixed, in the web plug-in (F7-02, F7-04, F7-10, F7-14, F7-15) and `yerk room add` (F7-05): `web_fetch` refuses a
+  browser rung that an ad or a script sent off-site, and ends its climb 10 s inside the room's own limit. A proxied
+  session retried without proxies is booked as a spend row of its own. The rendered-page check takes every og:title as a
+  title candidate. The plug-in's plan-limit alerts, which went to log files nothing read, reach the morning diff once,
+  the day after they are written. `yerk room add` names the new room in the MCP flags it copies, never the room it was
+  made like.
+- Fixed, in the install (F10-01, F10-12, FB-03): yerkd's unit is sized for what its rooms hold today, MemoryHigh 4G and
+  MemoryMax 8G (from 2G and 4G; a nine-room install sat at its 2G line), and yerk-index's MemoryHigh is 2G (from 1400M),
+  its rule and a fifth for what a start costs; each unit file carries its measurements. The MCP library's per-request
+  lines, two thirds of the daemon's journal, stay out of it.
+- What a person reads differently (F1-01, F2-02, F2-03, F2-09, F2-13, F4-02, F4-07, F4-09, F5-04, F6-05, F6-08, F7-12,
+  F7-16, F9-07, F9-12, F10-11, F11-08): a watched room's audit verdict keeps orange for something actually wrong that
+  changes what the person would say or do; green is looks good, with a nit in one line under it or none, and red is
+  wrong, then what is wrong and the fix (the owner's order of 2026-11-05; the `watch_audit` setting's words say the
+  same). A stuck need's line counts the final checks and names the pending ones. `yerk status` names a watched channel
+  by its name where it is known, its help names every part of the card, and `--full` says no workers in the shared
+  words. The live page's close button says answers come back as bubbles under the line. The doctor's backup lines carry
+  the red mark; curate `--rules` names all six kinds it proposes, and its dry run speaks from words.py. A command that
+  falls back to the example layer says so once on stderr, with the flag to pass. The hold tool says what is true: a
+  worker's result comes back by itself, and nothing watches another event. The login wall names a move a room can take,
+  `web_research` names the configured daily cap, and prompt-diff says built, with the eight abilities that ship in part
+  naming what is still missing. The accounts help names `mint`, `[gmail]` smtp_host and smtp_port are described, and the
+  hooks page lists all eleven Stop rules.
+- The guide and the other written pages say what the code does (F6-03, F8-03, F8-04, F9-05, F9-06, F9-08, F9-09, F9-10,
+  F9-11, F9-13, F9-14, F9-19, F9-20, F9-22): the docs fetch is daily; the ability counts match abilities.toml (118: 56
+  built, 62 described); the Ledgers section names all 22 tables and the Files section every kind of unit; every route of
+  the daemon's HTTP server is named; the location-day job example is one the loader accepts; the doctor prints one green
+  line when all is well; a script job keeps the unit's YERK_PRIVATE and YERK_STATE; the contract probes run by hand and
+  take short and think; the hello add-on points at the guide's Add-ons section; the example ability cards that wait on
+  the owner open on the orange mark; NOTICE no longer credits the watcher job that left. Docstrings and comments that
+  said otherwise now match the code (F1-04, F2-05, F2-12, F5-16, F9-01, F9-02).
+- Faster (F2-15, F3-04, F3-06, F4-04, F6-07, F8-07, F8-09): `words.line` cuts a long line in one pass, not a character
+  at a time (one card had cost 11 s of CPU). The Stop check's figure test is 32 times faster, with the same answers. A
+  message reads only today's day log; a past day's parsed lines are kept while the file's size and time hold. Each
+  ability phrase's pattern is compiled once, not 540 times a message (8.3 ms to 0.3 ms), and the abilities manifest is
+  parsed again only when abilities.toml or an add-on changes. A reply's parts are read by key range, never by a LIKE
+  over every sent delivery of every room. The doctor's growth check adds sizes as it walks and holds no list.
+- Gone (F1-02, F1-09, F2-01, F5-12, F7-03, F7-11, F8-01, F8-02): the `kind` arguments of the channel's open_card and of
+  Card, which every caller left at its default; workers.ADDON_ENV, which nothing read; the recall cap's dead fallback of
+  1500, as the prompt hook reads budgets.toml alone; eight web plug-in exports nothing calls, and its site-memory seed
+  merge, an OpenClaw deploy step nothing in Yerk writes; a skipped test nothing could run and a test constant nothing
+  read.
+- The tests: 46 new test functions (1,434 to 1,480) and 11 in the web plug-in's suite. The style test also holds the
+  status card's phrases and the live page's server to the one vocabulary (F2-04, F2-14); pytest keeps only a failed
+  test's temp folder, where a whole run left 340 MB of passed tests' folders (F8-05); the screen test waits 0.3 s, not
+  10, for a paint no tab gives (F8-08).
+- budgets.toml: `[code] lines` 28,654 to 29,052 with its dated note.
+- **Upgrading**: copy `units/yerkd.service` and `units/yerk-index.service` again (yerkd MemoryHigh 4G and MemoryMax 8G,
+  yerk-index MemoryHigh 2G) and `systemctl --user daemon-reload`; a box that set those with `systemctl --user
+  set-property` raises them there instead. The doctor's and the recall bench's units changed only in their comments.
+  Nothing else to change for the cleanup itself; pull requests 20 and 24 say their own steps below.
+
+### fish-only-2026-11-07 (#?)
+
+- MiniMax is out and Fish Audio is the only voice engine, since the owner cancelled the MiniMax plan on 2026-11-07. Left
+  as it was, every note would have spent a failing MiniMax call first, and the abilities text and the guide would have
+  named a voice that no longer speaks. `[mood]` tags go to Fish as they did, `(break)` is its pause, and a `<#0.4#>`
+  written in a script still becomes `(break)`.
+- A Fish failure on any section means no note, and the error names fish. The words for it change from "neither voice
+  made it" to "the voice failed".
+- A note costs its 20-second check, about 0.2 US cents, since Fish's s2.1-pro-free is US$0. The US$1 gate stays, and no
+  note reaches it at that price. Fish takes about a minute per 1,000 characters, section after section (measured on the
+  box, 2026-10-22), so a long note takes minutes.
+- `voice/pronounce.txt` in the private folder is no longer read: those rules were MiniMax's.
+- The `[code]` ceiling goes to 26,959.
+
+**Upgrading**: `secrets/minimax.key` is no longer read and the owner may remove it; no other step.
+
+### fable-5-2-2026-11-09 (#?)
+
+- `fable` in models.toml names claude-fable-5-2, released Nov 9 2026 and the default Fable model in Claude Code 2.1.321; a room put on `fable` from now on runs it. `fable51` names claude-fable-5-1, so a room pinned to 5.1 keeps running it: an id that leaves this list is ignored and the room runs its rooms.toml model.
+
+### card-default (#24)
+
+- Every room's progress card now shows the step rows, a room with people's too: the state and the model's newest line
+  ("thinking" while it thinks), then one row per step, done or not done, as the owner's rooms always have. The thinking
+  line under it stays where it was: owner-only rooms that turn `thinking_panel` on.
+- Why: a room with people showed "step 1", "step 2" where an owner's room showed the state, the model's
+  newest line and a row per step, and every room should show the same card.
+  
+  
+- The short card a room with people has shown since 2026-10-21 (its newest holding line and "step N", never a step's
+  words) is now the opt-in: `card = "count"` in the room's block. `card = "steps"` (2026-11-03) still loads and means
+  the default, as any other value does. The code ceiling moves up by 1.
+
+**Upgrading**: nothing to change for a room that should show the rows. A room with people that should keep the short
+card adds `card = "count"` to its block in rooms.toml; `card = "steps"` lines may stay or go. rooms.toml is read at
+yerkd's start, so the change shows from the next restart.
+
+### need-2026-11-10-83 (#47)
+
+- A worker can drive the browser. The `worker` tool takes `addons`: the room's own add-on tools the worker gets too, by
+  the name the room has (`mcp__hands__browser`) or by server (`hands`). Before, a worker had only its built-in tools, so
+  a room that handed a long form-filling job to a worker, to stay free to talk, saw it stop in under a minute: it could
+  not open or fill a web form.
+- Only what the room itself has: a tool missing from the room's allow list, or a server whose rooms.toml table passes a
+  credential in its env or headers (a worker's shell could read it), refuses the start whole, saying why. A room that
+  is not the owner's still starts no worker at all.
+- The server runs from the room's own table, with `YERK_WORKER` (the worker's id) and `YERK_WORK_DIR` (its folder)
+  added to its env. The browser plug-in (its branch need-2026-11-10-83) then acts on the room's tabs, so the room can
+  pick up a form the worker left ready; holds a brake lease of its own, `hands-<room>-w<id>`, since two processes on one
+  owner name share a lease and the first one's arm would end the other's mid-call; saves its pictures in the worker's
+  folder; and puts the worker's id on each ledger line.
+- The worker's gate refuses any other MCP tool, and any add-on call carrying the owner's word (`confirmed`): nobody is
+  there to give it. The worker leaves that step ready (a quote form filled up to its last button, say) and its report
+  says what waits, for the room to do once the owner says it.
+- **Upgrading**: nothing to set. The browser plug-in's branch lands with this one; a room's rooms.toml table and allow
+  list are read as they are. budgets.toml: `[code] lines` and `yerk_tools` rise with their dated reasons.
 
 ### copy-survives-2026-11-10 (#46)
 

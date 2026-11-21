@@ -107,6 +107,8 @@ def test_an_add_on_over_its_own_ceiling_is_refused_and_nothing_is_written(instal
     ("abilities.hello", 'abilities."../escape"', "its name ../escape is not one plain word: letters, digits, - and _ only"),
     ("size = 40\n", "", "its entry has no size"),
     ('settings = { hello = { greeting = "Hello" } }', 'settings = ["hello"]', "install settings is not a table"),
+    ("size = 40\n\n[abilities.hello.install]", 'size = 40\ninstall = "x"\n\n[abilities.hello.unused]',
+     f"install is not a table: no step reads it ({', '.join(addons.INSTALL)})"),
     ('names" = 300', 'names" = "300"', "budget line session_start.claude_code.deferred_tool_names = '300': not a whole number"),
     ('names" = 300', 'names" = -300', "budget line session_start.claude_code.deferred_tool_names = -300: not a whole number"),
     ('names" = 300', 'names" = true', "budget line session_start.claude_code.deferred_tool_names = True: not a whole number"),

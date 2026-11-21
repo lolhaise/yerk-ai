@@ -16,7 +16,7 @@ claim 19).
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
 crash run it once more, marked as a redelivery), `answered`, `failed`, `abandoned` (redelivered
-once already), `ignored`.
+once already), `ignored`, `stopped` (the owner's /stop: never run again).
 
 The schema is versioned (PRAGMA user_version) and moves by the ordered MIGRATIONS list, each step a
 function that may add, rename or backfill and is run once, inside one transaction, with the version
@@ -39,12 +39,13 @@ COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visi
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT", "model": "TEXT", "out_of": "TEXT",   # the model asked for; the pinned one every account was out of
                    "context": "INTEGER",                    # the session's tokens at the turn's last call (the idle compaction's)
-                   "note": "TEXT"},                         # a copy's take or drop, said (Room._precompact)
+                   "note": "TEXT"},                         # a copy's take or drop, said (Room._precompact); COMPACTED_IN_TURN
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
          "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
          "approvals": {"call": "TEXT", "cwd": "TEXT"},      # the held call an approval releases, exactly
          "inbound": {"created": "REAL"}}                   # the message's own time on its channel (ordering)
+COMPACTED_IN_TURN = "compacted in the turn"   # the note on an ordinary turn's row inside which Claude Code compacted the session
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -109,12 +110,16 @@ CREATE TABLE IF NOT EXISTS spend (
 CREATE TABLE IF NOT EXISTS calls (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, whom TEXT, call TEXT, reads TEXT, no_reads INTEGER,
   fixed REAL, source TEXT, correction TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS texting (
+  id INTEGER PRIMARY KEY, t REAL, person TEXT, handle TEXT, inbound TEXT, decision TEXT, parts TEXT, react TEXT,
+  reply_to TEXT, statements TEXT, verdict TEXT, delay REAL, fire_at REAL, state TEXT, reason TEXT,
+  approval_id INTEGER, card TEXT, handed REAL, claimed TEXT, account TEXT, seconds REAL, tokens INTEGER, mode TEXT);
 CREATE TABLE IF NOT EXISTS message_links (
   tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
   PRIMARY KEY (tbl, row_key, col, message_id))"""
 # the comma-joined id columns and the key column of their table: every write of one also writes its rows
 LINKED = {("turns", "inbound"): "id", ("inbound", "reply_ids"): "message_id", ("outbound", "inbound"): "id",
-          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id"}
+          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id", ("texting", "inbound"): "id"}
 INDEXES = """CREATE INDEX IF NOT EXISTS inbound_room_received ON inbound (room, received);
 CREATE INDEX IF NOT EXISTS inbound_channel_created ON inbound (channel, created, received);
 CREATE INDEX IF NOT EXISTS inbound_state ON inbound (state);
@@ -138,9 +143,14 @@ WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging",
            "relay_chars", "job", "queued", "waiting")
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
             "worker", "chars", "folder", "note")
+TEXTING = ("person", "handle", "inbound", "decision", "parts", "react", "reply_to", "statements", "verdict", "delay",
+           "fire_at", "state", "reason", "approval_id", "card", "handed", "claimed", "account", "seconds", "tokens", "mode",
+           "shown", "why")
 ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER"}   # in line for its account
+ADDED["texting"] = {"shown": "TEXT", "why": "TEXT"}   # a held card as last shown (texting/holds.py); the writer's whole reason, never on a card
+ADDED["inbound"] = {**ADDED["inbound"], "digest": "TEXT"}   # a text's words, hashed: the sender's recheck (texting/)
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
-           "answered", "turn_id", "reply_ids", "note", "created")
+           "answered", "turn_id", "reply_ids", "note", "created", "digest")
 OPEN = ("received", "running")
 
 
@@ -264,8 +274,8 @@ class Ledger:
         """The owner's word: the room's newest hold not yet approved (inside the window) is approved. `before`, when the word
         reached Yerk: a hold made after it is never approved by it, since nobody had read that hold when the word was written
         (a word folded into a running turn reaches the gate after the turn's next calls)."""
-        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? AND held <= ? ORDER BY id DESC "
-                         "LIMIT 1", (room, time.time() - window_s, time.time() if before is None else before))
+        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? AND held <= ? AND rule != 'text-thread' "
+                         "ORDER BY id DESC LIMIT 1", (room, time.time() - window_s, time.time() if before is None else before))
         if not r:
             return None
         self._update("approvals", "id", r[0]["id"], {"approved": time.time(), "approved_by": by})
@@ -281,6 +291,17 @@ class Ledger:
             return None
         self._update("approvals", "id", r[0]["id"], {"released": time.time()})
         return r[0]
+
+    def approval(self, hold_id: int) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM approvals WHERE id = ?", (hold_id,))
+
+    def hold_approve(self, hold_id: int, by: str) -> None:
+        """One hold approved by its id (a text hold, by the owner's word on its card), never the room's newest."""
+        self._update("approvals", "id", hold_id, {"approved": time.time(), "approved_by": by})
+
+    def holds_open(self, room: str, since: float) -> list[dict[str, Any]]:
+        """The room's holds made after `since` and not approved yet: what a word said there could still approve."""
+        return self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? ORDER BY id", (room, since))
 
     def many(self, rows: list[tuple[str, dict[str, Any]]]) -> None:
         """Timing rows for hook_calls and tool_times in one transaction: one disk sync per batch, never
@@ -369,11 +390,12 @@ class Ledger:
         lookup, so the cost is per message, not messages times turns times parts (64 s for a day on Oct 24): a turn
         by its id (i.turn_id, or a link's row_key, which _link writes as the id's text), a part by the key range
         under the turn's key (`<key>:` to `<key>;`, `<key>-s` to `<key>-t`, the keys LIKE matched: a turn key is
-        lowercase hex), a post by its id; the unary + keeps the planner off the link table's (tbl, ...) key."""
+        lowercase hex), a post by its id; the unary + keeps the planner off the link table's (tbl, ...) key. A text in a
+        watched chat (room `texting`) is no room's message: it gets a decision, never a turn, and is never one of these."""
         return self._select(
             "SELECT i.message_id, i.room, i.received FROM inbound i WHERE i.received >= ? AND i.received < ? AND "
-            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN (SELECT ':' AS lo, "
-            "';' AS hi UNION ALL SELECT '-s', '-t') k JOIN deliveries d ON d.state = 'sent' AND d.key >= t.turn_key || k.lo "
+            "i.room != 'texting' AND i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN "
+            "(SELECT ':' AS lo, ';' AS hi UNION ALL SELECT '-s', '-t') k JOIN deliveries d ON d.state = 'sent' AND d.key >= t.turn_key || k.lo "
             "AND d.key < t.turn_key || k.hi WHERE t.turn_key != '' AND t.id IN (SELECT i.turn_id UNION ALL SELECT "
             "CAST(row_key AS INTEGER) FROM message_links WHERE message_id = i.message_id AND +tbl = 'turns' AND "
             "col = 'inbound')) AND NOT EXISTS (SELECT 1 FROM message_links l JOIN outbound o ON o.id = CAST(l.row_key "
@@ -430,6 +452,13 @@ class Ledger:
         r = self._first("SELECT context FROM turns WHERE session_id = ? AND context IS NOT NULL ORDER BY id DESC LIMIT 1", (session_id,))
         return int(r["context"]) if r else 0
 
+    def compactions(self, since: float) -> dict[str, int]:
+        """Each room's compactions of its session ended since `since` (the room card's broom): a held or idle /compact and a
+        copy taken (outcome 'compacted'), and Claude Code's own inside a turn (that turn's note, COMPACTED_IN_TURN)."""
+        rows = self._select("SELECT room, count(*) AS n FROM turns WHERE ended >= ? AND (outcome = 'compacted' OR note = ?) "
+                            "GROUP BY room", (since, COMPACTED_IN_TURN))
+        return {str(r["room"]): int(r["n"]) for r in rows}
+
     def turn_summary(self, since: float) -> tuple[dict[str, float], list[dict[str, Any]]]:
         """(each room's last answered turn's end, the failed turns since `since` by room, outcome and class with a count)."""
         ok = self._select("SELECT room, max(ended) AS ended FROM turns WHERE outcome = 'ok' GROUP BY room", ())
@@ -477,11 +506,10 @@ class Ledger:
         return self._first("SELECT * FROM inbound WHERE message_id = ?", (message_id,))
 
     def inbound_open(self, room: str | None = None) -> list[dict[str, Any]]:
-        """Rows a crash left received or running, oldest first."""
-        sql = f"SELECT * FROM inbound WHERE state IN ({', '.join('?' * len(OPEN))})"
-        args: tuple[Any, ...] = OPEN
-        if room:
-            sql, args = sql + " AND room = ?", (*OPEN, room)
+        """Rows a crash left received or running, oldest first: one room's, or with none named every room's and no text
+        of a watched chat (room `texting`: a burst a stop left open is no turn it cut, and the intake asks for its own)."""
+        sql = f"SELECT * FROM inbound WHERE state IN ({', '.join('?' * len(OPEN))}) AND room " + ("= ?" if room else "!= 'texting'")
+        args: tuple[Any, ...] = (*OPEN, room) if room else OPEN
         return self._select(sql + " ORDER BY received", args)
 
     def last_inbound(self, channel: str) -> str | None:
@@ -538,19 +566,61 @@ class Ledger:
         known(fields, JOB_RUNS, "job_runs")
         self._update("job_runs", "id", run_id, fields)
 
+    def texting_add(self, **row: Any) -> int:
+        """One texting decision (texting/intake.py); `inbound`: the comma-joined guids of the texts it answers."""
+        known(row, TEXTING, "texting")
+        return self._insert("texting", {"t": time.time(), **row})
+
+    def texting_set(self, row_id: int, **fields: Any) -> None:
+        known(fields, TEXTING, "texting")
+        self._update("texting", "id", row_id, fields)
+
+    def texting_rows(self, person: str, state: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM texting WHERE person = ? AND state = ? ORDER BY id", (person, state))
+
+    def texting_day(self, person: str, start: float, end: float) -> list[dict[str, Any]]:
+        """A person's texts (inbound rows of room texting, at their own time) and texting rows from `start` to `end`, by time."""
+        return sorted([*self._select("SELECT *, COALESCE(created, received) AS t FROM inbound WHERE room = 'texting' AND channel = ? "
+                                     "AND COALESCE(created, received) >= ? AND COALESCE(created, received) < ?", (f"imessage:{person}", start, end)),
+                       *self._select("SELECT * FROM texting WHERE person = ? AND t >= ? AND t < ?", (person, start, end))], key=lambda r: r["t"])
+
+    def texting_span(self, start: float, end: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Every person's texts (texting_day's inbound rows) and every texting row from `start` to `end`, each by time."""
+        return (self._select("SELECT *, COALESCE(created, received) AS t FROM inbound WHERE room = 'texting' AND COALESCE(created, "
+                             "received) >= ? AND COALESCE(created, received) < ? ORDER BY t", (start, end)),
+                self._select("SELECT * FROM texting WHERE t >= ? AND t < ? ORDER BY t", (start, end)))
+
+    def texting_get(self, row_id: int) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM texting WHERE id = ?", (row_id,))
+
+    def texting_card(self, message_id: str) -> dict[str, Any] | None:
+        """The newest decision a card shows (a newer burst takes over its card)."""
+        return self._first("SELECT * FROM texting WHERE card = ? ORDER BY id DESC LIMIT 1", (message_id,))
+
+    def texting_held(self) -> list[dict[str, Any]]:
+        return self.texting_in("held")
+
+    def texting_in(self, state: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM texting WHERE state = ? ORDER BY id", (state,))
+
+    def texting_last(self, person: str) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM texting WHERE person = ? ORDER BY id DESC LIMIT 1", (person,))
+
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE id = ?", (run_id,))
 
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
 
-    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False) -> list[dict[str, Any]]:
-        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon."""
+    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False, unended: bool = False) -> list[dict[str, Any]]:
+        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon; `unended`: no end yet."""
         sql, args = "SELECT * FROM job_runs WHERE 1", tuple[Any, ...]()
         if job:
             sql, args = sql + " AND job = ?", (*args, job)
         if undelivered:
             sql = sql + " AND delivery LIKE 'undelivered:%'"
+        if unended:
+            sql = sql + " AND ended IS NULL"
         return self._select(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
 
     # outbound and holds
@@ -606,8 +676,8 @@ class Ledger:
                              "ORDER BY sent DESC LIMIT 1", (room,))) is None:
             return None
         base = str(r["key"]).rsplit(":", 1)[0]
-        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key LIKE ? AND "
-                                                 "state = 'sent'", (f"{base}:%",)) if p["key"].rsplit(":", 1)[0] == base),
+        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key >= ? AND key < ? "
+                                                 "AND +state = 'sent'", (f"{base}:", f"{base};")) if p["key"].rsplit(":", 1)[0] == base),
                        key=lambda p: int(p["key"].rsplit(":", 1)[1]))
         return {"id": str(parts[0]["message_id"]), "sent": float(parts[0]["sent"]), "text": "\n".join(str(p["body"]) for p in parts)}
 
@@ -629,6 +699,12 @@ class Ledger:
     # attachments and cards
     def attachment(self, **row: Any) -> int:
         return self._insert("attachments", {"at": time.time(), **row})
+
+    def attachment_state(self, message_id: str, n: int, state: str) -> None:
+        """The state of a message's `n`th file (0 first, in the order it was ledgered): texting's `seen`, or why not."""
+        with self.lock:
+            self.db.execute("UPDATE attachments SET state = ? WHERE id = (SELECT id FROM attachments WHERE message_id = ? "
+                            "ORDER BY id LIMIT 1 OFFSET ?)", (state, message_id, n))
 
     def card_open(self, message_id: str, room: str, kind: str) -> None:
         self._insert("cards", {"message_id": message_id, "room": room, "kind": kind, "opened": time.time()})

@@ -1,11 +1,15 @@
 """`yerk retention`: the daily sweep that keeps the state folder from growing forever, run by units/yerk-retention.timer.
 Each kind keeps a number of days, [retention] in the private yerkd.toml over DAYS: a room's stream log (logs/<room>.jsonl)
-a room's stream log (logs/<room>.jsonl) and assembled log (rooms/<room>/assembled.jsonl) are gzipped whole each
-day into <name>.<day of their last write>.jsonl.gz beside them, a day's file kept `logs` or `assembled` days; a
+and assembled log (rooms/<room>/assembled.jsonl, after the parts it rolled to, in order) are gzipped whole each day into
+<name>.<day of their last write>.jsonl.gz beside them, a day's file kept `logs` or `assembled` days (read() reads them back
+in order); a
 Yerk room's Claude Code transcripts are kept `transcripts` days after the session's last write, and never one
 whose session sessions.json binds, one written in the last 24 hours, or any of a room with a turn in flight or
 waiting; rows of the timing tables (TIMED: no reader looks back past a day) are kept `ledger` days and the WAL
-is checkpointed; a finished worker's folder and its project folder are kept `workers` days; a room's scratch
+is checkpointed; a job run's folder (jobs/<name>/<stamp>/) is kept `jobs` days after it ended, and while the ledger
+marks it undelivered whatever its age (the daemon's restart sweep reads it); a finished worker's folder and its project
+folder are kept `workers` days, its pytest temp trees (a folder named pytest-of-*, anywhere in it) `pytest` days, what its run
+built `built` days (below); a room's scratch
 (scratch(): its work folder but the person's files and a top folder holding a file named KEEP, and the copies of
 the files it sent) is kept `scratch` days, and past `scratch_mb` a room loses its oldest files first, never one
 written in the last hour and never while it has a turn in flight; the room finds what went where in its
@@ -14,7 +18,11 @@ work/RETENTION.md, and the morning diff names the room and its top folders. What
 under trash/scratch/), and only the trash past `trash` days is deleted, scratch's past `scratch_trash`, so a
 wrong rule costs a week (scratch: a day), not data. Never touched: the memory tree, the private layer (yerkd.toml
 and accounts.toml are read), attachments in work/inbox and the KEEP folders (their size is said), anything a
-process holds open or runs in (from /proc), anything else outside the state folder."""
+process holds open or runs in (from /proc), anything else outside the state folder. What a finished worker's run built
+leaves its folder after `built` days, found in the one walk that finds its pytest trees: a virtual environment (a folder
+holding a regular file named pyvenv.cfg, never the worker's own folder) and a folder named __pycache__, .mypy_cache,
+.ruff_cache, .pytest_cache or node_modules, each anywhere in the folder, moved whole and never walked into, a link never
+followed or moved."""
 from __future__ import annotations
 
 import contextlib
@@ -26,6 +34,9 @@ import shutil
 import stat
 import sys
 import time
+import zlib
+from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -33,11 +44,14 @@ from . import status, words
 from .accounts import load_accounts
 from .config import load_toml, write_private
 from .engine import project_dir
+from .hooks import rolled
 from .ledger import Ledger
 from .workers import settings as worker_settings
 
 DAY = 86400.0
-DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1}
+DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "pytest": 1, "built": 1, "scratch": 2,
+        "trash": 7, "scratch_trash": 1}
+BUILT = ("__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache", "node_modules")   # built trees by name; an environment by pyvenv.cfg
 CAP = {"scratch_mb": 500}             # past this a room's scratch loses its oldest files first
 TIMED = {"outbound": "sent", "hook_calls": "t", "tool_times": "t", "evidence": "t", "shadow": "t"}
 SESSION = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -76,8 +90,23 @@ def tree(path: Path) -> list[os.stat_result]:
     return [path.lstat(), *(Path(d, f).lstat() for d, ds, fs in os.walk(path) for f in [*ds, *fs])]
 
 
+def venv(path: str) -> bool:
+    """A virtual environment: a folder holding a regular file named pyvenv.cfg, the mark, never the folder's name."""
+    with contextlib.suppress(OSError):
+        return stat.S_ISREG(os.lstat(os.path.join(path, "pyvenv.cfg")).st_mode)
+    return False
+
+
 def size(found: list[os.stat_result]) -> int:
     return sum(s.st_size for s in found if stat.S_ISREG(s.st_mode))
+
+
+def freed(found: list[os.stat_result]) -> int:
+    """The disk a delete of `found` gives back: each regular file's blocks once, and only when every link to it is in `found`
+    (a sparse file's holes and a file linked from elsewhere give back nothing); size() is the bytes a move carries."""
+    links = Counter((s.st_dev, s.st_ino) for s in found if stat.S_ISREG(s.st_mode))
+    return sum(s.st_blocks * 512 for s in {(s.st_dev, s.st_ino): s for s in found if stat.S_ISREG(s.st_mode)}.values()
+               if links[s.st_dev, s.st_ino] >= s.st_nlink)
 
 
 def kept(room: Path) -> list[Path]:
@@ -108,7 +137,7 @@ def in_flight(state: Path, ledger: Ledger, rooms: list[str]) -> set[str]:
 def run(private: Path, state: Path, dry: bool = False, now: float | None = None, proc: Path = PROC) -> dict[str, Any]:
     """One sweep: {"at", "dry", "kinds": {kind: [items, bytes]}, "scratch": {room: {top: [files, bytes]}}, "kept": bytes,
     "error", "why"}; with `dry` nothing moves. A kind's bytes are what moved to the trash; trash's and scratch_trash's,
-    what was deleted from it. A top is a top entry of work/ the room's scratch left, or ../outbox (the sent copies)."""
+    the disk their delete gave back (freed). A top is a top entry of work/ the room's scratch left, or ../outbox (the sent copies)."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "dry": dry, "kinds": {}, "scratch": {}, "kept": 0}
     trash, busy = state / "trash" / day(now), set[tuple[int, int]]()
@@ -138,12 +167,12 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
             (state / "trash").mkdir(mode=0o700, exist_ok=True)
             (state / "trash").chmod(0o700)
         logs = [("logs", p, p.name.removesuffix(".jsonl")) for p in sorted((state / "logs").glob("*.jsonl"))]
-        for kind, path, room in logs + [("assembled", r / "assembled.jsonl", r.name) for r in rooms]:
+        for kind, path, room in logs + [("assembled", p, r.name) for r in rooms for p in [*rolled(r / "assembled.jsonl"), r / "assembled.jsonl"]]:
             if room in flight or not path.is_file() or not (st := path.stat()).st_size:
                 continue
             if not (moved := move(kind, path, str(path.relative_to(state)))):
                 continue
-            dest = path.with_name(f"{path.name.removesuffix('.jsonl')}.{day(st.st_mtime)}.jsonl.gz")
+            dest = path.with_name(f"{path.name.partition('.jsonl')[0]}.{day(st.st_mtime)}.jsonl.gz")   # a part's too: assembled.<day>
             if not dry:                                                       # the original went first: the copy is cut from it
                 os.close(os.open(dest, os.O_WRONLY | os.O_CREAT, st.st_mode & 0o777))   # its source's mode, never wider
                 with open(moved, "rb") as f, gzip.open(dest, "ab") as g:      # a second cut the same day adds a member
@@ -175,6 +204,22 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
                 if move("workers", folder, f"workers/{folder.name}"):
                     for d in filter(Path.is_dir, gone):
                         move("workers", d, f"projects/{d.name}")
+            due = {k for k in ("pytest", "built") if w["finished"] and now - days["workers"] * DAY <= w["finished"] < now - days[k] * DAY}
+            if due and folder.is_absolute() and folder.is_dir() and not folder.is_symlink() and folder.parent.resolve() == root:
+                for at, ds, fs in os.walk(folder):                        # one walk for both; the rest of the folder waits its days
+                    if "built" in due and at != str(folder) and "pyvenv.cfg" in fs and venv(at):
+                        ds.clear()                                        # an environment, its own caches with it
+                        move("built", Path(at), f"workers/{folder.name}/{os.path.relpath(at, folder)}")
+                    for name in [x for x in ds if x.startswith("pytest-of-") or "built" in due and x in BUILT]:
+                        ds.remove(name)                                   # moved whole, never walked into; a link stays
+                        if (kind := "pytest" if name.startswith("pytest-of-") else "built") in due and not os.path.islink(tmp := os.path.join(at, name)):
+                            move(kind, Path(tmp), f"workers/{folder.name}/{os.path.relpath(tmp, folder)}")
+        runs = (state / "jobs").resolve()
+        for j in ledger.job_runs(limit=10**6):           # ended and delivered past its days; one marked undelivered stays
+            folder = Path(str(j["folder"] or ""))
+            if (j["ended"] and j["ended"] < now - days["jobs"] * DAY and j["delivery"] and not str(j["delivery"]).startswith("undelivered")
+                    and folder.is_absolute() and folder.is_dir() and folder.resolve().parent.parent == runs):
+                move("jobs", folder, f"jobs/{folder.parent.name}/{folder.name}")
         for r in (r for r in rooms if r.name not in flight):              # scratch: past its days, then the oldest past the cap
             listed, emptied, work, took = scratch(r), set[Path](), r / "work", list[str]()
             total = size([s for _, s in listed])
@@ -207,12 +252,23 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
         out["kept"] = sum(size(tree(p)) for r in rooms for p in kept(r))
         for d in sorted([*(state / "trash").glob("????-??-??"), *(state / "trash" / "scratch").glob("????-??-??")]):
             if d.name < day(now - days[(k := "scratch_trash" if d.parent.name == "scratch" else "trash")] * DAY) and free(found := tree(d)):
-                tally(k, 1, size(found))
+                tally(k, 1, freed(found))
                 if not dry:
                     shutil.rmtree(d)
     except Exception as e:      # any failure is said, kept for the morning diff, exits 1; what moved before it stays counted
         out["error"], out["why"] = f"{type(e).__name__}: {e}", words.no_paths(getattr(e, "strerror", None) or type(e).__name__)
     return out
+
+
+def read(path: Path, since: float) -> Iterator[str]:
+    """A room's assembled log from `since` on, oldest first, as the sweep and the rolls left it: its day archives from since's
+    day on (each holds what was cut on that day, in order), the parts it rolled to, then the live file. A row from before
+    `since` is the caller's to skip; a file that cannot be read is skipped."""
+    days = sorted(p for p in path.parent.glob(f"{path.stem}.*.jsonl.gz") if (m := DATED.search(p.name)) and m[1] >= day(since))
+    for p in [*days, *rolled(path), path]:
+        with contextlib.suppress(OSError, EOFError, zlib.error), gzip.open(p, "rt", errors="replace") if p.suffix == ".gz" \
+                else open(p, errors="replace") as f:
+            yield from f
 
 
 def note(work: Path, took: list[str], now: float, days: float) -> None:

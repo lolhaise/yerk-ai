@@ -328,6 +328,22 @@ def test_arithmetic_is_a_number_not_a_command() -> None:
     assert unwrap("echo $((1+1") is None
 
 
+def test_two_parens_that_do_not_close_together_are_subshells_not_arithmetic() -> None:
+    """bash takes (( as arithmetic only when the ) that closes the second ( has another at once after it."""
+    assert unwrap(f"(({TOOL} --flag) )") == RUN
+    assert unwrap(f"((true) ; {TOOL} --flag)") == [["true"], [TOOL, "--flag"]]
+    assert unwrap(f"echo $(({TOOL} --flag) )") == [[TOOL, "--flag"], ["echo", f"$(({TOOL} --flag) )"]]
+    assert unwrap(f"(( (1+2) * 3 )); {TOOL} --flag") == RUN
+    assert unwrap(f"(({TOOL} --flag)") is None
+
+
+def test_a_coproc_runs_its_command() -> None:
+    assert unwrap(f"coproc {TOOL} --flag") == RUN
+    assert unwrap(f"coproc NAME {{ {TOOL} --flag; }}") == RUN
+    assert unwrap(f"coproc {{ {TOOL} --flag; }}") == RUN
+    assert unwrap(f"coproc NAME while true; do {TOOL} --flag; done") == [["true"], [TOOL, "--flag"]]
+
+
 def test_an_empty_path_is_none(folders: tuple[str, str]) -> None:
     work, _ = folders
     assert delete_targets(["rm", "-r", ""], work) is None

@@ -6,10 +6,11 @@ start of the summary, then "..."), then one row per tool call saying what the st
 (words.STEP), marked done or not done by its result, two or more failures in a row folded into one. Every
 line holds to phone width (words.PHONE); the newest rows win. The room swaps the card for the reply at the
 end, or edits it to say what was owed when a turn ends with nothing to show. (Ideas from OpenClaw's cards.)
-Waits in the queue for its turn and: the last part closes the (case before the next run starts) the example note
-count, never a step'the example, note says-the sample item moved to's narration (2026-10-21: a person's card listed
-the steps of a file build; the owner: "Run starts the example note says"), unless its block says card = "steps": then the
-owner rooms' and, the last part (0000-00-00, closes the's room: "Example note says the sample item moved to the").
+Every room gets this shape, a room with people too (2026-11-08: every Yerk room shows the same card).
+A room with people whose block says card = "count" gets the short one instead (room.py passes people=): its newest
+holding line (its own text send to itself) and a step count, never a step's words, an earlier-steps line or the model's
+narration, every such room's card from 2026-10-21 (a person's card listed the steps of a file build, which the owner
+found confusing) to 2026-11-08, when the default flipped; card = "steps" (2026-11-03) still means the rows.
 """
 from __future__ import annotations
 
@@ -125,8 +126,8 @@ class Row:
 
 
 class Card:
-    def __init__(self, kind: str = "turn", thinking: bool = False, people: str = ""):
-        self.kind, self.thinking_on = kind, thinking
+    def __init__(self, thinking: bool = False, people: str = ""):
+        self.thinking_on = thinking
         self.people = people                  # a room with people: its name, and the card's shape is _people()
         self.holding = ""                     # that room's newest holding line
         self.narration = ""

@@ -12,10 +12,14 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from zoneinfo import ZoneInfo
 
+from test_logins import slash as login
 from test_remember import daemon
+from test_slash import FAKE, wire
 
 from yerk_ai import cli, context, mcp_server, memory, pictures, shape, workers, words
-from yerk_ai.config import budgets
+from yerk_ai.accounts import Account
+from yerk_ai.config import EXAMPLE_PRIVATE, budgets
+from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 32
@@ -43,10 +47,11 @@ class Rec(ConsoleChannel):
         return "card-1"
 
 
-class Units:
-    """systemd-run as Workers relies on it, recorded, nothing run."""
+class Units(workers.Systemd):
+    """systemd-run as Workers relies on it, recorded, nothing run; the rest is the launcher's own."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.calls: list[dict] = []
 
     def start(self, unit, argv, env, cwd, out, err, cap, post) -> None:
@@ -299,6 +304,27 @@ def test_backfill_runs_a_batch_at_a_time_on_the_rooms_account_its_card_and_line_
     asyncio.run(y.workers.complete(d2.name))
     assert ops.lines[1] == "pictures backfill example-room: batch 2 of 2 finished clean, 4 of 5 filed; done"
     assert [p.name for p in pictures.pending(tmp_path / "rooms" / "example-room" / "work" / "inbox")] == ["photo.png"]
+    assert y.ledger.worker_get(d2.name)["relay_note"] == "pictures backfill: its line went to the machine room"
+
+
+def test_a_backfill_line_that_cannot_be_posted_is_said_so_on_the_workers_row(tmp_path):
+    y = daemon(tmp_path, "example-room", "her-room")
+    y.room_confs["ops-room"] = {**y.room_confs["example-room"], "role": "machine", "id": "ops-room-id"}
+    y.daily.rooms["ops-room"] = ("ops-room-id", "private")
+    ops = Rec()
+    y.add_room("ops-room", ops)
+    y.workers.launcher = Units()
+    picture(tmp_path, "example-room", "m-00", at=1_760_000_000.0)
+    r = asyncio.run(y.control({"pictures": {"room": "example-room"}}))
+
+    async def down(room: str, text: str) -> list[str]:
+        raise OSError("the channel is down")
+    ops.notify = down
+    d = Path(r["staging"])
+    (d / "REPORT.md").write_text("0 filed\n")
+    (d / "exit.json").write_text(json.dumps({"result": "success", "code": "exited", "status": "0"}))
+    asyncio.run(y.workers.complete(r["id"]))
+    assert y.ledger.worker_get(r["id"])["relay_note"] == "pictures backfill: its line could not be posted: the channel is down"
 
 
 def root_pictures(root: Path) -> list[Path]:
@@ -433,3 +459,95 @@ def test_a_recordings_transcript_in_a_listed_folder_is_indexed_and_the_recording
     assert str(said) in s.scope.files() and str(ogg) not in s.scope.files()
     memindex.Index(s.index_db, s.scope).sync()
     assert any(h["cite"].startswith(f"{root.name}/1004-voice.transcript.txt") for h in memory.recall(s, "example drill nine", 6)["hits"])
+
+
+# logins-notes-doctor (2026-11-20, need 127's deeper check): the owner sent a room a login as screenshots, and `seen` told
+# it to file every word on a picture verbatim, a password too. Each value is a placeholder (decision 22), a key built here.
+SAVED = "pw-Fake-9-Qx7Zk2Wd"                       # a saved login's password: 18 characters, digits and symbols in it
+SHORT, PLAIN = "Fake7pw", "Placeholdr"             # saved too: 7 characters with a digit, 10 letters
+SHAPED = {"password line": "the example wifi password is Exa-mple9!", "key": "the example key sk-ant-" + "Exampl3Key" * 3,
+          "token line": "token: " + "abcd1234" * 3}
+LEFT = {k: line.rsplit(" ", 1)[0] + " " + words.LEFT_OUT for k, line in SHAPED.items()}
+CODE = "your verification code is 482913"
+
+
+def filed(y, pic: Path, calls: list[tuple[str, str]]) -> list[tuple[dict, str | None]]:
+    """Each (text, shows) through `seen` in turn, with the picture's note as it stands after it (None while there is none)."""
+    side, out = pictures.sidecar(pic), list[tuple[dict, str | None]]()
+    for text, shows in calls:
+        out.append((asyncio.run(y.tool_seen("example-room", str(pic), text, shows)), side.read_text() if side.exists() else None))
+    return out
+
+
+def y2_run(y, pic: Path) -> list[tuple[dict, str | None]]:
+    """Y2's calls: each shape on line 2 of `text`, a password line on line 2 of `shows`, each shape again with [left out] in
+    the value's place, then a one-time code."""
+    return filed(y, pic, [(f"EX-42 TOTAL 1,250 sf\n{line}\nRiley: works for me", "a sign-in page") for line in SHAPED.values()]
+                 + [("EX-42", f"a sign-in page\n{SHAPED['password line']}")]
+                 + [(f"EX-42 TOTAL 1,250 sf\n{line}\nRiley: works for me", "a sign-in page") for line in LEFT.values()]
+                 + [(f"EX-42\n{CODE}", "a text message")])
+
+
+def signed(tmp_path: Path, monkeypatch, *passwords: str) -> tuple[Yerkd, list]:
+    """test_logins' daemon, its private folder in the test's own, each password saved by the owner's /login as example-N."""
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    y.private = tmp_path / "private"
+    dc, _, _ = wire(y)
+    return y, [login(dc, "login", name=f"example-{i}", site="example.com", user="example-user", password=pw)
+               for i, pw in enumerate(passwords)]
+
+
+def y3_run(y, pic: Path) -> list[tuple[dict, str | None]]:
+    """Y3's calls: the saved password glued into a line of `text`, then into a line of `shows`, no shape around it; then
+    each short or plain saved password on a line of `text`."""
+    return filed(y, pic, [(f"EX-42\nsigned in as example-user with{SAVED}today", "a sign-in page"),
+                          ("EX-42", f"a sign-in page\nits field shows ab{SAVED}cd")]
+                 + [(f"EX-42\nthe sign reads {weak}", "a sign") for weak in (SHORT, PLAIN)])
+
+
+def test_y1_the_seen_tools_description_and_the_backfill_rule_carry_the_same_left_out_clause(tmp_path):
+    """Y1: a room filing a picture's words was told to keep every word verbatim, in the tool's description and in the
+    backfill's rule; both now carry one clause, the same words, and the module says it too."""
+    clause = "except a password, a passphrase, a key or a token it shows, which is written [left out] in its place, never its value"
+    assert words.SEEN_LEFT_OUT == clause and words.LEFT_OUT == "[left out]"
+    y = daemon(tmp_path)
+    tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
+    said = " ".join(str(tools["seen"].description).split())
+    brief = " ".join(pictures.brief("example-room", [], ZoneInfo("UTC"), 1, 1).split())
+    assert ("`text` every word on it, verbatim, in reading order (a chat screenshot keeps who said what as shown), " + clause + ";") in said
+    assert ("every word visible on the picture, verbatim, in reading order, its line breaks kept, " + clause + ";") in brief
+    assert "SEEN_LEFT_OUT" not in said and "is written [left out] in its place, never" in " ".join(str(pictures.__doc__).split())
+
+
+def test_y2_seen_refuses_a_password_line_a_key_or_a_token_line_by_its_number_and_files_it_with_left_out_in_its_place(tmp_path):
+    """Y2: a line of `text` or `shows` holding a password line, a key's shape or a token line (doctor.SECRETS) is refused
+    before anything is written, the answer naming the line's number, its kind and [left out]; the same words with [left
+    out] in the value's place are filed, and a one-time code is filed as it is (it works once; the doctor says it apart)."""
+    y = daemon(tmp_path)
+    got = y2_run(y, picture(tmp_path, "example-room", "m-1"))
+    kinds = [*SHAPED, "password line"]
+    assert [r for r, _ in got[:4]] == [{"ok": False, "error": words.SEEN_SECRET.format(n=2, part=part, kind=k)}
+                                       for k, part in zip(kinds, ("text", "text", "text", "shows"))]
+    assert all("line 2 of" in r["error"] and f"({k})" in r["error"] and "[left out]" in r["error"] for (r, _), k in zip(got, kinds))
+    assert [note for _, note in got[:4]] == [None] * 4                        # refused before anything is written
+    for (r, note), line in zip(got[4:7], LEFT.values()):
+        assert r["ok"] and note is not None and note.splitlines()[1:4] == ["EX-42 TOTAL 1,250 sf", line, "Riley: works for me"]
+    r, note = got[7]
+    assert r["ok"] and note is not None and note.splitlines()[1:3] == ["EX-42", CODE]
+
+
+def test_y3_a_saved_logins_password_anywhere_on_a_line_of_text_or_shows_is_refused_and_a_short_or_plain_one_is_not_looked_for(
+        tmp_path, monkeypatch):
+    """Y3: with logins saved through /login in the test's own daemon, a line of `text` or of `shows` holding one's password,
+    no shape around it, is refused as a shape is. A saved password of 7 characters with a digit, and one of 10 letters,
+    are not looked for: a short or plain word would be found in ordinary text (a name, a word on a sign) and refuse a
+    picture that holds no secret, so a note holding either is filed."""
+    y, said = signed(tmp_path, monkeypatch, SAVED, SHORT, PLAIN)
+    assert [s[0][1].startswith(words.DONE) for s in said] == [True] * 3
+    got = y3_run(y, picture(tmp_path, "example-room", "m-1"))
+    assert [r for r, _ in got[:2]] == [{"ok": False, "error": words.SEEN_SECRET.format(n=2, part=part, kind="saved password")}
+                                       for part in ("text", "shows")]
+    assert [note for _, note in got[:2]] == [None, None]
+    for (r, note), weak in zip(got[2:], (SHORT, PLAIN)):
+        assert r["ok"] and note is not None and f"the sign reads {weak}" in note

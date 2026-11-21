@@ -24,13 +24,24 @@ message and a success result echoing the text. Variations:
 - the line /compact: a compact_boundary as 2.1.304 streams it (post_tokens FAKE_CLAUDE_POST, else 20000), then a
   compaction result; each one appends a line to FAKE_CLAUDE_MARK.compacted. FAKE_CLAUDE_COMPACT_SLOW=S waits S seconds
   first; FAKE_CLAUDE_COMPACT_FAIL=1: Claude Code's failed-compaction status and an error result, no boundary
-- a line containing CONTEXT:N (the last one in it): its assistant message's usage says the session holds N tokens; SUBAGENT:M adds, after it,
-  the test reads (it_back_as_plain text) with one more Line
+- a control request (get_context_usage), its line appended to FAKE_CLAUDE_ASKS: FAKE_CLAUDE_CONTEXT=N answers
+  fixtures/context_usage.json (a 2.1.321 answer, its id and picture cut) with totalTokens N, "recorded" as recorded,
+  "silent" never, "exit" ends the process; unset, the error 2.1.321 holds for a process that cannot count
+- a line containing CONTEXT:N (the last one in it): its assistant message's usage says the session holds N tokens, and so does the
+  call's message_start ahead of it (a stream_event, parent_tool_use_id null, as 2.1.321 streams one); SUBAGENT:M adds, after it,
+  a subagent's call (parent_tool_use_id set) whose usage says M, its message_start too (2.1.321 streams none of a subagent's)
+- a line of the message's own starting GROW:N1,N2,... (a tail's "[time] owner: GROW:" never counts): before the answer, one tool call
+  per size, each its message_start with that usage, then its assistant tool_use with it and the tool's result; with
+  FAKE_CLAUDE_GROW_GATE set, each call waits after its message_start (up to 20 s) for a line of that file no call used yet
+  (FAKE_CLAUDE_GROW_GATE.used counts them, across processes): a turn of several calls whose size grows, held at the test's pace
 - a line containing AUTO_COMPACT: before its answer, Claude Code's own compaction inside the turn as 2.1.316 streams it:
   status compacting, FAKE_CLAUDE_COMPACT_SLOW seconds, status null (compact_result success), a compact_boundary (trigger
   auto, post_tokens FAKE_CLAUDE_POST, else 20000)
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
+- a line containing HOLD_OPEN: the turn stays open until another line comes, however late, and that line is replayed and
+  answered in the same result (a fold on the line's arrival, never on a clock). It is read through stdin's own buffer, so a
+  line that landed together with the first is seen too; SLOW's select watches the descriptor and misses that one
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
 - a line containing MERGE: replayed, then up to 0.5 s for more lines (0.2 s more once one comes, unread), then answered
   as usual; every line then waiting on stdin is replayed as ONE user message, their texts joined with newlines (one
@@ -50,7 +61,21 @@ message and a success result echoing the text. Variations:
 - `claude -p /usage`: a result whose text is FAKE_CLAUDE_USAGE_DIR/<config folder's name>.txt, the meters as Claude
   Code prints them on the folder's own login; under CLAUDE_CODE_OAUTH_TOKEN, or with no such file, the session's cost
   instead (no meters), as the real one prints under a one-year token. FAKE_CLAUDE_USAGE_SLOW=S waits S seconds first
-Turn and, the last part closes the case before (the next) run Starts_The_Example.
+- /fast on, /fast off (a line, or `-p "/fast on"`): what 2.1.321 answers in -p (PROBES 2026-11-11; the accepted text from
+  its binary): an init, a synthetic assistant message and a result with num_turns 0 and fast_mode_state; launched without
+  "fastMode" in its --settings, "not available in the Agent SDK"; for a FAKE_CLAUDE_NO_CREDITS_DIRS folder, "requires usage
+  credits". Every result carries the session's fast_mode_state. FAKE_CLAUDE_STDIN: each line's text is appended there.
+- a line containing OUT_OF_CREDITS: the notice 2.1.321 streams once a turn while fast mode is out of usage credits
+- a line containing COOLDOWN, fast mode on: the session's fast_mode_state is cooldown from that result on
+- /fast: FAKE_CLAUDE_FAST_SLOW=S waits S seconds before answering; `-p "/fast on"` makes the folder 2.1.321 made
+  for its working folder under the config folder's projects/ (empty under --no-session-persistence), and with
+  FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
+- --json-schema (a one-shot): stdin read whole and appended to FAKE_CLAUDE_STDIN, FAKE_CLAUDE_JSON_SLOW seconds of wait,
+  then FAKE_CLAUDE_JSON printed as the whole answer; a FAKE_CLAUDE_FAIL_DIRS folder, or a CLAUDE_CODE_OAUTH_TOKEN in
+  FAKE_CLAUDE_FAIL_TOKENS (the check's calls share one folder), gets a usage-limit error result; with
+  --output-format stream-json (a photo shown), two stream lines first and that answer as the last line, none with
+  FAKE_CLAUDE_STREAM_NO_RESULT, one more line after it with FAKE_CLAUDE_STREAM_AFTER
+Records argv, the config folder, the working folder and the environment's names (never values) to FAKE_CLAUDE_RECORD.
 """
 import json
 import os
@@ -65,7 +90,7 @@ rec = os.environ.get("FAKE_CLAUDE_RECORD")
 cfg = os.environ.get("CLAUDE_CONFIG_DIR", "")
 if rec:
     with open(rec, "a") as f:
-        f.write(json.dumps({"argv": argv, "config_dir": cfg, "env_keys": sorted(os.environ)}) + "\n")
+        f.write(json.dumps({"argv": argv, "config_dir": cfg, "cwd": os.getcwd(), "env_keys": sorted(os.environ)}) + "\n")
 
 
 def listed(var):
@@ -73,6 +98,24 @@ def listed(var):
 
 
 no_login = listed("FAKE_CLAUDE_AUTH_DIRS")
+
+if "--json-schema" in argv:            # a one-shot answering in one JSON object (the texting writer's shape), its prompt on stdin
+    asked = sys.stdin.read()
+    if os.environ.get("FAKE_CLAUDE_STDIN"):
+        with open(os.environ["FAKE_CLAUDE_STDIN"], "a") as f:
+            f.write(asked)
+    time.sleep(float(os.environ.get("FAKE_CLAUDE_JSON_SLOW") or 0))
+    if listed("FAKE_CLAUDE_FAIL_DIRS") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") in os.environ.get("FAKE_CLAUDE_FAIL_TOKENS", "").split(","):
+        got = json.dumps({"type": "result", "is_error": True, "result": "Claude AI usage limit reached, resets 5pm"})
+    else:                              # FAKE_CLAUDE_JSON: the whole stdout, as a test builds it
+        got = os.environ.get("FAKE_CLAUDE_JSON") or json.dumps({"type": "result", "is_error": False, "result": ""})
+    if "--output-format" in argv and argv[argv.index("--output-format") + 1] == "stream-json":   # the stream form, a photo shown
+        print(json.dumps({"type": "system", "subtype": "init", "tools": ["StructuredOutput"]}))
+        print(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "StructuredOutput"}]}}))
+        got = "" if os.environ.get("FAKE_CLAUDE_STREAM_NO_RESULT") else got
+        got += "\n" + json.dumps({"type": "system", "subtype": "after"}) if os.environ.get("FAKE_CLAUDE_STREAM_AFTER") else ""
+    print(got)
+    sys.exit(0)
 if argv[:1] == ["setup-token"]:
     tok = "sk-" + "ant-oat01-" + "Fake" * 25                    # token-shaped (a real one is ~108 characters),
     cols = (os.get_terminal_size(sys.stdout.fileno()).columns if sys.stdout.isatty() else 0) or 80   # built so the
@@ -109,6 +152,17 @@ failing = listed("FAKE_CLAUDE_FAIL_DIRS") and model == os.environ.get("FAKE_CLAU
 bad_model = bool(model) and model == os.environ.get("FAKE_CLAUDE_BAD_MODEL")
 
 
+def launch_settings():
+    v = argv[argv.index("--settings") + 1] if "--settings" in argv else ""
+    try:
+        return json.loads(v if v.lstrip().startswith("{") else Path(v).read_text()) if v else {}
+    except (OSError, ValueError):
+        return {}
+
+
+fast = {"launch": launch_settings().get("fastMode") is True, "state": "off"}
+
+
 def out(obj):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
@@ -121,7 +175,42 @@ def replay(msg):
 
 def result(text, error=False, model="fake-model"):
     out({"type": "result", "subtype": "success", "is_error": error, "result": text, "session_id": sid,
-         "modelUsage": {} if error else {model: {}}})
+         "modelUsage": {} if error else {model: {}}, "fast_mode_state": fast["state"]})
+
+
+def control(line, msg):
+    if asks := os.environ.get("FAKE_CLAUDE_ASKS"):
+        with open(asks, "a") as f:
+            f.write(line)
+    how = os.environ.get("FAKE_CLAUDE_CONTEXT", "")
+    if how == "exit":
+        sys.exit(0)
+    answer = {"type": "control_response", "response": {"subtype": "error", "request_id": msg.get("request_id"), "error":
+              "get_context_usage is not supported in this context (onGetContextUsage callback not registered)"}}
+    if how.isdigit() or how == "recorded":
+        answer = json.loads((Path(__file__).parent / "fixtures" / "context_usage.json").read_text())
+        answer["response"]["request_id"] = msg.get("request_id")
+        answer["response"]["response"]["totalTokens"] = int(how) if how.isdigit() else answer["response"]["response"]["totalTokens"]
+    if how != "silent":
+        out(answer)
+
+
+def fast_command(text):
+    """/fast as 2.1.321 answers it under -p: the state it reaches, said by a synthetic message, no model call."""
+    time.sleep(float(os.environ.get("FAKE_CLAUDE_FAST_SLOW") or 0))
+    arg = text.strip()[len("/fast"):].strip()
+    if not fast["launch"]:
+        said = "Fast mode unavailable: Fast mode is not available in the Agent SDK"
+    elif arg == "off":
+        fast["state"], said = "off", "Fast mode OFF (this session only)"
+    elif listed("FAKE_CLAUDE_NO_CREDITS_DIRS"):
+        said = "Fast mode unavailable: Fast mode requires usage credits · /usage-credits to turn them on"
+    else:
+        fast["state"], said = "on", "↯ Fast mode ON · $16/$80 per Mtok (this session only)"
+    out({"type": "system", "subtype": "init", "session_id": sid, "model": model, "tools": [], "fast_mode_state": fast["state"]})
+    out({"type": "assistant", "message": {"model": "<synthetic>", "content": [{"type": "text", "text": said}]}, "session_id": sid})
+    out({"type": "result", "subtype": "success", "is_error": False, "result": said, "num_turns": 0, "total_cost_usd": 0,
+         "session_id": sid, "fast_mode_state": fast["state"]})
 
 
 def first(name):
@@ -185,6 +274,11 @@ def answer(text):
             "status": "allowed", "rateLimitType": "five_hour", "unifiedWindows": {
                 "five_hour": {"utilization": five, "resetsAt": 2000000000 + shift},
                 "seven_day": {"utilization": week, "resetsAt": 2000300000}}}})
+    if "COOLDOWN" in text and fast["state"] == "on":   # fast mode on and rate limited: standard speed for a while
+        fast["state"] = "cooldown"
+    if "OUT_OF_CREDITS" in text:               # fast mode on, the account out of usage credits: once a turn (fast mode page)
+        out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
+             "text": "Fast mode disabled \u00b7 Out of usage credits"})
     if "HOOK_ERROR" in text:                   # what Claude Code 2.1.301 streams when a hook fails, non-blocking
         out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
              "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
@@ -195,14 +289,46 @@ def answer(text):
         out({"type": "system", "subtype": "compact_boundary", "session_id": sid, "uuid": str(uuid.uuid4()),
              "compact_metadata": {"trigger": "auto", "post_tokens": int(os.environ.get("FAKE_CLAUDE_POST") or 20000)}})
     reply = "\nNO_REPLY\n" if "READ_ALONG" in text else "echo: " + text
-    out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     n = int(text.split("CONTEXT:")[-1].split()[0]) if "CONTEXT:" in text else 0     # the last: a copy's tail ahead names earlier ones
+    if n:                                      # the call's size as it starts, ahead of every other event of it
+        out(started({"input_tokens": 2, "cache_read_input_tokens": n - 2}))
+    out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}],
                                           **({"usage": {"input_tokens": 2, "cache_read_input_tokens": n - 2}} if n else {})}})
     if "SUBAGENT:" in text:
-        out({"type": "assistant", "parent_tool_use_id": "toolu_sub", "message": {
-            "content": [], "usage": {"input_tokens": int(text.split("SUBAGENT:")[1].split()[0])}}})
+        sub = {"input_tokens": int(text.split("SUBAGENT:")[1].split()[0])}
+        out(started(sub, parent="toolu_sub"))
+        out({"type": "assistant", "parent_tool_use_id": "toolu_sub", "message": {"content": [], "usage": sub}})
     return result(reply)
+
+
+def started(usage, parent=None):
+    """A call's message_start as 2.1.321 streams it: every stream_event carries parent_tool_use_id, null on the room's thread."""
+    return {"type": "stream_event", "parent_tool_use_id": parent, "session_id": sid,
+            "event": {"type": "message_start", "message": {"usage": usage}}}
+
+
+def grow(text):
+    """GROW:N1,N2,...: one tool call per size ahead of the answer, each held after its message_start while a gate says so."""
+    sizes = [int(x) for x in [x for x in text.splitlines() if x.startswith("GROW:")][-1].split()[0][5:].split(",")]
+    gate = os.environ.get("FAKE_CLAUDE_GROW_GATE", "")
+    for i, n in enumerate(sizes):
+        usage = {"input_tokens": 2, "cache_read_input_tokens": n - 2}
+        out(started(usage))
+        end = time.time() + 20
+        while gate and time.time() < end:      # a line of the gate no call used yet: this call goes on
+            used = Path(gate + ".used")
+            if (len(Path(gate).read_text().splitlines()) if os.path.exists(gate) else 0) > (
+                    len(used.read_text().splitlines()) if used.exists() else 0):
+                with open(used, "a") as f:
+                    f.write(f"{n}\n")
+                break
+            time.sleep(0.02)
+        tid = f"toolu_grow{i}"
+        out({"type": "assistant", "session_id": sid, "message": {"content": [
+            {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": f"echo step {i}"}}], "usage": usage}})
+        out({"type": "user", "session_id": sid, "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": tid, "content": f"step {i}"}]}})
 
 
 def notice_turn(status, text, tasks=("bg1",)):
@@ -216,9 +342,15 @@ def notice_turn(status, text, tasks=("bg1",)):
          "origin": {"kind": "task-notification"}, "modelUsage": {"fake-model": {}}})
 
 
+if one_shot and argv[argv.index("-p") + 1].startswith("/fast"):
+    if cfg:                                  # the real one names it after the working folder, every other character a dash
+        (Path(cfg) / "projects" / "".join(c if c.isalnum() else "-" for c in os.getcwd())).mkdir(parents=True, exist_ok=True)
+    if os.environ.get("FAKE_CLAUDE_FAST_EXIT"):
+        sys.exit(int(os.environ["FAKE_CLAUDE_FAST_EXIT"]))
 out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake", "tools": []})
 if one_shot:
-    answer(argv[argv.index("-p") + 1])
+    asked = argv[argv.index("-p") + 1]
+    fast_command(asked) if asked.startswith("/fast") else answer(asked)
     sys.exit(0)
 while True:
     line = sys.stdin.readline()
@@ -227,7 +359,13 @@ while True:
     if not line.strip():
         continue
     msg = json.loads(line)
+    if msg.get("type") == "control_request":
+        control(line, msg)
+        continue
     text = msg["message"]["content"]
+    if os.environ.get("FAKE_CLAUDE_STDIN"):
+        with open(os.environ["FAKE_CLAUDE_STDIN"], "a") as f:
+            f.write(json.dumps(text) + "\n")
     if "--resume" in argv and os.environ.get("FAKE_CLAUDE_ORPHANS") == "1" and first("orphans"):
         notice_turn("stopped", "", tasks=("bg1", "bg2"))
     if "STALL" in text:
@@ -235,8 +373,15 @@ while True:
             pass
         break
     replay(msg)
+    if text.strip().startswith("/fast"):
+        fast_command(text)
+        continue
     if "SLOW" in text and select.select([sys.stdin], [], [], 1.5)[0]:
         extra = json.loads(sys.stdin.readline())
+        replay(extra)
+        text = text + " + " + extra["message"]["content"]
+    if "HOLD_OPEN" in text and (more := sys.stdin.readline()):   # blocks for the next line; one already buffered is returned
+        extra = json.loads(more)
         replay(extra)
         text = text + " + " + extra["message"]["content"]
     if "HANG" in text:
@@ -247,6 +392,8 @@ while True:
         for _ in range(7):
             out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "."}}})
             time.sleep(0.3)
+    if any(x.startswith("GROW:") for x in text.splitlines()):
+        grow(text)
     answer(text)
     if "BACKGROUND" in text:                   # the notice turn lands while the room asks nothing
         notice_turn("completed", "The render finished.")

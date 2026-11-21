@@ -5,7 +5,9 @@ rule): who it goes to exactly as the send has them, the subject, each file by it
 sends only a call that gate released, its files' bytes too: each read once, from an open with no link on its path followed
 (read), their sha256 in the call the word is for, and those bytes sent, so a file rewritten or a link swapped on after the
 word goes nowhere unseen. A connection or a login that failed, or a sender, recipients or message Gmail refused, is not
-sent; a line that dropped once the message was under way may have gone, and nothing here ever sends it again.
+sent; a line that dropped once the message was under way may have gone, and nothing here ever sends it again. It goes under
+[gmail] name and the address, as the owner's own Gmail sends mail; with no name set, under the bare address, which the
+preview, the send's answer, `yerk doctor` and a room asking about it each say (sender, nameless, here).
 """
 from __future__ import annotations
 
@@ -18,12 +20,14 @@ import smtplib
 import ssl
 import stat
 from collections.abc import Callable
+from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 from typing import Any, NamedTuple
 
 from . import words
+from .config import load_toml
 
 TOOL = "mcp__yerk__email"
 FILES = 18 * 1024 * 1024     # the files' bytes in one email: Gmail takes 25 MB a message, and base64 makes 18 MB about 24
@@ -55,6 +59,33 @@ def password(g: dict[str, Any], priv: Path) -> str:
         return app_password((priv / Path(str(g["password_file"])).expanduser()).read_text())
     except (OSError, UnicodeError):
         return ""
+
+
+def name(g: dict[str, Any]) -> str:
+    """[gmail] name on one line (a line break in it would end the From header), "" when none is set."""
+    return " ".join(str(g.get("name") or "").split())
+
+
+def sender(g: dict[str, Any]) -> str:
+    """The From line an email goes out under, as it reads (a name past ASCII in its own letters, never its wire encoding):
+    [gmail] name and user, "Name <address>", else the bare address."""
+    user = str(g.get("user") or "")
+    return str(policy.default.header_factory("From", formataddr((name(g), user)))) if name(g) else user
+
+
+def nameless(g: dict[str, Any]) -> bool:
+    """An install that emails ([gmail] user and password_file) with no [gmail] name: each email goes under the bare address."""
+    return bool(g.get("user") and g.get("password_file")) and not name(g)
+
+
+def here(private: Path | None) -> str:
+    """For a room asked about the From line (abilities.brief): whether yerkd.toml's [gmail] name is set, never the name or
+    the address, since any room may ask; "" with no Gmail set up to send from or a yerkd.toml that does not read."""
+    try:
+        g = dict(load_toml(private / "yerkd.toml").get("gmail") or {}) if private else {}
+    except (OSError, ValueError, TypeError):
+        return ""
+    return words.EMAIL_NAMELESS_HERE if nameless(g) else words.EMAIL_NAMED_HERE if g.get("user") and g.get("password_file") else ""
 
 
 def normal(ti: dict[str, Any]) -> dict[str, Any]:
@@ -124,18 +155,20 @@ def checked(c: dict[str, Any], may: Callable[[Path], bool]) -> tuple[dict[str, A
     return {**c, "sha256": [hashlib.sha256(p.data).hexdigest() for p in parts]}, parts, no
 
 
-def preview(c: dict[str, Any], parts: list[Part], sender: str) -> str:
-    """A held email as the owner reads it before the word: who it is from and goes to exactly as the send has them, its subject,
-    each file by its name and the size of the bytes read (its path and sha256 stay in the ledger), then its words."""
+def preview(c: dict[str, Any], parts: list[Part], g: dict[str, Any]) -> str:
+    """A held email as the owner reads it before the word: who it is from (the From line as it goes, "no name on it" when
+    [gmail] name is not set) and goes to exactly as the send has them, its subject, each file by its name and the size of the
+    bytes read (its path and sha256 stay in the ledger), then its words."""
     files = [f"attached: {', '.join(f'{p.name} ({words.size(len(p.data))})' for p in parts)}"] if parts else []
-    return "\n".join([f"from: {sender}", f"to: {', '.join(t.strip() for t in c['to'])}", f"subject: {c['subject']}", *files, "", c["text"]])
+    frm = f"{sender(g)} ({words.EMAIL_NAMELESS})" if not name(g) else sender(g)
+    return "\n".join([f"from: {frm}", f"to: {', '.join(t.strip() for t in c['to'])}", f"subject: {c['subject']}", *files, "", c["text"]])
 
 
 def message(g: dict[str, Any], c: dict[str, Any], parts: list[Part]) -> EmailMessage:
-    """The email as it goes: from [gmail] user (under [gmail] name when set), plain text, each file's bytes as read, by its name."""
+    """The email as it goes: from [gmail] user under [gmail] name (sender), plain text, each file's bytes as read, by its name."""
     user = str(g["user"])
     msg = EmailMessage()
-    msg["From"] = formataddr((str(g["name"]), user)) if g.get("name") else user
+    msg["From"] = sender(g)
     msg["To"] = ", ".join(t.strip() for t in c["to"])
     msg["Subject"], msg["Date"] = c["subject"], formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=user.rpartition("@")[2] or None)
@@ -147,9 +180,9 @@ def message(g: dict[str, Any], c: dict[str, Any], parts: list[Part]) -> EmailMes
 
 
 def send(g: dict[str, Any], priv: Path, c: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
-    """The email `c` (normal) from [gmail] user, its files the bytes read (`parts`, never read again here): {"ok": True, "to",
-    "id", "files"} once Gmail took it (with `refused`, the addresses it would not take, when some), else {"ok": False, "error",
-    "maybe_sent"}, true when it may have gone out."""
+    """The email `c` (normal) from [gmail] user, its files the bytes read (`parts`, never read again here): {"ok": True, "from"
+    (the From line it went under), "to", "id", "files"} once Gmail took it (with `refused`, the addresses it would not take,
+    when some), else {"ok": False, "error", "maybe_sent"}, true when it may have gone out."""
     def no(why: str) -> dict[str, Any]:
         return {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_SENT.format(why=why)}
     if not (pw := password(g, priv)):
@@ -175,5 +208,5 @@ def send(g: dict[str, Any], priv: Path, c: dict[str, Any], parts: list[Part]) ->
     finally:
         with contextlib.suppress(OSError, smtplib.SMTPException):
             s.quit()
-    return {"ok": True, "to": [t.strip() for t in c["to"]], "id": str(msg["Message-ID"]), "files": [p.name for p in parts],
+    return {"ok": True, "from": str(msg["From"]), "to": [t.strip() for t in c["to"]], "id": str(msg["Message-ID"]), "files": [p.name for p in parts],
             **({"refused": sorted(refused)} if refused else {})}

@@ -16,9 +16,11 @@ import contextlib
 import json
 import re
 import shlex
+from pathlib import Path
 from typing import Any
 
 from . import words
+from .channels import page
 
 TOOL = "mcp__yerk__text"
 HELLO = 20.0                 # seconds the status waits: the ssh connect and the bridge's first answer
@@ -28,6 +30,7 @@ MAYBE = -32001               # imsg: the operation may have completed or remains
 PHONE, EMAIL = re.compile(r"\+?[\d\s().-]+"), re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 SOCKET = "imessage_socket"   # the Mac's bridge socket in an add-on's mac.json, beside its ssh: a whole path, nothing a shell reads
 WHOLE = re.compile(r"/[\w.@+/-]+", re.ASCII)
+SSH = ("ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")     # ssh to the Mac: the bridge's way and the hands'
 
 
 def reach(conf: dict[str, Any], mac: dict[str, Any]) -> dict[str, Any]:
@@ -40,6 +43,22 @@ def reach(conf: dict[str, Any], mac: dict[str, Any]) -> dict[str, Any]:
     return {**conf, "host": str(mac["ssh"]), "socket": sock}
 
 
+def owner_servers(rooms: dict[str, dict[str, Any]]) -> list[Any]:
+    """The MCP tables of the owner's rooms, where an add-on's mac.json is looked for (page.addon_file); never a person's."""
+    return [s for c in rooms.values() if str(c.get("privacy", "owner")) == "owner" for s in dict(c.get("mcp") or {}).values()]
+
+
+def way(conf: dict[str, Any], rooms: dict[str, dict[str, Any]], state: Path) -> dict[str, Any]:
+    """[imessage] as the daemon reaches the Mac (reach), for the `text` tool, texting's link and hands, and doctor."""
+    return reach(dict(conf.get("imessage") or {}), page.addon_file(owner_servers(rooms), state))
+
+
+def head(way: dict[str, Any]) -> list[str]:
+    """The live hands' command head, ssh to `way`'s host; [] with none, or one that begins with a dash: no text can go."""
+    host = str(way.get("host") or "")
+    return [*SSH, host] if host and not host.startswith("-") else []
+
+
 def transport(conf: dict[str, Any]) -> list[str]:
     """The command whose stdin and stdout are the bridge: `command` as given, else ssh to `host` and socat to `socket`
     there; [] when neither is set, so no text can go."""
@@ -47,7 +66,7 @@ def transport(conf: dict[str, Any]) -> list[str]:
         return shlex.split(c) if isinstance(c, str) else [str(x) for x in c]
     if not conf.get("host") or not conf.get("socket"):
         return []
-    return ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", str(conf["host"]),
+    return [*SSH, str(conf["host"]),
             str(conf.get("socat", "/opt/homebrew/bin/socat")), "-", f"UNIX-CONNECT:{conf['socket']}"]
 
 

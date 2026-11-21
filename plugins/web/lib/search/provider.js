@@ -36,30 +36,6 @@ import {
 const MAX_ROWS = 10; // web_search returns at most 10 rows
 const OUTPUT_BUDGET = 19000; // and keeps the whole answer under 20,000 characters
 
-// Test hook for the harness only (never set by config).
-let testOverrides = {};
-export function setTestOverrides(o) {
-  testOverrides = { ...(o ?? {}) };
-}
-let lastCall = null;
-export function getLastCallInfo() {
-  return lastCall;
-}
-
-export const SEARCH_PLUS_PARAMETERS = {
-  type: "object",
-  required: ["query"],
-  properties: {
-    query: { type: "string", description: "Search query." },
-    count: { type: "number", minimum: 1, maximum: 10, description: "Result count (default 5)." },
-    freshness: { type: "string", description: "day, week, month or year." },
-    date_after: { type: "string", description: "Published after YYYY-MM-DD." },
-    date_before: { type: "string", description: "Published before YYYY-MM-DD." },
-    domain_filter: { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." },
-    country: { type: "string", description: "2-letter country code." },
-  },
-};
-
 const FRESHNESS_ALIASES = {
   day: "day", d: "day", pd: "day", "24h": "day", past_day: "day", today: "day",
   week: "week", w: "week", pw: "week", "7d": "week", past_week: "week",
@@ -93,7 +69,7 @@ const PAID_ACCOUNT_COOLDOWN_MS = 5 * 60000;
 const KEYED = { exa: ["exaApiKey", "exaKeySource"], "parallel-paid": ["parallelApiKey", "parallelKeySource"] };
 const MAX_COOLDOWN_MS = 24 * 3600000;
 // Paces paid Parallel under its 600-a-minute limit, in one window every room's process books
-// (<stateDir>/paid-rate.json); a full window falls through to the free engines.
+// (<stateDir>/paid-rate.json, a worker's counted with the shared one); a full window falls through to the free engines.
 export function resetCooldowns() {
   COOLDOWN_UNTIL.clear();
 }
@@ -142,7 +118,8 @@ async function runEngineChain(a, settings, signal) {
       attempts.push({ engine, ms: 0, error: "cooldown", until: new Date(until).toISOString() });
       continue;
     }
-    if (engine === "parallel-paid" && takeWindow(path.join(settings.stateDir, "paid-rate.json"), { perMinute: settings.paidRatePerMinute })) {
+    const also = settings.sharedStateDir ? [path.join(settings.sharedStateDir, "paid-rate.json")] : [];
+    if (engine === "parallel-paid" && takeWindow(path.join(settings.stateDir, "paid-rate.json"), { perMinute: settings.paidRatePerMinute, also })) {
       attempts.push({ engine, ms: 0, error: "local_rate_limit" });
       continue;
     }
@@ -200,7 +177,7 @@ export async function runSearchPlus(args, ctx, execCtx) {
   const started = Date.now();
   const signal = execCtx?.signal;
   signal?.throwIfAborted?.();
-  const settings = resolvePluginSettings(ctx?.config, testOverrides);
+  const settings = resolvePluginSettings(ctx?.config);
   const a = readArgs(args);
   const log = {
     ts: new Date().toISOString(),
@@ -229,7 +206,6 @@ export async function runSearchPlus(args, ctx, execCtx) {
       log.result_count = payload.results.length;
       log.youtube_links = payload.results.filter((r) => isYouTubeVideoUrl(r.url)).length;
     }
-    lastCall = { ...log, query: a.query };
     appendCallLog(settings, log);
     // The engines this call tried (a cached answer tried none): tools.mjs names them and books the paid ones.
     return { ...payload, engine: log.engine, attempts: log.attempts };
@@ -400,14 +376,4 @@ export async function runSearchPlus(args, ctx, execCtx) {
   };
   if (results.length > 0) cacheSet(key, { ...payload, __engine: base.engine }, ttl);
   return finish(payload);
-}
-
-export function buildSearchPlusTool(_ctx) {
-  const ctx = _ctx;
-  return {
-    description:
-      "Search the web (Exa first, then Parallel's paid Search API, You.com's keyless search and Parallel's free Search MCP as fallbacks). When a YouTube video is the likely answer, its transcript excerpts are already in the result snippet with timestamped links.",
-    parameters: SEARCH_PLUS_PARAMETERS,
-    execute: async (args, executionContext) => runSearchPlus(args, ctx, executionContext),
-  };
 }

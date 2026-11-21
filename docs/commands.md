@@ -61,7 +61,7 @@ a chat's whole history into the day logs, no room made: discord:<channel or thre
 tokens, rests and health per account; cool, clear, token, mint, health
 
 - `[ACTION]`: one of list, cool, clear, token, mint, health; default list
-- `[NAME]`: cool, clear, token: the account
+- `[NAME]`: cool, clear, token, mint: the account
 - `[MINUTES]`: cool: minutes to rest; default 30.0
 - `--kind KIND`: cool: the rest's kind (default manual)
 - `--issued ISSUED`: token: the issue date, YYYY-MM-DD (default today)
@@ -73,7 +73,7 @@ tokens, rests and health per account; cool, clear, token, mint, health
 
 ### yerk status
 
-the daemon, its rooms, each account's 5-hour and weekly meters, and the running workers (from the ledger, checked against the unit list)
+the card: the daemon and its rooms; each account's 5-hour and weekly meters and the one the next turn tries; each room's running turn and what waits; the channel a room watches; the rooms put on an account; the version and commit; the add-ons; texting's mode, its bridge up or down since when, the last text in and out, how many held and unseen; the running workers (from the ledger, checked against the unit list); the jobs due within the hour; each unit's memory and CPU; today's median first line and turn; the spend on an uncapped install; the newest backup's age; today's stalls
 
 - `--full`: the developer detail: pid, unit names, reading ages
 - `--json`: one JSON document for a monitoring tool: rooms, accounts, last turn per room, the last day's failures, the index, the backup's age
@@ -100,6 +100,7 @@ workers: start (needs a running yerkd), list, stop, report
 - `--account ACCOUNT`: start: the account to run on (default [workers], else the first not resting)
 - `--model MODEL`: start: the model (default [workers], else the room's)
 - `--effort EFFORT`: start: the thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)
+- `--addon ADDON`: start: one of the room's own add-on tools it gets too, a tool or a server's name (repeat for each), beside the room's worker_addons; repeat for each
 - `--limit LIMIT`: list: how many; default 20
 - `--json`
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
@@ -174,13 +175,14 @@ add a one-shot or a recurring job, remove one, or list them (the room's `schedul
 - `--account ACCOUNT`: add: agent jobs, the account to run on
 - `--model MODEL`: add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)
 - `--effort EFFORT`: add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)
+- `--addon ADDON`: add: agent jobs, one of the room's own add-on tools the worker gets too, a tool or a server's name (repeat for each), beside the room's worker_addons; repeat for each
 - `--json`
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
 ### yerk recall-bench
 
-the fixed question set against the memory index: top six and top one hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)
+the fixed question set against the memory index: top six and top one hit rates (exit 5 when a control misses, 2 no question set, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)
 
 - `--questions QUESTIONS`: the recall kind's question file (default: [memory] bench, else <private>/evals/recall-questions.json); the episodic and self kinds are episodic-questions.json and self-questions.json beside it
 - `-k K`: results per question (default 6, the recall tool's default)
@@ -214,6 +216,23 @@ taste: the taste judge replayed over the owner's complaints and the replies they
 - `--jobs JOBS`: judge calls in flight at once; default 4
 - `--cap CAP`: seconds a judge call may take (default 20)
 - `--sample SAMPLE`: a stratified N cases (by verdict) and N controls (by room), not all
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
+### yerk texting ACTION
+
+sheets --check: the reply list and each person's sheet read, nothing written; one line, with its file, for each that does not load, a sheet missing and a file no one names; exit 1 then. replay --since DAY: past threads through the writer and the check as of each cut, the plan only without --run; counts printed, each cut beside what went in one private file, nothing sent
+
+- `ACTION`: one of sheets, replay
+- `--check`: sheets: needed
+- `--since SINCE`: replay: the first day a cut may fall on, YYYY-MM-DD (needed)
+- `--person PERSON`: replay: one person's key on the reply list, not everyone with a sheet
+- `--limit LIMIT`: replay: cuts a person, newest first (default 10)
+- `--old-log OLD_LOG`: replay: the old agent's log; an answer it quotes is marked auto, not the owner's
+- `--run`: replay: make the calls; without it the plan only, nothing called
+- `--model MODEL`: replay: the model its calls run on (default: the report room's, as the live writer)
+- `--sender`: replay: no model call: every burst since the day through the live sender, its early, middle and late send time and its read of the thread at each; counts printed, one private file
+- `--of OF`: replay --sender: only the cuts this finished run's file marks released by the check
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
@@ -290,10 +309,10 @@ an archive back, read whole against its manifest first: into an empty folder, or
 
 ### yerk doctor
 
-the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)
+the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a day it also fetches the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)
 
 - `--dry-run`: say what would be mended or scrubbed, change nothing
-- `--scrub`: only the scrub: each secret-shaped line's value swapped for [scrubbed], every line kept, each file copied first into <private>/backups/scrub-<day>/
+- `--scrub`: only the scrub: each secret-shaped line's value, and each saved login's password, swapped for [scrubbed], every line kept, each file copied first into <private>/backups/scrub-<day>/
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
@@ -314,7 +333,7 @@ the night's card curation: the sweep (repeats, superseded and past-date lines, c
 
 - `--since SINCE`: each day from this date (YYYY-MM-DD) to yesterday, for a backfill
 - `--dry-run`: say what it would change and propose, change nothing
-- `--rules`: the rule files alone: merges, cuts, condensations and promotions proposed into <memory>/rules-proposals/<day>.md, never applied
+- `--rules`: the rule files alone: merges, cuts, condensations, moves to the topic rules, promotions and gates (a code check named, never built) proposed into <memory>/rules-proposals/<day>.md, never applied
 - `--apply DAY N`: the owner's word: proposals N[,N...] of DAY written, backed up and fitted to each file's line, or `undo`: the last apply put back
 - `--lessons`: the conversion's dry run: the rule store as lesson files and an index, proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written
 - `--lessons-apply FILE`: that exact proposals file applied, the originals copied first

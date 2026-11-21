@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 23 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 25 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -19,8 +19,10 @@ channel id both mean this room. Returns the posted message ids.
 ## hold
 
 ```text
-End your turn while you wait on a named event or worker. After this call write one short
-line saying what you are waiting for, and make no more tool calls; the room hears when it happens.
+End your turn while you wait on a worker or a named event. After this call write one short
+line saying what you are waiting for, and make no more tool calls. A worker's result comes back to
+the room by itself. Nothing watches any other event: the room hears of one only from the next
+message, or from a job you schedule to check it.
 ```
 
 - `wait_for`: string, required
@@ -86,7 +88,10 @@ your words) is your note, and is shown as your note, never as their words.
 Heavy work leaves the room: a worker is a headless run with its own card in the room and a
 report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
 leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
+add-on tools it gets too, as named here or by server, such as a browser; unnamed it has a shell, files, the web and the
+add-ons this room gives every worker, and reads this room's memory with recall and read_memory where the install gives
+workers those; a step needing `confirmed` it leaves ready for you). Returns its id, folder
 and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
 NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words).
 ```
@@ -100,6 +105,7 @@ NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gi
 - `account`: string, default ""
 - `model`: string, default ""
 - `effort`: string, default ""
+- `addons`: list of string or null, default null
 
 ## schedule
 
@@ -112,8 +118,10 @@ owner's rooms, "note" in any other): "note", a reminder
 (when it is due this room is told the text and says it in its own voice; no worker, shell or
 account); "agent", the brief a worker gets (a headless run with a card here, its last message told
 by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
-`model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
-output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
+`model` one from the install's list, default this room's live ones; it has a shell, files and the web, of your tools
+only the add-ons this room gives every worker, those `addons` names and recall and read_memory where the install gives
+workers those, never send, text or email, so a light timed check needing your tools is a note); "script", the shell
+line to run (no model call, its output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
 adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
 rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
 next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.
@@ -133,6 +141,7 @@ next fire time read back from systemd. "remove": by `name`. "list": the jobs thi
 - `account`: string, default ""
 - `model`: string, default ""
 - `effort`: string, default ""
+- `addons`: list of string or null, default null
 
 ## settings
 
@@ -147,6 +156,19 @@ a new session starts; with none it says what the room runs now. Say its `line`.
 - `model`: string, default ""
 - `effort`: string, default ""
 - `account`: string, default ""
+
+## people
+
+```text
+Who this room answers in its channel besides the owner, and the owner's change to it ("answer them here too"): op
+`add` with `person` one of their messages in this channel, by the id in the [m:ID] that ends its day-log line or by
+its link, answers them from their next message on; `drop` with their handle or id stops one so added; no op says who
+is answered. `said` is the owner's own words in this turn asking it, three or more. Say its `line`.
+```
+
+- `op`: string, default ""
+- `person`: string, default ""
+- `said`: string, default ""
 
 ## transcribe
 
@@ -204,9 +226,9 @@ saved to this room's inbox first; a message in a channel this room does not read
 ```text
 After you Read a picture sent to you and before your answer: file what you read on it, so a later recall finds
 it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in reading order (a chat
-screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows, a person in it "the
-owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only by that text, else "a man" or
-"a woman". Saved beside it as NAME.seen.txt.
+screenshot keeps who said what as shown), except a password, a passphrase, a key or a token it shows, which is written [left out] in its place, never its value; "" if none; `shows` one or two lines of what it shows, a
+person in it "the owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only
+by that text, else "a man" or "a woman". Saved beside it as NAME.seen.txt.
 ```
 
 - `path`: string, required
@@ -269,6 +291,17 @@ it was just read from the Mac; with it false the Mac is asleep or away and the a
 
 - `limit`: integer, default 0
 
+## texting
+
+```text
+The owner's texting settings, in one owner room only. There, op `help` says what it reads and changes.
+```
+
+- `op`: string, required
+- `person`: string, default ""
+- `value`: string, default ""
+- `said`: string, default ""
+
 ## delete
 
 ```text
@@ -279,19 +312,6 @@ and why, and the space freed.
 ```
 
 - `paths`: list of string, required
-
-## reverse_image_search
-
-```text
-Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
-picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
-Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
-maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
-picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
-as a guess.
-```
-
-- `path`: string, required
 
 ## zoom
 
@@ -366,6 +386,18 @@ desktop screenshot of the rectangle given) only then; `off` true: off.
 - `where`: string, default ""
 - `screen`: string, default ""
 - `off`: boolean, default false
+
+## show
+
+```text
+Opens a file of this room's folders on the owner's PC screen when they ask to have it up, since your shell reaches
+no screen: `path` its whole path (a built HTML deck, a PDF, a picture, a video). It opens in their own browser, never
+run; `screen` the monitor they name (left, middle, right, primary or its number from the left; default [page] screen)
+puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first.
+```
+
+- `path`: string, required
+- `screen`: string, default ""
 
 ## attachments
 
