@@ -318,9 +318,9 @@ total = 134145
 # that share a label, each listed with its nth and never the first bound by itself), since a room sent to a showtimes page
 # met three "Preview seats" buttons, the click always taking the first, and the group it wanted sat below what the tab
 # showed with no way to move the page; filed 2026-11-21: the five entries 10,555 to 10,892 as the plug-in's branch
-# need-2026-11-21-133 (67d93f6) builds them on its main 9f7c3ca, 337 more, by the plug-in's own measure, its test's cap
-# moving with it; so 10,953, no part could pay, the total rose by the 337 (to 134,145 on main's 133,808). Yerk AI's own
-# tool entries do not change.
+# need-2026-11-21-133 (8f9ffae, its main 94f220f merged in, whose secret-shot left the entries as they were) builds
+# them, 337 more, by the plug-in's own measure, its test's cap moving with it; so 10,953, no part could pay, the total
+# rose by the 337 (to 134,145 on main's 133,808). Yerk AI's own tool entries do not change.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132

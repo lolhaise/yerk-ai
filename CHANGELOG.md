@@ -20,9 +20,9 @@ version changes.
 - The browser's new `scroll` action moves one of the room's tabs a screen down or up, to its top or bottom, or to a
   control by its label, so a shot shows what sat below what the tab showed. It is a read, like a shot: it needs no word
   from you, and a picture taken before it is not clicked by position until a new shot is taken.
-- Both are built in the browser plug-in (the hands plug-in's branch need-2026-11-21-133); here, the `pick-and-scroll`
-  entry in abilities.toml says how they work, so a room that meets several alike buttons asks for the one it means
-  by number.
+- Both are built in the browser plug-in (the hands plug-in's branch need-2026-11-21-133 at 8f9ffae, 211 cases, its
+  newer main merged in); here, the `pick-and-scroll` entry in abilities.toml says how they work, so a room that meets
+  several alike buttons asks for the one it means by number.
 - **Upgrading**: budgets.toml's `mcp__hands__` line rises from 10,616 to 10,953 for the plug-in's longer tool entries,
   and `total` by the same 337, to 134,145. An install that keeps its own budgets.toml raises both the same way.
 
