@@ -1101,9 +1101,9 @@ def branch(tree: Path, now: float | None = None) -> dict[str, Any]:
     worktree's .git is a pointer into the plug-in's own .git, which no room reads, and a commit there is compressed, so a
     relay read neither its head nor its commits): its repository's own checkout (`repo`) and the branch that is on (`base`),
     its branch (None when detached) and head, how many commits each side has that the other lacks, the newest COMMITS of
-    those its base lacks (of its own history when that checkout is on no branch), each sha, subject and age, and how many
-    of its files are not committed. Read only: no fetch, no ref, lock or index written, no fsmonitor or signature program
-    run; a worktree git cannot read is git's first line of why."""
+    those its base lacks (of its own history when that checkout is on no branch, and when its base holds its head, `on_base`:
+    a branch landed since), each sha, subject and age, and how many of its files are not committed. Read only: no fetch, no ref, lock or
+    index written, no fsmonitor or signature program run (a clean filter its config names still can); a worktree git cannot read is git's first line of why."""
     now = time.time() if now is None else now
 
     def git(*a: str) -> subprocess.CompletedProcess[str]:
@@ -1119,8 +1119,8 @@ def branch(tree: Path, now: float | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {"worktree": str(tree), "repo": next((x[9:] for x in first if x.startswith("worktree ")), ""), "base": base,
                            "branch": git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() or None, "head": head[:7]}
     if base and len(n := git("rev-list", "--left-right", "--count", f"refs/heads/{base}...{head}", "--").stdout.split()) == 2:
-        out["only_on_base"], out["not_on_base"] = int(n[0]), int(n[1])
-    log_ = git("log", "-n", str(COMMITS), "--format=%H%x1f%ct%x1f%s", f"refs/heads/{base}..{head}" if base else head, "--")
+        out["only_on_base"], out["not_on_base"], out["on_base"] = int(n[0]), int(n[1]), n[1] == "0"
+    log_ = git("log", "-n", str(COMMITS), "--format=%H%x1f%ct%x1f%s", f"refs/heads/{base}..{head}" if base and not out.get("on_base") else head, "--")
     out["commits"] = [{"sha": c[0][:7], "subject": words.line(c[2], 120), "when": words.since(now - int(c[1]))}
                       for c in (x.split("\x1f", 2) for x in log_.stdout.splitlines()) if len(c) == 3 and c[1].isdigit()]
     st = git("status", "--porcelain", "--untracked-files=normal")

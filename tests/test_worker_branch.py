@@ -80,9 +80,9 @@ def test_the_wall_a_plug_in_worktrees_git_stays_shut_to_the_room_and_the_report_
     assert r["ok"] and r["worktrees"] == [str(d / "example-wt"), str(d / "wt")]
     got = [{k: v for k, v in b.items() if k != "commits"} for b in r["branches"]]
     assert got == [{"worktree": str(d / "example-wt"), "repo": str(plugin), "base": "main", "branch": "example-branch",
-                    "head": shas[3][:7], "only_on_base": 0, "not_on_base": 4, "not_committed": 0},
+                    "head": shas[3][:7], "only_on_base": 0, "not_on_base": 4, "on_base": False, "not_committed": 0},
                    {"worktree": str(d / "wt"), "repo": str(own), "base": "main", "branch": "need-example-1",
-                    "head": yours[:7], "only_on_base": 0, "not_on_base": 1, "not_committed": 0}]
+                    "head": yours[:7], "only_on_base": 0, "not_on_base": 1, "on_base": False, "not_committed": 0}]
     assert [(c["sha"], c["subject"]) for c in r["branches"][0]["commits"]] == [
         (s[:7], f"step {i}: an example change") for i, s in reversed(list(enumerate(shas, 1)))]       # newest first, base's none
     assert workers.branch(d / "example-wt", now=AT + 60 * 4 + 180)["commits"][:2] == [
@@ -111,6 +111,86 @@ def test_a_detached_worktree_a_base_that_moved_files_not_committed_and_a_long_br
     assert [c["sha"] for c in read["commits"]] == [shas[1][:7], shas[0][:7]]
     assert (long["only_on_base"], long["not_on_base"], long["not_committed"]) == (1, workers.COMMITS + 2, 2)
     assert [c["sha"] for c in long["commits"]] == [s[:7] for s in reversed(shas)][:workers.COMMITS]
+
+
+def test_a_branch_its_base_already_holds_lists_its_own_newest_commits_and_says_so(tmp_path):
+    """The deeper check's row: the worker this need came from had been landed by the time its result was relayed (its base
+    fast-forwarded to its head), and the report then listed no commit at all, since its base lacked none. A branch its base
+    holds, landed or passed by a base that moved on, lists its own newest COMMITS and says so (`on_base`); one ahead of its
+    base says it is not, and lists only what its base lacks, as before."""
+    plugin, d = repo(tmp_path / "example-plugin"), tmp_path / "workers" / WID
+    git(plugin, "worktree", "add", "-q", str(d / "example-wt"), "-b", "example-branch", "main")
+    shas = commits(d / "example-wt", 3)
+    ahead = workers.branch(d / "example-wt", now=AT)
+    assert ahead["on_base"] is False and [c["sha"] for c in ahead["commits"]] == [s[:7] for s in reversed(shas)]
+    git(plugin, "merge", "-q", "--ff-only", "example-branch")                      # landed: its base is at its head now
+    landed = workers.branch(d / "example-wt", now=AT)
+    assert (landed["only_on_base"], landed["not_on_base"], landed["on_base"]) == (0, 0, True)
+    assert [c["subject"] for c in landed["commits"]] == [*(f"step {i}: an example change" for i in (3, 2, 1)), "base"]
+    (plugin / "MAIN.txt").write_text("moved on\n")
+    git(plugin, "add", ".")
+    git(plugin, "commit", "-q", "-m", "main moved on")
+    past = workers.branch(d / "example-wt", now=AT)
+    assert (past["only_on_base"], past["not_on_base"], past["on_base"]) == (1, 0, True)
+    assert [c["sha"] for c in past["commits"]][:3] == [s[:7] for s in reversed(shas)]
+    assert "main moved on" not in [c["subject"] for c in past["commits"]]         # its own history, never its base's later commits
+
+
+def test_the_read_writes_no_stale_index_runs_no_fsmonitor_program_and_bounds_every_git_call(tmp_path, monkeypatch):
+    """The deeper check's rows, each a break of its that no test caught: an index whose entry is stale stays as it was
+    (git would refresh and write it); a fsmonitor program the repository's config names is never run; every git call
+    carries the three guards and its 20 seconds; a git that times out is one line of why, never a traceback."""
+    plugin, d = repo(tmp_path / "example-plugin"), tmp_path / "workers" / WID
+    git(plugin, "worktree", "add", "-q", str(d / "example-wt"), "-b", "example-branch", "main")
+    commits(d / "example-wt", 2)
+    index, mark = plugin / ".git" / "worktrees" / "example-wt" / "index", tmp_path / "ran.txt"
+    os.utime(d / "example-wt" / "step-1.txt", (AT + 9_000, AT + 9_000))            # stale to the index, its words the same
+    program = tmp_path / "program.sh"
+    program.write_text(f"#!/bin/sh\necho ran >> {mark}\nexit 1\n")
+    program.chmod(0o700)
+    git(plugin, "config", "core.fsmonitor", str(program))
+    mark.unlink(missing_ok=True)                                                   # whatever the test's own git ran
+    before, calls, real = index.read_bytes(), [], subprocess.run
+
+    def spy(argv, **k):
+        calls.append((argv, k))
+        return real(argv, **k)
+    monkeypatch.setattr(workers.subprocess, "run", spy)
+    got = workers.branch(d / "example-wt", now=AT)
+    assert got["not_on_base"] == 2 and got["not_committed"] == 0
+    assert index.read_bytes() == before and not mark.exists() and not list((plugin / ".git").rglob("*.lock"))
+    assert len(calls) == 6
+    for argv, k in calls:
+        assert argv[:8] == ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "-C", str(d / "example-wt")], argv
+        assert k.get("timeout") == 20, k
+
+    def hang(argv, **k):
+        raise subprocess.TimeoutExpired(argv, k["timeout"])
+    monkeypatch.setattr(workers.subprocess, "run", hang)
+    slow = workers.branch(d / "example-wt", now=AT)
+    assert list(slow) == ["worktree", "error"] and slow["error"].startswith(words.BRANCH_UNREAD.format(why="")) and "\n" not in slow["error"]
+
+
+def test_ten_commits_a_subject_cut_to_its_line_a_long_why_cut_and_a_folder_with_a_git_of_its_own_never_read(tmp_path):
+    """More of the deeper check's rows: the report lists ten commits, a number and no knob; a subject past 120 characters is
+    cut as every line a room is handed is; git's why is its first line, 160 characters at most; and a folder that holds a
+    .git of its own (a repository a worker made, its config its own) is no worktree and is never read."""
+    plugin, d = repo(tmp_path / "example-plugin"), tmp_path / "workers" / WID
+    git(plugin, "worktree", "add", "-q", str(d / "example-wt"), "-b", "example-branch", "main")
+    (d / "example-wt" / "long.txt").write_text("long\n")
+    git(d / "example-wt", "add", ".")
+    subject = "a subject " + "that goes on " * 30
+    git(d / "example-wt", "commit", "-q", "-m", subject.strip())
+    [c] = workers.branch(d / "example-wt", now=AT)["commits"]
+    assert workers.COMMITS == 10 and c["subject"] == words.line(subject.strip(), 120) and len(c["subject"]) <= 121
+    deep = tmp_path / ("a-long-folder-name-" * 9) / ".git" / "worktrees" / "wt"
+    (d / "wt").mkdir()
+    (d / "wt" / ".git").write_text(f"gitdir: {deep}\n")
+    why = workers.branch(d / "wt")["error"]
+    assert len(str(deep)) > 160 and len(why) == len(words.BRANCH_UNREAD.format(why="")) + 160 and "\n" not in why
+    own = repo(d / "own-wt")                                                        # a repository of the worker's own making
+    assert (own / ".git").is_dir() and str(own) not in workers.worktrees(d)
+    assert sorted(workers.worktrees(d)) == [str(d / "example-wt"), str(d / "wt")]
 
 
 def test_a_worktree_git_cannot_read_is_one_line_and_the_report_still_answers(tmp_path):

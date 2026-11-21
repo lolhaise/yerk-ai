@@ -27,6 +27,7 @@ version changes.
   branch". The README and the GUIDE say it beside the worker reads.
 - **Upgrading**: nothing to change. The mechanics stay inside their 8,900, and budgets.toml's `[code] lines` rises from
   33,625 to 33,661.
+- The deeper check, on the worker the need came from: its branch had been landed by the time its result was relayed, so its base lacked no commit and the report listed none. A branch its base already holds lists its own newest ten and says so (`on_base`). Tests for what the read promises and no test held: a stale index left as it was, no fsmonitor program run, each git call's guards and its 20 seconds, ten commits, a subject and a why cut, a folder with a .git of its own never read. A clean filter the repository's config names can still run on a changed file, and the docstring says so.
 
 ### need-2026-11-21-133 (#120)
 
