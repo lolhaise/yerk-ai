@@ -823,7 +823,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 raised it by 30 more, the judging of its real passes met, not folded to fit: conversion.py 17 (a rule the reviewer still drops after the last round counted in the verdict; a bracket held whole in the accounting, so an abbreviation in it ends no sentence), move.py 6 (room add's measure, a function a test reaches), lessons.py 5 (a lesson's summary line, what a capped start carries again), context.py 1, words.py 1 (a lesson's cite with or without its line). 34,623: 34,593 plus 30.
 
-- `lines = 34623`
+2026-11-21: lesson-store-2026-11-21 raised it by 45 more, a dry run resumed from an earlier proposals file (`--from FILE`), not folded to fit: conversion.py 43 (each rule's reasons rows in the record; a rule that passed there kept word for word with no model call, its slugs held from the rest; the head's count), cli.py 2 (the flag). 34,668: 34,623 plus 45.
+
+- `lines = 34668`
 
 ## Uncapped
 

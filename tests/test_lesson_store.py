@@ -496,6 +496,79 @@ def test_the_accounting_reads_a_sentence_whole_across_an_abbreviation_in_bracket
     assert conversion.accounted({"said": said}, lesson, []) == [whole]       # and a bracket's own last stop still ends one
 
 
+SHOP = {"example ledger": ("post", "holds my accounts"), "example till": ("open", "holds the float"), "example rota": ("move", ""),
+        "example shelf": ("empty", "holds the stock"), "example key": ("lend", "opens the hall"), "example lamp": ("dim", "")}
+AT_SHOP = "(example-room, 2025-11-01 09:00:00-04:00)"
+
+
+def shop_store(tmp_path):
+    """old_store with five rules out of the shape at tree/rules.md:6 to :10 (never do a thing), a reason on file for four."""
+    m = old_store(tmp_path)
+    jobs = ["example ledger", "example till", "example rota", "example shelf", "example key"]
+    (m.root / memory.RULES).write_text("\n".join(["---", "class: shared", "---", "# Rules", "", *(
+        f"- {j}: Never {SHOP[j][0]} the {j}. {AT_SHOP} [m:s{i}]" for i, j in enumerate(jobs))]) + "\n")
+    (m.root / "rules-proposals").mkdir()
+    for i, j in enumerate(jobs):
+        if SHOP[j][1]:
+            reason(m, f"tree/rules.md:{6 + i}", f"the {j} {SHOP[j][1]}", SHOP[j][1])
+    return m
+
+
+def reason(m, cite: str, line: str, why: str) -> None:
+    """An owner's day-log line, and a row of reasons.tsv naming it for `cite`."""
+    day = next(m.daily.glob("*.md"))
+    day.write_text(day.read_text() + memory.format_line(datetime_at(NOW - 3000), "example-room", "r1", "owner", "", line, "private", "s9") + "\n")
+    with (m.root / "rules-proposals" / "reasons.tsv").open("a") as f:
+        f.write(f"{cite}\tdaily/{day.name}:{len(day.read_text().splitlines())}\t{why}\n")
+
+
+def shop_model(asked: set[str], drop: set[str]):
+    """The model pass's stand-in: each rule's lesson in the gate's shape with its reason on file, none for a rule with none;
+    the knock-down drops the cites in `drop`; `asked` gathers each cite a first proposal is asked for."""
+    import re
+
+    def model(prompt: str, tools: str) -> str:
+        rules = re.findall(r"^=== (\S+) \(job: ([^)]*)\)\n(.*)$", prompt := prompt.lstrip(), re.M)
+        if prompt.startswith("You check the lessons"):
+            return "\n".join(f"DROP {c} | it adds a case" if c in drop else f"KEEP {c}" for c, *_ in rules)
+        if prompt.startswith("The gate refused"):
+            return ""
+        asked.update(c for c, *_ in rules)
+        return "\n".join(json.dumps({"cite": c, "lessons": [{"summary": f"Keep the {j} as it is.", "body": f"Never {SHOP[j][0]} it"
+                          + (f", since it {SHOP[j][1]}." if SHOP[j][1] else "."), **({"reason": {"said": SHOP[j][1], "from": "the reason on file"}}
+                          if SHOP[j][1] else {})}], "rewritten": [{"said": said, "as": "the lesson"}]}) for c, j, said in rules)
+    return model
+
+
+def test_a_dry_run_from_an_earlier_file_keeps_each_rule_that_passed_with_no_model_call_and_redoes_the_rest(tmp_path):
+    import shutil
+
+    from yerk_ai import conversion
+    m, asked = shop_store(tmp_path), set[str]()
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, {"tree/rules.md:9"}), read=FABLE2)
+    (tmp_path / "elsewhere").mkdir()
+    shutil.copy(first, earlier := tmp_path / "elsewhere" / "earlier.md")                 # a file from another folder
+    was = {x["cite"]: x for x in conversion.loaded(earlier)["rules"]}
+    assert asked == {f"tree/rules.md:{n}" for n in range(6, 11)} and was["tree/rules.md:8"]["lessons"][0]["gate"]   # no reason: refused
+    assert all(not x["gate"] for n in (6, 7, 9, 10) for x in was[f"tree/rules.md:{n}"]["lessons"]) and not was["tree/rules.md:6"]["missing"]
+    assert any(d["kind"] == "reviewer dropped" for d in was["tree/rules.md:9"]["done"])
+    rows = (m.root / memory.RULES).read_text().replace("- example till: Never open the example till.", "- example key: Never open the example till at night.")
+    (m.root / memory.RULES).write_text(rows + f"- example lamp: Never dim the example lamp. {AT_SHOP} [m:s8]\n")    # :7 changed, :11 new
+    reason(m, "tree/rules.md:6", "the example ledger is the only book", "is the only book")                       # a new row for :6
+    asked.clear()
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()),
+                                                       read=FABLE2, earlier=earlier))
+    now = {x["cite"]: x for x in rec["rules"]}
+    assert asked == {"tree/rules.md:6", "tree/rules.md:7", "tree/rules.md:8", "tree/rules.md:9", "tree/rules.md:11"}   # :10 costs no call
+    assert now["tree/rules.md:10"]["lessons"] == was["tree/rules.md:10"]["lessons"] and now["tree/rules.md:10"]["lessons"][0]["slug"] == "example-key"
+    assert {"kind": "kept from an earlier file", "why": "earlier.md, as it made it: its lessons word for word, no model call"} in now["tree/rules.md:10"]["done"]
+    assert now["tree/rules.md:7"]["lessons"][0]["slug"] == "example-key-2"          # a redone rule takes no slug a kept one holds
+    assert any(d["kind"] == "kept from an earlier file" for d in now["tree/rules-topics.md:3"]["done"])     # one in the shape too
+    assert rec["from"] == {"path": str(earlier), "kept": 2, "redone": 5} and now["tree/rules.md:6"]["reasons"][-1].endswith("\tis the only book")
+    assert f"Kept from {earlier}: 2 rules word for word, with no model call; 5 redone." in path.read_text().splitlines()[:8]
+    assert "1 rule the reviewer dropped after the last round, each listed" not in rec["why"]       # :9 redone, and kept this time
+
+
 def datetime_at(t: float):
     from datetime import datetime, timezone
     return datetime.fromtimestamp(t, timezone.utc)

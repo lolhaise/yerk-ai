@@ -547,8 +547,8 @@ def cmd_curate(a: argparse.Namespace) -> int:
     knocked down, checked and landed past the bench, then the rule files' proposals; --dry-run changes nothing. --rules:
     the proposals alone; --apply DAY N[,N...]: the owner's word, those proposals written (or `undo`, the last apply back)."""
     from . import conversion, curate
-    if a.lessons or a.lessons_apply or a.lessons_undo:
-        return conversion.main(private_dir(a.private), state_dir(a.state), a.lessons_apply or "", a.lessons_undo or "")
+    if a.lessons or a.lessons_apply or a.lessons_undo or a.lessons_from:
+        return conversion.main(private_dir(a.private), state_dir(a.state), a.lessons_apply or "", a.lessons_undo or "", a.lessons_from or "")
     if a.apply:
         return curate.apply_main(private_dir(a.private), state_dir(a.state), *a.apply)
     if a.rules:
@@ -1050,6 +1050,8 @@ def parser() -> argparse.ArgumentParser:
                     "proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written")
     cu.add_argument("--lessons-apply", metavar="FILE", help="that exact proposals file applied, the originals copied first")
     cu.add_argument("--lessons-undo", metavar="DAY", help="the originals of DAY's conversion put back")
+    cu.add_argument("--from", dest="lessons_from", metavar="FILE", help="with --lessons: each rule that passed in that earlier "
+                    "proposals file kept word for word, with no model call; every other rule proposed again")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory, room); all when left out")

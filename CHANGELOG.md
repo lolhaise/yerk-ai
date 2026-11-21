@@ -95,6 +95,15 @@ version changes.
   given" finding on a lesson of a split rule is met by moving its steps into the lesson beside it.
 - The accounting reads a sentence whole across an abbreviation in brackets ("(Ex. Reg. 12/34)"): a bracket is never cut at
   a stop inside it, and a bracket's own last stop still ends its sentence.
+- `yerk curate --lessons --from FILE` resumes a dry run from an earlier proposals file, from any folder or store. A rule
+  is kept from it word for word, with no model call, when FILE has it under the same cite with the same words, each of
+  its lessons passes the gate as an apply reads it today, every sentence is accounted for, it lost no trigger, nothing of
+  it was still failing after the last round (the reviewer's drop among them), no slug of it is retired, and
+  `reasons.tsv` holds the same rows for its cite as then (the record now keeps each rule's rows). Every other rule goes
+  through the pass as in a fresh run, its lessons taking no slug a kept one holds; the trigger test and the verdict read
+  all of them. The file's head says how many rules were kept from which file and how many redone, and each kept rule
+  carries a listed item saying so. A model pass is not repeatable, so a second full pass lost what the first got right;
+  one that keeps what passed only gets nearer to ready, and a rule filed after the review costs one rule's conversion.
 
 **Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then

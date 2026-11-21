@@ -338,6 +338,7 @@ the night's card curation: the sweep (repeats, superseded and past-date lines, c
 - `--lessons`: the conversion's dry run: the rule store as lesson files and an index, proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written
 - `--lessons-apply FILE`: that exact proposals file applied, the originals copied first
 - `--lessons-undo DAY`: the originals of DAY's conversion put back
+- `--from FILE`: with --lessons: each rule that passed in that earlier proposals file kept word for word, with no model call; every other rule proposed again
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 

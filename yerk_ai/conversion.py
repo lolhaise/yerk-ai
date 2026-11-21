@@ -48,6 +48,7 @@ READ = ("claude-fable-5-2",)
 WANTING = ("no reason given", "a negative with no why", "a hard style limit with no reason")   # what a reason on file would meet
 WRAP = re.compile(r"\s*</?examples(?:\s[^>]*)?>", re.I)    # the wrapper left round a rule's examples once code takes them out
 DROPPED = "the reviewer dropped it: "   # a finding of the knock-down: its proposal says other than the rule says
+KEPT = "kept from an earlier file"      # a listed item: a rule `--from FILE` kept word for word, with no model call
 
 
 def sha(p: Path) -> str:
@@ -210,6 +211,36 @@ def supplied_reasons(s: memory.Settings) -> dict[str, list[tuple[str, str]]]:
         rows = (s.daily / f).read_text(errors="replace").splitlines() if f and (s.daily / f).is_file() else []
         if not raw.startswith("#") and why.strip() and n.isdigit() and 0 < int(n) <= len(rows) and flat(why) in flat(rows[int(n) - 1]):
             out.setdefault(cite.strip(), []).append((at.strip(), why.strip()))
+    return out
+
+
+def reason_rows(s: memory.Settings) -> dict[str, list[str]]:
+    """cite -> each row of REASONS for it as written, its fields after the cite (a `none` row too), comments aside: kept in the
+    record, so a dry run from an earlier file can tell a rule whose rows changed since."""
+    p, out = s.root / curate.PROPOSALS / REASONS, dict[str, list[str]]()
+    for raw in p.read_text(encoding="utf-8", errors="replace").splitlines() if p.is_file() else []:
+        if raw.strip() and not raw.startswith("#"):
+            out.setdefault(raw.partition("\t")[0].strip(), []).append(raw.partition("\t")[2].strip())
+    return out
+
+
+def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: Callable[[dict[str, Any]], list[str]],
+            rows: dict[str, list[str]]) -> dict[str, dict[str, Any]]:
+    """cite -> the rule as the earlier proposals file `path` made it (a dry run's, from any folder or store), kept word for word
+    with no model call: when that file has it under the same cite with the same words, each lesson of it passes the gate as an
+    apply reads it today (`gate`), every sentence is accounted for, it lost no trigger, nothing of it was still failing after the
+    last round (the reviewer's drop among them), no slug of it is retired and REASONS holds the same rows for its cite as then."""
+    rec, gone = loaded(path), set(lessons.retired(s.root))
+    old, out = {m["cite"]: m for m in rec["rules"]}, dict[str, dict[str, Any]]()
+    for r in rules:
+        m = old.get(r["cite"])
+        if not m or m["text"] != r["text"] or m.get("reasons") != rows.get(r["cite"], []) or r["cite"] in rec["lost"] or any(
+                d["kind"] in ("still failing", "reviewer dropped") for d in m["done"]) or any(x["slug"] in gone for x in m["lessons"]):
+            continue
+        made = [{**x, "gate": gate(x)} for x in m["lessons"]]
+        if made and not any(x["gate"] for x in made) and not accounted(r, made, m["done"]):
+            out[r["cite"]] = {**m, "lessons": made, "missing": [], "done": [*(d for d in m["done"] if d["kind"] != KEPT), {
+                "kind": KEPT, "why": f"{path.name}, as it made it: its lessons word for word, no model call"}]}
     return out
 
 
@@ -380,6 +411,8 @@ def render(rec: dict[str, Any]) -> str:
            f"Store read: {', '.join(f'{k} {v[:12]}' for k, v in sorted(rec['store'].items()))}. Pages read: {', '.join(rec['read'])}.",
            f"Apply: `yerk curate --lessons-apply {rec['path']}`. Undo after it: `yerk curate --lessons-undo {rec['day']}`.",
            f"Ready to apply: {'yes' if rec['ready'] else 'no: ' + '; '.join(rec['why'])}.",
+           *([f"Kept from {rec['from']['path']}: {rec['from']['kept']:,} rule{'s' * (rec['from']['kept'] != 1)} word for word, "
+              f"with no model call; {rec['from']['redone']:,} redone."] if rec.get("from") else []),
            *([f"The index it would write: {rec['index'][0]:,} lines and {rec['index'][1]:,} bytes, against code-memory's "
               f"{rec['index'][2]:,} and {rec['index'][3]:,}."] if rec.get("index") else []), ""]
     for r in rec["rules"]:
@@ -399,21 +432,29 @@ def render(rec: dict[str, Any]) -> str:
 
 
 def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = None,
-            model: Callable[[str, str], str] | None = None, read: Any = None) -> Path:
-    """The dry run: the proposals file written, nothing else. Its path. `read`: the pages the gate reads, else READ's."""
+            model: Callable[[str, str], str] | None = None, read: Any = None, earlier: Path | None = None) -> Path:
+    """The dry run: the proposals file written, nothing else. Its path. `read`: the pages the gate reads, else READ's. `earlier`
+    (`--from FILE`): each rule that passed there kept as it made it (carried), every other rule proposed as in a fresh run, its
+    lessons taking no slug a kept one holds; the trigger test and the verdict read all of them."""
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     read = shape.pages(READ) if read is None else read
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
-    supplied, weights = supplied_reasons(s), memory.rarities([r["text"] for r in rules])
+    supplied, weights, rows = supplied_reasons(s), memory.rarities([r["text"] for r in rules]), reason_rows(s)
     for r in rules:
         r["keeps"] = keeps(r["text"], weights)
-    off = [r for r in rules if memory.unshaped(r["job"], r["said"], acronyms, s, read, seen)]
+    kept = carried(s, rules, earlier, lambda x: (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, read,
+                                                                 seen) or {}).get("fix", []), rows) if earlier else {}
+    taken |= {x["slug"] for m in kept.values() for x in m["lessons"]}
+    off = [r for r in rules if r["cite"] not in kept and memory.unshaped(r["job"], r["said"], acronyms, s, read, seen)]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)),
                        lambda r, x: findings(build(s, r, x, read, seen, set(taken), acronyms, supplied)), supplied)
     made = []
     for r in rules:
+        if r["cite"] in kept:
+            made.append(kept[r["cite"]])
+            continue
         made.append(build(s, r, (props.get(r["cite"]) or {}).get("prop"), read, seen, taken, acronyms, supplied))
         if (p := props.get(r["cite"])) and p["findings"]:
             made[-1]["done"].append({"kind": "still failing", "why": f"after {p['rounds']} round{'s' * (p['rounds'] != 1)} back to the model: "
@@ -422,7 +463,7 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
                 made[-1]["done"].append({"kind": "reviewer dropped", "why": f"after the last round: {drop.removeprefix(DROPPED)}"})
     lost, loads = trigger_test(rules, made, owner_messages(s, now))
     for r, m in zip(rules, made):
-        m["loads"] = loads.get(r["cite"], 0)
+        m["loads"], m["reasons"] = loads.get(r["cite"], 0), rows.get(r["cite"], [])
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
     path = s.root / curate.PROPOSALS / FILE.format(day=day)
     bare = [x for m in made for x in m["lessons"] if x["gate"] and all(g.startswith(WANTING) for g in x["gate"]) and any(
@@ -439,7 +480,8 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     over = [f"{n:,} {unit}, {n - cap:,} past {cap:,}" for n, cap, unit in ((lines, most, "lines"), (have, size, "bytes")) if n > cap]
     why += [f"the index it would write is past code-memory's limits: {' and '.join(over)}"] if over else []
     rec = {"day": day, "path": str(path), "store": {n: sha(s.root / n) for n in (memory.RULES, memory.TOPIC_RULES)}, "read": list(read),
-           "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size]}
+           "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size],
+           **({"from": {"path": str(earlier), "kept": len(kept), "redone": len(rules) - len(kept)}} if earlier else {})}
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     write_private(path, render(json.loads(json.dumps(rec, sort_keys=True))))      # as an apply will read it back
     return path
@@ -517,13 +559,14 @@ def undo(s: memory.Settings, day: str) -> list[str]:
     return [f"{len(have)} lessons removed; {memory.RULES} and {memory.TOPIC_RULES} put back from {backup.name}/"]
 
 
-def main(private: Path, state: Path, apply_to: str = "", undo_day: str = "") -> int:
-    """`yerk curate --lessons` (the dry run), `--lessons-apply FILE`, `--lessons-undo DAY`; exits 1 on a refusal, 2 when it could not run."""
+def main(private: Path, state: Path, apply_to: str = "", undo_day: str = "", start_from: str = "") -> int:
+    """`yerk curate --lessons` (the dry run; `--from FILE`, from an earlier proposals file), `--lessons-apply FILE`, `--lessons-undo
+    DAY`; exits 1 on a refusal, 2 when it could not run."""
     try:
         conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
         s = memory.settings(private, state, dict(conf.get("memory", {})))
         out = undo(s, undo_day) if undo_day else apply(private, state, s, Path(apply_to)) if apply_to else [
-            f"proposals: {dry_run(private, state, s)}; nothing else written"]
+            f"proposals: {dry_run(private, state, s, earlier=Path(start_from) if start_from else None)}; nothing else written"]
     except RuntimeError as e:
         print(f"refused: {e}")
         return 1
