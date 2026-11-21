@@ -1495,3 +1495,192 @@ def test_v3_a_reason_on_file_in_a_voice_of_the_lessons_own_is_a_fault_and_from_r
     rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2,
                                                earlier=earlier))
     assert rec["from"]["why"] == {"a fault the code finds": 1} and any("=== tree/rules.md:9 (job" in x for x in asked) and rec["ready"]
+
+
+# Run 7 (2026-11-21): the owner's reason on file is theirs to the exchange check, their words kept whole past the length, a rule asked again by name.
+MARKED = 'It bounced when he wrote "post the example ledger on the board".'      # the owner's own sentence: a mark beside their quote
+
+
+def test_x1_his_reason_on_file_quoted_as_his_beside_his_own_marked_sentence_is_his_to_the_exchange_check_and_listed_both_ways(tmp_path):
+    from yerk_ai import conversion
+    m, p = reason_store(tmp_path)
+    ledger_with(m, f"Never post the example ledger. {MARKED}")
+    body = f'Never post it, since he said "{REASON}". {MARKED}'
+    asked: list[str] = []
+    p = {**p, "lessons": [{**p["lessons"][0], "body": body}]}
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+    ledger = rec["rules"][2]
+    assert {g.split(":")[0] for g in ledger["lessons"][0]["gate"]} >= {conversion.UNTAGGED[:-2], conversion.RECORDS[:-2]} and ledger["faults"] == []
+    assert rec["ready"] and rec["own"] == rec["whole"] == {"example-ledger": "tree/rules.md:9"} and not any(x.startswith("The gate refused") for x in asked)
+    assert "Listed as his own sentence kept" in path.read_text() and {conversion.OWN, conversion.WHOLE} <= {d["kind"] for d in ledger["done"]}
+    rule = {"said": f"Never post the example ledger. {MARKED}", "job": "example ledger", "on_file": [REASON], "his": ()}
+    part = "the bank reads it on the first monday of every month"
+    assert conversion.own_sentences(rule, f"Keep it home. {body}")
+    assert not conversion.own_sentences({**rule, "on_file": []}, f"Keep it home. {body}")                    # no reason on file for it
+    assert not conversion.own_sentences(rule, f'Keep it home. Never post it, since he said "holds the example accounts". {MARKED}')  # no reason
+    assert not conversion.own_sentences(rule, f'Keep it home. Never post it, since he said "{part}". {MARKED}')            # a part of one
+    assert not conversion.own_sentences(rule, f'Keep it home. Never post it, since he said "{REASON}" and it bounced. {MARKED}')   # a mark
+    assert not conversion.own_sentences(rule, f'Keep it home. Never post it, since "{REASON}". {MARKED}')                  # not given as the owner's
+
+
+def test_x1_the_apply_works_his_reason_out_again_by_the_names_the_install_gives_him(tmp_path):
+    import pytest
+
+    from yerk_ai import conversion
+    m, p = reason_store(tmp_path)
+    ledger_with(m, f"Never post the example ledger. {MARKED}")
+    (named := tmp_path / "named").mkdir()
+    (named / "yerkd.toml").write_text(f'[curate]\nowner_names = ["{NAME}"]\n')
+    p = {**p, "lessons": [{**p["lessons"][0], "body": f'Never post it, since {NAME} said "{REASON}". {MARKED}'}]}
+    rec = conversion.loaded(path := conversion.dry_run(named, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2))
+    assert rec["ready"] and rec["own"] == {"example-ledger": "tree/rules.md:9"}
+    with pytest.raises(RuntimeError) as e:                       # an install that gives the owner no name: the reason is no longer given as theirs
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert str(e.value).startswith("example-ledger is listed as his own sentence kept, which its rule's words do not bear") and not lessons.converted(m.root)
+    conversion.apply(named, tmp_path / "state", m, path)
+    assert "tags round his sentence" in lessons.listed(m.root)["example-ledger"][2]
+
+
+LONGEST = ("Book the example hall a week ahead, since " + ", and ".join(f"the {w} hall fills by the Friday before the {w} fair" for w in (
+    "north", "south", "east", "west", "upper", "lower", "inner", "outer", "front", "back", "old", "new", "small")) + ".")   # past 600 alone
+ROTA = "Post the rota on the board, since the crew reads it there."
+
+
+def long_run(tmp_path, rule: str, lessons_: list[dict]) -> tuple[dict, list[str], object]:
+    """The ledger rule given `rule` as its words, its lessons `lessons_`: the dry run's record, the prompts sent back, the file."""
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    ledger_with(m, rule)
+    asked: list[str] = []
+    prop = {"cite": "tree/rules.md:9", "lessons": lessons_}
+    path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(prop, asked), read=FABLE2)
+    return conversion.loaded(path), [x for x in asked if x.startswith("The gate refused")], path
+
+
+def test_x2_a_sentence_of_his_alone_past_the_length_or_the_rule_whole_is_carried_and_listed_and_anything_else_still_counts(tmp_path):
+    from yerk_ai import conversion
+    assert len(LONGEST) > 600 > len(LONGEST) // 2 + len(ROTA)
+    rec, backs, path = long_run(tmp_path, f"{LONGEST} {ROTA}", [{"summary": "Book the example hall a week ahead.", "body": LONGEST},
+                                                                {"summary": "Post the rota on the board.", "body": ROTA}])
+    ledger = rec["rules"][2]
+    assert any(g.startswith(conversion.LONG) for g in ledger["lessons"][0]["gate"]) and rec["ready"] and not backs
+    assert rec["long"] == {"example-ledger": "tree/rules.md:9"} and any(d["kind"] == conversion.PAST for d in ledger["done"])
+    assert ("Listed as his words kept whole, past the length, carried word for word where the gate asks a shorter body (a sentence of his alone "
+            "past it, or the rule whole) and not counted in the verdict: 1 lesson, rules/example-ledger.md.") in path.read_text().splitlines()
+    half = ", and ".join(LONGEST.split(", and ")[:7]) + "."                                    # two sentences, each under 600, the rule whole
+    rest = "Book it so, since " + LONGEST.split(", and ", 7)[7]
+    rec, backs, _ = long_run(tmp_path / "whole", f"{half} {rest}", [{"summary": "Book the example hall a week ahead.", "body": f"{half} {rest}"}])
+    assert len(half) < 600 and len(rest) < 600 and rec["ready"] and rec["long"] == {"example-ledger": "tree/rules.md:9"} and not backs
+    rule = {"said": f"{half} {rest} {ROTA}", "job": "example ledger"}                          # neither case: two of his three sentences
+    assert not conversion.past(rule, f"Book the example hall a week ahead. {half} {rest}")
+    assert conversion.past(rule, f"Book the example hall a week ahead. {half} {rest} {ROTA}")
+    rule = {"said": f"{LONGEST} {ROTA}", "job": "example ledger"}
+    assert conversion.past(rule, f"Book the example hall a week ahead. {LONGEST} <example>Landed, daily/2025-11-09.md:3</example>")
+    assert not conversion.past(rule, f"Book the example hall a week ahead. {LONGEST} Do it early.")        # a sentence that is not the owner's
+    assert not conversion.past(rule, f"Book the example hall a week ahead. {LONGEST.replace('Friday', 'friday', 1)}")   # a word of the owner's recased
+    rec, backs, _ = long_run(tmp_path / "mine", f"{LONGEST} {ROTA}", [{"summary": "Book the example hall a week ahead.", "body": f"{LONGEST} Do it early."},
+                                                                      {"summary": "Post the rota on the board.", "body": ROTA}])
+    assert not rec["ready"] and rec["long"] == {} and backs and "a long body" in backs[0]
+
+
+def test_x2_the_apply_works_his_words_past_the_length_out_again_from_the_rules_words_and_lists_the_body_it_lacks(tmp_path):
+    import pytest
+
+    from yerk_ai import conversion
+    rec, _, path = long_run(tmp_path, f"{LONGEST} {ROTA}", [{"summary": "Book the example hall a week ahead.", "body": LONGEST},
+                                                            {"summary": "Post the rota on the board.", "body": ROTA}])
+    m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
+    assert rec["ready"] and rec["long"] == {"example-ledger": "tree/rules.md:9"}
+    held = conversion.loaded(path)               # the record's rule no longer holds that sentence as the lesson has it: the list is not borne
+    x = next(r for r in held["rules"] if r["cite"] == "tree/rules.md:9")
+    x["text"] = x["text"].replace("the north hall", "the north room")
+    (bad := tmp_path / "changed.md").write_text(conversion.render(held))
+    with pytest.raises(RuntimeError) as e:
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, bad)
+    assert str(e.value) == ("example-ledger is listed as his words kept whole, past the length, which its rule's words do not bear: run the dry "
+                            "run again; nothing applied") and not lessons.converted(m.root)
+    held = conversion.loaded(path)
+    held["long"] = {}                            # the file listing nothing for it: its long body refuses it
+    (bare := tmp_path / "unlisted.md").write_text(conversion.render(held))
+    with pytest.raises(RuntimeError, match="example-ledger no longer passes the gate"):
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, bare)
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert lessons.listed(m.root)["example-ledger"] == (rec["day"], "tree/rules.md:9", "a body under the length")
+    assert lessons.listed_for(m.root, "long") == {"example-ledger": (rec["day"], "tree/rules.md:9")}
+
+
+def test_x2_the_daily_run_files_nothing_for_his_words_listed_past_the_length_and_its_report_names_them(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs, shape
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {"model": "claude-fable-5-2"}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    from test_lesson_shape import docs_with, every_pin
+    docs_with(state, **every_pin())
+    (m.root / lessons.DIR).mkdir(parents=True)
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Book the example hall a week ahead.", LONGEST))
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta body under the length\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    at = next(a for a, *_ in shape.rows_of(m) if "/example-ledger.md" in a)
+    assert (f"Listed as his words kept whole, past the length, the shorter body the gate asks no finding (rules-no-reason.tsv): 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta reason\n")      # listed for another cause
+    out = doctor.lessons(private, state, m, 1000.0, dry=True)
+    assert len(out) == 1 and "long" in out[0] and at in out[0]
+
+
+def test_x3_a_rule_asked_again_by_name_is_redone_looped_or_not_one_not_named_stays_kept_and_a_name_of_no_rule_is_refused_first(tmp_path):
+    import shutil
+
+    import pytest
+
+    from yerk_ai import conversion
+    m, asked = shop_store(tmp_path), set[str]()
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2)
+    shutil.copy(first, earlier := tmp_path / "earlier.md")
+    (m.root / "rules-proposals" / "findings.tsv").write_text("tree/rules.md:10\tlesson 1 leans on its sibling for a word\n")
+
+    def model(prompt: str, tools: str) -> str:
+        return shop_model(asked, {"tree/rules.md:10"})(prompt, tools).replace("| it adds a case", "| the owner's side's finding still holds")
+    shutil.copy(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2, earlier=earlier), second := tmp_path / "second.md")
+
+    def again(redo=()) -> tuple[dict, set[str], str]:
+        asked.clear()
+        path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2, earlier=second, redo=redo)
+        return conversion.loaded(path), set(asked), path.read_text()
+    rec, got, _ = again()
+    key = next(r for r in rec["rules"] if r["cite"] == "tree/rules.md:10")
+    assert "tree/rules.md:10" not in got and any(d["kind"] == conversion.LOOPED for d in key["done"])     # looped: kept, not asked
+    rec, got, text = again(("tree/rules.md:10",))
+    key = next(r for r in rec["rules"] if r["cite"] == "tree/rules.md:10")
+    assert "tree/rules.md:10" in got and not any(d["kind"] in (conversion.LOOPED, conversion.KEPT, "reviewer dropped") for d in key["done"])
+    assert rec["from"]["asked"] == ["tree/rules.md:10"] and rec["from"]["why"]["asked again by name"] == 1
+    assert "Asked again by name, never kept: 1 rule, tree/rules.md:10." in text.splitlines()[:9]
+    six = next(r for r in rec["rules"] if r["cite"] == "tree/rules.md:6")
+    assert "tree/rules.md:6" not in got and any(d["kind"] == conversion.KEPT for d in six["done"])          # not named: kept
+    rec, got, _ = again(("tree/rules.md:6",))                                                             # a kept rule named: redone
+    assert "tree/rules.md:6" in got and "tree/rules.md:10" not in got and rec["from"]["asked"] == ["tree/rules.md:6"]
+    before = {p: p.stat().st_mtime_ns for p in (m.root / "rules-proposals").iterdir()}
+    for redo, said in ((("tree/rules.md:6", "tree/rules.md:99"), "no live rule has the cite tree/rules.md:99"), (("tree/rules.md:6",), "only of an earlier file")):
+        asked.clear()
+        with pytest.raises(RuntimeError, match=said):
+            conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=shop_model(asked, set()), read=FABLE2,
+                               earlier=second if len(redo) > 1 else None, redo=redo)
+        assert asked == set() and {p: p.stat().st_mtime_ns for p in (m.root / "rules-proposals").iterdir()} == before   # nothing ran
+
+
+def test_x3_the_command_hands_the_rules_it_names_to_the_dry_run_and_refuses_a_name_of_no_rule(tmp_path, monkeypatch, capsys):
+    import pytest
+
+    from yerk_ai import cli, conversion, curate
+    monkeypatch.setattr(curate, "ask", lambda *a, **k: pytest.fail("the command asked a model: nothing may run before the refusal"))
+    m = old_store(tmp_path)
+    args = ["--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state")]
+    earlier = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: "", read=FABLE2)
+    assert cli.main(["curate", "--lessons", "--from", str(earlier), "--redo", "tree/rules.md:99", *args]) == 1
+    assert "refused: no live rule has the cite tree/rules.md:99" in capsys.readouterr().out
+    got: list[object] = []
+    monkeypatch.setattr(conversion, "dry_run", lambda private, state, s, **kw: got.append(kw) or tmp_path / "proposals.md")
+    assert cli.main(["curate", "--lessons", "--from", str(earlier), "--redo", "tree/rules.md:8", "--redo", "tree/rules.md:9", *args]) == 0
+    assert got == [{"earlier": earlier, "redo": ("tree/rules.md:8", "tree/rules.md:9")}]

@@ -835,7 +835,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 raised it by 20 more, run 6, not folded to fit: conversion.py 20 (a cited example old by its line alone, never its gloss; the excuses' day-log cache on --from; a reason on file read as theirs, whole, in quote marks, and a part of it, one in the lesson's own voice or one not given as theirs a fault; the apply's reasons from the record and the reasons file). 35,188: 35,168 plus 20.
 
-- `lines = 35188`
+2026-11-21: lesson-store-2026-11-21 raised it by 51 more, run 7, not folded to fit: conversion.py 43 (a sentence giving the owner's reason on file as theirs counts as theirs beside their marked sentence, and the apply reads their names for it; their words kept whole past the length, a listed kind of its own; a rule asked again by name with --redo, a name of no rule refused first, the head naming them), cli.py 3 (the flag), shape.py 4 (the daily run files nothing for it and names it), lessons.py 1 (what it lacks). 35,239: 35,188 plus 51.
+
+- `lines = 35239`
 
 ## Uncapped
 

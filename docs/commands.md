@@ -339,6 +339,7 @@ the night's card curation: the sweep (repeats, superseded and past-date lines, c
 - `--lessons-apply FILE`: that exact proposals file applied, the originals copied first
 - `--lessons-undo DAY`: the originals of DAY's conversion put back
 - `--from FILE`: with --lessons: each rule that passed in that earlier proposals file kept word for word, with no model call; every other rule proposed again
+- `--redo CITE`: with --from: the rule of that cite (memory/rules.md:N) asked again by name, never kept, even one dropped again with its findings shown; repeat for each
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 

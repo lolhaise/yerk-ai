@@ -27,7 +27,7 @@ NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite, what is missing (a
                                    # a reason): a lesson converted with no reason on file, as the owner's side says, or carried as
                                    # they wrote it where only a change to their words would pass the gate
 MISSING = {"no_exception": "an exception", "whole": "a cite for his quote", "own": "tags round his sentence",
-           "uncited": "a cite for its example"}   # what a listed lesson lacks, by the proposals record's list it came from
+           "uncited": "a cite for its example", "long": "a body under the length"}   # what a listed lesson lacks, by the record's list
 CITES = "rules-cites.tsv"          # an old store cite (rules.md:N, rules-topics.md:N), the slug its rule became
 SNAPSHOT = "converted.json"        # in the backup folder: the lessons as converted, news's look for a session from before
 BACKUP = "rules-backup-"           # <memory>/rules-backup-<day>/: the originals, copied before a conversion writes
@@ -206,7 +206,8 @@ def no_exception(root: Path) -> dict[str, tuple[str, str]]:
 
 def listed_for(root: Path, key: str) -> dict[str, tuple[str, str]]:
     """slug -> (day, the old cite) of each lesson NO_REASON lists as lacking MISSING[key]: the owner's quote kept whole ("whole"), their own
-    sentence kept ("own"), an example kept as its words ("uncited"), an exception ("no_exception")."""
+    sentence kept ("own"), an example kept as its words ("uncited"), an exception ("no_exception"), their words kept whole past the
+    length ("long")."""
     return {k: (d, c) for k, (d, c, what) in listed(root).items() if MISSING[key] in what}
 
 

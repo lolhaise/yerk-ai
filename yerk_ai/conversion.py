@@ -43,21 +43,26 @@ UNLIFTED = "no exception, as the rule gives none"   # a listed item: a lesson wh
 WHOLE = "his quote kept whole"       # a listed item: a lesson keeping a quote of the rule whole where the gate asks a cite in its place
 OWN = "his own sentence kept"        # a listed item: a lesson keeping the owner's sentence that holds "landed" or "bounced" beside a quote
 UNCITED = "an example kept as its words"   # a listed item: an example no line passes for, or its cite refused, that the gate asks a cite of
-EXCUSES = {UNLIFTED: "no_exception", WHOLE: "whole", OWN: "own", UNCITED: "uncited"}   # each kind and its list in the record
+PAST = "his words kept whole, past the length"   # a listed item: a body of his sentences that only cutting one of them would shorten
+EXCUSES = {UNLIFTED: "no_exception", WHOLE: "whole", OWN: "own", UNCITED: "uncited", PAST: "long"}   # each kind and its list in the record
 WHYS = {UNLIFTED: "its absolute carried as he wrote it and named, since no exception is ever added to a rule of his; not counted in the verdict",
         WHOLE: "his quote carried whole, word for word, where the gate asks a cite in its place, and named; not counted in the verdict",
         OWN: "his own sentence carried word for word where the gate reads an exchange outside example tags, and named; not counted in the verdict",
         UNCITED: "an example of his kept as its words, since no day-log line passes for it or its cite was refused, where the gate asks "
-                 "a cite, and named, since no wrong line is written to pass it; not counted in the verdict"}
+                 "a cite, and named, since no wrong line is written to pass it; not counted in the verdict",
+        PAST: "his sentences carried word for word where the gate asks a shorter body, and named, since only cutting one of them would "
+              "shorten it; not counted in the verdict"}
 HEADS = {UNLIFTED: "no exception, as the rule gives none, carried as he wrote it", WHOLE: "his quote kept whole, carried as he wrote it where the "
          "gate asks a cite in its place", OWN: "his own sentence kept, carried word for word where the gate reads an exchange outside "
          "example tags", UNCITED: "an example kept as its words, since no day-log line passes or its cite was refused, where the gate asks "
-         "a cite (no wrong line is written to pass it)"}
+         "a cite (no wrong line is written to pass it)", PAST: "his words kept whole, past the length, carried word for word where the gate "
+         "asks a shorter body (a sentence of his alone past it, or the rule whole)"}
 REFUSED_CITE = "cite refused"        # a listed item: the line code cites an example to, refused by the model with its why
 RECORDS = "what the day log already records: "    # the gate's on-record finding (words.LESSON_NAMES), its head
 OWN_HINT = (" (code's note: never put his sentence in example tags; keep each sentence of his that holds \"landed\" or \"bounced\" "
             "or his quote whole and word for word, write no sentence of your own that holds them, and the lesson is listed as his)")
 UNTAGGED = "an example outside <example> tags: "   # the gate's exchange finding (shape.NAMES), its head
+LONG = "a long body: "             # the gate's long-body finding (words.LESSON_NAMES), its head
 SEALS = re.compile(r"\b(?:no (?:case|exception|one|go-ahead)[^.;]{0,24}lifts? (?:it|this|that)|nothing lifts (?:it|this|that)|lifts? it\b|"
                    r"even when asked|with no exceptions?|no exceptions?\b)", re.I)    # words that lift or seal a never: never added
 FINDINGS = "findings.tsv"          # in <memory>/rules-proposals/: cite<TAB>a finding of the owner's side on an earlier conversion
@@ -326,13 +331,36 @@ def own_sentences(rule: dict[str, Any], text: str) -> bool:
     """A lesson in which each sentence holding what the gate's exchange finding names (a quote of three words or more, "landed" or
     "bounced") is a sentence of the rule, word for word, one of them holding "landed" or "bounced": the owner's own sentence kept, never
     bent to pass the gate. A sentence the model wrote holding one (one that opens with someone asks, says or wrote and holds a
-    quote) is not this, nor a lesson holding a thumbs mark outside its examples."""
+    quote) is not this, nor a lesson holding a thumbs mark outside its examples. A sentence giving the owner's reason on file as theirs
+    (reason_given) counts as theirs there."""
     def sentences(said: str) -> list[str]:
         return shape.SENTENCES.split(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", said)).replace(SCOPED.format(job=rule["job"]), " ").strip())
     theirs = {words_of(y) for y in sentences(rule["said"])}
     held = [y for y in sentences(text) if shape.MARKED.search(y) or any(len(m[1].split()) >= 3 for m in shape.QUOTED.finditer(y))]
-    return (any(shape.MARKED.search(y) for y in held) and all(words_of(y) in theirs for y in held)
+    return (any(shape.MARKED.search(y) for y in held) and all(words_of(y) in theirs or reason_given(rule, y) for y in held)
             and not shape.THUMBS.search(shape.EXAMPLE_TAGS.sub(" ", text)))
+
+
+def reason_given(rule: dict[str, Any], y: str) -> bool:
+    """A lesson's sentence giving the owner's reason on file as theirs: it holds no "landed" or "bounced", and each quote of three words or
+    more in it is, word for word, a whole reason on file for the rule (its "on_file", REASONS), given as the owner's (given_his)."""
+    have, (names, by) = {words_of(w) for w in rule.get("on_file") or ()}, said_as(rule)
+    quotes = [m for m in shape.QUOTED.finditer(y) if len(m[1].split()) >= 3]
+    return bool(quotes) and not shape.MARKED.search(y) and all(words_of(m[1]) in have and given_his(y[:m.start()], names, by) for m in quotes)
+
+
+def past(rule: dict[str, Any], text: str) -> bool:
+    """A lesson whose long body only cutting his words could shorten: each sentence of its body (after its summary, as the gate
+    splits it; its examples and code's scope sentence aside) is a sentence of the rule as he wrote it, its capitals and stops too,
+    and one of them is alone past lesson_body_chars, or the lesson or its body holds every sentence of the rule, in his order."""
+    cap = shape.threshold(dict(budgets().get("shape") or {}), *shape.LESSON["long"][1:])
+
+    def sentences(said: str) -> list[str]:          # each as the gate reads a lesson: its code a word, its trailer out
+        bare = shape.TRAILER.sub("", WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", re.sub(r"`[^`]*`", "code", shape.one(said)))))
+        return [y for y in (" ".join(y.split()) for y in shape.SENTENCES.split(bare.replace(SCOPED.format(job=rule["job"]), " ").strip())) if y]
+    his, mine = sentences(rule["said"]), sentences(text)
+    return bool(body := mine[1:]) and all(y in his for y in body) and (
+        any(len(shape.CITED.sub("", y)) > cap for y in body) or his in (mine, body))
 
 
 def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Path, str] | None = None) -> set[str]:
@@ -367,8 +395,8 @@ def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Pat
 def excused(rule: dict[str, Any], x: dict[str, Any], read: Any, daily: Path | None = None, seen: dict[Path, str] | None = None) -> dict[str, list[str]]:
     """Each gate finding on lesson `x` that only a change to a sentence or a quote of the owner's could meet -> the kinds it is listed as:
     UNLIFTED (a never whose rule gives no exception where it says it), WHOLE (the owner's quote kept whole), OWN (their own sentence kept),
-    UNCITED (an example of his kept as its words). Never sent to the model; each such lesson is carried as he wrote it and
-    listed for the owner's side, and every other finding on it still counts."""
+    UNCITED (an example of theirs kept as its words), PAST (their words kept whole, past the length). Never sent to the model; each
+    such lesson is carried as they wrote it and listed for the owner's side, and every other finding on it still counts."""
     text, out = f"{x['summary']} {x['body']}", dict[str, list[str]]()
     for g in x["gate"]:
         if open_finding(g) and unlifted(rule, text, read):
@@ -377,6 +405,8 @@ def excused(rule: dict[str, Any], x: dict[str, Any], read: Any, daily: Path | No
             out[g] = sorted(k)
         elif g.startswith(UNTAGGED) and own_sentences(rule, text):
             out[g] = [OWN]
+        elif g.startswith(LONG) and past(rule, text):
+            out[g] = [PAST]
     return out
 
 
@@ -491,6 +521,7 @@ def reason_rows(s: memory.Settings) -> dict[str, list[str]]:
 STALE = ("a findings row", "an exception added", "a quote swapped for a pointer", "an example cited by the old search",
          "an example left out for length", "a quote of his cut", "a fault the code finds", "another cause")    # why `--from` redoes a rule, the head's count
 LOOPED = "the owner's side's finding comes back"   # a listed item: a rule redone with its findings shown and still dropped, kept
+ASKED = "asked again by name"      # why `--from` redoes a rule the owner's side names (`--redo`): never kept, looped or not
 
 
 def finding_rows(s: memory.Settings) -> dict[str, list[str]]:
@@ -534,18 +565,22 @@ def refusals(done: list[dict[str, Any]]) -> set[str]:
 
 def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: Callable[[dict[str, Any]], list[str]],
             rows: dict[str, list[str]], found: dict[str, list[str]] | None = None, read: Any = None,
-            why: dict[str, list[str]] | None = None, seen: dict[Path, str] | None = None) -> dict[str, dict[str, Any]]:
+            why: dict[str, list[str]] | None = None, seen: dict[Path, str] | None = None, redo: Any = ()) -> dict[str, dict[str, Any]]:
     """cite -> the rule as the earlier proposals file `path` made it (a dry run's, from any folder or store), kept word for word
     with no model call: when that file has it under the same cite with the same words, each lesson of it passes the gate as an
     apply reads it today (`gate`), every sentence is accounted for, it lost no trigger, nothing of it was still failing after the
     last round (the reviewer's drop among them), no slug of it is retired, REASONS holds the same rows for its cite as then and
     it holds nothing `stale` names. A rule FINDINGS has rows for that was redone with them shown and still came back dropped is
     kept and listed, never redone again. `why`, filled: cite -> what made each other rule be redone (STALE). `seen`: the dry run's
-    day logs as read once (shape.on_record), so the excuses read each day log once, not once for each quote."""
+    day logs as read once (shape.on_record), so the excuses read each day log once, not once for each quote. `redo`: the cites the
+    owner's side names, each never kept, looped or not (ASKED), so a rule worked by hand is asked again."""
     rec, gone, found, why = loaded(path), set(lessons.retired(s.root)), found or {}, {} if why is None else why
     old, out = {m["cite"]: m for m in rec["rules"]}, dict[str, dict[str, Any]]()
     for r in rules:
         m = old.get(r["cite"])
+        if r["cite"] in redo:
+            why[r["cite"]] = [ASKED]
+            continue
         if not m or m["text"] != r["text"] or m.get("reasons") != rows.get(r["cite"], []) or r["cite"] in rec["lost"] or any(
                 x["slug"] in gone for x in m["lessons"]):
             why[r["cite"]] = [STALE[-1]]
@@ -827,6 +862,8 @@ def render(rec: dict[str, Any]) -> str:
               f"with no model call; {rec['from']['redone']:,} redone."] if rec.get("from") else []),
            *([f"Redone, by why (a rule may have more than one): {', '.join(f'{k} {v:,}' for k, v in rec['from']['why'].items())}."]
              if (rec.get("from") or {}).get("why") else []),
+           *([f"Asked again by name, never kept: {len(rec['from']['asked'])} rule{'s' * (len(rec['from']['asked']) != 1)}, "
+              f"{', '.join(rec['from']['asked'])}."] if (rec.get("from") or {}).get("asked") else []),
            *(f"Listed as {HEADS[k]} and not counted in the verdict: {len(rec[key])} lesson{'s' * (len(rec[key]) != 1)}, "
              f"{', '.join(f'{lessons.DIR}/{x}.md' for x in rec[key])}." for k, key in EXCUSES.items() if rec.get(key)),
            *(f"Cites the model refused, each example placed as its words and listed with the model's why: {n}, in "
@@ -851,21 +888,26 @@ def render(rec: dict[str, Any]) -> str:
 
 
 def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = None,
-            model: Callable[[str, str], str] | None = None, read: Any = None, earlier: Path | None = None) -> Path:
+            model: Callable[[str, str], str] | None = None, read: Any = None, earlier: Path | None = None, redo: Any = ()) -> Path:
     """The dry run: the proposals file written, nothing else. Its path. `read`: the pages the gate reads, else READ's. `earlier`
     (`--from FILE`): each rule that passed there kept as it made it (carried), every other rule proposed as in a fresh run, its
-    lessons taking no slug a kept one holds; the trigger test and the verdict read all of them."""
+    lessons taking no slug a kept one holds; the trigger test and the verdict read all of them. `redo` (`--redo CITE`, with
+    `earlier`): the rules the owner's side asks again by name, never kept; a name that is no rule's cite is refused first."""
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     read = shape.pages(READ) if read is None else read
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
+    if redo and earlier is None:
+        raise RuntimeError("a rule is asked again by name only of an earlier file: give --from FILE; nothing run")
+    if bad := [c for c in dict.fromkeys(redo) if c not in {r["cite"] for r in rules}]:
+        raise RuntimeError(f"no live rule has the cite {', '.join(bad)}: name each rule by its cite in the store; nothing run")
     supplied, weights, rows = supplied_reasons(s), memory.rarities([r["text"] for r in rules]), reason_rows(s)
     for r in rules:
         r["keeps"], r["his"], r["on_file"] = keeps(r["text"], weights), owner_names(conf), [w for _, w in supplied.get(r["cite"], [])]
     found, redone = finding_rows(s), dict[str, list[str]]()
     kept = carried(s, rules, earlier, lambda x: (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, read,
-                                                                 seen) or {}).get("fix", []), rows, found, read, redone, seen) if earlier else {}
+                                                                 seen) or {}).get("fix", []), rows, found, read, redone, seen, set(redo)) if earlier else {}
     taken |= {x["slug"] for m in kept.values() for x in m["lessons"]}
     off = [r for r in rules if r["cite"] not in kept and (memory.unshaped(r["job"], r["said"], acronyms, s, read, seen) or found.get(r["cite"]))]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)),
@@ -920,7 +962,8 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     rec = {"day": day, "path": str(path), "store": {n: sha(s.root / n) for n in (memory.RULES, memory.TOPIC_RULES)}, "read": list(read),
            "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size], "no_reason": listed,
            **{key: kinds[k] for k, key in EXCUSES.items()}, **({"from": {"path": str(earlier), "kept": len(kept), "redone": len(rules) - len(kept), "why": {
-               k: n for k in STALE if (n := sum(k in v for c, v in redone.items() if c not in kept))}}} if earlier else {})}
+               k: n for k in (*STALE, ASKED) if (n := sum(k in v for c, v in redone.items() if c not in kept))}, **({"asked": [
+               r["cite"] for r in rules if r["cite"] in set(redo)]} if redo else {})}} if earlier else {})}
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     write_private(path, render(json.loads(json.dumps(rec, sort_keys=True))))      # as an apply will read it back
     return path
@@ -954,7 +997,7 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
     for m in rec["rules"]:                             # each excused finding alone, worked out again from the rule's own words
         for x in m["lessons"]:
             gate = (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen) or {}).get("fix", [])
-            ok = excused(of_record(m, have), {**x, "gate": gate}, rec["read"], s.daily, seen)
+            ok = excused({**of_record(m, have), "his": owner_names(conf), "said_by": owner_words(conf)}, {**x, "gate": gate}, rec["read"], s.daily, seen)
             if bad := [k for k, v in lists.items() if x["slug"] in v and k not in {k for y in ok.values() for k in y}]:
                 raise RuntimeError(f"{x['slug']} is listed as {bad[0]}, which its rule's words do not bear: run the dry run again; nothing applied")
             if refused(gate, x["slug"] in listed and NONE in rows.get(listed[x["slug"]], []),
@@ -1009,14 +1052,14 @@ def undo(s: memory.Settings, day: str) -> list[str]:
     return [f"{len(have)} lessons removed; {memory.RULES} and {memory.TOPIC_RULES} put back from {backup.name}/"]
 
 
-def main(private: Path, state: Path, apply_to: str = "", undo_day: str = "", start_from: str = "") -> int:
-    """`yerk curate --lessons` (the dry run; `--from FILE`, from an earlier proposals file), `--lessons-apply FILE`, `--lessons-undo
-    DAY`; exits 1 on a refusal, 2 when it could not run."""
+def main(private: Path, state: Path, apply_to: str = "", undo_day: str = "", start_from: str = "", redo: tuple[str, ...] = ()) -> int:
+    """`yerk curate --lessons` (the dry run; `--from FILE`, from an earlier proposals file, and `--redo CITE`, a rule of it asked
+    again by name), `--lessons-apply FILE`, `--lessons-undo DAY`; exits 1 on a refusal, 2 when it could not run."""
     try:
         conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
-        s = memory.settings(private, state, dict(conf.get("memory", {})))
+        s, more = memory.settings(private, state, dict(conf.get("memory", {}))), dict[str, Any]({"redo": tuple(redo)} if redo else {})
         out = undo(s, undo_day) if undo_day else apply(private, state, s, Path(apply_to)) if apply_to else [
-            f"proposals: {dry_run(private, state, s, earlier=Path(start_from) if start_from else None)}; nothing else written"]
+            f"proposals: {dry_run(private, state, s, earlier=Path(start_from) if start_from else None, **more)}; nothing else written"]
     except RuntimeError as e:
         print(f"refused: {e}")
         return 1

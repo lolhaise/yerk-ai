@@ -544,10 +544,11 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
     cite with its checks, each style limit counted apart (COUNT_ONLY), and RULES, the index a session start loads, against the
     code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store.
     A lesson lessons.NO_REASON lists has no reason on file, as the owner's side says, or no exception, as its rule gives none:
-    that missing reason or exception (its scope written in) is no finding, and it is named apart."""
+    that missing reason or exception (its scope written in) is no finding, and it is named apart; so is a long body of one
+    listed as his words kept whole, past the length."""
     found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
     listed, named, unlifted, open_ = lessons.no_reason(m.root), list[str](), list[str](), lessons.no_exception(m.root)
-    kept = {k: lessons.listed_for(m.root, k) for k in ("whole", "own", "uncited")}    # his words carried as he wrote them
+    kept = {k: lessons.listed_for(m.root, k) for k in ("whole", "own", "uncited", "long")}    # the owner's words carried as they wrote them
     apart: dict[str, list[str]] = {k: [] for k in kept}
     for at, job, text, layout in rows_of(m):
         missed = lesson(job, text, m.daily, limits, seen, read) | layout
@@ -562,6 +563,8 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
             heads = tuple(h for k, h in (("whole", "a quote the day log holds"), ("uncited", "an example the day log holds")) if k in got)
             if heads and all(x.startswith(heads) for x in missed.get("on record", [])):
                 missed.pop("on record", None)
+            if "long" in got:                                       # the owner's words past the length: no finding, named apart
+                missed.pop("long", None)
             for k in got:
                 apart[k].append(at)
         counted += [at] * any(k in COUNT_ONLY for k in missed)
@@ -620,7 +623,8 @@ def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
         out += ["", f"Listed as no exception, as its rule gives none ({lessons.NO_REASON}), its missing exception no finding: {n} "
                 f"lesson{'s' * (n != 1)}, {', '.join(r['unlifted'])}."]
     for k, what in (("whole", "his quote kept whole, as he wrote it, the cite the gate asks in its place"), ("own", "his own sentence kept, word "
-                    "for word, the example tags the gate asks round it"), ("uncited", "an example kept as its words, the cite the gate asks of it")):
+                    "for word, the example tags the gate asks round it"), ("uncited", "an example kept as its words, the cite the gate asks of it"),
+                    ("long", "his words kept whole, past the length, the shorter body the gate asks")):
         if n := len(r.get(k) or ()):
             out += ["", f"Listed as {what} no finding ({lessons.NO_REASON}): {n} lesson{'s' * (n != 1)}, {', '.join(r[k])}."]
     out += ["", f"Pages read, those of every model a room runs: {', '.join(r.get('read') or EVERY)}."]

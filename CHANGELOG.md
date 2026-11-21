@@ -104,6 +104,14 @@ version changes.
   redoes a rule for the gloss the model gave a cited example: an example is cited by the old search only when its line
   is not the one the picker gives today. A dry run from an earlier file reads each day log once for its excuses.
 
+- A sentence giving his reason on file whole and as his, with no "landed" or "bounced" in it, counts as his sentence where
+  the gate reads an exchange beside his own marked sentence, so the lesson is listed as his own sentence kept and its
+  reason as his quote kept whole. A body of his sentences past the 600 characters is listed as his words kept whole, past
+  the length, when a sentence of his is alone past them or the lesson holds the rule whole in his order: named in the
+  head, worked out again by the apply, written to `rules-no-reason.tsv` as lacking a body under the length, and no
+  finding in the daily run. `yerk curate --lessons --from FILE --redo CITE` asks a rule again by name, never kept, even
+  one dropped again with its findings shown; a name that is no rule's cite is refused before anything runs.
+
 - A final that restates a lesson's cite (`rules/<slug>.md`, with or without its line, as a filing's own result gives it)
   is a filing report too, as one restating `rules.md:N` is; `rules.md` and `rules-topics.md` still need their line, since
   those names come up in plain talk.
