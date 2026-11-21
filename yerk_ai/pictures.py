@@ -2,7 +2,9 @@
 turn it arrives (Read on an image is vision, so its content is in context at no extra cost) and files what it read with the
 NAME.seen.txt beside the picture in <inbox>/<message id>/, its first line the header this module writes (room, message id, the local time it was
 saved, its name), then every word on the picture verbatim in reading order, then one or two lines of what it shows. A password, a passphrase, a
-lines of what it shows. The index takes it as an inbox text kind (memindex.SEEN), in its room's class (memory.INBOXES: an
+key or a token the picture shows is written [left out] in its place, never its value (words.SEEN_LEFT_OUT, the tool's description and the
+backfill's rule alike), and the daemon refuses a line that holds one by its shape (doctor.SECRETS) or a saved login's password (logins.passwords),
+so no note keeps it. The index takes it as an inbox text kind (memindex.SEEN), in its room's class (memory.INBOXES: an owner room's private, a
 person room's its own); recall and read_memory show its lines behind memory.SEEN_MARK, never as anyone's words. The backfill is an owner room's
 only.
 `yerk pictures backfill ROOM` files the pictures sent before this: a Yerk worker per BATCH pictures on the room's own account,
@@ -218,8 +220,9 @@ def brief(room: str, pics: list[Path], tz: tzinfo, n: int, of: int, root: Path |
             f"{rows}\n\n"
             "For each picture, in order: Read it (the Read tool shows you the image), then Write its sidecar at the path given:\n"
             "- line 1: the first line given above, copied exactly;\n"
-            "- then every word visible on the picture, verbatim, in reading order, its line breaks kept; a screenshot of a chat "
-            f"keeps who said what exactly as shown; a word you cannot make out is [unreadable]; \"{NONE}\" when it has none;\n"
+            f"- then every word visible on the picture, verbatim, in reading order, its line breaks kept, {words.SEEN_LEFT_OUT}; "
+            "a screenshot of a chat keeps who said what exactly as shown; a word you cannot make out is [unreadable]; "
+            f"\"{NONE}\" when it has none;\n"
             f"- then one or two lines starting \"{SHOWS}\": what the picture is, in plain words. A person in it is \"the owner\", "
             "since they sent it, unless the picture's own text says otherwise; anyone else is named only by a name the picture's "
             "own text gives them, else \"a man\", \"a woman\" or \"a person\". Never guess.\n"

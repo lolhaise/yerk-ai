@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 133708`
+- `total = 133808`
 
 ## [session_start.claude_code]
 
@@ -132,9 +132,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-20, need-2026-11-20-127: the hands plug-in's browser `type` takes `login` and `part` (the user or the password of a login the owner saved with Yerk's /login, typed by the plug-in itself on that login's own site, so the password is in no tool call; since a room the owner sent a new site's login in pictures could file no secret, and signing in meant typing the password through a tool call kept in its transcript; filed 2026-11-20): the five entries 10,409 to 10,555 as the plug-in's branch need-2026-11-20-127 (9f7c3ca) builds them on its main e3b605e, 146 more, by the plug-in's own measure, its test's cap moving with it; so 10,616, no part could pay, the total rose by the 146 (to 133,708 on main's 133,562). Yerk AI's own tool entries do not change: /login is a slash command, never a room's tool.
 
+2026-11-20, logins-notes-doctor-2026-11-20: the `seen` tool's `text` keeps every word on a picture verbatim except a password, a passphrase, a key or a token it shows, written [left out] in its place, never its value (words.SEEN_LEFT_OUT, the backfill's rule the same), since a room the owner sent a login as screenshots was told to file every word as it stood, and the notes are recalled (need 127's deeper check): its entry 819 to 938 as this tree builds it, all 25 from 27,518 to 27,637 (measured on main 948dcdb and on this tree the same way), on the about 29,269 the rooms send, so about 29,388, 88 over the line; so 29,400, no part could pay, the total rose by the 100 (to 133,808 on main's 133,708). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 29300`
+- `yerk_tools = 29400`
 - `deferred_tool_names = 3581`
 - `mcp__hands__ = 10616`
 - `mcp__web-ladder__web_image = 913`
@@ -801,7 +803,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-20: need-2026-11-20-127 raised it by 81, /login, a login the owner hands over saved as a secret by the daemon alone (that evening a room sent a new site's login in pictures could file no secret, its shell kept from the secrets folder and the browser's keep saving only a key a page shows, and signing in meant typing the password through a tool call kept in its transcript), not folded to fit: logins.py 60 (the module's paragraph on the wall and the way, 7; site, the host from what the owner typed, 9; save, its checks, a link refused, the file written whole at 0600 in a 0700 folder, 26; NAME, HOST and MOST, 3; imports and path, 15), words.py 10 (the command, its four parts and its six lines), daemon.py 7 (login_save, its log line naming the login and its site alone), channels/discord.py 4 (the command's four required parts; its answer). 33,548: main e7b9343's 33,467 plus 81.
 
-- `lines = 33548`
+2026-11-20: logins-notes-doctor-2026-11-20 raised it by 77, a password a picture shows is never filed and the doctor knows a saved login by its value (need 127's deeper check: the owner had sent the login as screenshots, the `seen` tool told a room to file every word verbatim, the doctor read none of the 1,832 notes the rooms had filed, and a saved password has no shape to find), not folded to fit: doctor.py 33 (kind and first_secret, the one line check the scan and `seen` share; scan's values and an inbox file's own time; leaked over every room's inbox; label, a room's file by its path under the state folder; unshaped's values; the saved-password finding; the scrub's values), logins.py 26 (passwords, the one reader: a plain NAME.login of save's shape, never a link, a password that can be looked for by value; LOOKED and LONG; the module's two lines), words.py 8 (LEFT_OUT, the clause, the refusal, the finding, their comment), daemon.py 5 (tool_seen's refusal before anything is written, its log line with the line's number and kind alone, its docstring), pictures.py 3 (the module's sentence), cli.py 1 (--scrub's help), mcp_server.py 1 (the clause from words.py). 33,625: main 948dcdb's 33,548 plus 77.
+
+- `lines = 33625`
 
 ## Uncapped
 

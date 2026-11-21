@@ -287,7 +287,10 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     28,490 as sent), the total by the 200 to 132,562; then (need-2026-11-19-123) the mechanics, an appended part, the total
     by the 100 to 132,662; then (need-2026-11-19-124) the mechanics to 8,900 for the docs line's where and who, the total by
     the 200 to 132,862; then (need-2026-11-19-126) `yerk_tools` to 29,300 for the `people` tool (about 779 as sent; all 25
-    about 29,269 as sent), the total by the 700 to 133,562."""
+    about 29,269 as sent), the total by the 700 to 133,562; then (need-2026-11-20-127) the hands line to 10,616 for the
+    browser's `type` with a saved login, the total by the 146 to 133,708; then (logins-notes-doctor-2026-11-20)
+    `yerk_tools` to 29,400 for the `seen` tool's clause on a password a picture shows (119 more as built; all 25 about
+    29,388 as sent), the total by the 100 to 133,808."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -305,7 +308,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133708
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133808
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -464,10 +467,13 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     (need-2026-11-19-123); then the mechanics' docs line saying where the fetched docs and the doctor's findings are and who
     reads them how (200), no part could pay, to 132,862 (need-2026-11-19-124); then Yerk AI's tools' line (700, the
     `people` tool, a person who wrote in the room's channel answered there on the owner's own words), no part could pay,
-    to 133,562 (need-2026-11-19-126)."""
+    to 133,562 (need-2026-11-19-126); then the hands line (146, the browser's `type` with a saved login), no other line
+    lowered, to 133,708 (need-2026-11-20-127); then Yerk AI's tools' line (100, the `seen` tool's clause: a password, a
+    passphrase, a key or a token a picture shows written [left out]), no part could pay, to 133,808
+    (logins-notes-doctor-2026-11-20)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133708
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133808
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

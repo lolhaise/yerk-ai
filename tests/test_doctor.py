@@ -7,6 +7,7 @@ repair before any room opens; and every key the
 loaders read from a room in config.ROOM_KEYS."""
 import gc
 import json
+import logging
 import os
 import re
 import shutil
@@ -17,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import config, context, doctor, files, hooks, memindex, memory, morning, pictures, retention, shape, status, words
+from yerk_ai import config, context, doctor, files, hooks, logins, memindex, memory, morning, pictures, retention, shape, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, ROOM_KEYS, budgets
 from yerk_ai.daemon import Yerkd
@@ -736,3 +737,120 @@ def test_disk_growth_is_what_the_disk_holds_never_a_sparse_file_or_a_second_link
     assert retention.size(retention.tree(state)) > 2 * 10**9 > doctor.used(state)
     (state / "doctor.json").write_text(json.dumps({"at": time.time() - DAY, "sizes": {"state folder": 0}, "sized": time.time() - DAY}))
     assert not [x for x in doctor.run(priv, state, dry=True) if "state folder: grew" in x]
+
+
+# logins-notes-doctor (2026-11-20, need 127's deeper check): the notes a room files on a picture sit in its inbox under the
+# state folder, which the check never read, and a saved login's password has no shape. Every value is a placeholder.
+NOTE = "rooms/example-room/work/inbox/m-1/photo.seen.txt"            # under the state folder
+SAVED = "pw-Fake-9-Qx7Zk2Wd"                                          # test_pictures' saved password
+PASSWORD_LINE = "the example wifi password is Exa-mple9!"
+
+
+def note(state: Path, *lines: str, at: float | None = None) -> Path:
+    """A note a room filed with `seen` (pictures.file's shape: the header by code, the words, what it shows), `at` its own time."""
+    (f := state / NOTE).parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("\n".join(["seen in example-room, message m-1, 2026-11-20 10:00 UTC: photo.png", *lines,
+                            "what it shows: a sign-in page"]) + "\n")
+    if at is not None:
+        os.utime(f, (at, at))
+    return f
+
+
+def y5_plant(priv: Path, state: Path, day: Path) -> dict[str, bytes]:
+    """A saved login, and its password with no shape around it on a day log's line (8), a note's (3) and an import's (4);
+    each file's bytes before."""
+    assert logins.save(priv, "example", "example.com", "example-user", SAVED)["ok"]
+    at = datetime(2026, 10, 20, 11, 20).astimezone()
+    day.write_text(day.read_text() + memory.format_line(at, "example-room", "", "owner", "", f"the new one is {SAVED} for now",
+                                                        "private", "s9") + "\n")
+    note(state, "EX-42", f"signed in with{SAVED}today")
+    plant(priv, imports__mail__2026_10=f"# Mail 2026-10\n\n- 2026-10-14 09:12 From: Example Shop | Subject: welcome\n  keep {SAVED} safe\n")
+    return {f: p.read_bytes() for f, p in (("imports/mail/2026-10.md", priv / "imports/mail/2026-10.md"),
+                                           ("memory/daily/2026-10-20.md", day), (NOTE, state / NOTE))}
+
+
+def test_y4_a_password_line_in_a_note_a_room_filed_is_red_by_its_path_under_the_state_folder_and_its_line(tree, capsys):
+    """Y4: the doctor reads every room's inbox for the text kinds the index reads there, so a password line in a picture's
+    note is a red finding by the note's path under the state folder and its line. The code before this walked only the
+    memory tree and the private layer's attachments and imports, none of which holds the note: it was not found."""
+    priv, state, *_ = tree
+    f = note(state, "EX-42", PASSWORD_LINE)
+    m = memory.settings(priv, state)
+    assert not any(f.resolve().is_relative_to(r.resolve()) for r in (m.root, priv / "attachments", priv / "imports"))
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 1 in 1 file, first {NOTE}:3 (password line); "
+                                                    "`yerk doctor --scrub`, then rotate the key"]
+
+
+def test_y5_a_saved_logins_password_with_no_shape_is_red_in_a_day_log_a_note_and_an_import_and_the_scrub_takes_each(tree, capsys):
+    """Y5: a line holding a saved login's password is a hit of its own kind, `saved password`, by file and line as the
+    shapes are, with what to do after: the password is out, so it is changed and the new one saved with /login. The
+    scrub says "would scrub" for each on a dry run, then leaves [scrubbed] in the value's place, every other byte as it
+    was, each file's copy in the scrub folder, and a second scrub finds nothing."""
+    priv, state, day, *_ = tree
+    before = y5_plant(priv, state, day)
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} " + words.SAVED_PASSWORDS.format(
+        n=3, files="3 files", first="imports/mail/2026-10.md:4")]
+    assert "change it on its site and save the new one with /login" in words.SAVED_PASSWORDS
+    m = memory.settings(priv, state)
+    assert [h for hs in doctor.leaked(priv, m, time.time()).values() for h in hs] == [(4, "saved password"), (8, "saved password"),
+                                                                                       (3, "saved password")]
+    assert doctor.main(priv, state, dry=True, scrubbing=True) == 0
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} {f}: would scrub line {n} (saved password)"
+                                                    for f, n in zip(before, (4, 8, 3))]
+    assert {f: (state if f == NOTE else priv).joinpath(f).read_bytes() for f in before} == before and not (priv / "backups").exists()
+    assert doctor.main(priv, state, scrubbing=True) == 0
+    kept = list((priv / "backups").glob("scrub-*"))
+    assert capsys.readouterr().out.splitlines() == [f"{words.DONE} {f}: scrubbed line {n} (saved password), its copy in backups/{kept[0].name}/"
+                                                    for f, n in zip(before, (4, 8, 3))]
+    for f, was in before.items():
+        assert (state if f == NOTE else priv).joinpath(f).read_bytes() == was.replace(SAVED.encode(), b"[scrubbed]"), f
+    assert sorted(p.read_bytes() for p in kept[0].iterdir()) == sorted(before.values())          # each file copied first
+    assert doctor.main(priv, state, scrubbing=True) == 0
+    assert capsys.readouterr().out == f"{words.DONE} scrub: no secret-shaped line\n"
+
+
+def test_y6_a_one_time_code_in_a_note_is_said_for_two_days_after_the_notes_own_time_and_not_after(tree, capsys):
+    """Y6: a note's one-time code is dated by the note's own time (a note has no entry dates), as a day log's is by its day,
+    and is dead two days after it: said up to then, never after."""
+    priv, state, *_ = tree
+    at = datetime(2026, 11, 20, 10, 0).timestamp()
+    f = note(state, "EX-42", CUED[0], at=at)
+    m = memory.settings(priv, state)
+    said = {after: doctor.leaked(priv, m, at + after).get(f.resolve(), []) for after in (0, DAY, 2 * DAY - 60, 2 * DAY + 60, 9 * DAY)}
+    assert said == {0: [(3, "one-time code")], DAY: [(3, "one-time code")], 2 * DAY - 60: [(3, "one-time code")], 2 * DAY + 60: [],
+                    9 * DAY: []}
+    now = time.time()
+    os.utime(f, (now - 3600, now - 3600))                                       # an hour old by the clock: said, orange
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} " + words.ONE_TIME_CODES.format(n=1, files="1 file", first=f"{NOTE}:3")]
+    os.utime(f, (now - 3 * DAY, now - 3 * DAY))                                 # three days old: dead, the doctor is clean
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
+
+
+def test_y8_no_answer_log_line_or_finding_in_y2_to_y7_holds_a_saved_password_or_a_refused_value(tree, capsys, caplog, monkeypatch, tmp_path):
+    """Y8: what `seen` answers (Y2, Y3, and /login's own lines), every log line at DEBUG, and every line the doctor and its
+    scrub say (Y4 to Y6) hold no saved password nor a value refused, nor any ten characters in a row of one; nor does any
+    log line while the reader runs (Y7)."""
+    from test_logins import ELSEWHERE, TWO, y7_plant
+    from test_pictures import PLAIN, SHAPED, SHORT, daemon, picture, signed, y2_run, y3_run
+    caplog.set_level(logging.DEBUG)
+    priv, state, day, *_ = tree
+    for d in ("y2", "y3"):
+        (tmp_path / d).mkdir()
+    y = daemon(tmp_path / "y2")
+    said = [json.dumps(r) for r, _ in y2_run(y, picture(tmp_path / "y2", "example-room", "m-1"))]
+    y3, logged = signed(tmp_path / "y3", monkeypatch, SAVED, SHORT, PLAIN)
+    said += [json.dumps(logged)] + [json.dumps(r) for r, _ in y3_run(y3, picture(tmp_path / "y3", "example-room", "m-1"))]
+    y5_plant(priv, state, day)
+    note(state, "EX-42", f"signed in with{SAVED}today", PASSWORD_LINE, CUED[0])   # Y5's note with Y4's password line, Y6's code
+    capsys.readouterr()
+    said += doctor.run(priv, state, dry=True) + doctor.scrub(priv, state, dry=True) + doctor.scrub(priv, state)
+    y7_plant(tmp_path / "y7" / "private")
+    assert logins.passwords(tmp_path / "y7" / "private") == TWO
+    values = [SAVED, SHORT, PLAIN, *TWO, ELSEWHERE, *(line.rsplit(" ", 1)[1] for line in SHAPED.values())]
+    pieces = {v[i:i + 10] for v in values for i in range(max(1, len(v) - 9))}
+    out = "\n".join(said) + "\n" + caplog.text + capsys.readouterr().out
+    assert len(said) > 12 and "saved password" in out and "line 2 of" in out
+    assert not [p for p in pieces if p in out]

@@ -4,7 +4,9 @@ Before it (need 127, 2026-11-20), a room asked to keep a new site's login had no
 folder, the browser's keep saves only a key a page shows, and a password typed through a tool call lands in the room's kept
 transcript. /login, the owner's own slash command, comes to the daemon as an interaction, never as a message, so no room's
 session sees it: the login is written as NAME.login in the private folder's secrets/ (JSON site, user and password, 0600 in
-a 0700 folder), and the browser plug-in types its user or its password by that name, on its own site only (hands, type with"""
+a 0700 folder), and the browser plug-in types its user or its password by that name, on its own site only (hands, type with
+login). passwords() reads them back for the two places that look for one by value: the `seen` tool, which refuses a
+words that hold one, and the doctor's secrets check, which names a line that does (logins-notes-doctor)."""
 from __future__ import annotations
 
 import json
@@ -19,6 +21,7 @@ from yerk_ai import words
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")      # the browser plug-in's name rule for a kept file (hands' LOGIN_NAME)
 HOST = re.compile(r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 MOST = 512                                          # characters of a user or a password; a longer one is a paste gone wrong
+LOOKED, LONG = 8, 16                                # a password looked for by value: this long with a digit or a symbol, or this long
 
 
 def site(raw: str) -> str:
@@ -33,6 +36,29 @@ def site(raw: str) -> str:
 
 def path(private: Path, name: str) -> Path:
     return private / "secrets" / f"{name}.login"
+
+
+def passwords(private: Path) -> tuple[str, ...]:
+    """The saved logins' passwords that can be looked for by value (the `seen` tool's refusal, the doctor's secrets check):
+    one of LOOKED characters or more with a digit or a symbol in it, or of LONG or more of any kind, since a short or plain
+    word would be found in ordinary text; its end spaces off, as text holds what shows. Only a plain NAME.login of the shape
+    save writes: a link, a file that cannot be read or one of another shape is skipped. The longest first, so one inside
+    another is swapped after it. Never logged, never in an answer."""
+    out = set[str]()
+    for p in sorted((private / "secrets").glob("*.login")):
+        try:
+            if not NAME.fullmatch(p.stem) or p.is_symlink() or not p.is_file():
+                continue
+            with os.fdopen(os.open(p, os.O_RDONLY | os.O_NOFOLLOW), encoding="utf-8") as f:
+                kept = json.load(f)
+        except (OSError, ValueError):                      # gone, unreadable, not UTF-8 or not JSON
+            continue
+        if not isinstance(kept, dict) or not all(isinstance(kept.get(k), str) for k in ("site", "user", "password")):
+            continue
+        pw = kept["password"].strip()
+        if len(pw) >= LONG or len(pw) >= LOOKED and any(not c.isalpha() and not c.isspace() for c in pw):   # a digit or a symbol
+            out.add(pw)
+    return tuple(sorted(out, key=lambda v: (-len(v), v)))
 
 
 def save(private: Path, name: str, where: str, user: str, password: str) -> dict[str, Any]:

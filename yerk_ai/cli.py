@@ -494,7 +494,8 @@ def cmd_location(a: argparse.Namespace) -> int:
 
 def cmd_doctor(a: argparse.Namespace) -> int:
     """The daily check and the crash repair (doctor.py): a line per finding, one green line when all is well; --dry-run
-    changes nothing; --scrub swaps the value on each secret-shaped line the check names, each file backed up first."""
+    changes nothing; --scrub swaps the value on each line the check names (a saved login's password too), each file
+    backed up first."""
     from . import doctor
     return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run, refresh=not a.scrub, scrubbing=a.scrub)
 
@@ -1026,8 +1027,8 @@ def parser() -> argparse.ArgumentParser:
             "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
     dc = sub.add_parser("doctor", help=said, description=said)
     dc.add_argument("--dry-run", action="store_true", help="say what would be mended or scrubbed, change nothing")
-    dc.add_argument("--scrub", action="store_true", help="only the scrub: each secret-shaped line's value swapped for [scrubbed], "
-                    "every line kept, each file copied first into <private>/backups/scrub-<day>/")
+    dc.add_argument("--scrub", action="store_true", help="only the scrub: each secret-shaped line's value, and each saved login's "
+                    "password, swapped for [scrubbed], every line kept, each file copied first into <private>/backups/scrub-<day>/")
     dk = sub.add_parser("docs", help="the Claude docs kept as a memory root every room recalls (refresh, list, show NAME), "
                         "shape: every room's rule files scored against the prompting guide, and own: Yerk AI's own docs "
                         "written into docs/ from the code")

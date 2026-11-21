@@ -772,12 +772,17 @@ class Yerkd:
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:
         """The `seen` tool: what a room read on a picture it was sent, filed beside it (pictures.file) for its recall, in any
-        room (a person's: class room, memory.INBOXES). Only a picture in the calling room's own inbox, the header by code."""
+        room (a person's: class room, memory.INBOXES). Only a picture in the calling room's own inbox, the header by code.
+        Nothing is written when a line of `text` or `shows` holds a key, a password or token line (doctor.SECRETS) or a saved
+        login's password (logins.passwords): the answer names the line and its kind, never the value or the line."""
         p, inbox = Path(path).expanduser().resolve(), (self.state / "rooms" / room / "work" / "inbox").resolve()
         if room not in self.rooms or p.parent.parent != inbox or not pictures.is_picture(p) or not p.is_file():
             return {"ok": False, "error": words.SEEN_NOT_HERE.format(name=p.name)}
         if not shows.strip():
             return {"ok": False, "error": words.SEEN_NO_SHOWS}
+        if hit := await asyncio.to_thread(lambda: doctor.first_secret({"text": text, "shows": shows}, logins.passwords(self.private))):
+            log.info("seen: %s, %s refused, line %d of %s (%s)", room, p.name, hit[1], hit[0], hit[2])
+            return {"ok": False, "error": words.SEEN_SECRET.format(n=hit[1], part=hit[0], kind=hit[2])}
         out = await asyncio.to_thread(pictures.file, room, p, text, shows, self.memory.tz)
         log.info("seen: %s, %s, %d characters of its words", room, p.name, len(text))
         return {"ok": True, "file": str(out), "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}

@@ -312,7 +312,7 @@ an archive back, read whole against its manifest first: into an empty folder, or
 the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a day it also fetches the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)
 
 - `--dry-run`: say what would be mended or scrubbed, change nothing
-- `--scrub`: only the scrub: each secret-shaped line's value swapped for [scrubbed], every line kept, each file copied first into <private>/backups/scrub-<day>/
+- `--scrub`: only the scrub: each secret-shaped line's value, and each saved login's password, swapped for [scrubbed], every line kept, each file copied first into <private>/backups/scrub-<day>/
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
