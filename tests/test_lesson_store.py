@@ -43,10 +43,27 @@ def test_the_index_is_a_line_a_job_its_lessons_files_no_summary_read_back_in_its
         "- book the hall (rules/book-the-hall.md, rules/book-the-hall-2.md)", "- dates (rules/dates.md)"]
     assert [x.slug for x in lessons.store(m.root)] == ["book-the-hall", "book-the-hall-2", "dates"]
     assert lessons.ROW.match("- book the hall (rules/book-the-hall.md, rules/book-the-hall-2.md)")[1] == "book the hall"
-    capped, _ = context.rules_text({}, m.root / memory.RULES, None, "example-room")         # a capped start: the job lines alone
-    assert capped.splitlines()[1:] == ["- book the hall (rules/book-the-hall.md, rules/book-the-hall-2.md)", "- dates (rules/dates.md)"]
+    capped, _ = context.rules_text({}, m.root / memory.RULES, None, "example-room")    # a capped start: each lesson's summary
+    assert capped.splitlines()[1:] == ["- Book the example hall a week ahead. (rules/book-the-hall.md)",
+                                       "- Book the example hall a month ahead. (rules/book-the-hall-2.md)", f"- {DATES} (rules/dates.md)"]
     memory.retire(m, log, "example-room", "m4", "rules/book-the-hall.md", "the hall closed")
     assert "- book the hall (rules/book-the-hall-2.md)" in (m.root / memory.RULES).read_text().splitlines()
+
+
+def test_a_capped_start_carries_a_one_sentence_lesson_by_its_summary_while_the_index_on_disk_stays_a_line_a_job(tmp_path):
+    m, log = store(tmp_path)
+    memory.rule(m, "example-room", "m1", "dates", DATES, log=log)            # one sentence: a summary, no body
+    memory.rule(m, "example-room", "m2", "book the hall", HALL, log=log)
+    hall = m.root / "rules" / "book-the-hall.md"
+    hall.write_text(hall.read_text().replace("job: book the hall\n", "job: book the hall\nrooms: hall-room\n"))
+    assert lessons.store(m.root)[0].body == ""
+    rules = m.root / memory.RULES
+    assert rules.read_text().splitlines()[-2:] == ["- dates (rules/dates.md)", "- book the hall (rules/book-the-hall.md)"]
+    capped, _ = context.rules_text({}, rules, None, "example-room")
+    assert capped.splitlines()[1:] == [f"- {DATES} (rules/dates.md)"]       # the lesson whole, as its summary is all of it
+    whole, _ = context.rules_text({}, rules, "example-room", "example-room")
+    assert "book-the-hall" not in capped and "book-the-hall" not in whole     # a lesson kept to another room is in neither
+    assert whole.splitlines()[1:] == [f"- {DATES} (rules/dates.md)"]
 
 
 def test_a_lesson_is_replaced_in_place_its_old_words_kept_in_the_day_log_and_a_retired_one_leaves_a_tombstone(tmp_path):
@@ -112,6 +129,8 @@ def test_a_final_restating_a_lessons_cite_is_a_filing_report():
     assert words.FILING_REPORT.search("The hall is booked.\n\nThe rule is at rules/book-the-hall.md:6 now.")
     assert words.FILING_REPORT.search("The hall is booked (memory/rules/book-the-hall-2.md:1).")
     assert words.FILING_REPORT.search("Kept, rules.md:115.") and not words.FILING_REPORT.search("The rules/ folder holds the hall's.")
+    assert words.FILING_REPORT.search("The hall is booked, and the rule is rules/book-the-hall.md.")   # a filing's own cite, bare
+    assert not words.FILING_REPORT.search("rules.md is long") and not words.FILING_REPORT.search("rules-topics.md holds two.")
 
 
 def test_a_converted_store_moves_no_held_rules_and_says_why(tmp_path):
@@ -136,7 +155,7 @@ def test_a_session_start_loads_the_index_or_every_lesson_whole_uncapped_and_a_ro
     hall.write_text(hall.read_text().replace("job: book the hall\n", "job: book the hall\nrooms: hall-room\n"))
     rules = m.root / memory.RULES
     capped, _ = context.rules_text({}, rules, None, "example-room")
-    assert capped.splitlines()[1:] == ["- open web pages (rules/open-web-pages.md)"]   # kept to its room
+    assert capped.splitlines()[1:] == ["- Open web pages with the example browser. (rules/open-web-pages.md)"]   # kept to its room
     whole, _ = context.rules_text({}, rules, "hall-room", "hall-room")
     assert whole.splitlines()[1:] == [f"- {WEB} (rules/open-web-pages.md)", f"- {HALL} (rules/book-the-hall.md)"]
     assert context.rules_text({"sealed": True}, rules, "hall-room") == ("", "")
@@ -158,6 +177,24 @@ def test_the_morning_diff_counts_an_uncapped_rooms_lessons_as_that_room_is_sent_
     hall.write_text(hall.read_text().replace("job: book the hall\n", "job: book the hall\nrooms: example-room\n"))
     sent = context.rules_text(rooms(private)["example-room"], m.root / memory.RULES, "example-room", "example-room")[0]
     assert HALL in sent and morning.sizes(private, state)["example-room"]["rules"] == context.chars(sent)   # its own lesson, whole
+
+
+def test_room_add_measures_the_new_rooms_start_with_the_installs_budgets_and_the_rooms_name(tmp_path):
+    import shutil
+
+    from yerk_ai import move
+    from yerk_ai.config import load_toml, rooms
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "yerkd.toml").write_text("[limits]\nuncapped = true\n")
+    m = memory.settings(private, state)
+    (m.root / lessons.DIR).mkdir(parents=True)
+    memory.rule(m, "example-room", "m1", "book the hall", HALL)
+    hall = m.root / "rules" / "book-the-hall.md"
+    hall.write_text(hall.read_text().replace("job: book the hall\n", "job: book the hall\nrooms: example-room\n"))
+    start, bad = move.measure(private, rooms(private)["example-room"], "example-room", load_toml(private / "yerkd.toml"), m)
+    sent = next(x.text for x in start if x.name == "rules")
+    assert f"- {HALL} (rules/book-the-hall.md)" in sent.splitlines() and isinstance(bad, list)   # uncapped, kept to it: whole
 
 
 def test_a_lessons_body_rides_on_a_message_naming_its_words_once_and_never_when_the_start_carries_it(tmp_path):
@@ -416,6 +453,47 @@ def test_an_example_lands_cited_a_quote_across_sentence_ends_is_one_and_a_suppli
     assert web["missing"] == [] and web["lessons"][0]["gate"] == []          # the quote's halves no longer read as two sentences
     assert ledger["lessons"][0]["gate"] == [] and not any(d["kind"] == "no reason on file" for d in ledger["done"])
     assert {"kind": "reason supplied", "said": "holds my accounts", "from": f"daily/{day.name}:{n}, named in rules-proposals/reasons.tsv"} in ledger["done"]
+
+
+def ledger_store(tmp_path):
+    """old_store with a reason on file for its ledger rule, the one rule out of the shape, and a proposal for it that passes."""
+    m = old_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    day.write_text(day.read_text() + memory.format_line(datetime_at(NOW - 3000), "example-room", "r1", "owner", "",
+                                                        "the example ledger holds my accounts", "private", "o9") + "\n")
+    n = len(day.read_text().splitlines())
+    (m.root / "rules-proposals").mkdir()
+    (m.root / "rules-proposals" / "reasons.tsv").write_text(f"tree/rules.md:9\tdaily/{day.name}:{n}\tholds my accounts\n")
+    prop = {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, "
+            "since it holds my accounts.", "reason": {"said": "holds my accounts", "from": f"daily/{day.name}:{n}"}}],
+            "rewritten": [{"said": "Never post the example ledger.", "as": "Keep the example ledger in the owner's room. Never post it."}]}
+    return m, prop
+
+
+def test_a_proposal_the_reviewer_still_drops_after_the_last_round_makes_the_file_not_ready_though_its_lessons_pass(tmp_path):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    for verdict, ready in (("DROP tree/rules.md:9 | it says more than the rule", False), ("KEEP tree/rules.md:9", True)):
+        def model(prompt: str, tools: str, verdict=verdict) -> str:
+            return verdict if prompt.lstrip().startswith("You check the lessons") else json.dumps(prop)
+        rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
+        ledger = rec["rules"][2]
+        assert ledger["lessons"][0]["gate"] == [] and ledger["missing"] == [] and rec["lost"] == {}     # its lessons pass
+        assert rec["ready"] is ready
+        if not ready:
+            assert rec["why"] == ["1 rule the reviewer dropped after the last round, each listed"]
+            assert {"kind": "reviewer dropped", "why": "after the last round: it says more than the rule"} in ledger["done"]
+            assert "- reviewer dropped (after the last round: it says more than the rule)" in path.read_text()
+
+
+def test_the_accounting_reads_a_sentence_whole_across_an_abbreviation_in_brackets():
+    from yerk_ai import conversion
+    said = "Book the example hall (Ex. Reg. 12/34, rooms 4(b) and 5) a week ahead, since it fills (see the rota.) Post the rota."
+    lesson = [{"summary": "Book the example hall a week ahead.", "body": "Do so since it fills. Post the rota."}]
+    whole = "Book the example hall (Ex. Reg. 12/34, rooms 4(b) and 5) a week ahead, since it fills (see the rota.)"
+    listed = [{"kind": "rewritten", "said": whole, "as": "Book the example hall a week ahead, since it fills."}]
+    assert conversion.accounted({"said": said}, lesson, listed) == []        # one sentence, its brackets' stops inside it
+    assert conversion.accounted({"said": said}, lesson, []) == [whole]       # and a bracket's own last stop still ends one
 
 
 def datetime_at(t: float):

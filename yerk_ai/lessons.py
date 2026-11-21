@@ -56,6 +56,11 @@ class Lesson:
         return f"{DIR}/{self.slug}.md"
 
     @property
+    def index_line(self) -> str:
+        """The lesson's line in a capped start: its summary and its file, so a lesson of one sentence reaches the room whole."""
+        return f"- {self.summary} ({self.cite})"
+
+    @property
     def whole(self) -> str:
         """The lesson as one line, summary then body: what an uncapped start and a message naming its topic send."""
         return f"- {self.summary}{' ' + self.body if self.body else ''} ({self.cite})"

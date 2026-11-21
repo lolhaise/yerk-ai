@@ -33,6 +33,9 @@ DAYS = 14                          # the trigger test's window of owner messages
 OWNER = ("owner", "test-webhook")  # whose messages the trigger test reads (the webhook stands in for the owner)
 PEOPLE = re.compile(r"\b(?:anyone|anybody|someone|somebody|people|a person|other persons?|others|strangers?|whoever)\b", re.I)
 WORD = re.compile(r"[\w'’-]+")      # a sentence is accounted for by its words, the punctuation a cited quote left aside
+STOPS = (".", "!", "?")
+BRACKET = re.compile(r"\([^()\n]*\)")  # a bracket, innermost first: the accounting never ends a sentence inside one ("(Ex. B)")
+HELD = re.compile("\x02(\\d+)\x03([.!?]?)")  # a held bracket, its own last stop written after it so a sentence still ends there
 GO_AHEAD = "Only the owner's go-ahead lifts it."
 HIS_WORD = "Only the owner's own go-ahead lifts it, not anyone else's."     # no word a rule loads on: "person" outweighed one
 ROUNDS = 2                         # the times a rule still failing goes back to the model with its findings, after its first
@@ -44,6 +47,7 @@ REASONS = "reasons.tsv"            # in <memory>/rules-proposals/: cite, the dai
 READ = ("claude-fable-5-2",)
 WANTING = ("no reason given", "a negative with no why", "a hard style limit with no reason")   # what a reason on file would meet
 WRAP = re.compile(r"\s*</?examples(?:\s[^>]*)?>", re.I)    # the wrapper left round a rule's examples once code takes them out
+DROPPED = "the reviewer dropped it: "   # a finding of the knock-down: its proposal says other than the rule says
 
 
 def sha(p: Path) -> str:
@@ -141,7 +145,16 @@ def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dic
     out, text = [], uncited(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"])))   # an example is code's, each listed
     held = [m[0] for m in shape.QUOTED.finditer(text)]       # a quote is never split at a sentence end inside it
     text = shape.QUOTED.sub(lambda m: f"\u201c\x00{held.index(m[0])}\x00\u201d", text)
+    brackets: list[str] = []                                 # nor a bracket at an abbreviation in it, a bracket in it held first
+
+    def hold(m: re.Match[str]) -> str:
+        brackets.append(m[0])
+        return f"\x02{len(brackets) - 1}\x03{m[0][-2] if m[0][-2:-1] in STOPS else ''}"
+    while (n := BRACKET.subn(hold, text))[1]:
+        text = n[0]
     for sent in shape.SENTENCES.split(text):
+        while HELD.search(sent):
+            sent = HELD.sub(lambda m: brackets[int(m[1])] + ("" if brackets[int(m[1])][-2:-1] in STOPS else m[2]), sent)
         sent = re.sub("\u201c\x00(\\d+)\x00\u201d", lambda m: held[int(m[1])], sent)
         rest = flat(sent)
         cut = {i for y in said for m in re.finditer(re.escape(y), rest) for i in range(m.start(), m.end())}
@@ -349,7 +362,7 @@ def model_pass(rules: list[dict[str, Any]], model: Callable[[str, str], str], ch
         for r in todo:
             c = r["cite"]
             found = ["no proposal came back for it"] if c not in props else [*check(r, props[c]), *(
-                [] if c in kept else [f"the reviewer dropped it: {dropped.get(c) or 'no verdict'}"])]
+                [] if c in kept else [f"{DROPPED}{dropped.get(c) or 'no verdict'}"])]
             out[c] = {"prop": props.get(c), "findings": found, "rounds": n}
         todo = [r for r in todo if out[r["cite"]]["findings"]]
         if not todo or n == ROUNDS:
@@ -405,6 +418,8 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
         if (p := props.get(r["cite"])) and p["findings"]:
             made[-1]["done"].append({"kind": "still failing", "why": f"after {p['rounds']} round{'s' * (p['rounds'] != 1)} back to the model: "
                                      + " / ".join(p["findings"]) + ("" if p["prop"] else "; split as it stands")})
+            if drop := next((f for f in p["findings"] if f.startswith(DROPPED)), ""):    # counted: its lessons may all pass the gate
+                made[-1]["done"].append({"kind": "reviewer dropped", "why": f"after the last round: {drop.removeprefix(DROPPED)}"})
     lost, loads = trigger_test(rules, made, owner_messages(s, now))
     for r, m in zip(rules, made):
         m["loads"] = loads.get(r["cite"], 0)
@@ -416,6 +431,8 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     why += [f"{n} lesson{'s' * (n != 1)} refused only for a reason no file holds, each listed (a row in {curate.PROPOSALS}/{REASONS} "
             "supplies one)" for n in [len(bare)] if n]
     why += [f"{n} original{'s' * (n != 1)} not accounted for" for n in [sum(bool(m["missing"]) for m in made)] if n]
+    why += [f"{n} rule{'s' * (n != 1)} the reviewer dropped after the last round, each listed" for n in
+            [sum(any(d["kind"] == "reviewer dropped" for d in m["done"]) for m in made)] if n]
     why += [f"{n} original{'s' * (n != 1)} losing a trigger" for n in [len(lost)] if n]
     index, (most, size) = lessons.index_text([lesson_of(x) for m in made for x in m["lessons"]]), shape.index_limits(s.docs)
     lines, have = len(index.splitlines()), len(index.encode())

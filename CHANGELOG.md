@@ -26,7 +26,8 @@ version changes.
   owner's rules by itself, and the daily run says the size as a line of its own from 90% of a limit, filing no need for
   it. Nothing is refused for the index's size.
 - A session start loads the index; on an uncapped install it carries every lesson whole, so a room knows what it knew. On
-  a capped one it carries the job lines, and a lesson, summary and body, rides on its words where a topic rule did. A room kept to a lesson by its rooms mark, a sealed room and a
+  a capped one it carries a line for each lesson the room may have, its summary and its file, built from the lesson files
+  (the index on disk stays one line a job), and a lesson with a body rides whole on its words where a topic rule did. A room kept to a lesson by its rooms mark, a sealed room and a
   person's room see what they saw. A session that began before a conversion is told nothing about it, only a lesson changed
   since, since the docs say to make such changes "in new conversations only".
 - Recall reads each lesson as one chunk with its front matter out, so a room's name in a lesson's scope never matches a
@@ -74,10 +75,26 @@ version changes.
   in), to borrow no other part's reason and to write no caution the rule does not give, the things the knock-down
   dropped most proposals for.
 
-- A final that restates a lesson's cite (`rules/<slug>.md:N`) is a filing report too, as one restating `rules.md:N` is.
+- A final that restates a lesson's cite (`rules/<slug>.md`, with or without its line, as a filing's own result gives it)
+  is a filing report too, as one restating `rules.md:N` is; `rules.md` and `rules-topics.md` still need their line, since
+  those names come up in plain talk.
   The morning diff and `yerk room add` measure each room's session start with the install's own budgets and the room's
   name, so an uncapped install's converted store counts the lessons that room is sent, whole. A rules-overflow.md found on
   a converted store is left as it is, since that store reads no rules-topics.md, and the start logs why.
+- A capped start on a converted store carries a line for each lesson the room may have, its summary and its file, again:
+  with the job lines alone, a lesson of one sentence (a summary, no body) reached a capped room neither at its start nor on
+  its topic. `rules.md` on disk stays one line a job.
+- The dry run's verdict counts a reviewer's drop: a rule whose proposal the knock-down still drops after the last round
+  makes the file not ready, "N rules the reviewer dropped after the last round, each listed", each such rule carrying a
+  listed item with the reviewer's words, though every lesson of it passes the gate.
+- `Lessons` and `Lessons again` say where a rule is cut, since a lesson cut off from the step its reason belongs to was
+  refused for no reason, and one lent its neighbour's reason was dropped: a rule stays one lesson when it fits the checks;
+  it is split only when it cannot fit, into as few lessons as fit, each cut placed so that every lesson holds a step whose
+  reason the rule gives, a step with none staying in the lesson of the step beside it, in the rule's order; a reason stays
+  in its own step's sentence in the rule's words, and a limit the rule states is written as it states it. A "no reason
+  given" finding on a lesson of a split rule is met by moving its steps into the lesson beside it.
+- The accounting reads a sentence whole across an abbreviation in brackets ("(Ex. Reg. 12/34)"): a bracket is never cut at
+  a stop inside it, and a bracket's own last stop still ends its sentence.
 
 **Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then

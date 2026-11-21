@@ -127,11 +127,12 @@ def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack 
 def rules_text(room: dict[str, Any], rules: Path | None, topical: str | None = None, name: str | None = None) -> tuple[str, str]:
     """The install's rules file's live lines (memory.rule), a part of its own: no front matter or superseded line; with
     `topical`, an uncapped install's room name, after them under TOPICAL every live topic rule that room may have, whole.
-    A converted store (lessons.py): the index's lines for the lessons room `name` may have, one a job with its lessons' files, or
-    with `topical` each of those lessons whole, summary then body, so an uncapped room starts knowing every rule it knew before."""
+    A converted store (lessons.py): a line for each lesson room `name` may have, its summary and its file, built from the lesson
+    files (rules.md on disk is one line a job), or with `topical` each of those lessons whole, summary then body, so an uncapped
+    room starts knowing every rule it knew before."""
     if rules and lessons.converted(rules.parent) and not flag(room.get("sealed")):
         have = lessons.shown(lessons.store(rules.parent), topical if topical is not None else name)
-        rows = [x.whole for x in have] if topical is not None else lessons.index_rows(have)
+        rows = [x.whole if topical is not None else x.index_line for x in have]
         return (f"[from {rules.resolve()}]\n" + "\n".join(rows), str(rules.resolve())) if rows else ("", "")
     if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
         return "", ""

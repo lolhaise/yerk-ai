@@ -1869,4 +1869,9 @@ secs = 60
 # left as it is on a converted store, and why), shape.py 10 (an uncapped install's index size, a measurement line),
 # conversion.py 8 (the index it would write against code-memory's limits; the Fable 5.2 page always read), lessons.py 7
 # (the job lines), doctor.py 3, morning.py 3, daemon.py 2. 34,593: 34,544 plus 49.
-lines = 34593
+# 2026-11-21: lesson-store-2026-11-21 raised it by 30 more, the judging of its real passes met, not folded to fit:
+# conversion.py 17 (a rule the reviewer still drops after the last round counted in the verdict; a bracket held whole
+# in the accounting, so an abbreviation in it ends no sentence), move.py 6 (room add's measure, a function a test
+# reaches), lessons.py 5 (a lesson's summary line, what a capped start carries again), context.py 1, words.py 1 (a
+# lesson's cite with or without its line). 34,623: 34,593 plus 30.
+lines = 34623
