@@ -305,7 +305,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133562
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133708
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -340,7 +340,7 @@ def test_the_map_counts_claude_codes_parts_as_the_room_last_sent_them(tmp_path, 
     assert cli.main(["map", "example-room", "--private", str(private), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert f"Claude Code's parts as the room last sent them: {t}" in out
-    assert re.search(r"^  mcp__hands__ +3,000 +10,470  ok, as sent$", out, re.M) and re.search(r"^  builtin_tools +6,000 +12,132  ok, as sent$", out, re.M)
+    assert re.search(r"^  mcp__hands__ +3,000 +10,616  ok, as sent$", out, re.M) and re.search(r"^  builtin_tools +6,000 +12,132  ok, as sent$", out, re.M)
     start = context.session_start(private, rooms(private)["example-room"], b, rules=memory.settings(private, state).root / memory.RULES)
     total = context.session_total(start, b) - sum(b["session_start"]["claude_code"].values()) + sum(sent.values())
     assert re.search(rf"^  total +{total:,} +{b['session_start']['total']:,}  ok$", out, re.M)
@@ -374,7 +374,7 @@ def test_a_room_with_no_transcript_is_counted_at_its_lines_and_the_map_says_so(t
     assert cli.main(["map", "example-room", "--private", str(private), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert "Claude Code's parts at their line: no transcript of this room yet" in out
-    assert re.search(r"^  mcp__hands__ +- +10,470  counted at its line$", out, re.M)
+    assert re.search(r"^  mcp__hands__ +- +10,616  counted at its line$", out, re.M)
     assert cli.main(["map", "example-room", "--wire", "--private", str(private), "--state", str(state)]) == 2
     assert "no transcript for room example-room" in capsys.readouterr().err
 
@@ -467,7 +467,7 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     to 133,562 (need-2026-11-19-126)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133562
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 133708
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

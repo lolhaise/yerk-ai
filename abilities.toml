@@ -505,6 +505,27 @@ why_not = "It rides on the browser ability, which is not in this repo; an instal
 asked_as = ["save the api key", "keep the api key", "store the api key", "copy the api key", "key in a locked file", "token in a locked file",
             "save the key to the secrets folder", "save the token from the page"]
 
+# need-2026-11-20-127: the owner sent a room a new site's login in pictures and said it needs to know their login; it had no
+# way to file it as a secret (its shell cannot write the secrets folder, and the browser's keep saves only a key a page
+# shows), and signing in later meant typing the password through a tool call, which lands in its kept transcript.
+[abilities.logins]
+state = "built"
+what = "Saves a login the owner hands over, a site's user and password, as a secret no room reads, from their own /login command, and signs in with it through the browser ability's browser by its name alone, so the password never reaches a room, its session log or a reply."
+how = [
+  "Saved by the owner with /login in any room, its name, site, user and password, since a slash command reaches the daemon alone, never a room's session as a message would; the answer only they see names the login, its site and its user, never the password.",
+  "Written by the daemon, NAME.login in the private folder's secrets (the site, the user and the password, 0600 in a 0700 folder), the way every key Yerk runs on is kept, so no room's Read or shell reaches it; the same name again is the owner's own new password, a link in its place is refused.",
+  "Signed in by name, as the browser's type takes login and part, user or password, and the plug-in reads the file itself, so the value is in no tool call's arguments and no reply; a name not saved lists the saved ones by name and site.",
+  "Only on the login's own site over https, its host or a subdomain of it, the password only into a password field and the user only into a text field, never on a payment page; the plug-in scrubs every saved password from every line it returns after.",
+  "A login the owner sends in a message or a picture instead is never typed out, filed in memory or copied by the room, which asks them to save it with /login and to delete the message.",
+]
+tier = "free"
+needs = "the owner's Discord rooms for /login, and the browser ability with type's login in its plug-in for the sign-in"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["save my login", "save my password", "keep my password", "store my password", "remember my login", "remember my password",
+            "here is my login", "here's my login", "my login is", "my password is", "know my login", "sign in with my login",
+            "log in with my login", "use my login", "my login details"]
+
 # need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail had the mail's words and
 # no link's address, since the mail tool's text strips the tags, and the mail would not open by its row in the browser.
 # need-2026-11-07-74: a room asked whether a guest booking was still live read its mails with every link stripped again,

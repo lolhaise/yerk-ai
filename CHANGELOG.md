@@ -8,6 +8,33 @@ version changes.
 
 ## 2026-11-20
 
+### need-2026-11-20-127 (#116)
+
+- A login you hand over is saved as a secret, and a room signs in with it without ever seeing the password. `/login`
+  in any of your rooms takes a name, the site, the user and the password. A slash command reaches the daemon, never a
+  room's session, so no room reads it. The daemon writes it to `secrets/NAME.login` in the private folder (0600, in a
+  0700 folder). The answer, which only you see, names the login, its site and its user, never the password. Saving
+  the same name again replaces the password; a name that is not lowercase letters, digits and hyphens, a site that is
+  not a host name, an empty or multi-line user or password, and a link where the file goes are refused, and nothing is
+  written. Before this, a room you sent a new site's login in pictures could not file it: its shell cannot write the
+  secrets folder, the browser's keep saves only a key a page shows, and typing the password through a tool call puts
+  it in the room's kept transcript.
+- Signing in rides on the browser plug-in, which is kept outside this repository (hands-mcp, branch
+  need-2026-11-20-127 at 9f7c3ca, 184 cases). Its `type` takes `login` and `part` (user or password), and the plug-in
+  reads the file itself. So the password is in no tool call's arguments and no reply. It types only on a page of the
+  login's own site over https (its host or a subdomain of it), puts the password only into a password field and the
+  user only into a text field, and never types on a payment page. A name that is not saved gets the list of saved
+  ones, by name and site. Every saved password is scrubbed from every reply after, as a kept key is.
+- The site is checked against the address the browser itself gives for the tab, never against what the page's own
+  script answers, so a page of another site that claims the login's address gets nothing typed. The user and the
+  password reach the browser's driver on its stdin, never on a command line, where any process of the same user could
+  read them.
+- The abilities entry `logins` tells a room handed a login in a message or a picture to ask for `/login`, never to type
+  it out or file it in memory.
+- **Upgrading**: budgets.toml's `mcp__hands__` rises from 10,470 to 10,616 for the browser entry's 146 more bytes, and
+  the session-start total rises from 133,562 to 133,708. `[code] lines` rises from 33,467 to 33,548. Each raise has its
+  dated reason in the file. The new slash command is registered at yerkd's next start.
+
 ### video-other-browser (#115)
 
 - A room whose browser is not signed in to Instagram on the computer it asked now reads a locked reel in the other

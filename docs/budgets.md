@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 133562`
+- `total = 133708`
 
 ## [session_start.claude_code]
 
@@ -130,11 +130,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-19, need-2026-11-19-126: the `people` tool (who a room answers in its channel besides the owner, and on the owner's own words of the turn one more, a person who wrote there, named by that message, or one so added no more, since the owner asked a person's room to answer a second person in its channel, whose message was filed as "other" with no reply, and no tool changed who a room answers) is 748 as this tree builds it, all 25 from 26,770 to 27,518 (measured on main 3af751c and on this tree the same way), about 779 as sent (31 over, as each of Yerk AI's entries goes), on the about 28,490 the rooms send, so about 29,269, 669 over the line; so 29,300, no part could pay, the total rose by the 700 (to 133,562 on main's 132,862). The hands plug-in's tool entries do not change.
 
+2026-11-20, need-2026-11-20-127: the hands plug-in's browser `type` takes `login` and `part` (the user or the password of a login the owner saved with Yerk's /login, typed by the plug-in itself on that login's own site, so the password is in no tool call; since a room the owner sent a new site's login in pictures could file no secret, and signing in meant typing the password through a tool call kept in its transcript; filed 2026-11-20): the five entries 10,409 to 10,555 as the plug-in's branch need-2026-11-20-127 (9f7c3ca) builds them on its main e3b605e, 146 more, by the plug-in's own measure, its test's cap moving with it; so 10,616, no part could pay, the total rose by the 146 (to 133,708 on main's 133,562). Yerk AI's own tool entries do not change: /login is a slash command, never a room's tool.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 29300`
 - `deferred_tool_names = 3581`
-- `mcp__hands__ = 10470`
+- `mcp__hands__ = 10616`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 
@@ -797,7 +799,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-20: meter-reading-light raised it by 32, a meter reading hides the account's transcripts from its Claude Code (measured that day on one box: one reading asked read() for 3 GB, 836 transcripts among its files, and the keeper reads each account every 15 minutes with nobody talking; with them hidden, about 1 MB), not folded to fit: usage.py 32 (hiding, bwrap's words over the projects folder's real path where bwrap is found and the folder is there, 10; read's second run without it on bwrap's own failure, said once and kept for the process, and its stdin /dev/null, 6; BWRAP and the failure kept, 2; os and shutil, 2; the module's paragraph on what a reading costs and why, 9; read's docstring, 3). 33,467: main 08d4604's 33,435 plus 32.
 
-- `lines = 33467`
+2026-11-20: need-2026-11-20-127 raised it by 81, /login, a login the owner hands over saved as a secret by the daemon alone (that evening a room sent a new site's login in pictures could file no secret, its shell kept from the secrets folder and the browser's keep saving only a key a page shows, and signing in meant typing the password through a tool call kept in its transcript), not folded to fit: logins.py 60 (the module's paragraph on the wall and the way, 7; site, the host from what the owner typed, 9; save, its checks, a link refused, the file written whole at 0600 in a 0700 folder, 26; NAME, HOST and MOST, 3; imports and path, 15), words.py 10 (the command, its four parts and its six lines), daemon.py 7 (login_save, its log line naming the login and its site alone), channels/discord.py 4 (the command's four required parts; its answer). 33,548: main e7b9343's 33,467 plus 81.
+
+- `lines = 33548`
 
 ## Uncapped
 

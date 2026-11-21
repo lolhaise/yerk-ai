@@ -1207,9 +1207,19 @@ USUAL = "the default"                                # a room whose rooms.toml n
 # slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
 COMMANDS = {"model": "this room's model or account, from the next reply", "effort": "this room's thinking level, from the next reply",
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
-            "status": "what runs now", "fast": "fast mode for this room, on or off, from the next reply"}
+            "status": "what runs now", "fast": "fast mode for this room, on or off, from the next reply",
+            "login": "save a site's login for the browser; no room sees it"}
 CHOICE = {"model": "an account, a model or both, the account first; default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default",
-          "fast": "on or off; leave it out for this room's state"}
+          "fast": "on or off; leave it out for this room's state",
+          "name": "a short name for it, such as example", "site": "the site you sign in on, such as example.com",
+          "user": "the user name or email you sign in with", "password": "the password; only the secrets folder keeps it"}
+# /login (need 127, logins.py): the owner's alone, a reply only they see; never the password, nor its length
+LOGIN_SAVED = "login {name} saved, for {site}\nuser {user}\nthe password is in the secrets folder\nthe browser types it by name, unseen"
+LOGIN_REPLACED = "login {name} replaced, for {site}\nuser {user}\nthe new password is in the secrets folder"
+LOGIN_NAME = "not saved: name it in lowercase letters,\ndigits and hyphens, such as example"
+LOGIN_SITE = "not saved: the site is the address you\nsign in on, such as example.com"
+LOGIN_EMPTY = "not saved: the user and the password\neach take one line"
+LOGIN_LINK = "not saved: {name} in the secrets folder\nis no plain file"
 # /fast (Yerkd.fast_command): never "on" unless Claude Code itself said so; a later process's refusal is said once (Room._start)
 FAST_ON_NEXT, FAST_OFF = "fast mode on from the next reply\nbilled to usage credits, not the plan", "fast mode off"
 FAST_NOT_ON, FAST_ONLY = "fast mode did not turn on\n{why}", "fast mode is for Fable 5.2 rooms\nthis room is on {model}"
