@@ -71,6 +71,22 @@ version changes.
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then
 `yerk curate --lessons-apply <that file>`. The memory index skips `rules-backup-*` folders from its next start.
 
+### need-2026-11-21-132 (#118)
+
+- The orange "docs moved" line for the index check is gone. Claude Code's memory page (code-memory) was reworded by
+  2026-11-21, and the sentence the index check pinned, "The first 200 lines of `MEMORY.md`, or the first 25KB,
+  whichever comes first, are loaded at the start of every conversation.", was no longer on it, so that morning's
+  doctor run said the line in the machine room and filed a need to re-pin it. The pin is now the page's sentence as
+  it reads, under "How it works": "While auto memory is on, the first 200 lines or 25KB of `MEMORY.md`, whichever
+  comes first, load at session start." A finding on a rules file past its limits quotes it, and the limits read off
+  it are the same, 200 lines and 25KB. Every other pinned sentence is still on its page word for word.
+- A test holds that paragraph of the page as fetched, so a box with no fetched docs checks the pin too. It also pins
+  that a page missing a pinned sentence files the re-pin need, never the lesson one, with the doctor's line as what
+  was tried.
+- The `lesson-pins` entry in abilities.toml says how the pins work, so a room asked about a "docs moved" line answers
+  that the re-pin is the pipeline's to build.
+- **Upgrading**: nothing to change.
+
 ## 2026-11-20
 
 ### logins-notes-doctor-2026-11-20 (#117)

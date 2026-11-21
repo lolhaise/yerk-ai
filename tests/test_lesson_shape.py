@@ -130,6 +130,43 @@ def test_the_index_limits_are_read_off_the_code_memory_page_and_the_store_is_sco
     assert shape.store(m, LIMITS, docs)["index"] == ["201 lines, past 200"]
 
 
+def test_the_index_pin_is_code_memorys_sentence_as_reworded_and_a_page_without_it_files_the_re_pin_need(tmp_path, monkeypatch):
+    """code-memory was reworded by 2026-11-21: "The first 200 lines of `MEMORY.md`, or the first 25KB, whichever comes first,
+    are loaded at the start of every conversation." left the page, so that day's doctor run said "docs moved" for the index
+    check and filed the re-pin need. The pin is the page's sentence now, its "How it works" paragraph below as fetched, word for
+    word so a box with no fetched docs checks it too: it holds, the limits are read off it, a finding quotes it, and the
+    doctor is silent on it. A page without it is the moved line again, filed as the re-pin need, never as a lesson need."""
+    from yerk_ai import doctor, needs
+    now = ("### How it works\n\nWhile auto memory is on, the first 200 lines or 25KB of `MEMORY.md`, whichever comes first, load "
+           "at session start. Content beyond that threshold is not loaded at session start. Claude keeps `MEMORY.md` concise by "
+           "moving detailed notes into separate topic files.\n")
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    docs = docs_with(state, **{**every_pin(), "code_memory": "# Memory\n\n" + now})
+    assert shape.pinned(docs) == [] and shape.index_limits(docs) == (200, 25_000)
+    assert shape.sentence("index", docs) == ('"While auto memory is on, the first 200 lines or 25KB of `MEMORY.md`, whichever comes '
+                                             'first, load at session start." (docs/claude/code-memory.md)')
+    m = memory.settings(private, state)
+    m.root.mkdir(parents=True, exist_ok=True)
+    rules, posts = m.root / memory.RULES, list[dict]()
+    rules.write_text(f"- open web pages: {GOOD} (example-room, 2026-01-02 09:00:00+00:00) [m:1]\n")
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    green = rules.read_text()
+    rules.write_text("".join(f"- job {i}: Do it, since it helps. (r, 2026-01-02 09:00:00+00:00) [m:{i}]\n" for i in range(201)))
+    assert doctor.lessons(private, state, m, 1000.0, dry=True) == [
+        f"rule index {memory.RULES}: 201 lines, past 200, the code-memory limit a session start loads, {shape.sentence('index', docs)}"]
+    rules.write_text(green)
+    old = "The first 200 lines of `MEMORY.md`, or the first 25KB, whichever comes first, are loaded at the start of every conversation."
+    (docs / "claude" / "code-memory.md").write_text(f"# Memory\n\n### How it works\n\n{old}\n")
+    out = doctor.lessons(private, state, m, 1000.0, post=posts.append)
+    assert out == [f'docs moved: code-memory no longer says the sentence the index check enforces: "{shape.PINS["index"][1]}"']
+    [need] = needs.load(state)
+    assert need["ability"] == doctor.PIN_NEED and need["asks"][0]["tried"] == out[0] and need["asks"][0]["room"] == "example-machine"
+    assert [p["machine"]["room"] for p in posts] == ["example-machine"] and posts[0]["machine"]["text"].startswith(out[0])
+    assert shape.index_limits(docs) == (200, 25_000)                     # moved: the pin's own numbers until it is re-pinned
+
+
 def test_the_doctors_daily_run_files_a_need_and_says_one_line_on_a_finding_and_is_silent_on_a_green_day(tmp_path, monkeypatch):
     from yerk_ai import doctor, needs
     monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})
