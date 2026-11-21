@@ -1835,4 +1835,12 @@ secs = 60
 # comment), daemon.py 5 (tool_seen's refusal before anything is written, its log line with the line's number and kind
 # alone, its docstring), pictures.py 3 (the module's sentence), cli.py 1 (--scrub's help), mcp_server.py 1 (the clause
 # from words.py). 33,625: main 948dcdb's 33,548 plus 77.
-lines = 33625
+# 2026-11-21: need-2026-11-21-135 raised it by 35, a red check's why in github_state (that afternoon a room asked whether
+# a worker's tests held on the box heard from github_state on its pull request only that one check was red, no test
+# named; the box CI keeps its record of each commit in a folder of its own and the journal, where the room's Glob was
+# refused, and the room has no shell), not folded to fit: github.py 23 (record, the head's record from its newest run, the
+# tests named failing and the lines that say what failed, or a line on why there are none, 17; SAYS, TEST, LINES and WIDE,
+# 3; row's and look's docstrings, 2; the module's clause, 1), words.py 7 (GITHUB_NEXT's red and ci, 2; the three lines on a
+# record not read and their comment, 5), daemon.py 3 ([needs] ci_log read and handed to look, its docstring's sentence),
+# config.py 2 (the setting's words). 33,660: main 0911b5e's 33,625 plus 35.
+lines = 33660

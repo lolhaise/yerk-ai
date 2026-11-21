@@ -8,6 +8,30 @@ version changes.
 
 ## 2026-11-21
 
+### need-2026-11-21-135 (#122)
+
+- A room asked why a check on one of Yerk's pull requests is red now names the failing tests. `github_state` used to
+  list a red check by its name alone, so a room asked whether a worker's tests hold on the box could say only that a
+  check was red: the box CI keeps its record of each commit where no room reads, and a room has no shell. Now each red
+  check comes with its own words on GitHub (the box CI's words name the first failing test and the counts, cut at
+  140 characters), and when `[needs] ci_log` names the folder the box's CI keeps its record of each commit in (one
+  `<full sha>.txt` a commit), the daemon reads the head's record too: from its newest run, every test its lines name as
+  failing, whole and once, and those lines, the first twelve, which say on which Python and in which step, with the
+  counts (a mypy, ruff or install red is its line, with no test). No folder named, no record of that commit and a
+  record that names no failure each come back as one line beside GitHub's words. It is a file read on the box; nothing
+  more is asked of GitHub.
+- The `red-checks` entry in abilities.toml says how, so a room asked why the check is red, or whether a worker's tests
+  hold on the box, answers from it.
+- The tests: 2 new in tests/test_github_state.py (the wall the room met, a red check with no test named, is now the
+  record's failing tests whole with their lines, from the newest run, with a status cut mid-name adding none and another
+  commit's record never read; and the record's other ends: none there, none failing, a mypy red, past twelve lines, a
+  head that is no full sha) and 1 in tests/test_abilities.py; the first github_state test reads `red` with each check's
+  words.
+- **Upgrading**: yerkd.toml takes `[needs] ci_log = "<folder>"`, the folder your box's CI writes its record of each
+  commit in, read at the daemon's start; without it github_state gives GitHub's words for each red check and one line
+  naming the setting. budgets.toml's `[code] lines` rises from 33,625 to 33,660, with its dated note; an install that
+  keeps its own budgets.toml raises it the same way.
+
 ### need-2026-11-21-133 (#120)
 
 - A room can click the second or third of several buttons that share one label in the browser, and scroll a tab. On a

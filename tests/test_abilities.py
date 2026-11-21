@@ -638,6 +638,26 @@ def test_a_room_whose_click_took_the_first_of_several_alike_buttons_hears_the_nt
     assert not abilities.asked("the scroll from the museum is on the shelf", y.memory, TAB)
 
 
+def test_a_room_asked_whether_a_workers_tests_hold_on_the_box_hears_the_red_checks_way(tmp_path):
+    """need-2026-11-21-135: a room asked whether a worker's tests held on the box read its pull request with github_state
+    and got only that a check was red, no test named; the box CI's record sat where no room reads, and the room had no
+    shell. Asked that way, a room gets red-checks whole: github_state gives each red check its words and reads the box
+    CI's record of the head, every failing test and its lines, from the folder [needs] ci_log names; it is on with the
+    GitHub token as github-state is, and a message about tests at a school gets no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("relay the worker and say whether its tests hold on the box", "why is the check red on that pull request?"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["red-checks"], ask
+    text = found[0]["text"]
+    assert text.startswith("red-checks, a Yerk AI ability (") and "Says why a check on a pull request of Yerk's own repository is red" in text
+    assert "names every failing test and the lines that say what failed" in text and "[needs] ci_log in yerkd.toml" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("red-checks", TAB["red-checks"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- What:")).endswith("a status cut mid-name adds none.")
+    assert abilities.state("red-checks", TAB["red-checks"], TAB, y.memory) == abilities.state("github-state", TAB["github-state"], TAB, y.memory)
+    assert not abilities.asked("which tests failed at school this week?", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}
