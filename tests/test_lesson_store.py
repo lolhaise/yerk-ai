@@ -756,8 +756,8 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
     assert web["missing"] == [] and rota["missing"] == []          # a cited quote inside a listed sentence, a mark, the wrapper
     assert web["lessons"][0]["body"] == f'Do so since in his words "{said}".'    # the owner's quote whole, never a pointer (S3)
     assert {"kind": "quote cited", "said": said, "as": said, "at": f"daily/{day.name}:{n}"} in web["done"]
-    assert rota["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:3</example>") and rota["lessons"][0]["gate"] == []
-    assert any(d["kind"] == "example cited" and "its gloss of 10 words left out" in d.get("why", "") for d in rota["done"])
+    assert rota["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:3, a gloss of far more than six words on it</example>")
+    assert rec["uncited"] == {rota["lessons"][0]["slug"]: "tree/rules.md:7"}      # the rule's own cite, its gloss whole, listed (Z5)
     assert {"kind": "no reason on file", "said": "Put the week in bold.", "why": "listed for the owner's side: the rule gives this lesson's part no "
             "reason and a reason is never invented; a row in rules-proposals/reasons.tsv supplies one"} in rota["done"]
     assert {"kind": "reason supplied", "said": "the bank reads", "from": f"daily/{day.name}:{n + 2}, named in rules-proposals/reasons.tsv"} in ledger["done"]
@@ -1717,3 +1717,68 @@ def test_x3_the_command_hands_the_rules_it_names_to_the_dry_run_and_refuses_a_na
     monkeypatch.setattr(conversion, "dry_run", lambda private, state, s, **kw: got.append(kw) or tmp_path / "proposals.md")
     assert cli.main(["curate", "--lessons", "--from", str(earlier), "--redo", "tree/rules.md:8", "--redo", "tree/rules.md:9", *args]) == 0
     assert got == [{"earlier": earlier, "redo": ("tree/rules.md:8", "tree/rules.md:9")}]
+
+
+# Run 9 (2026-11-21): an example the rule itself gives as a cite is carried as the rule has it, its gloss whole.
+def test_z5_the_rules_own_cite_keeps_its_gloss_whole_is_listed_and_worked_out_again_by_the_apply_and_a_gloss_not_the_rules_counts(tmp_path):
+    import pytest
+
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    own = f"Bounced, daily/{day.name}:3, the example ledger pinned up on the hall board all week"     # a gloss of 11 words
+    ledger_with(m, f"Never post the example ledger. <example>{own}</example>")
+    asked: list[str] = []
+    p = {**prop, "lessons": [{**prop["lessons"][0], "examples": [1]}]}
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+    ledger = rec["rules"][2]
+    x = ledger["lessons"][0]
+    assert x["body"].endswith(f"<example>{own}</example>") and ledger["faults"] == []           # as the rule has it, never a bare cite
+    assert any(g.startswith(conversion.RECORDS) and f"a gloss of 11 words beside daily/{day.name}:3" in g for g in x["gate"])
+    assert rec["ready"] and rec["uncited"] == {"example-ledger": "tree/rules.md:9"}
+    assert not any(a.startswith("The gate refused") for a in asked)                             # the excused finding never sent
+    assert any(d["kind"] == conversion.UNCITED and "or the rule's own cite with its gloss whole, where the gate asks a shorter gloss" in d["why"]
+               for d in ledger["done"])
+    assert ("Listed as an example kept as its words, since no day-log line passes or its cite was refused, where the gate asks a cite (no wrong "
+            "line is written to pass it), or the rule's own cite with its gloss whole, where the gate asks a shorter gloss and not counted in the "
+            "verdict: 1 lesson, rules/example-ledger.md.") in path.read_text().splitlines()
+    rule = {"said": f"Never post the example ledger. <example>{own}</example>", "job": "example ledger"}
+    mine = own.replace("on the hall board all week", "by the door of the hall for days")          # a gloss of the conversion's own
+    assert conversion.recorded(rule, f"{x['summary']} Never post it. <example>{own}</example>", m.daily) == {conversion.UNCITED}
+    assert conversion.recorded(rule, f"{x['summary']} Never post it. <example>{mine}</example>", m.daily) == set()
+    text = f"{x['summary']} Never post it, since it holds the accounts. <example>{mine}</example>"
+    gate = memory.unshaped("example ledger", text, None, m, FABLE2)["fix"]
+    assert any(g.startswith(conversion.RECORDS) for g in gate)
+    assert not any(g.startswith(conversion.RECORDS) for g in conversion.excused(rule, {"summary": x["summary"], "body": text[len(x["summary"]):],
+                                                                                         "gate": gate}, FABLE2, m.daily))   # it still counts
+    held = conversion.loaded(path)               # the record's rule no longer holds that gloss as the lesson has it: the list is not borne
+    r = next(y for y in held["rules"] if y["cite"] == "tree/rules.md:9")
+    r["text"] = r["text"].replace("on the hall board all week", "on the hall board for a week")
+    (bad := tmp_path / "changed.md").write_text(conversion.render(held))
+    with pytest.raises(RuntimeError) as e:
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, bad)
+    assert str(e.value) == ("example-ledger is listed as an example kept as its words, which its rule's words do not bear: run the dry run "
+                            "again; nothing applied") and not lessons.converted(m.root)
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert lessons.listed(m.root)["example-ledger"] == (rec["day"], "tree/rules.md:9", "an exception and a cite for its example")
+
+
+def test_z5_the_daily_run_files_nothing_for_the_rules_own_cite_listed_with_its_gloss_whole(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs, shape
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {"model": "claude-fable-5-2"}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    from test_lesson_shape import docs_with, every_pin
+    docs_with(state, **every_pin())
+    (m.root / lessons.DIR).mkdir(parents=True)
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Keep the example ledger in the owner's room.", "Do so since it holds "
+                                       "the accounts. <example>Bounced, daily/2025-11-09.md:3, the example ledger pinned up on the hall board all week</example>"))
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta cite for its example\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    at = next(a for a, *_ in shape.rows_of(m) if "/example-ledger.md" in a)
+    assert (f"Listed as an example kept as its words, the cite the gate asks of it no finding (rules-no-reason.tsv): 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta reason\n")      # listed for another cause
+    assert any("on record" in x for x in doctor.lessons(private, state, m, 1000.0, dry=True))

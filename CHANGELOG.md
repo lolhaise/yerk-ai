@@ -68,8 +68,10 @@ version changes.
   line's words; the dry run hands each to the model and lists it as supplied.
 - The accounting no longer reads a listed sentence as not accounted for when it holds a quote code cites, when the parts
   the model listed overlap (a quote left out inside a sentence listed whole), when all that is left is a store mark
-  (landed, bounced) the prompt asks written nowhere, or when it is the `<examples>` wrapper round a rule's examples. A
-  cited example whose gloss passes the gate's six words keeps its cite alone and lists the gloss, and an `<example>` the
+  (landed, bounced) the prompt asks written nowhere, or when it is the `<examples>` wrapper round a rule's examples. An
+  example the rule itself gives as a cite goes in as the rule has it, its gloss whole: past the gate's six words it is
+  listed as an example kept as its words, worked out again by the apply from the rule's words and no finding in the
+  daily run, and a gloss of the conversion's own past them still counts. An `<example>` the
   model writes that the rule does not give goes back to it. `Lessons` and `Lessons again` say to keep a quote the rule
   rests on in its lesson, to write in only the scope and the exception the rule gives and none where it gives none, to borrow no other part's reason and to write no caution the rule does not give, the things the knock-down
   dropped most proposals for.

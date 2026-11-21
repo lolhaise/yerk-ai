@@ -42,20 +42,22 @@ SCOPED = 'It holds for the job "{job}".'   # the scope code writes into an absol
 UNLIFTED = "no exception, as the rule gives none"   # a listed item: a lesson whose absolute has no exception since its rule has none
 WHOLE = "his quote kept whole"       # a listed item: a lesson keeping a quote of the rule whole where the gate asks a cite in its place
 OWN = "his own sentence kept"        # a listed item: a lesson keeping the owner's sentence that holds "landed" or "bounced" beside a quote
-UNCITED = "an example kept as its words"   # a listed item: an example no line passes for, or its cite refused, that the gate asks a cite of
+UNCITED = "an example kept as its words"   # a listed item: an example with no line passing, its cite refused, or the rule's own cite with its long gloss
 PAST = "his words kept whole, past the length"   # a listed item: a long body whose every sentence is the owner's as they wrote it
 EXCUSES = {UNLIFTED: "no_exception", WHOLE: "whole", OWN: "own", UNCITED: "uncited", PAST: "long"}   # each kind and its list in the record
 WHYS = {UNLIFTED: "its absolute carried as he wrote it and named, since no exception is ever added to a rule of his; not counted in the verdict",
         WHOLE: "his quote carried whole, word for word, where the gate asks a cite in its place, and named; not counted in the verdict",
         OWN: "his own sentence carried word for word where the gate reads an exchange outside example tags, and named; not counted in the verdict",
         UNCITED: "an example of his kept as its words, since no day-log line passes for it or its cite was refused, where the gate asks "
-                 "a cite, and named, since no wrong line is written to pass it; not counted in the verdict",
+                 "a cite, or the rule's own cite with its gloss whole, where the gate asks a shorter gloss, and named, since no wrong "
+                 "line is written and no gloss of the rule's cut to pass it; not counted in the verdict",
         PAST: "his sentences carried word for word where the gate asks a shorter body, and named, since a body of his own sentences is "
               "never refused for its length; not counted in the verdict"}
 HEADS = {UNLIFTED: "no exception, as the rule gives none, carried as he wrote it", WHOLE: "his quote kept whole, carried as he wrote it where the "
          "gate asks a cite in its place", OWN: "his own sentence kept, carried word for word where the gate reads an exchange outside "
          "example tags", UNCITED: "an example kept as its words, since no day-log line passes or its cite was refused, where the gate asks "
-         "a cite (no wrong line is written to pass it)", PAST: "his words kept whole, past the length, carried word for word where the gate "
+         "a cite (no wrong line is written to pass it), or the rule's own cite with its gloss whole, where the gate asks a shorter "
+         "gloss", PAST: "his words kept whole, past the length, carried word for word where the gate "
          "asks a shorter body (every sentence of it his, as he wrote it)"}
 REFUSED_CITE = "cite refused"        # a listed item: the line code cites an example to, refused by the model with its why
 RECORDS = "what the day log already records: "    # the gate's on-record finding (words.LESSON_NAMES), its head
@@ -364,8 +366,8 @@ def past(rule: dict[str, Any], text: str) -> bool:
 def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Path, str] | None = None) -> set[str]:
     """What the gate's on-record finding on a lesson names, when each passage it names is the owner's own: WHOLE for a quote past the gate's
     words that the day log holds being, word for word, a whole quote of the rule or a whole reason on file for it (its "on_file",
-    REASONS: his words too); UNCITED for an example being one of the rule's own kept as its words. None when it names anything
-    else (a quote of the model's own choosing, a part of his quote or of a reason on file, a gloss past its words)."""
+    REASONS: the owner's words too); UNCITED for an example being one of the rule's own kept as its words, its own cite and gloss too. None
+    when it names anything else (a quote of the model's own choosing, a part of the owner's quote or of a reason on file, another gloss past its words)."""
     lim = dict(budgets().get("shape") or {})
     cap, gloss = shape.threshold(lim, "lesson_quote_words", 8), shape.threshold(lim, *shape.GLOSS)
     said, his = (re.sub(r"`[^`]*`", "code", shape.one(y)) for y in (text, rule["said"]))     # each as the gate reads a lesson
@@ -374,8 +376,9 @@ def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Pat
     out = set[str]()
     for ex in shape.INSIDE.findall(said):
         if m := shape.SHOWN.match(ex.strip()):
-            if len(m[2].split()) > gloss:
+            if len(m[2].split()) > gloss and ex.strip() not in mine:      # a gloss of the conversion's own past the gate's words counts
                 return set()
+            out |= {UNCITED} if len(m[2].split()) > gloss else set()     # the rule's own cite, its gloss whole as the rule has it
             continue
         quote = re.sub(r"^\s*(?:landed|bounced)\b[,:]?\s*", "", ex.strip(), flags=re.I)
         if len(quote.split()) > cap and shape.on_record(quote.strip(shape.QUOTES_ALL), daily, seen):
@@ -456,19 +459,16 @@ def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dic
 
 def examples(rule: dict[str, Any], daily: Path) -> list[dict[str, str]]:
     """Each <example> of the original, in the rule's order, in the cited form the gate takes when `pick` finds the line it means:
-    its words after its mark and day (an example given as his, on a line of his own), else each quoted piece of it in order (a
-    piece under four words only on the day it names); one no line passes, or that describes a shape, keeps its words. Code's."""
-    out, most = [], shape.threshold(dict(budgets().get("shape") or {}), *shape.GLOSS)
+    its words after its mark and day (an example given as the owner's, on a line of their own), else each quoted piece of it in order (a piece
+    under four words only on the day it names); one no line passes, or that describes a shape, keeps its words, a cite of the rule's its gloss. Code's."""
+    out: list[dict[str, str]] = []
     for ex in shape.INSIDE.findall(rule["said"]):
         mark, text = (m[0].capitalize() + ", ") if (m := shape.MARKED.search(ex)) else "", ex.strip()
         bare = HEAD.sub("", text).strip(shape.QUOTES_ALL + ",:;.")
         day = named(text, filed_at(rule.get("filed", "")))[0]
         pieces = [(y, his) for y, his in [(bare, False), *((y, given_his(text[:m.start()], *said_as(rule))) for m in shape.QUOTED.finditer(text)
                                                          for y in ELIDED.split(m[1]))] if len(y.split()) >= 4 or (day and y.strip())]
-        if (m := shape.SHOWN.match(text)) and len(m[2].split()) > most:      # cited, its gloss past the gate's room
-            out.append({"kind": "example cited", "said": text, "as": f"<example>{mark}{m[1]}</example>",
-                        "why": f"its gloss of {len(m[2].split())} words left out, since the gate takes {most} at most beside a cite"})
-        elif shape.SHOWN.match(text) or not bare:
+        if shape.SHOWN.match(text) or not bare:
             out.append({"kind": "example cited", "said": text, "as": f"<example>{text}</example>"})
         elif not SHAPE.match(text) and (at := next((x for q, his in pieces if (x := pick(q, daily, rule.get("filed", ""), his, text))), "")):
             out.append({"kind": "example cited", "said": text, "at": at, "as": f"<example>{mark}{at}</example>"})

@@ -560,7 +560,8 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
                 missed.pop("absolute", None)
             unlifted.append(at)
         if c and (got := [k for k in kept if c[1] in kept[k]]):     # an on-record finding naming the owner's quote or example alone is none
-            heads = tuple(h for k, h in (("whole", "a quote the day log holds"), ("uncited", "an example the day log holds")) if k in got)
+            heads = tuple(h for k, h in (("whole", "a quote the day log holds"), ("uncited", "an example the day log holds"),
+                                         ("uncited", "a gloss of")) if k in got)    # the rule's own cite, its gloss whole
             if heads and all(x.startswith(heads) for x in missed.get("on record", [])):
                 missed.pop("on record", None)
             if "long" in got:                                       # the owner's words past the length: no finding, named apart

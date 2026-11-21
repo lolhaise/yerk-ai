@@ -839,7 +839,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 lowered it by 2, run 8: conversion.py's test for the owner's words kept whole past the length loses its two cases (a sentence of theirs alone past it, or the rule whole), so a body whose every sentence is theirs is never refused for its length. 35,237: 35,239 less 2.
 
-- `lines = 35237`
+2026-11-21: lesson-store-2026-11-21 raised it by 1, run 9, folded to fit but this line: shape.py's daily run files nothing for the rule's own cite kept with its gloss whole (conversion.py's, listed as an example kept as its words, net none). 35,238: 35,237 plus 1.
+
+- `lines = 35238`
 
 ## Uncapped
 
