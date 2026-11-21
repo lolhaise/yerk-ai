@@ -1323,3 +1323,20 @@ def test_s4_the_daily_count_reads_no_exchange_in_a_lesson_listed_for_his_own_sen
     assert len(shape.score(m.root / memory.RULES, rules=True)["untagged"]) == 1
     (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ttags round his sentence\n")
     assert shape.score(m.root / memory.RULES, rules=True)["untagged"] == []
+
+
+def test_pass_a_the_prompts_keep_his_sentence_whole_his_reason_on_file_unquoted_and_an_example_in_one_lesson(tmp_path):
+    """What pass A on the copy showed: the model split the owner's sentence round its mark, quoted a long reason on file, and the
+    reviewer dropped a proposal for an example the rule allows in one lesson only."""
+    from yerk_ai import conversion, curate
+    lessons_, down = curate.prompt("Lessons", {}, ""), curate.prompt("Knock down lessons", {}, "")
+    assert "never split it, never move its quote into a sentence of its own, never reword the words round its mark" in lessons_
+    assert "The reason on file goes in word for word after because, since or so that, with no quote marks round it." in lessons_
+    assert "never drop a proposal because an example that shows two steps sits in one of them" in down
+    m, prop = ledger_store(tmp_path)
+    ledger_with(m, 'Never post the example ledger. It bounced when he wrote "post the example ledger on the board".')
+    asked: list[str] = []
+    p = {**prop, "lessons": [{**prop["lessons"][0], "body": 'Never post it, since it holds my accounts. He wrote "post the example ledger on the '
+                              'board" and it bounced.'}], "rewritten": [{"said": "Never post the example ledger.", "as": "the lesson"}]}
+    conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2)
+    assert conversion.OWN_HINT in next(x for x in asked if x.startswith("The gate refused"))

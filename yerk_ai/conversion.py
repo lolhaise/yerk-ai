@@ -55,6 +55,8 @@ HEADS = {UNLIFTED: "no exception, as the rule gives none, carried as he wrote it
          "a cite (no wrong line is written to pass it)"}
 REFUSED_CITE = "cite refused"        # a listed item: the line code cites an example to, refused by the model with its why
 RECORDS = "what the day log already records: "    # the gate's on-record finding (words.LESSON_NAMES), its head
+OWN_HINT = (" (code's note: never put his sentence in example tags; keep each sentence of his that holds \"landed\" or \"bounced\" "
+            "or his quote whole and word for word, write no sentence of your own that holds them, and the lesson is listed as his)")
 UNTAGGED = "an example outside <example> tags: "   # the gate's exchange finding (shape.NAMES), its head
 SEALS = re.compile(r"\b(?:no (?:case|exception|one|go-ahead)[^.;]{0,24}lifts? (?:it|this|that)|nothing lifts (?:it|this|that)|lifts? it\b|"
                    r"even when asked|with no exceptions?|no exceptions?\b)", re.I)    # words that lift or seal a never: never added
@@ -687,8 +689,8 @@ def findings(m: dict[str, Any], none: bool = False, rule: dict[str, Any] | None 
     is none to the gate; the prompt says to give none where none is on file. `none`: the rule has a NONE row, so a lesson
     refused for a reason alone stays as it is. A finding only a change to the owner's words could meet (excused) is never sent."""
     ok = [excused(rule, x, read, daily, seen) if rule else {} for x in m["lessons"]]
-    return [f'lesson {i} ("{x["summary"]}"): {g}' for i, (x, o) in enumerate(zip(m["lessons"], ok), 1) if refused(x["gate"], none, o)
-            for g in x["gate"] if g not in o] + [f'not accounted for: "{x}"' for x in m["missing"]] + \
+    return [f'lesson {i} ("{x["summary"]}"): {g}' + (OWN_HINT if g.startswith(UNTAGGED) else "") for i, (x, o) in enumerate(zip(m["lessons"], ok), 1)
+            if refused(x["gate"], none, o) for g in x["gate"] if g not in o] + [f'not accounted for: "{x}"' for x in m["missing"]] + \
         [f'reason refused: "{d["said"]}" ({d["why"]})' for d in m["done"] if d["kind"] == "reason refused"] + list(m.get("faults") or [])
 
 
