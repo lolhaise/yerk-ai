@@ -303,7 +303,7 @@ def old_store(tmp_path):
     from datetime import datetime, timezone
     m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
     m.root.mkdir(parents=True, exist_ok=True)
-    t = "(example-room, 2025-11-01 09:00:00-04:00)"
+    t = "(example-room, 2025-11-10 09:00:00-04:00)"      # filed after the day log's lines below, which a cite may name
     rows = ["---", "class: shared", "---", "# Rules", "",
             memory.mark(f"- book the hall: Book the hall early, since it fills. {t} [m:m0]", "tree/rules.md:7"),
             f"- book the hall: {HALL} {t} [m:m1]",
@@ -329,8 +329,8 @@ def test_the_dry_run_writes_one_proposals_file_and_changes_nothing_else(tmp_path
     rec = conversion.loaded(path)
     assert [r["cite"] for r in rec["rules"]] == ["tree/rules.md:7", "tree/rules.md:8", "tree/rules.md:9", "tree/rules-topics.md:3"]
     ledger = rec["rules"][2]
-    assert ledger["lessons"][0]["body"] == 'It holds for the job "example ledger". Only the owner\'s go-ahead lifts it.'
-    assert [d["kind"] for d in ledger["done"]] == ["scope added", "exception added", "no reason on file", "still failing"]
+    assert ledger["lessons"][0]["body"] == 'It holds for the job "example ledger".'          # no exception added: the owner gave none
+    assert [d["kind"] for d in ledger["done"]] == ["scope added", "no reason on file", "still failing"]
     assert "after 2 rounds back to the model: no proposal came back for it; split as it stands" in text
     assert rec["ready"] is False and "the gate refuses" not in text and "- no reason on file (listed for the owner's side" in text
     assert rec["why"] == ["1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"]
@@ -440,7 +440,7 @@ def test_an_example_lands_cited_a_quote_across_sentence_ends_is_one_and_a_suppli
             return "KEEP tree/rules.md:8\nKEEP tree/rules.md:9"
         if prompt.startswith("The gate refused"):
             return ""
-        assert f"Reason on file, from daily/{day.name}:{n}: holds my accounts" in prompt and bounced not in prompt
+        assert f"Reason on file, from daily/{day.name}:{n}: holds my accounts" in prompt and f'Example 1: Bounced: "{bounced}"' in prompt
         return "\n".join(json.dumps(x) for x in (
             {"cite": "tree/rules.md:8", "lessons": [{"summary": "Reply plainly to a question about a plan.", "body": "Do so since a long answer buries it."}],
              "rewritten": [{"said": quoted, "as": "Reply plainly to a question about a plan."}]},
@@ -451,7 +451,7 @@ def test_an_example_lands_cited_a_quote_across_sentence_ends_is_one_and_a_suppli
     assert hall["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:{n - 1}</example>") and hall["missing"] == []
     assert any(d["kind"] == "example cited" and d["at"] == f"daily/{day.name}:{n - 1}" for d in hall["done"])
     assert web["missing"] == [] and web["lessons"][0]["gate"] == []          # the quote's halves no longer read as two sentences
-    assert ledger["lessons"][0]["gate"] == [] and not any(d["kind"] == "no reason on file" for d in ledger["done"])
+    assert not conversion.refused(ledger["lessons"][0]["gate"], False, True) and not any(d["kind"] == "no reason on file" for d in ledger["done"])
     assert {"kind": "reason supplied", "said": "holds my accounts", "from": f"daily/{day.name}:{n}, named in rules-proposals/reasons.tsv"} in ledger["done"]
 
 
@@ -478,7 +478,8 @@ def test_a_proposal_the_reviewer_still_drops_after_the_last_round_makes_the_file
             return verdict if prompt.lstrip().startswith("You check the lessons") else json.dumps(prop)
         rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
         ledger = rec["rules"][2]
-        assert ledger["lessons"][0]["gate"] == [] and ledger["missing"] == [] and rec["lost"] == {}     # its lessons pass
+        assert not conversion.refused(ledger["lessons"][0]["gate"], False, True) and ledger["missing"] == [] and rec["lost"] == {}
+        assert rec["no_exception"] == {"example-ledger": "tree/rules.md:9"}           # its lessons pass, its never as they wrote it
         assert rec["ready"] is ready
         if not ready:
             assert rec["why"] == ["1 rule the reviewer dropped after the last round, each listed"]
@@ -550,7 +551,8 @@ def test_a_dry_run_from_an_earlier_file_keeps_each_rule_that_passed_with_no_mode
     shutil.copy(first, earlier := tmp_path / "elsewhere" / "earlier.md")                 # a file from another folder
     was = {x["cite"]: x for x in conversion.loaded(earlier)["rules"]}
     assert asked == {f"tree/rules.md:{n}" for n in range(6, 11)} and was["tree/rules.md:8"]["lessons"][0]["gate"]   # no reason: refused
-    assert all(not x["gate"] for n in (6, 7, 9, 10) for x in was[f"tree/rules.md:{n}"]["lessons"]) and not was["tree/rules.md:6"]["missing"]
+    assert all(not conversion.refused(x["gate"], False, True) for n in (6, 7, 9, 10) for x in was[f"tree/rules.md:{n}"]["lessons"])
+    assert not was["tree/rules.md:6"]["missing"]
     assert any(d["kind"] == "reviewer dropped" for d in was["tree/rules.md:9"]["done"])
     rows = (m.root / memory.RULES).read_text().replace("- example till: Never open the example till.", "- example key: Never open the example till at night.")
     (m.root / memory.RULES).write_text(rows + f"- example lamp: Never dim the example lamp. {AT_SHOP} [m:s8]\n")    # :7 changed, :11 new
@@ -564,7 +566,7 @@ def test_a_dry_run_from_an_earlier_file_keeps_each_rule_that_passed_with_no_mode
     assert {"kind": "kept from an earlier file", "why": "earlier.md, as it made it: its lessons word for word, no model call"} in now["tree/rules.md:10"]["done"]
     assert now["tree/rules.md:7"]["lessons"][0]["slug"] == "example-key-2"          # a redone rule takes no slug a kept one holds
     assert any(d["kind"] == "kept from an earlier file" for d in now["tree/rules-topics.md:3"]["done"])     # one in the shape too
-    assert rec["from"] == {"path": str(earlier), "kept": 2, "redone": 5} and now["tree/rules.md:6"]["reasons"][-1].endswith("\tis the only book")
+    assert rec["from"] == {"path": str(earlier), "kept": 2, "redone": 5, "why": {"another cause": 5}} and now["tree/rules.md:6"]["reasons"][-1].endswith("\tis the only book")
     assert f"Kept from {earlier}: 2 rules word for word, with no model call; 5 redone." in path.read_text().splitlines()[:8]
     assert "1 rule the reviewer dropped after the last round, each listed" not in rec["why"]       # :9 redone, and kept this time
 
@@ -737,11 +739,13 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
             assert "holds my accounts" in prompt and f"Reason on file, from daily/{day.name}:{n + 2}: the bank reads" in prompt
         return "\n".join(json.dumps(x) for x in (
             {"cite": "tree/rules.md:7", "lessons": [
-                {"summary": "Post the rota on Monday.", "body": "Do so since the team plans from it.", "reason": {"said": "the team plans from it"}},
+                {"summary": "Post the rota on Monday.", "body": "Do so since the team plans from it.", "reason": {"said": "the team plans from it"},
+                 "examples": [1]},
                 {"summary": "Put the week in bold.", "body": ""}],
              "rewritten": [{"said": "Post the rota on Monday, since the team plans from it; put the week in bold.", "as": "the two lessons"}]},
             {"cite": "tree/rules.md:8", "lessons": [
-                {"summary": "Keep replies short.", "body": f'Do so since in his words "{said}".', "reason": {"said": said, "from": f"daily/{day.name}:{n}"}},
+                {"summary": "Keep replies short.", "body": 'Do so since in his words "the long answers bury the plan".', "reason": {
+                    "said": "the long answers bury the plan", "from": f"daily/{day.name}:{n}"}},
                 {"summary": "Put the day first.", "body": "Do it since he plans from it.", "reason": {"said": "he plans from it"}}],
              "rewritten": [{"said": one, "as": "Keep replies short."}, {"said": two.split(";")[0], "as": "Put the day first."}],
              "left_out": [{"said": '"date first, always, so I can plan"', "why": "his words"}, {"said": "the last long one", "why": "how one went"}]},
@@ -750,7 +754,8 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
     rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
     rota, web, ledger = rec["rules"][:3]
     assert web["missing"] == [] and rota["missing"] == []          # a cited quote inside a listed sentence, a mark, the wrapper
-    assert web["lessons"][0]["body"] == f"Do so since in his words the words at daily/{day.name}:{n}."
+    assert web["lessons"][0]["body"] == 'Do so since in his words "the long answers bury the plan".'    # a run of his, never a pointer
+    assert {"kind": "quote cited", "said": said, "as": "the long answers bury the plan", "at": f"daily/{day.name}:{n}"} in web["done"]
     assert rota["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:3</example>") and rota["lessons"][0]["gate"] == []
     assert any(d["kind"] == "example cited" and "its gloss of 10 words left out" in d.get("why", "") for d in rota["done"])
     assert {"kind": "no reason on file", "said": "Put the week in bold.", "why": "listed for the owner's side: the rule gives this lesson's part no "
@@ -758,3 +763,49 @@ def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accoun
     assert {"kind": "reason supplied", "said": "the bank reads", "from": f"daily/{day.name}:{n + 2}, named in rules-proposals/reasons.tsv"} in ledger["done"]
     assert rec["why"][0] == "1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"
     assert len(backs) == 4 and all(x.count(" (job: ") == 1 for x in backs)   # the round's failing rules, one a call at CHUNK 1
+
+
+# Run 4 (2026-11-21): nothing the owner said is changed and nothing is added that they did not say; each row's tests, placeholder words.
+FILED = "example-room, 2025-11-05 09:00:00-05:00"        # the rule's trailer: filed Nov 5 at 09:00 -05:00
+
+
+def picker_logs(tmp_path):
+    """A day log where a later line repeats an earlier one, another speaker's line holds an owner's words first, an example's
+    words sit on its own day twice and a line written after the filing holds words no earlier line does."""
+    from datetime import datetime, timedelta, timezone
+    daily, tz = tmp_path / "daily", timezone(timedelta(hours=-5))
+    daily.mkdir()
+    rows = {"2025-11-03": [(8, 0, "yerk", "the hall key sits under the blue mat"), (8, 30, "owner", "the hall key sits under the blue mat"),
+                           (9, 0, "owner", "the example rota goes up on monday for the team")],
+            "2025-11-04": [(9, 0, "owner", "the example rota goes up on monday for the team"), (9, 10, "yerk", "the rota went out late again"),
+                           (14, 4, "yerk", "the rota went out late again"), (16, 0, "yerk", "the rota went out late again")],
+            "2025-11-05": [(8, 0, "owner", "keep the spare lamp in the store"), (10, 0, "owner", "the late shelf note only after filing")],
+            "2025-11-06": [(9, 0, "owner", "a note the day after the filing")]}
+    for day, said in rows.items():
+        (daily / f"{day}.md").write_text(f"# {day}\n\n" + "\n".join(memory.format_line(datetime.fromisoformat(f"{day}T{h:02d}:{mi:02d}:00").replace(
+            tzinfo=tz), "example-room", "r1", role, "", x, "private", f"p{day[-1]}{i}") for i, (h, mi, role, x) in enumerate(said)) + "\n")
+    return daily
+
+
+def test_r3_a_cite_names_the_line_it_means_or_there_is_none(tmp_path):
+    from yerk_ai import conversion, shape
+    daily = picker_logs(tmp_path)
+    assert conversion.pick("the example rota goes up on monday", daily, FILED) == "daily/2025-11-03.md:5"     # the earliest, not the repeat
+    assert conversion.pick("the hall key sits under the blue mat", daily, FILED, his=True) == "daily/2025-11-03.md:4"   # the owner's own line
+    assert conversion.pick("the hall key sits under the blue mat", daily, FILED) == "daily/2025-11-03.md:3"       # else the earliest
+    assert conversion.pick("the rota went out late again", daily, FILED, when="Bounced, Nov 4 14:05: the rota") == "daily/2025-11-04.md:5"
+    assert conversion.pick("the rota went out late again", daily, FILED, when="Bounced, Nov 2: the rota") == ""   # none on the day it names
+    assert conversion.pick("the late shelf note only after filing", daily, FILED) == ""     # written after the rule was filed: none
+    assert conversion.pick("a note the day after the filing", daily, FILED) == "" and conversion.pick("a note the day after", daily) != ""
+    assert shape.on_record("the example rota goes up on monday", daily) == "daily/2025-11-04.md:3"    # the gate's search, unchanged
+    rule = {"said": 'Post the rota early. <example>Bounced, Nov 4 14:05: "the rota went out late again"</example> <example>Landed: '
+            '"the late shelf note only after filing"</example> <example>Landed shape: "the example rota goes up on monday"</example>',
+            "filed": FILED}
+    cited, after, shape_ = conversion.examples(rule, daily)
+    assert cited["at"] == "daily/2025-11-04.md:5" and cited["as"] == "<example>Bounced, daily/2025-11-04.md:5</example>"
+    assert after["kind"] == "example kept" and after["as"] == '<example>Landed: "the late shelf note only after filing"</example>'
+    assert shape_["kind"] == "example kept" and shape_["why"] == "a shape, not a message"
+    quote = {"said": 'On Nov 3, 08:3x, he said "the hall key sits under the blue mat", so check it.', "filed": FILED, "job": "hall key"}
+    done, faults = conversion.quoted(quote, [{"summary": 'Check the mat, since "the hall key sits under the blue mat".', "body": ""}], daily, 4)
+    assert faults == [] and done == [{"kind": "quote cited", "said": "the hall key sits under the blue mat", "as": "the hall key sits under the blue mat",
+                                      "at": "daily/2025-11-03.md:4"}]     # the owner's, on the day and near the time the rule names before it

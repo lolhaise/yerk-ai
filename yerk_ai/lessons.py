@@ -23,7 +23,9 @@ from .config import write_private
 DIR = "rules"                      # <memory>/rules/<slug>.md, one lesson each; the folder is the mark of a converted store
 INDEX = "rules.md"                 # the index (memory.RULES), what a session start loads
 RETIRED = "retired.tsv"            # slug, day, the slug that replaced it ("" for none): a retired lesson's tombstone
-NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite: a lesson converted with no reason on file, as the owner's side says
+NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite, what is missing (a reason, an exception or both; a row of three, a
+                                   # reason): a lesson converted with no reason on file, as the owner's side says, or with no
+                                   # exception to its absolute, as its rule gives none
 CITES = "rules-cites.tsv"          # an old store cite (rules.md:N, rules-topics.md:N), the slug its rule became
 SNAPSHOT = "converted.json"        # in the backup folder: the lessons as converted, news's look for a session from before
 BACKUP = "rules-backup-"           # <memory>/rules-backup-<day>/: the originals, copied before a conversion writes
@@ -182,17 +184,28 @@ def live_slug(root: Path, cite: str) -> str:
     return ""
 
 
-def no_reason(root: Path) -> dict[str, tuple[str, str]]:
-    """slug -> (day, the old cite) of each lesson NO_REASON lists: carried with no reason, since the owner's side says none is on file."""
+def listed(root: Path) -> dict[str, tuple[str, str, str]]:
+    """slug -> (day, the old cite, what is missing) of each row of NO_REASON, the one list of lessons carried for the owner's side."""
     f = root / NO_REASON
     rows = [x.split("\t") for x in f.read_text(encoding="utf-8", errors="replace").splitlines()] if f.is_file() else []
-    return {r[0]: (r[1], r[2]) for r in rows if len(r) >= 3}
+    return {r[0]: (r[1], r[2], r[3] if len(r) > 3 else "a reason") for r in rows if len(r) >= 3}
+
+
+def no_reason(root: Path) -> dict[str, tuple[str, str]]:
+    """slug -> (day, the old cite) of each lesson NO_REASON lists for its reason: carried with no reason, since the owner's side says none is on file."""
+    return {k: (d, c) for k, (d, c, what) in listed(root).items() if "reason" in what}
+
+
+def no_exception(root: Path) -> dict[str, tuple[str, str]]:
+    """slug -> (day, the old cite) of each lesson NO_REASON lists for its exception: its absolute carried as the owner wrote it, since its
+    rule gives none and no exception is ever added to a rule of the owner's."""
+    return {k: (d, c) for k, (d, c, what) in listed(root).items() if "exception" in what}
 
 
 def unlist(root: Path, slug: str) -> None:
-    """`slug` off NO_REASON: a filing that replaced it passed the gate with its reason, or a retire took it away."""
-    if slug in (have := no_reason(root)):
-        write_private(root / NO_REASON, "".join(f"{k}\t{d}\t{c}\n" for k, (d, c) in have.items() if k != slug))
+    """`slug` off NO_REASON: a filing that replaced it passed the gate with its reason and its exception, or a retire took it away."""
+    if slug in (have := listed(root)):
+        write_private(root / NO_REASON, "".join(f"{k}\t{d}\t{c}\t{w}\n" for k, (d, c, w) in have.items() if k != slug))
 
 
 def put(root: Path, lesson: Lesson) -> Lesson | None:
