@@ -488,9 +488,9 @@ def test_a_proposal_the_reviewer_still_drops_after_the_last_round_makes_the_file
 
 def test_the_accounting_reads_a_sentence_whole_across_an_abbreviation_in_brackets():
     from yerk_ai import conversion
-    said = "Book the example hall (Ex. Reg. 12/34, rooms 4(b) and 5) a week ahead, since it fills (see the rota.) Post the rota."
+    said = "Book the example hall (E. Vol. 12, rooms 4(b) and 5) a week ahead, since it fills (see the rota.) Post the rota."
     lesson = [{"summary": "Book the example hall a week ahead.", "body": "Do so since it fills. Post the rota."}]
-    whole = "Book the example hall (Ex. Reg. 12/34, rooms 4(b) and 5) a week ahead, since it fills (see the rota.)"
+    whole = "Book the example hall (E. Vol. 12, rooms 4(b) and 5) a week ahead, since it fills (see the rota.)"
     listed = [{"kind": "rewritten", "said": whole, "as": "Book the example hall a week ahead, since it fills."}]
     assert conversion.accounted({"said": said}, lesson, listed) == []        # one sentence, its brackets' stops inside it
     assert conversion.accounted({"said": said}, lesson, []) == [whole]       # and a bracket's own last stop still ends one

@@ -93,7 +93,7 @@ version changes.
   reason the rule gives, a step with none staying in the lesson of the step beside it, in the rule's order; a reason stays
   in its own step's sentence in the rule's words, and a limit the rule states is written as it states it. A "no reason
   given" finding on a lesson of a split rule is met by moving its steps into the lesson beside it.
-- The accounting reads a sentence whole across an abbreviation in brackets ("(Ex. Reg. 12/34)"): a bracket is never cut at
+- The accounting reads a sentence whole across an abbreviation in brackets ("(E. Vol. 12)"): a bracket is never cut at
   a stop inside it, and a bracket's own last stop still ends its sentence.
 - `yerk curate --lessons --from FILE` resumes a dry run from an earlier proposals file, from any folder or store. A rule
   is kept from it word for word, with no model call, when FILE has it under the same cite with the same words, each of
