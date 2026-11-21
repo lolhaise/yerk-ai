@@ -97,6 +97,13 @@ version changes.
   120 seconds after a rule's trailer time is its filing's own. Each example is counted once, by its place. The words
   that give a quote as his are he, him, his, the owner, "in reply to" and the names `[curate] owner_names` gives.
 
+- A reason on file is his words too: it goes into its lesson whole, in quote marks, given as his (he said, his words,
+  his order), and where the gate then asks a cite in its place the lesson is listed as his quote kept whole, worked out
+  again by the apply from the file's record and `reasons.tsv`. A part of it, one in the lesson's own voice and one quoted
+  but not given as his are each a fault sent back, and `--from` redoes a rule whose lessons hold one. `--from` no longer
+  redoes a rule for the gloss the model gave a cited example: an example is cited by the old search only when its line
+  is not the one the picker gives today. A dry run from an earlier file reads each day log once for its excuses.
+
 - A final that restates a lesson's cite (`rules/<slug>.md`, with or without its line, as a filing's own result gives it)
   is a filing report too, as one restating `rules.md:N` is; `rules.md` and `rules-topics.md` still need their line, since
   those names come up in plain talk.

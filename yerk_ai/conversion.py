@@ -240,12 +240,19 @@ def quoted(rule: dict[str, Any], made: list[dict[str, Any]], daily: Path, most: 
     is, word for word, a whole quote of the rule or a whole reason on file (`also`, REASONS: the owner's words too); a part of one (cut,
     split into pieces, joined across an ellipsis) is a fault, and so is a quote that is neither. A quote of the rule past `most`
     words that a lesson keeps is a listed item with the line `pick` finds for it (its words given as the owner's when the rule gives
-    them so, the day and time the rule names before it), or kept; never a pointer."""
-    said = rule["said"]
+    them so, the day and time the rule names before it), or kept; never a pointer. A reason on file goes in whole, in quote
+    marks, given as the owner's (he said, his words, his order): one whose words stand in a lesson outside quote marks (the rule's own
+    words aside), or in quote marks not given as the owner's, is a fault too."""
+    said, (names, by) = rule["said"], said_as(rule)
     theirs = [(m[1], m.start()) for m in shape.QUOTED.finditer(said)] + [(x, len(said)) for x in also or []]
     done, faults, seen_ = list[dict[str, str]](), list[str](), set[str]()
+    own = f" {words_of(shape.QUOTED.sub(' ', said))} "
     for i, x in enumerate(made, 1):
-        for m in shape.QUOTED.finditer(shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}").replace(SCOPED.format(job=rule["job"]), " ")):
+        text = shape.EXAMPLE_TAGS.sub(" ", f"{x['summary']} {x['body']}").replace(SCOPED.format(job=rule["job"]), " ")
+        bare = f" {words_of(shape.QUOTED.sub(' ', text))} "
+        faults += [f'lesson {i} gives his reason on file as its own words: "{w}" goes in whole, in quote marks, given as his' for w in also or []
+                   if words_of(w) and f" {words_of(w)} " in bare and f" {words_of(w)} " not in own]
+        for m in shape.QUOTED.finditer(text):
             if not (have := words_of(m[1])):
                 continue
             if not (of := [(q, at) for q, at in theirs if words_of(q) == have]):
@@ -255,6 +262,8 @@ def quoted(rule: dict[str, Any], made: list[dict[str, Any]], daily: Path, most: 
                               else f'lesson {i} quotes words that are no whole quote of the rule: "{m[1]}"')
                 continue
             q, at = of[0]
+            if at == len(said) and not given_his(text[:m.start()], names, by):
+                faults.append(f'lesson {i} quotes his reason on file but not as his: "{m[1]}" goes in given as his (he said, his words, his order)')
             if len(q.split()) > most and q not in seen_ and at < len(said):
                 seen_.add(q)
                 line = pick(q, daily, rule.get("filed", ""), given_his(said[:at], names, by),
@@ -328,12 +337,14 @@ def own_sentences(rule: dict[str, Any], text: str) -> bool:
 
 def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Path, str] | None = None) -> set[str]:
     """What the gate's on-record finding on a lesson names, when each passage it names is the owner's own: WHOLE for a quote past the gate's
-    words that the day log holds being, word for word, a whole quote of the rule; UNCITED for an example being one of the rule's
-    own kept as its words. None when it names anything else (a quote of the model's own choosing, a gloss past its words)."""
+    words that the day log holds being, word for word, a whole quote of the rule or a whole reason on file for it (its "on_file",
+    REASONS: his words too); UNCITED for an example being one of the rule's own kept as its words. None when it names anything
+    else (a quote of the model's own choosing, a part of his quote or of a reason on file, a gloss past its words)."""
     lim = dict(budgets().get("shape") or {})
     cap, gloss = shape.threshold(lim, "lesson_quote_words", 8), shape.threshold(lim, *shape.GLOSS)
     said, his = (re.sub(r"`[^`]*`", "code", shape.one(y)) for y in (text, rule["said"]))     # each as the gate reads a lesson
-    theirs, mine = {words_of(m[1]) for m in shape.QUOTED.finditer(his)}, {y.strip() for y in shape.INSIDE.findall(his)}
+    theirs = {words_of(m[1]) for m in shape.QUOTED.finditer(his)} | {words_of(y) for y in rule.get("on_file") or ()}
+    mine = {y.strip() for y in shape.INSIDE.findall(his)}
     out = set[str]()
     for ex in shape.INSIDE.findall(said):
         if m := shape.SHOWN.match(ex.strip()):
@@ -369,13 +380,16 @@ def excused(rule: dict[str, Any], x: dict[str, Any], read: Any, daily: Path | No
     return out
 
 
-def of_record(m: dict[str, Any]) -> dict[str, Any]:
+def of_record(m: dict[str, Any], supplied: dict[str, list[tuple[str, str]]] | None = None) -> dict[str, Any]:
     """A rule as a proposals file's record holds it: its cite, job, words (its line's, trailer and marks out) and filing, so the
-    apply works each excuse out again from the rule's own words."""
+    apply works each excuse out again from the rule's own words; and its reasons on file, each one REASONS supplies for its
+    cite today (`supplied`) that the record's rows for it hold too."""
     head, colon, said = m["text"][2:].partition(": ")
     tm = memory.TRAILER.search(m["text"])
+    rows = {tuple(y.strip() for y in row.split("\t")[:2]) for row in m.get("reasons") or []}
     return {"cite": m["cite"], "job": m["job"], "text": m["text"], "filed": f"{tm[1]}{tm[2] or ''}" if tm else "",
-            "said": re.sub(r" \[(?:rooms|on): [^\]]*\]", "", shape.TRAILER.sub("", said if colon else m["text"][2:])).strip()}
+            "said": re.sub(r" \[(?:rooms|on): [^\]]*\]", "", shape.TRAILER.sub("", said if colon else m["text"][2:])).strip(),
+            "on_file": [w for at, w in (supplied or {}).get(m["cite"], []) if (at, w) in rows]}
 
 
 def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dict[str, str]]) -> list[str]:
@@ -491,17 +505,22 @@ def finding_rows(s: memory.Settings) -> dict[str, list[str]]:
 
 
 def stale(s: memory.Settings, r: dict[str, Any], m: dict[str, Any], found: dict[str, list[str]]) -> list[str]:
-    """What an earlier file's conversion of a rule holds that the code no longer writes, or a findings row it was made before."""
+    """What an earlier file's conversion of a rule holds that the code no longer writes, or a findings row it was made before. A
+    cited example is old when the line it is cited to is not the line `pick` gives today, never for the gloss the model gave it
+    (one whose cite is the rule's own, with no line, takes no gloss: by its form)."""
     shown_, text = examples(r, s.daily), " ".join(f"{x['summary']} {x['body']}" for x in m["lessons"])
     was = {d.get("said"): d for d in m["done"] if str(d["kind"]).startswith("example")}
     most = shape.threshold(dict(budgets().get("shape") or {}), "lesson_quote_words", 8)
     cut = quoted(r, m["lessons"], s.daily, most, [w for _, w in supplied_reasons(s).get(r["cite"], [])])[1]
+
+    def moved(x: dict[str, str]) -> bool:     # cited then to a line `pick` no longer gives; one with no line, by its form
+        d = was.get(x["said"]) or {}
+        return d.get("kind") == "example cited" and (d.get("at") != x.get("at") or not x.get("at") and d["as"] != x["as"])
     return [y for y, hit in zip(STALE, (
         bool(found.get(r["cite"])) and m.get("found") != found[r["cite"]],
         any(d["kind"] == "exception added" for d in m["done"]),
         any(x not in r["text"] for x in re.findall(r"the words at daily/\S+", text)),
-        any((was.get(x["said"]) or {}).get("kind") == "example cited" and (was[x["said"]].get("at"), was[x["said"]]["as"]) != (x.get("at"), x["as"])
-            for x in shown_) or any(x not in {y["said"] for y in shown_} for x in was if (was[x] or {}).get("kind") == "example cited"),
+        any(moved(x) for x in shown_) or any(x not in {y["said"] for y in shown_} for x in was if (was[x] or {}).get("kind") == "example cited"),
         any(d["kind"] == "example left out" and "would pass its length" in str(d.get("why")) for d in m["done"]),
         any(" cuts his quote: " in f for f in cut),
         bool(checks(r, m["lessons"], m["done"], [{**x, "as": f"<example>{x['said']}</example>"} if x["said"] in refusals(m["done"]) else x
@@ -515,13 +534,14 @@ def refusals(done: list[dict[str, Any]]) -> set[str]:
 
 def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: Callable[[dict[str, Any]], list[str]],
             rows: dict[str, list[str]], found: dict[str, list[str]] | None = None, read: Any = None,
-            why: dict[str, list[str]] | None = None) -> dict[str, dict[str, Any]]:
+            why: dict[str, list[str]] | None = None, seen: dict[Path, str] | None = None) -> dict[str, dict[str, Any]]:
     """cite -> the rule as the earlier proposals file `path` made it (a dry run's, from any folder or store), kept word for word
     with no model call: when that file has it under the same cite with the same words, each lesson of it passes the gate as an
     apply reads it today (`gate`), every sentence is accounted for, it lost no trigger, nothing of it was still failing after the
     last round (the reviewer's drop among them), no slug of it is retired, REASONS holds the same rows for its cite as then and
     it holds nothing `stale` names. A rule FINDINGS has rows for that was redone with them shown and still came back dropped is
-    kept and listed, never redone again. `why`, filled: cite -> what made each other rule be redone (STALE)."""
+    kept and listed, never redone again. `why`, filled: cite -> what made each other rule be redone (STALE). `seen`: the dry run's
+    day logs as read once (shape.on_record), so the excuses read each day log once, not once for each quote."""
     rec, gone, found, why = loaded(path), set(lessons.retired(s.root)), found or {}, {} if why is None else why
     old, out = {m["cite"]: m for m in rec["rules"]}, dict[str, dict[str, Any]]()
     for r in rules:
@@ -534,7 +554,7 @@ def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: C
         bad = stale(s, r, m, found)
         looped = bool(found.get(r["cite"])) and m.get("found") == found[r["cite"]] and any(   # the reviewer: a finding of theirs holds
             d["kind"] == "reviewer dropped" and re.search(r"\bfindings?\b", str(d.get("why"))) for d in m["done"])
-        if not made or any(refused(x["gate"], NONE in rows.get(r["cite"], []), excused(r, x, read, s.daily)) for x in made) \
+        if not made or any(refused(x["gate"], NONE in rows.get(r["cite"], []), excused(r, x, read, s.daily, seen)) for x in made) \
                 or accounted(r, made, m["done"]) or (any(d["kind"] in ("still failing", "reviewer dropped") for d in m["done"]) and not looped):
             bad = bad or [STALE[-1]]
         if bad:
@@ -842,10 +862,10 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
     supplied, weights, rows = supplied_reasons(s), memory.rarities([r["text"] for r in rules]), reason_rows(s)
     for r in rules:
-        r["keeps"], r["his"] = keeps(r["text"], weights), owner_names(conf)
+        r["keeps"], r["his"], r["on_file"] = keeps(r["text"], weights), owner_names(conf), [w for _, w in supplied.get(r["cite"], [])]
     found, redone = finding_rows(s), dict[str, list[str]]()
     kept = carried(s, rules, earlier, lambda x: (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, read,
-                                                                 seen) or {}).get("fix", []), rows, found, read, redone) if earlier else {}
+                                                                 seen) or {}).get("fix", []), rows, found, read, redone, seen) if earlier else {}
     taken |= {x["slug"] for m in kept.values() for x in m["lessons"]}
     off = [r for r in rules if r["cite"] not in kept and (memory.unshaped(r["job"], r["said"], acronyms, s, read, seen) or found.get(r["cite"]))]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)),
@@ -929,12 +949,12 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
         raise RuntimeError(f"the store is converted already ({lessons.DIR}/ is there): nothing applied")
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
-    seen, rows, listed = dict[Path, str](), reason_rows(s), dict(rec.get("no_reason") or {})    # a listed lesson passes for its
+    seen, rows, listed, have = dict[Path, str](), reason_rows(s), dict(rec.get("no_reason") or {}), supplied_reasons(s)  # a listed lesson passes for its
     lists = {k: dict(rec.get(key) or {}) for k, key in EXCUSES.items()}    # reason alone while its rule's NONE row is there, and for
     for m in rec["rules"]:                             # each excused finding alone, worked out again from the rule's own words
         for x in m["lessons"]:
             gate = (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen) or {}).get("fix", [])
-            ok = excused(of_record(m), {**x, "gate": gate}, rec["read"], s.daily, seen)
+            ok = excused(of_record(m, have), {**x, "gate": gate}, rec["read"], s.daily, seen)
             if bad := [k for k, v in lists.items() if x["slug"] in v and k not in {k for y in ok.values() for k in y}]:
                 raise RuntimeError(f"{x['slug']} is listed as {bad[0]}, which its rule's words do not bear: run the dry run again; nothing applied")
             if refused(gate, x["slug"] in listed and NONE in rows.get(listed[x["slug"]], []),

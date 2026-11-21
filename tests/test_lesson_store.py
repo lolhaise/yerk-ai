@@ -445,7 +445,7 @@ def test_an_example_lands_cited_a_quote_across_sentence_ends_is_one_and_a_suppli
             {"cite": "tree/rules.md:8", "lessons": [{"summary": "Reply plainly to a question about a plan.", "body": "Do so since a long answer buries it."}],
              "rewritten": [{"said": quoted, "as": "Reply plainly to a question about a plan."}]},
             {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, "
-             "since it holds my accounts.", "reason": {"said": "holds my accounts", "from": f"daily/{day.name}:{n}"}}]}))
+             'since he said "holds my accounts".', "reason": {"said": "holds my accounts", "from": f"daily/{day.name}:{n}"}}]}))
     rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
     hall, web, ledger = rec["rules"][:3]
     assert hall["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:{n - 1}</example>") and hall["missing"] == []
@@ -465,7 +465,7 @@ def ledger_store(tmp_path):
     (m.root / "rules-proposals").mkdir()
     (m.root / "rules-proposals" / "reasons.tsv").write_text(f"tree/rules.md:9\tdaily/{day.name}:{n}\tholds my accounts\n")
     prop = {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, "
-            "since it holds my accounts.", "reason": {"said": "holds my accounts", "from": f"daily/{day.name}:{n}"}}],
+            'since he said "holds my accounts".', "reason": {"said": "holds my accounts", "from": f"daily/{day.name}:{n}"}}],
             "rewritten": [{"said": "Never post the example ledger.", "as": "Keep the example ledger in the owner's room. Never post it."}]}
     return m, prop
 
@@ -536,7 +536,7 @@ def shop_model(asked: set[str], drop: set[str]):
             return ""
         asked.update(c for c, *_ in rules)
         return "\n".join(json.dumps({"cite": c, "lessons": [{"summary": f"Keep the {j} as it is.", "body": f"Never {SHOP[j][0]} it"
-                          + (f", since it {SHOP[j][1]}." if SHOP[j][1] else "."), **({"reason": {"said": SHOP[j][1], "from": "the reason on file"}}
+                          + (f', since he said "{SHOP[j][1]}".' if SHOP[j][1] else "."), **({"reason": {"said": SHOP[j][1], "from": "the reason on file"}}
                           if SHOP[j][1] else {})}], "rewritten": [{"said": said, "as": "the lesson"}]}) for c, j, said in rules)
     return model
 
@@ -932,8 +932,8 @@ def test_r5_the_model_sees_the_examples_numbered_and_each_lands_where_it_names_n
     rows = (m.root / memory.RULES).read_text()
     (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", "Never post the example ledger. Keep its copy at home. "
                                                     + " ".join(f"<example>{x}</example>" for x in ex)))
-    two = [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, since it holds my accounts. " + "Keep it shut. " * 38,
-            "reason": prop["lessons"][0]["reason"]}, {"summary": "Keep the example ledger's copy at home.", "body": "Do so since it holds my accounts."}]
+    two = [{"summary": "Keep the example ledger in the owner's room.", "body": 'Never post it, since he said "holds my accounts". ' + "Keep it shut. " * 38,
+            "reason": prop["lessons"][0]["reason"]}, {"summary": "Keep the example ledger's copy at home.", "body": 'Do so since he said "holds my accounts".'}]
     whole = [{"said": "Never post the example ledger.", "as": "the first lesson"}, {"said": "Keep its copy at home.", "as": "the second"}]
 
     def run(lessons_: list[dict], **more) -> tuple[dict, dict, list[str]]:
@@ -1113,7 +1113,7 @@ def test_s3_his_quote_goes_in_whole_never_cut_split_or_joined_and_one_past_the_g
     assert run('Check the mat, since "the hall key sits under the mat".')[1] == [
         'lesson 1 quotes words that are no whole quote of the rule: "the hall key sits under the mat"']
     assert run(f'Check the mat, since "{said}".') == ([{"kind": "quote cited", "said": said, "as": said, "at": "daily/2025-11-03.md:4"}], [])
-    assert run('Check the mat, since "the spare lamp sits in the store".', ["the spare lamp sits in the store"])[1] == []   # a reason on
+    assert run('Check the mat, since he said "the spare lamp sits in the store".', ["the spare lamp sits in the store"])[1] == []   # a reason on
     rota = "the example rota goes up on monday for the team"                    # file, whole, that the rule never quotes, is the owner's
     his = {"said": f'Post the rota, since he said "{rota}".', "job": "example rota"}
     assert conversion.recorded(his, f'Post the rota, since "{rota}".', daily) == {conversion.WHOLE}           # the owner's, whole: carried
@@ -1148,6 +1148,7 @@ def test_s3_from_redoes_a_rule_whose_lessons_cut_his_quote(tmp_path):
 def test_s4_his_own_sentence_holding_bounced_beside_a_quote_is_carried_and_listed_and_a_sentence_of_the_models_still_counts(tmp_path):
     from yerk_ai import conversion
     m, prop = ledger_store(tmp_path)
+    (m.root / "rules-proposals" / "reasons.tsv").write_text("# no reason on file: S4 alone, its reason the day log's (run 6's V3 quotes one)\n")
     his = 'It bounced when he wrote "post the example ledger on the board".'
     ledger_with(m, f"Never post the example ledger. {his}")
     whole = [{"said": "Never post the example ledger.", "as": "Keep the example ledger in the owner's room. Never post it."}]
@@ -1333,7 +1334,7 @@ def test_pass_a_the_prompts_keep_his_sentence_whole_his_reason_on_file_unquoted_
     from yerk_ai import conversion, curate
     lessons_, down = curate.prompt("Lessons", {}, ""), curate.prompt("Knock down lessons", {}, "")
     assert "never split it, never move its quote into a sentence of its own, never reword the words round its mark" in lessons_
-    assert "The reason on file goes in word for word after because, since or so that, with no quote marks round it." in lessons_
+    assert "with no quote marks round it" not in lessons_       # run 6's V3: a reason on file goes in quote marks, as the owner's (test_v3_...)
     assert "never drop a proposal because an example that shows two steps sits in one of them" in down
     m, prop = ledger_store(tmp_path)
     ledger_with(m, 'Never post the example ledger. It bounced when he wrote "post the example ledger on the board".')
@@ -1342,3 +1343,155 @@ def test_pass_a_the_prompts_keep_his_sentence_whole_his_reason_on_file_unquoted_
                               'board" and it bounced.'}], "rewritten": [{"said": "Never post the example ledger.", "as": "the lesson"}]}
     conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2)
     assert conversion.OWN_HINT in next(x for x in asked if x.startswith("The gate refused"))
+
+
+# Run 6 (2026-11-21): a glossed example kept by --from, the excuses' day-log cache, a reason on file given whole as the owner's.
+# Placeholder words only.
+def glossed_store(tmp_path):
+    """ledger_store with one example on the ledger rule, cited by code to the owner's line that holds it, and a proposal that
+    names it with a gloss of the model's."""
+    m, prop = ledger_store(tmp_path)
+    ledger_with(m, 'Never post the example ledger. <example>Bounced: "the example ledger, post it?"</example>')
+    return m, {**prop, "lessons": [{**prop["lessons"][0], "examples": [{"n": 1, "gloss": "a gloss of four words"}]}]}
+
+
+def test_v1_from_keeps_a_rule_whose_cited_example_carries_a_gloss_and_redoes_one_cited_to_another_line(tmp_path):
+    from yerk_ai import conversion
+    m, p = glossed_store(tmp_path)
+    day = next(m.daily.glob("*.md")).name
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2)
+    rec = conversion.loaded(first)
+    ledger = rec["rules"][2]
+    assert rec["ready"] and ledger["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day}:5, a gloss of four words</example>")
+    asked: list[str] = []
+    again = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2,
+                                                 earlier=first))
+    assert asked == [] and again["from"]["redone"] == 0 and again["from"]["why"] == {} and again["ready"]   # its gloss: kept, no call
+    assert again["rules"][2]["lessons"] == ledger["lessons"] and any(d["kind"] == conversion.KEPT for d in again["rules"][2]["done"])
+    moved = conversion.loaded(first)
+    for d in next(r for r in moved["rules"] if r["cite"] == "tree/rules.md:9")["done"]:
+        if d["kind"] == "example cited":
+            d["at"] = f"daily/{day}:4"                 # cited then to a line `pick` no longer gives
+    (other := tmp_path / "moved.md").write_text(conversion.render(moved))
+    asked.clear()
+    out = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2,
+                                               earlier=other))
+    assert out["from"]["why"] == {"an example cited by the old search": 1} and any("=== tree/rules.md:9 (job" in x for x in asked)
+
+
+def test_v2_from_reads_the_day_logs_once_for_its_excuses_and_keeps_and_redoes_the_same_without_the_cache(tmp_path, monkeypatch):
+    from yerk_ai import conversion
+    m, prop = ledger_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    said = "the example ledger holds my accounts and the bank reads it every month"
+    day.write_text(day.read_text() + memory.format_line(datetime_at(NOW - 2000), "example-room", "r1", "owner", "", said, "private", "q1") + "\n")
+    ledger_with(m, f'Never post the example ledger, since he said "{said}".')
+    p = {**prop, "lessons": [{**prop["lessons"][0], "body": f'Never post it, since he said "{said}".'}],
+         "rewritten": [{"said": f'Never post the example ledger, since he said "{said}".', "as": "the lesson"}]}
+    first = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2)
+    assert conversion.loaded(first)["whole"] == {"example-ledger": "tree/rules.md:9"}      # an excuse that reads the day log
+    real, got = conversion.excused, list[object]()
+
+    def run(cache: bool) -> dict:
+        def spy(rule, x, read, daily=None, seen=None):
+            got.append(seen)
+            return real(rule, x, read, daily, seen if cache else None)
+        monkeypatch.setattr(conversion, "excused", spy)
+        got.clear()
+        return conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2, earlier=first))
+    with_ = run(True)
+    assert got and all(isinstance(x, dict) for x in got) and any(x for x in got)     # each excuse given the dry run's cache, filled
+    without = run(False)
+    assert (with_["from"], [r["lessons"] for r in with_["rules"]]) == (without["from"], [r["lessons"] for r in without["rules"]])
+    assert with_["from"]["redone"] == 0
+
+
+REASON = "holds my accounts and the bank reads it on the first monday of every month"     # a reason on file past the gate's 8 words
+
+
+def reason_store(tmp_path):
+    """ledger_store whose reason on file for the ledger rule is REASON, on an owner's line of the day log that holds it."""
+    m, prop = ledger_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    day.write_text(day.read_text() + memory.format_line(datetime_at(NOW - 2000), "example-room", "r1", "owner", "", f"the example ledger {REASON}",
+                                                        "private", "q3") + "\n")
+    n = len(day.read_text().splitlines())
+    (m.root / "rules-proposals" / "reasons.tsv").write_text(f"tree/rules.md:9\tdaily/{day.name}:{n}\t{REASON}\n")
+    body = f'Never post it, since he said "{REASON}".'
+    return m, {**prop, "lessons": [{**prop["lessons"][0], "body": body, "reason": {"said": REASON, "from": f"daily/{day.name}:{n}"}}],
+               "rewritten": [{"said": "Never post the example ledger.", "as": body}]}
+
+
+def test_v3_a_reason_on_file_given_whole_as_his_is_carried_and_listed_and_a_part_of_it_is_a_fault(tmp_path):
+    from yerk_ai import conversion, curate
+    m, p = reason_store(tmp_path)
+    asked: list[str] = []
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2))
+    ledger = rec["rules"][2]
+    assert ledger["lessons"][0]["body"] == f'Never post it, since he said "{REASON}".' and ledger["faults"] == []
+    assert any(g.startswith(conversion.RECORDS) for g in ledger["lessons"][0]["gate"])      # the gate asks a cite in its place
+    assert rec["ready"] and rec["whole"] == {"example-ledger": "tree/rules.md:9"} and not any(x.startswith("The gate refused") for x in asked)
+    rule = {"said": "Never post the example ledger.", "job": "example ledger", "on_file": [REASON]}
+    daily, part = m.daily, "the bank reads it on the first monday of every month"      # a part of it past the gate's 8 words, on record
+    assert conversion.recorded(rule, f'Never post it, since he said "{REASON}".', daily) == {conversion.WHOLE}
+    assert conversion.recorded({**rule, "on_file": []}, f'Never post it, since he said "{REASON}".', daily) == set()   # no reason on file
+    assert conversion.recorded(rule, f'Never post it, since he said "{part}".', daily) == set()                         # a part: not the owner's
+    cut = conversion.quoted({**rule, "filed": ""}, [{"summary": f'Never post it, since he said "{part}".', "body": ""}], daily, 8, [REASON])[1]
+    assert cut == [f'lesson 1 cuts his quote: "{part}" is part of "{REASON}", which goes in whole, word for word']
+    p2 = {**p, "lessons": [{**p["lessons"][0], "body": f'Never post it, since he said "{part}".'}]}
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p2), read=FABLE2))
+    assert not rec["ready"] and rec["rules"][2]["faults"][0].startswith("lesson 1 cuts his quote") and rec["whole"] == {}
+    lessons_, again, down = (curate.prompt(x, {}, "") for x in ("Lessons", "Lessons again", "Knock down lessons"))
+    assert "A reason on file is his words: it goes in whole, word for word, in quote marks, given as his (he said, his words, his order)" in lessons_
+    assert "with no quote marks round it" not in lessons_ and "the reason on file, that one whole, in quote marks, given as his" in again
+    assert "a reason on file not given whole, in quote marks, as his" in down
+
+
+def test_v3_the_apply_works_a_reason_on_file_out_again_from_the_record_and_the_reasons_file(tmp_path):
+    import pytest
+
+    from yerk_ai import conversion
+    m, p = reason_store(tmp_path)
+    rec = conversion.loaded(path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2))
+    assert rec["ready"] and rec["whole"] == {"example-ledger": "tree/rules.md:9"}
+    refusal = "example-ledger is listed as his quote kept whole, which its rule's words do not bear: run the dry run again; nothing applied"
+    held = conversion.loaded(path)
+    next(r for r in held["rules"] if r["cite"] == "tree/rules.md:9")["reasons"] = []        # the record holds no row for it
+    (bare := tmp_path / "no-rows.md").write_text(conversion.render(held))
+    with pytest.raises(RuntimeError) as e:
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, bare)
+    assert str(e.value) == refusal
+    rows = (m.root / "rules-proposals" / "reasons.tsv").read_text()
+    (m.root / "rules-proposals" / "reasons.tsv").write_text("# its row taken off since the dry run\n")
+    with pytest.raises(RuntimeError) as e:
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert str(e.value) == refusal and not lessons.converted(m.root)
+    (m.root / "rules-proposals" / "reasons.tsv").write_text(rows)
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)                    # the file as the dry run wrote it, its row there
+    assert "a cite for his quote" in (m.root / lessons.NO_REASON).read_text()
+
+
+def test_v3_a_reason_on_file_in_a_voice_of_the_lessons_own_is_a_fault_and_from_redoes_a_rule_that_gives_it_so(tmp_path):
+    from yerk_ai import conversion
+    m, p = reason_store(tmp_path)
+    rule = {"said": "Never post the example ledger.", "job": "example ledger", "filed": ""}
+
+    def faults(body: str) -> list[str]:
+        return conversion.quoted(rule, [{"summary": "Keep the example ledger in the owner's room.", "body": body}], m.daily, 8, [REASON])[1]
+    assert faults(f'Never post it, since he said "{REASON}".') == [] and faults(f'Never post it, since in his words "{REASON}".') == []
+    assert faults(f"Never post it, since it {REASON}.") == [f'lesson 1 gives his reason on file as its own words: "{REASON}" goes in whole, '
+                                                             'in quote marks, given as his']
+    assert faults(f'Never post it, since "{REASON}".') == [f'lesson 1 quotes his reason on file but not as his: "{REASON}" goes in given as '
+                                                          'his (he said, his words, his order)']
+    assert conversion.quoted({**rule, "said": f"Never post the example ledger, since it {REASON}."}, [{"summary": "Keep it home.", "body":
+                             f"Never post the example ledger, since it {REASON}."}], m.daily, 8, [REASON])[1] == []     # the rule's own words
+    first = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p), read=FABLE2))
+    assert first["ready"]
+    for r in first["rules"]:            # a file an earlier code wrote, its lesson giving the reason on file as its own words
+        if r["cite"] == "tree/rules.md:9":
+            r["lessons"][0]["body"] = f"Never post it, since it {REASON}."
+    (earlier := tmp_path / "earlier.md").write_text(conversion.render(first))
+    asked: list[str] = []
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=one_rule_model(p, asked), read=FABLE2,
+                                               earlier=earlier))
+    assert rec["from"]["why"] == {"a fault the code finds": 1} and any("=== tree/rules.md:9 (job" in x for x in asked) and rec["ready"]

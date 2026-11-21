@@ -833,7 +833,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 raised it by 193 more, run 5: the owner's words win over the gate's shape, not folded to fit: conversion.py 169 (the words that give a quote as the owner's read from [curate] owner_names, no name in the code; a never read with the rule's sentence it comes from; an exception or a seal added to the owner's never a fault; their quote whole, a part of it a fault; each finding only a change to their words could meet worked out, listed apart and never sent to the model, and worked out again by the apply from the rule's words; a cite the model refuses; a day that is none; the filing's 120 seconds; each example counted by its place; a note beside the gate's exchange finding), lessons.py 8 (what each listed lesson lacks), shape.py 14 (the daily run and its count file nothing for their words listed, and name them), config.py 2 (the key's line). 35,168: 34,975 plus 193.
 
-- `lines = 35168`
+2026-11-21: lesson-store-2026-11-21 raised it by 20 more, run 6, not folded to fit: conversion.py 20 (a cited example old by its line alone, never its gloss; the excuses' day-log cache on --from; a reason on file read as theirs, whole, in quote marks, and a part of it, one in the lesson's own voice or one not given as theirs a fault; the apply's reasons from the record and the reasons file). 35,188: 35,168 plus 20.
+
+- `lines = 35188`
 
 ## Uncapped
 
