@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 133808
+total = 134145
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -313,12 +313,20 @@ total = 133808
 # 27,518 to 27,637 (measured on main 948dcdb and on this tree the same way), on the about 29,269 the rooms send, so about
 # 29,388, 88 over the line; so 29,400, no part could pay, the total rose by the 100 (to 133,808 on main's 133,708). The
 # hands plug-in's tool entries do not change.
+# 2026-11-21, need-2026-11-21-133: the hands plug-in's browser gains `scroll` (a tab moved a screen down or up, to its top
+# or bottom, or to a control by its label) with its `direction`, and click's and scroll's `nth` (one of several controls
+# that share a label, each listed with its nth and never the first bound by itself), since a room sent to a showtimes page
+# met three "Preview seats" buttons, the click always taking the first, and the group it wanted sat below what the tab
+# showed with no way to move the page; filed 2026-11-21: the five entries 10,555 to 10,892 as the plug-in's branch
+# need-2026-11-21-133 (67d93f6) builds them on its main 9f7c3ca, 337 more, by the plug-in's own measure, its test's cap
+# moving with it; so 10,953, no part could pay, the total rose by the 337 (to 134,145 on main's 133,808). Yerk AI's own
+# tool entries do not change.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 29400
 deferred_tool_names = 3581
-mcp__hands__ = 10616
+mcp__hands__ = 10953
 mcp__web-ladder__web_image = 913
 skills = 0
 

@@ -594,6 +594,27 @@ why_not = "It rides on the browser ability, which is not in this repo; an instal
 asked_as = ["type into the field", "type in the field", "type into a field", "type into the form", "focused field", "field that has focus",
             "shadow dom", "shadow root", "web component form", "fields are not listed"]
 
+# need-2026-11-21-133: a room asked to read a seat map on a theatre's showtimes page met three "Preview seats" buttons, one
+# for each format group, and the browser's click by that label always took the first; the group it wanted sat below what the
+# tab showed, under a cookie banner, and nothing in the browser moved the page (a key press needs a field with the focus).
+[abilities.pick-and-scroll]
+state = "described"
+what = "Clicks the second or third of several controls that share one label in the browser ability's browser, such as one \"Preview seats\" button for each group on a page, and scrolls one of the room's tabs, so a shot shows what sits below or above what it showed."
+how = [
+  "Never the first by itself: a click or a scroll by a label several controls share is refused, nothing clicked, and lists each in page order by its number (nth, from 0), its words, where it sits against the view (in view, above, below or not drawn) and the words near it, such as its group's heading, inside the page's untrusted wrap.",
+  "Taken by nth: the control the plug-in judges for the owner's word and for a pay button is the one it clicks, from one list (the page's own controls, then its web components', then its boxes', exact words first, a link round a button one control), and the click runs only while that list is as long as when it was judged.",
+  "One browser action, scroll: a screen down or up, or to the top or bottom, moving what a mouse wheel at the middle of the tab moves (a part of the page that scrolls there, else the page), or a control by its label and nth to the middle of the view; the reply says where the tab is now, or that nothing moved and why.",
+  "A read, as a shot is: no owner's word and no payment check, since it sets and clicks nothing; a picture taken before it is marked moved, so a click by position read off it is refused until a new shot.",
+]
+tier = "free"
+needs = "the browser ability with a click by nth and a scroll action in its plug-in"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries click's nth and the scroll action has it there, and a room that meets several controls with one label clicks the one it means by the nth the refusal lists, and scrolls the tab to see more, never clicking a filter or another control to move the page."
+asked_as = ["share the same label", "share one label", "same label on several buttons", "buttons with the same label", "buttons with the same name",
+            "click the second button", "click the third button", "the click always takes the first", "scroll the page", "scroll down the page",
+            "scroll down on the page", "scroll the tab", "scroll in the browser", "no scroll action", "below the visible part of the page"]
+
 # need-2026-11-11-86: a room asked why it could not see a file a mail carried opened the owner's mail app in the browser,
 # signed in, the mail on screen, and its click by position on the mail's file chip was refused: the browser read the whole
 # mailbox as a payment page, since the app's blue Upgrade button in its own top bar matched the pay words, so every click
