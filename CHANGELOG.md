@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-21
 
-### lesson-store-2026-11-21 (#?)
+### lesson-store-2026-11-21 (#119)
 
 - The rule store can now be kept the way the Claude docs keep a memory: "Store one lesson per file with a one-line summary
   at the top." Each lesson is `<memory>/rules/<slug>.md`: its front matter first (`class:` its first key, the block under
