@@ -43,20 +43,20 @@ UNLIFTED = "no exception, as the rule gives none"   # a listed item: a lesson wh
 WHOLE = "his quote kept whole"       # a listed item: a lesson keeping a quote of the rule whole where the gate asks a cite in its place
 OWN = "his own sentence kept"        # a listed item: a lesson keeping the owner's sentence that holds "landed" or "bounced" beside a quote
 UNCITED = "an example kept as its words"   # a listed item: an example no line passes for, or its cite refused, that the gate asks a cite of
-PAST = "his words kept whole, past the length"   # a listed item: a body of his sentences that only cutting one of them would shorten
+PAST = "his words kept whole, past the length"   # a listed item: a long body whose every sentence is the owner's as they wrote it
 EXCUSES = {UNLIFTED: "no_exception", WHOLE: "whole", OWN: "own", UNCITED: "uncited", PAST: "long"}   # each kind and its list in the record
 WHYS = {UNLIFTED: "its absolute carried as he wrote it and named, since no exception is ever added to a rule of his; not counted in the verdict",
         WHOLE: "his quote carried whole, word for word, where the gate asks a cite in its place, and named; not counted in the verdict",
         OWN: "his own sentence carried word for word where the gate reads an exchange outside example tags, and named; not counted in the verdict",
         UNCITED: "an example of his kept as its words, since no day-log line passes for it or its cite was refused, where the gate asks "
                  "a cite, and named, since no wrong line is written to pass it; not counted in the verdict",
-        PAST: "his sentences carried word for word where the gate asks a shorter body, and named, since only cutting one of them would "
-              "shorten it; not counted in the verdict"}
+        PAST: "his sentences carried word for word where the gate asks a shorter body, and named, since a body of his own sentences is "
+              "never refused for its length; not counted in the verdict"}
 HEADS = {UNLIFTED: "no exception, as the rule gives none, carried as he wrote it", WHOLE: "his quote kept whole, carried as he wrote it where the "
          "gate asks a cite in its place", OWN: "his own sentence kept, carried word for word where the gate reads an exchange outside "
          "example tags", UNCITED: "an example kept as its words, since no day-log line passes or its cite was refused, where the gate asks "
          "a cite (no wrong line is written to pass it)", PAST: "his words kept whole, past the length, carried word for word where the gate "
-         "asks a shorter body (a sentence of his alone past it, or the rule whole)"}
+         "asks a shorter body (every sentence of it his, as he wrote it)"}
 REFUSED_CITE = "cite refused"        # a listed item: the line code cites an example to, refused by the model with its why
 RECORDS = "what the day log already records: "    # the gate's on-record finding (words.LESSON_NAMES), its head
 OWN_HINT = (" (code's note: never put his sentence in example tags; keep each sentence of his that holds \"landed\" or \"bounced\" "
@@ -350,17 +350,15 @@ def reason_given(rule: dict[str, Any], y: str) -> bool:
 
 
 def past(rule: dict[str, Any], text: str) -> bool:
-    """A lesson whose long body only cutting his words could shorten: each sentence of its body (after its summary, as the gate
-    splits it; its examples and code's scope sentence aside) is a sentence of the rule as he wrote it, its capitals and stops too,
-    and one of them is alone past lesson_body_chars, or the lesson or its body holds every sentence of the rule, in his order."""
-    cap = shape.threshold(dict(budgets().get("shape") or {}), *shape.LESSON["long"][1:])
+    """A lesson whose long body is the owner's own words, never refused for its length: each sentence of its body (after its summary, as
+    the gate splits it; its examples and code's scope sentence aside) is a sentence of the rule as they wrote it, its capitals and
+    stops too."""
 
     def sentences(said: str) -> list[str]:          # each as the gate reads a lesson: its code a word, its trailer out
         bare = shape.TRAILER.sub("", WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", re.sub(r"`[^`]*`", "code", shape.one(said)))))
         return [y for y in (" ".join(y.split()) for y in shape.SENTENCES.split(bare.replace(SCOPED.format(job=rule["job"]), " ").strip())) if y]
     his, mine = sentences(rule["said"]), sentences(text)
-    return bool(body := mine[1:]) and all(y in his for y in body) and (
-        any(len(shape.CITED.sub("", y)) > cap for y in body) or his in (mine, body))
+    return bool(body := mine[1:]) and all(y in his for y in body)
 
 
 def recorded(rule: dict[str, Any], text: str, daily: Path | None, seen: dict[Path, str] | None = None) -> set[str]:

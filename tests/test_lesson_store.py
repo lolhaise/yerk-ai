@@ -1557,7 +1557,7 @@ def long_run(tmp_path, rule: str, lessons_: list[dict]) -> tuple[dict, list[str]
     return conversion.loaded(path), [x for x in asked if x.startswith("The gate refused")], path
 
 
-def test_x2_a_sentence_of_his_alone_past_the_length_or_the_rule_whole_is_carried_and_listed_and_anything_else_still_counts(tmp_path):
+def test_x2_a_sentence_of_his_alone_past_the_length_or_the_rule_whole_is_carried_and_listed_and_a_sentence_not_his_still_counts(tmp_path):
     from yerk_ai import conversion
     assert len(LONGEST) > 600 > len(LONGEST) // 2 + len(ROTA)
     rec, backs, path = long_run(tmp_path, f"{LONGEST} {ROTA}", [{"summary": "Book the example hall a week ahead.", "body": LONGEST},
@@ -1565,14 +1565,14 @@ def test_x2_a_sentence_of_his_alone_past_the_length_or_the_rule_whole_is_carried
     ledger = rec["rules"][2]
     assert any(g.startswith(conversion.LONG) for g in ledger["lessons"][0]["gate"]) and rec["ready"] and not backs
     assert rec["long"] == {"example-ledger": "tree/rules.md:9"} and any(d["kind"] == conversion.PAST for d in ledger["done"])
-    assert ("Listed as his words kept whole, past the length, carried word for word where the gate asks a shorter body (a sentence of his alone "
-            "past it, or the rule whole) and not counted in the verdict: 1 lesson, rules/example-ledger.md.") in path.read_text().splitlines()
+    assert ("Listed as his words kept whole, past the length, carried word for word where the gate asks a shorter body (every sentence of it "
+            "his, as he wrote it) and not counted in the verdict: 1 lesson, rules/example-ledger.md.") in path.read_text().splitlines()
     half = ", and ".join(LONGEST.split(", and ")[:7]) + "."                                    # two sentences, each under 600, the rule whole
     rest = "Book it so, since " + LONGEST.split(", and ", 7)[7]
     rec, backs, _ = long_run(tmp_path / "whole", f"{half} {rest}", [{"summary": "Book the example hall a week ahead.", "body": f"{half} {rest}"}])
     assert len(half) < 600 and len(rest) < 600 and rec["ready"] and rec["long"] == {"example-ledger": "tree/rules.md:9"} and not backs
-    rule = {"said": f"{half} {rest} {ROTA}", "job": "example ledger"}                          # neither case: two of his three sentences
-    assert not conversion.past(rule, f"Book the example hall a week ahead. {half} {rest}")
+    rule = {"said": f"{half} {rest} {ROTA}", "job": "example ledger"}            # neither case, two of the owner's three sentences: their words too (Y1)
+    assert conversion.past(rule, f"Book the example hall a week ahead. {half} {rest}")
     assert conversion.past(rule, f"Book the example hall a week ahead. {half} {rest} {ROTA}")
     rule = {"said": f"{LONGEST} {ROTA}", "job": "example ledger"}
     assert conversion.past(rule, f"Book the example hall a week ahead. {LONGEST} <example>Landed, daily/2025-11-09.md:3</example>")
@@ -1628,6 +1628,39 @@ def test_x2_the_daily_run_files_nothing_for_his_words_listed_past_the_length_and
     (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta reason\n")      # listed for another cause
     out = doctor.lessons(private, state, m, 1000.0, dry=True)
     assert len(out) == 1 and "long" in out[0] and at in out[0]
+
+
+def test_y1_two_sentences_of_his_each_under_the_length_past_it_together_are_carried_and_listed_one_not_his_counts_and_the_apply_works_it_out(tmp_path):
+    import pytest
+
+    from yerk_ai import conversion
+    half = ", and ".join(LONGEST.split(", and ")[:7]) + "."
+    rest = "Book it so, since " + LONGEST.split(", and ", 7)[7]
+    rule = f"{half} {rest} {ROTA}"                       # the owner's three sentences; the lesson holds two: none alone past it, not the rule whole
+    assert len(half) < 600 and len(rest) < 600 < len(f"{half} {rest}")
+    rec, backs, path = long_run(tmp_path, rule, [{"summary": "Book the example hall a week ahead.", "body": f"{half} {rest}"},
+                                                 {"summary": "Post the rota on the board.", "body": ROTA}])
+    ledger = rec["rules"][2]
+    assert any(g.startswith(conversion.LONG) for g in ledger["lessons"][0]["gate"]) and rec["ready"] and not backs
+    assert rec["long"] == {"example-ledger": "tree/rules.md:9"}
+    assert any(d["kind"] == conversion.PAST and d["why"].endswith("since a body of his own sentences is never refused for its length; not "
+                                                                  "counted in the verdict") for d in ledger["done"])
+    assert ("Listed as his words kept whole, past the length, carried word for word where the gate asks a shorter body (every sentence of it "
+            "his, as he wrote it) and not counted in the verdict: 1 lesson, rules/example-ledger.md.") in path.read_text().splitlines()
+    mine, back, _ = long_run(tmp_path / "mine", rule, [{"summary": "Book the example hall a week ahead.", "body": f"{half} {rest} Do it early."},
+                                                       {"summary": "Post the rota on the board.", "body": ROTA}])
+    assert not mine["ready"] and mine["long"] == {} and back and "a long body" in back[0]            # a sentence not the owner's: it still counts
+    m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
+    held = conversion.loaded(path)               # the record's rule no longer holds that sentence as the lesson has it: the list is not borne
+    x = next(r for r in held["rules"] if r["cite"] == "tree/rules.md:9")
+    x["text"] = x["text"].replace("the north hall", "the north room")
+    (bad := tmp_path / "changed.md").write_text(conversion.render(held))
+    with pytest.raises(RuntimeError) as e:
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, bad)
+    assert str(e.value) == ("example-ledger is listed as his words kept whole, past the length, which its rule's words do not bear: run the dry "
+                            "run again; nothing applied") and not lessons.converted(m.root)
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert lessons.listed(m.root)["example-ledger"] == (rec["day"], "tree/rules.md:9", "a body under the length")
 
 
 def test_x3_a_rule_asked_again_by_name_is_redone_looped_or_not_one_not_named_stays_kept_and_a_name_of_no_rule_is_refused_first(tmp_path):

@@ -837,7 +837,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 raised it by 51 more, run 7, not folded to fit: conversion.py 43 (a sentence giving the owner's reason on file as theirs counts as theirs beside their marked sentence, and the apply reads their names for it; their words kept whole past the length, a listed kind of its own; a rule asked again by name with --redo, a name of no rule refused first, the head naming them), cli.py 3 (the flag), shape.py 4 (the daily run files nothing for it and names it), lessons.py 1 (what it lacks). 35,239: 35,188 plus 51.
 
-- `lines = 35239`
+2026-11-21: lesson-store-2026-11-21 lowered it by 2, run 8: conversion.py's test for the owner's words kept whole past the length loses its two cases (a sentence of theirs alone past it, or the rule whole), so a body whose every sentence is theirs is never refused for its length. 35,237: 35,239 less 2.
+
+- `lines = 35237`
 
 ## Uncapped
 
