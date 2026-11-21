@@ -57,6 +57,16 @@ def test_login_is_saved_by_the_owner_alone_as_a_0600_secret_and_no_answer_or_log
     assert json.loads(f.read_text())["password"] == "pw-Fake-8-placeholder"    # the owner's own word replaces their own login
 
 
+def test_t4_a_password_that_starts_or_ends_with_a_space_is_saved_exactly_as_given(y, tmp_path):
+    """T4 (need 127's fix): the password is kept as the owner gave it, a space at either end too; the plug-in types it so."""
+    dc, _, _ = wire(y)
+    for i, pw in enumerate((f" {PASSWORD}", f"{PASSWORD} ", f"  {PASSWORD}  ")):
+        said = slash(dc, "login", name="example", site="example.com", user="example-user", password=pw)
+        line = (words.LOGIN_REPLACED if i else words.LOGIN_SAVED).format(name="example", site="example.com", user="example-user")
+        assert said[0][1] == f"{words.DONE} {line}", said
+        assert json.loads(secret(tmp_path).read_text())["password"] == pw, repr(pw)
+
+
 def test_login_from_anyone_but_the_owner_or_outside_a_room_saves_nothing(y, tmp_path):
     dc, _, _ = wire(y)
     for kw in ({"who": STRANGER}, {"who": PERSON}, {"channel": 22}):

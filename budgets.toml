@@ -303,7 +303,7 @@ total = 133708
 # a login the owner saved with Yerk's /login, typed by the plug-in itself on that login's own site, so the password is in
 # no tool call; since a room the owner sent a new site's login in pictures could file no secret, and signing in meant typing
 # the password through a tool call kept in its transcript; filed 2026-11-20): the five entries 10,409 to 10,555 as
-# the plug-in's branch need-2026-11-20-127 (894fc94) builds them on its main e3b605e, 146 more, by the plug-in's own
+# the plug-in's branch need-2026-11-20-127 (9f7c3ca) builds them on its main e3b605e, 146 more, by the plug-in's own
 # measure, its test's cap moving with it; so 10,616, no part could pay, the total rose by the 146 (to 133,708 on main's
 # 133,562). Yerk AI's own tool entries do not change: /login is a slash command, never a room's tool.
 [session_start.claude_code]

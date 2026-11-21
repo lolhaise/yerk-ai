@@ -20,11 +20,15 @@ version changes.
   secrets folder, the browser's keep saves only a key a page shows, and typing the password through a tool call puts
   it in the room's kept transcript.
 - Signing in rides on the browser plug-in, which is kept outside this repository (hands-mcp, branch
-  need-2026-11-20-127 at 894fc94). Its `type` takes `login` and `part` (user or password), and the plug-in reads the
-  file itself. So the password is in no tool call's arguments and no reply. It types only on a page of the login's own
-  site over https (its host or a subdomain of it), puts the password only into a password field and the user only into
-  a text field, and never types on a payment page. A name that is not saved gets the list of saved ones, by name and
-  site. Every saved password is scrubbed from every reply after, as a kept key is.
+  need-2026-11-20-127 at 9f7c3ca, 184 cases). Its `type` takes `login` and `part` (user or password), and the plug-in
+  reads the file itself. So the password is in no tool call's arguments and no reply. It types only on a page of the
+  login's own site over https (its host or a subdomain of it), puts the password only into a password field and the
+  user only into a text field, and never types on a payment page. A name that is not saved gets the list of saved
+  ones, by name and site. Every saved password is scrubbed from every reply after, as a kept key is.
+- The site is checked against the address the browser itself gives for the tab, never against what the page's own
+  script answers, so a page of another site that claims the login's address gets nothing typed. The user and the
+  password reach the browser's driver on its stdin, never on a command line, where any process of the same user could
+  read them.
 - The abilities entry `logins` tells a room handed a login in a message or a picture to ask for `/login`, never to type
   it out or file it in memory.
 - **Upgrading**: budgets.toml's `mcp__hands__` rises from 10,470 to 10,616 for the browser entry's 146 more bytes, and
