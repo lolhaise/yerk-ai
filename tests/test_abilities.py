@@ -614,6 +614,30 @@ def test_a_room_asked_to_type_into_a_field_it_focused_hears_the_type_way_and_the
     assert not abilities.asked("I have to type up the form for work tonight", y.memory, TAB)
 
 
+def test_a_room_whose_click_took_the_first_of_several_alike_buttons_hears_the_nth_and_scroll_way(tmp_path):
+    """need-2026-11-21-133: a room asked to read a seat map met three buttons of one label on a showtimes page, one for each
+    group, and the browser's click by that label always took the first; the group it wanted sat below what the tab showed,
+    and nothing moved the page. Asked that way, a room gets pick-and-scroll whole: the plug-in's click lists the controls
+    by nth and never binds the first, takes one by nth, and its scroll moves the tab; a message about a scroll of paper gets
+    no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("three Preview seats buttons share the same label and the click always takes the first",
+                "the group is below the visible part of the page, can you scroll down the page?"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["pick-and-scroll"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"pick-and-scroll, a Yerk AI ability ({words.ability('described')[1]}): Clicks the second or third of "
+                           "several controls that share one label")
+    for want in ("Never the first by itself; Taken by nth; One browser action, scroll; A read, as a shot is",
+                 "carries click's nth and the scroll action", "never clicking a filter or another control to move the page"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("pick-and-scroll", TAB["pick-and-scroll"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- Never the first by itself:")).endswith("inside the page's untrusted wrap.")
+    assert "is the one it clicks" in next(x for x in told if x.startswith("- Taken by nth:"))
+    assert not abilities.asked("the scroll from the museum is on the shelf", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

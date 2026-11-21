@@ -141,6 +141,24 @@ version changes.
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then
 `yerk curate --lessons-apply <that file>`. The memory index skips `rules-backup-*` folders from its next start.
 
+### need-2026-11-21-133 (#120)
+
+- A room can click the second or third of several buttons that share one label in the browser, and scroll a tab. On a
+  page where several controls share a label, such as one "Preview seats" button for each group of a showtimes page, a
+  click by that label used to take the first every time. Now it clicks none of them by itself: the reply lists each in
+  page order by its number (`nth`, from 0), where it sits against the view (in view, above, below, not drawn) and the
+  words near it, such as its group's heading, and the room calls again with `nth`. The control the browser checks for
+  your word and for a pay button is the one it clicks, and the click runs only while the page still shows the same
+  number of them.
+- The browser's new `scroll` action moves one of the room's tabs a screen down or up, to its top or bottom, or to a
+  control by its label, so a shot shows what sat below what the tab showed. It is a read, like a shot: it needs no word
+  from you, and a picture taken before it is not clicked by position until a new shot is taken.
+- Both are built in the browser plug-in (the hands plug-in's branch need-2026-11-21-133 at 8f9ffae, 211 cases, its
+  newer main merged in); here, the `pick-and-scroll` entry in abilities.toml says how they work, so a room that meets
+  several alike buttons asks for the one it means by number.
+- **Upgrading**: budgets.toml's `mcp__hands__` line rises from 10,616 to 10,953 for the plug-in's longer tool entries,
+  and `total` by the same 337, to 134,145. An install that keeps its own budgets.toml raises both the same way.
+
 ### need-2026-11-21-132 (#118)
 
 - The orange "docs moved" line for the index check is gone. Claude Code's memory page (code-memory) was reworded by
