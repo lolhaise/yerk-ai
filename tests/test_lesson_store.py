@@ -569,6 +569,48 @@ def test_a_dry_run_from_an_earlier_file_keeps_each_rule_that_passed_with_no_mode
     assert "1 rule the reviewer dropped after the last round, each listed" not in rec["why"]       # :9 redone, and kept this time
 
 
+def test_a_none_row_carries_a_lesson_refused_for_a_reason_alone_named_and_excuses_no_other_cause(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+
+    def run():
+        path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: "", read=FABLE2)
+        return conversion.loaded(path), path.read_text()
+    assert run()[0]["why"] == ["1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"]
+    (m.root / "rules-proposals" / "reasons.tsv").write_text("# the owner's side looked: no file holds one\ntree/rules.md:9\tnone\n")
+    rec, text = run()
+    ledger = rec["rules"][2]
+    assert rec["ready"] and rec["why"] == [] and ledger["lessons"][0]["gate"] and ledger["reasons"] == ["none"]
+    assert rec["no_reason"] == {"example-ledger": "tree/rules.md:9"} and "not counted in the verdict: 1 lesson, rules/example-ledger.md." in text
+    assert next(d for d in ledger["done"] if d["kind"] == "no reason on file, as the owner's side says")["said"] == ledger["lessons"][0]["summary"]
+    rows = (m.root / memory.RULES).read_text()
+    (m.root / memory.RULES).write_text(rows.replace("Never post the example ledger.", "Never post the example ledger. \U0001F44D"))
+    rec, _ = run()                                                       # an example outside its tags: a cause a none row never excuses
+    assert not rec["ready"] and rec["why"] == ["1 lesson the gate refuses"] and rec["no_reason"] == {}
+
+
+def test_the_apply_lists_each_lesson_carried_with_no_reason_and_a_replacement_or_a_retire_takes_it_off(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    (m.root / memory.RULES).write_text((m.root / memory.RULES).read_text().replace(WEB, "Open web pages with the example browser."))
+    (m.root / "rules-proposals").mkdir()
+    (m.root / "rules-proposals" / "reasons.tsv").write_text("tree/rules.md:8\tnone\ntree/rules.md:9\tnone\n")
+    path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: "")
+    rec = conversion.loaded(path)
+    assert rec["ready"] and rec["no_reason"] == {"open-web-pages": "tree/rules.md:8", "example-ledger": "tree/rules.md:9"}
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert lessons.no_reason(m.root) == {"open-web-pages": (rec["day"], "tree/rules.md:8"), "example-ledger": (rec["day"], "tree/rules.md:9")}
+    conversion.undo(m, rec["day"])
+    assert not (m.root / lessons.NO_REASON).exists()
+    conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path := conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW,
+                                                                                        model=lambda p, tools: ""))
+    log = memory.DailyLog(m.daily, m.tz)
+    assert memory.rule(m, "example-room", "m9", "example ledger", "Never post the example ledger.", log=log)["ok"] is False   # the write gate
+    r = memory.rule(m, "example-room", "m9", "example ledger", "Keep the example ledger to the owner, since it holds his accounts.", log=log)
+    assert r["ok"] and r["replaced"] == ["rules/example-ledger.md"] and list(lessons.no_reason(m.root)) == ["open-web-pages"]
+    assert memory.retire(m, log, "example-room", "m10", "rules/open-web-pages.md", "the browser went")["ok"] and lessons.no_reason(m.root) == {}
+
+
 def datetime_at(t: float):
     from datetime import datetime, timezone
     return datetime.fromtimestamp(t, timezone.utc)

@@ -825,7 +825,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 raised it by 45 more, a dry run resumed from an earlier proposals file (`--from FILE`), not folded to fit: conversion.py 43 (each rule's reasons rows in the record; a rule that passed there kept word for word with no model call, its slugs held from the rest; the head's count), cli.py 2 (the flag). 34,668: 34,623 plus 45.
 
-- `lines = 34668`
+2026-11-21: lesson-store-2026-11-21 raised it by 48 more, "no reason on file" said by the owner's side (a `none` row in reasons.tsv), not folded to fit: conversion.py 22 (a lesson refused for a reason alone listed and left out of the verdict and the rounds back; the apply's pass for it and its sidecar; undo), lessons.py 17 (rules-no-reason.tsv read, and a slug taken off it by a filing or a retire), shape.py 9 (the daily run leaves its missing reason out and names it). 34,716: 34,668 plus 48.
+
+- `lines = 34716`
 
 ## Uncapped
 

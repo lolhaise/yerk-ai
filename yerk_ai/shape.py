@@ -540,10 +540,16 @@ SIZED = "rule index size:"        # an uncapped install's daily line for its ind
 def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: Any = None) -> dict[str, Any]:
     """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
     cite with its checks, each style limit counted apart (COUNT_ONLY), and RULES, the index a session start loads, against the
-    code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store."""
+    code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store.
+    A lesson lessons.NO_REASON lists has no reason on file, as the owner's side says: its missing reason is no finding, and it
+    is named apart."""
     found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
+    listed, named = lessons.no_reason(m.root), list[str]()
     for at, job, text, layout in rows_of(m):
         missed = lesson(job, text, m.daily, limits, seen, read) | layout
+        if (c := lessons.CITE.search(at)) and c[1] in listed:
+            missed.pop("no reason", None)
+            named.append(at)
         counted += [at] * any(k in COUNT_ONLY for k in missed)
         if bad := [k for k in missed if k not in COUNT_ONLY]:
             found.append((at, bad))
@@ -551,7 +557,7 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
     return {"lessons": found, "index": over, "size": [len(rows), have, most, size], "moved": pinned(docs, read), "style limits": counted,
-            "read": list(read or EVERY)}
+            "read": list(read or EVERY), "listed": named}
 
 
 def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None, whole: bool = False) -> list[str]:
@@ -593,6 +599,9 @@ def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
            "The doctor's daily check of every live rule against the Claude docs' lesson shape (shape.LESSON), each check's "
            "sentence pinned to its fetched page (shape.PINS). `yerk curate --rules` proposes the fixes.", ""]
     out += [f"- {x}" for x in found] or ["- in the shape: every pinned sentence on its page, every lesson in the shape, the index under its limits"]
+    if n := len(r.get("listed") or ()):
+        out += ["", f"Listed as no reason on file, as the owner's side says ({lessons.NO_REASON}), its missing reason no finding: {n} "
+                f"lesson{'s' * (n != 1)}, {', '.join(r['listed'])}."]
     out += ["", f"Pages read, those of every model a room runs: {', '.join(r.get('read') or EVERY)}."]
     if r["lessons"]:
         out += ["", f"## Lessons out of the shape: {len(r['lessons'])}", "", *[f"- {c}: {', '.join(k)}" for c, k in r["lessons"]]]

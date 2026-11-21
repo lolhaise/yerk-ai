@@ -104,6 +104,16 @@ version changes.
   all of them. The file's head says how many rules were kept from which file and how many redone, and each kept rule
   carries a listed item saying so. A model pass is not repeatable, so a second full pass lost what the first got right;
   one that keeps what passed only gets nearer to ready, and a rule filed after the review costs one rule's conversion.
+- "No reason on file", said by the owner's side: a row `cite<TAB>none` in `reasons.tsv` says it has looked and no file
+  holds a reason for that rule, or for the parts of it that come out with none (a cite may have reason rows and a `none`
+  row together). A lesson of such a rule refused only for a reason is listed as "no reason on file, as the owner's side
+  says", is not counted in the verdict and is not sent back to the model; any other finding on it still counts. The
+  apply passes those lessons for those findings only while the row is there and writes their slugs to
+  `<memory>/rules-no-reason.tsv` (slug, day, the old cite), beside `retired.tsv`; undo removes it. The doctor's daily run
+  counts no missing reason of a listed lesson and files no need for it, and `docs/shape/lessons.md` names them on a line
+  of its own. A filing that replaces a listed lesson gives its reason at the gate and takes it off the list, as a retire
+  does; the write gate for a new rule is unchanged. Without it a rule with no reason on file could never be applied,
+  and no reason is ever invented for a rule of the owner's.
 
 **Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then

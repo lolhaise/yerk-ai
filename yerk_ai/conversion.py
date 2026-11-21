@@ -49,6 +49,8 @@ WANTING = ("no reason given", "a negative with no why", "a hard style limit with
 WRAP = re.compile(r"\s*</?examples(?:\s[^>]*)?>", re.I)    # the wrapper left round a rule's examples once code takes them out
 DROPPED = "the reviewer dropped it: "   # a finding of the knock-down: its proposal says other than the rule says
 KEPT = "kept from an earlier file"      # a listed item: a rule `--from FILE` kept word for word, with no model call
+NONE = "none"                           # REASONS's `cite<TAB>none`: the owner's side looked, and no file holds a reason for it
+LISTED = "no reason on file, as the owner's side says"   # a listed item: a lesson of a rule with a NONE row refused for a reason alone
 
 
 def sha(p: Path) -> str:
@@ -238,7 +240,7 @@ def carried(s: memory.Settings, rules: list[dict[str, Any]], path: Path, gate: C
                 d["kind"] in ("still failing", "reviewer dropped") for d in m["done"]) or any(x["slug"] in gone for x in m["lessons"]):
             continue
         made = [{**x, "gate": gate(x)} for x in m["lessons"]]
-        if made and not any(x["gate"] for x in made) and not accounted(r, made, m["done"]):
+        if made and not any(refused(x["gate"], NONE in rows.get(r["cite"], [])) for x in made) and not accounted(r, made, m["done"]):
             out[r["cite"]] = {**m, "lessons": made, "missing": [], "done": [*(d for d in m["done"] if d["kind"] != KEPT), {
                 "kind": KEPT, "why": f"{path.name}, as it made it: its lessons word for word, no model call"}]}
     return out
@@ -318,11 +320,17 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
             "missing": accounted(rule, made, done)}
 
 
-def findings(m: dict[str, Any]) -> list[str]:
+def refused(gate: list[str], none: bool) -> bool:
+    """A lesson's gate findings refuse it: any finding, but for a rule whose cite has a NONE row, a finding besides a reason's."""
+    return bool(gate) and not (none and all(g.startswith(WANTING) for g in gate))
+
+
+def findings(m: dict[str, Any], none: bool = False) -> list[str]:
     """What still fails in one rule's lessons, word for word: each lesson's gate refusal, each sentence of the rule not accounted
     for and each reason refused. A refusal for no reason goes back too, since a reason a reader sees ("which slows the page")
-    is none to the gate; the prompt says to give none where none is on file."""
-    return [f'lesson {i} ("{x["summary"]}"): {g}' for i, x in enumerate(m["lessons"], 1) for g in x["gate"]] + \
+    is none to the gate; the prompt says to give none where none is on file. `none`: the rule has a NONE row, so a lesson
+    refused for a reason alone stays as it is."""
+    return [f'lesson {i} ("{x["summary"]}"): {g}' for i, x in enumerate(m["lessons"], 1) if refused(x["gate"], none) for g in x["gate"]] + \
         [f'not accounted for: "{x}"' for x in m["missing"]] + \
         [f'reason refused: "{d["said"]}" ({d["why"]})' for d in m["done"] if d["kind"] == "reason refused"]
 
@@ -411,6 +419,9 @@ def render(rec: dict[str, Any]) -> str:
            f"Store read: {', '.join(f'{k} {v[:12]}' for k, v in sorted(rec['store'].items()))}. Pages read: {', '.join(rec['read'])}.",
            f"Apply: `yerk curate --lessons-apply {rec['path']}`. Undo after it: `yerk curate --lessons-undo {rec['day']}`.",
            f"Ready to apply: {'yes' if rec['ready'] else 'no: ' + '; '.join(rec['why'])}.",
+           *([f"Listed as no reason on file, as the owner's side says (a {NONE} row in {curate.PROPOSALS}/{REASONS}), not counted in the verdict: "
+              f"{len(rec['no_reason'])} lesson{'s' * (len(rec['no_reason']) != 1)}, {', '.join(f'{lessons.DIR}/{x}.md' for x in rec['no_reason'])}."]
+             if rec.get("no_reason") else []),
            *([f"Kept from {rec['from']['path']}: {rec['from']['kept']:,} rule{'s' * (rec['from']['kept'] != 1)} word for word, "
               f"with no model call; {rec['from']['redone']:,} redone."] if rec.get("from") else []),
            *([f"The index it would write: {rec['index'][0]:,} lines and {rec['index'][1]:,} bytes, against code-memory's "
@@ -449,7 +460,8 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     taken |= {x["slug"] for m in kept.values() for x in m["lessons"]}
     off = [r for r in rules if r["cite"] not in kept and memory.unshaped(r["job"], r["said"], acronyms, s, read, seen)]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)),
-                       lambda r, x: findings(build(s, r, x, read, seen, set(taken), acronyms, supplied)), supplied)
+                       lambda r, x: findings(build(s, r, x, read, seen, set(taken), acronyms, supplied), NONE in rows.get(r["cite"], [])),
+                       supplied)
     made = []
     for r in rules:
         if r["cite"] in kept:
@@ -466,9 +478,16 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
         m["loads"], m["reasons"] = loads.get(r["cite"], 0), rows.get(r["cite"], [])
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
     path = s.root / curate.PROPOSALS / FILE.format(day=day)
-    bare = [x for m in made for x in m["lessons"] if x["gate"] and all(g.startswith(WANTING) for g in x["gate"]) and any(
-            d["kind"] == "no reason on file" and d.get("said", x["summary"]) == x["summary"] for d in m["done"])]
-    why = [f"{n} lesson{'s' * (n != 1)} the gate refuses" for n in [sum(bool(x["gate"]) for m in made for x in m["lessons"]) - len(bare)] if n]
+    listed = dict[str, str]()                       # slug -> its rule's cite: a lesson the owner's side says has no reason on file
+    for m in made:
+        m["done"] = [d for d in m["done"] if d["kind"] != LISTED]
+        for x in (x for x in m["lessons"] if x["gate"] and not refused(x["gate"], NONE in rows.get(m["cite"], []))):
+            listed[x["slug"]] = m["cite"]
+            m["done"].append({"kind": LISTED, "said": x["summary"], "why": f"{lessons.DIR}/{x['slug']}.md, a {NONE} row in {curate.PROPOSALS}/"
+                              f"{REASONS}: carried as it stands and named, since a reason is never invented; not counted in the verdict"})
+    bare = [x for m in made for x in m["lessons"] if x["gate"] and x["slug"] not in listed and all(g.startswith(WANTING) for g in x["gate"])
+            and any(d["kind"] == "no reason on file" and d.get("said", x["summary"]) == x["summary"] for d in m["done"])]
+    why = [f"{n} lesson{'s' * (n != 1)} the gate refuses" for n in [sum(bool(x["gate"]) for m in made for x in m["lessons"]) - len(bare) - len(listed)] if n]
     why += [f"{n} lesson{'s' * (n != 1)} refused only for a reason no file holds, each listed (a row in {curate.PROPOSALS}/{REASONS} "
             "supplies one)" for n in [len(bare)] if n]
     why += [f"{n} original{'s' * (n != 1)} not accounted for" for n in [sum(bool(m["missing"]) for m in made)] if n]
@@ -480,7 +499,7 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     over = [f"{n:,} {unit}, {n - cap:,} past {cap:,}" for n, cap, unit in ((lines, most, "lines"), (have, size, "bytes")) if n > cap]
     why += [f"the index it would write is past code-memory's limits: {' and '.join(over)}"] if over else []
     rec = {"day": day, "path": str(path), "store": {n: sha(s.root / n) for n in (memory.RULES, memory.TOPIC_RULES)}, "read": list(read),
-           "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size],
+           "ends": ends(s), "rules": made, "lost": lost, "ready": not why, "why": why, "index": [lines, have, most, size], "no_reason": listed,
            **({"from": {"path": str(earlier), "kept": len(kept), "redone": len(rules) - len(kept)}} if earlier else {})}
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     write_private(path, render(json.loads(json.dumps(rec, sort_keys=True))))      # as an apply will read it back
@@ -510,9 +529,10 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
         raise RuntimeError(f"the store is converted already ({lessons.DIR}/ is there): nothing applied")
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
-    seen = dict[Path, str]()
-    if off := [x["slug"] for m in rec["rules"] for x in m["lessons"]
-               if memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen)]:
+    seen, rows, listed = dict[Path, str](), reason_rows(s), dict(rec.get("no_reason") or {})    # a listed lesson passes for its
+    if off := [x["slug"] for m in rec["rules"] for x in m["lessons"] if refused(  # reason alone while its rule's NONE row is there
+               (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen) or {}).get("fix", []),
+               x["slug"] in listed and NONE in rows.get(listed[x["slug"]], []))]:
         raise RuntimeError(f"{off[0]} no longer passes the gate: run the dry run again; nothing applied")
     backup = s.root / f"{lessons.BACKUP}{rec['day']}"
     with memory.daily_lock(s.daily):
@@ -526,6 +546,8 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
         for x, _ in made:
             write_private(s.root / lessons.DIR / f"{x.slug}.md", x.text())
         write_private(s.root / lessons.CITES, "".join(f"{a}\t{first[b]}\n" for a, b in rec["ends"].items() if b in first))
+        if listed:
+            write_private(s.root / lessons.NO_REASON, "".join(f"{x}\t{rec['day']}\t{c}\n" for x, c in listed.items()))
         lessons.keep(s.root, rec["day"], [(x, [m["text"]]) for x, m in made])
         write_private(s.root / memory.RULES, lessons.index_text([x for x, _ in made]))
         (s.root / memory.TOPIC_RULES).unlink(missing_ok=True)
@@ -553,7 +575,7 @@ def undo(s: memory.Settings, day: str) -> list[str]:
         for f in have:
             (s.root / f).unlink()
         (s.root / lessons.DIR).rmdir()
-        for n in (lessons.CITES, lessons.RETIRED):
+        for n in (lessons.CITES, lessons.RETIRED, lessons.NO_REASON):
             (s.root / n).unlink(missing_ok=True)
         (backup / APPLIED).rename(backup / f"{APPLIED}.undone")
     return [f"{len(have)} lessons removed; {memory.RULES} and {memory.TOPIC_RULES} put back from {backup.name}/"]

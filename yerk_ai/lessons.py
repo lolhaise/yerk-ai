@@ -23,6 +23,7 @@ from .config import write_private
 DIR = "rules"                      # <memory>/rules/<slug>.md, one lesson each; the folder is the mark of a converted store
 INDEX = "rules.md"                 # the index (memory.RULES), what a session start loads
 RETIRED = "retired.tsv"            # slug, day, the slug that replaced it ("" for none): a retired lesson's tombstone
+NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite: a lesson converted with no reason on file, as the owner's side says
 CITES = "rules-cites.tsv"          # an old store cite (rules.md:N, rules-topics.md:N), the slug its rule became
 SNAPSHOT = "converted.json"        # in the backup folder: the lessons as converted, news's look for a session from before
 BACKUP = "rules-backup-"           # <memory>/rules-backup-<day>/: the originals, copied before a conversion writes
@@ -181,19 +182,34 @@ def live_slug(root: Path, cite: str) -> str:
     return ""
 
 
+def no_reason(root: Path) -> dict[str, tuple[str, str]]:
+    """slug -> (day, the old cite) of each lesson NO_REASON lists: carried with no reason, since the owner's side says none is on file."""
+    f = root / NO_REASON
+    rows = [x.split("\t") for x in f.read_text(encoding="utf-8", errors="replace").splitlines()] if f.is_file() else []
+    return {r[0]: (r[1], r[2]) for r in rows if len(r) >= 3}
+
+
+def unlist(root: Path, slug: str) -> None:
+    """`slug` off NO_REASON: a filing that replaced it passed the gate with its reason, or a retire took it away."""
+    if slug in (have := no_reason(root)):
+        write_private(root / NO_REASON, "".join(f"{k}\t{d}\t{c}\n" for k, (d, c) in have.items() if k != slug))
+
+
 def put(root: Path, lesson: Lesson) -> Lesson | None:
     """`lesson` written: its file replaced in place, or a new file, listed on its job's index line, or a new job's line after the
-    last. The lesson it replaced, None for a new one. The caller holds the writers' lock."""
+    last; off NO_REASON, since it passed the gate. The lesson it replaced, None for a new one. The caller holds the writers' lock."""
     (root / DIR).mkdir(mode=0o700, parents=True, exist_ok=True)
     path, have = root / DIR / f"{lesson.slug}.md", store(root)
     was = next((x for x in have if x.slug == lesson.slug), None)
     write_private(path, lesson.text())
     write_private(root / INDEX, index_text([lesson if x.slug == lesson.slug else x for x in have] + ([] if was else [lesson])))
+    unlist(root, lesson.slug)
     return was
 
 
 def drop(root: Path, slug: str, day: str, by: str = "") -> Lesson | None:
-    """A lesson retired: its file deleted and off its job's index line, a row in RETIRED (by: the slug that replaced it). The lesson."""
+    """A lesson retired: its file deleted and off its job's index line and NO_REASON, a row in RETIRED (by: the slug that replaced
+    it). The lesson."""
     was = parse(path := root / DIR / f"{slug}.md")
     if was is None:
         return None
@@ -201,6 +217,7 @@ def drop(root: Path, slug: str, day: str, by: str = "") -> Lesson | None:
         f.write(f"{slug}\t{day}\t{by}\n")
     path.unlink()
     write_private(root / INDEX, index_text(store(root)))
+    unlist(root, slug)
     return was
 
 
