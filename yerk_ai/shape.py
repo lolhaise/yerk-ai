@@ -249,8 +249,8 @@ PINS = {
     "reader": (FABLE, "Your final summary is different: it's for a reader who didn't see any of that."),
     "density": (FABLE1, "In some cases, though, its prose is denser than Claude Fable 5’s: sentences run longer and there are "
                         "fewer paragraph breaks."),
-    "index": (CODE_MEMORY, "Example note 000 says the `Sample.item`, moved to the 00Next, step and the, test reads it back "
-                           "starts the example note."),
+    "index": (CODE_MEMORY, "While auto memory is on, the first 200 lines or 25KB of `MEMORY.md`, whichever comes first, load at "
+                           "session start."),                             # its "How it works" section, reworded by 2026-11-21
     # Claude Fable 5.2's page (2026-11-09, on the owner's word: everything in Yerk the way its docs say)
     "caution": (FABLE2, "Cautious instructions can build up from past sessions through memory, notes, and instruction files."),
     "no-approval": (FABLE2, "Name the steps that need no approval."),

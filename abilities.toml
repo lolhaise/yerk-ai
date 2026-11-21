@@ -1792,6 +1792,16 @@ free_path = "this is the free path"
 asked_as = ["rule shape", "are your rules written", "how your rules are written"]
 command = "docs shape"
 
+# need-2026-11-21-132: code-memory was reworded and no longer held the sentence the index check pinned, so the doctor's
+# daily run said "docs moved" in the machine room and filed the need; the pin is the page's sentence as it reads now.
+[abilities.lesson-pins]
+state = "built"
+what = "Keeps the rule checks quoting the Claude docs word for word: each lesson check (at the write gate and in the doctor's daily run on the rule store) and the index check on the rules file enforce one sentence of a page `yerk docs` fetches, pinned with the page's slug (shape.PINS), and every refusal and finding quotes it off the fetched page. When a page is reworded and a pinned sentence is gone from it, the doctor's daily run says which check's sentence moved, one line in the machine room, and files one need, the re-pin, whose builder pins the check to the page's sentence as it reads now, so no room improvises one; until it lands, the check keeps its pin's words and numbers, never a guess at the new ones, and tests/test_lesson_shape.py is red on a box whose fetched page moved. The index check's pin is code-memory's sentence on how much of `MEMORY.md` loads at session start, its lines and kilobytes read off it."
+tier = "free"
+needs = "nothing; it runs in the daily doctor (units/yerk-doctor.timer) on the pages `yerk docs refresh` fetches"
+free_path = "this is the free path"
+asked_as = ["docs moved", "re-pin", "repin", "pinned sentence", "lesson pins"]
+
 [abilities.web]
 state = "built"
 what = "Web reach for the rooms that attach it, as one plug-in outside the harness (plugins/web, an MCP server): web_fetch reads a page with a plain read from the machine first, then its own stealth browser and captcha solver when they are installed, then a paid cloud browser, names the wall when a page stays shut (a login, a captcha, a region) and remembers per site which step read it; web_search asks a paid engine first and keyless ones behind it; web_research runs one cited research job at a fixed price; web_image saves one picture from a post or a page (a jpeg, png, gif or webp, read plainly from the machine first and by the paid cloud fetch only when a site refuses that) into the room's work folder, where the room's Read shows it; every paid call is a spend row, and the morning diff says the day's total."
