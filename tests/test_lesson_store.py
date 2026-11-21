@@ -103,6 +103,8 @@ def test_a_lessons_body_rides_on_a_message_naming_its_words_once_and_never_when_
     told.parent.mkdir(parents=True)
     text, jobs = context.topics(told, "s1", "example-room", rules, "can you book the hall for friday", 4000)
     assert text.splitlines() == [context.LESSONS_TOPICAL, f"- {HALL} (rules/book-the-hall.md)"] and jobs == ["book the hall"]
+    said = "\n".join(["[place] at home", text])                     # `yerk map` counts the block in the rules part, as a topic rule's
+    assert context.hook_parts("UserPromptSubmit", said)["rules"] == context.chars(text)
     assert context.topics(told, "s1", "example-room", rules, "book the hall again", 4000) == ("", [])        # once a session
     start = context.rules_text({}, rules, "example-room")[0]
     assert context.topics(told, "s2", "example-room", rules, "book the hall", 4000, start) == ("", [])        # uncapped: at start

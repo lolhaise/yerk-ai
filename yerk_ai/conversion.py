@@ -1,6 +1,6 @@
 """`yerk curate --lessons`: rewrites the rules files as lesson files, each a one-line summary, then its reason and examples.
-(lessons.py), as prompting-fable-5-2 says of rules that built up: "rewrite absolute rules so that they state their scope and
-reason. ... keep a copy of the originals." The dry run writes one proposals file, <memory>/rules-proposals/lessons-<day>.md,
+It turns an existing rules.md and rules-topics.md into lesson files and their index (lessons.py), as prompting-fable-5-2 says of
+rules that built up: "rewrite absolute rules with their scope and reason", with the originals copied first. The dry run writes one
 proposals file, <memory>/rules-proposals/lessons-<day>.md, and changes nothing else: for each original rule by its cite, its words,
 filing's own, memory.unshaped, on the pages of every model a room runs), and each thing done to it as a listed item; the JSON
 block at its end is what an apply reads. Meaning never changes: a rule already in the shape is split as it stands (its first

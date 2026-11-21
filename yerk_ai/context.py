@@ -399,7 +399,7 @@ def hook_parts(event: str, said: str) -> dict[str, int]:
     if event != "UserPromptSubmit":
         return {"recall pack" if event == "SessionStart" else f"{event} hook": chars(said)}
     heads = (("[clock] ", "clock"), ("[message] ", "metadata"), ("[place] ", "place"), (NEWS, "rules"), (TOPICAL, "rules"),
-             ("[taste] ", "taste"), ("[texting] ", "texting"), ("[", "recall"))
+             (LESSONS_TOPICAL, "rules"), ("[taste] ", "taste"), ("[texting] ", "texting"), ("[", "recall"))
     lines: dict[str, list[str]] = {}
     cur = OTHER
     for line in said.split("\n"):
