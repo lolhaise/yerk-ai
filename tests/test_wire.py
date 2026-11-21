@@ -120,7 +120,7 @@ def test_over_reads_against_each_parts_key_and_the_week_names_its_five_largest_b
     assert row.split()[-2:] == ["6,000", "ok"]
     week = out.split("Five largest, last 7 days")[1].strip().splitlines()[1:]
     assert len(week) == 1 and week[0].startswith("  Thu 2026-10-22 08:00") and "Claude Code" not in week[0]   # the 8-day-old one is out
-    over = HOOK.replace("- Example Person", "- " + "x" * 2100)
+    over = HOOK.replace("- Example Person", "- " + "x" * budgets()["per_message"]["on_hit"]["recall"])   # past the recall line, wherever it is
     out = context.render_wire("r", transcript(tmp_path, over, (1, 2)), 40, budgets(), "UTC", NOW)
     assert "OVER: recall on 2" in out and next(x for x in out.splitlines() if x.startswith("  recall ")).endswith("OVER on 2")
     assert next(x for x in out.splitlines() if x.startswith("  Yerk AI's hook, its parts together")).endswith("ok")

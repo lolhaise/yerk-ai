@@ -1,8 +1,9 @@
 """Talks to GitHub for the daemon: finds each pull request of the self-upgrade loop, reads its checks and merges it, and looks up a
 branch or a pull request for your room. For the needs pipeline (pipeline.py): a need's pull request, its head's checks and its merge with
-private, as GitHub has it now. urllib only, 20 s a call, every failure as words, never a traceback. The token is
-<private>/secrets/github.token (one line, 0600), read the way transcribe reads its keys; it never reaches argv, a log, a card or
-a test. With no token every step here is skipped (the caller says so once) and a person merges as before."""
+the sha guard; and for an owner's room, the `github_state` tool (look): a branch or a pull request of Yerk's own repository as
+GitHub has it now, a red head's why with it (its checks' words, the box CI's record). urllib only, 20 s a call, every failure as words,
+never a traceback. The token is <private>/secrets/github.token (one line, 0600), read the way transcribe reads its keys; it never reaches
+caller says so once) and a person merges as before."""
 from __future__ import annotations
 
 import json
@@ -23,6 +24,9 @@ TOKEN = Path("secrets") / "github.token"
 SLUG = re.compile(r"github\.com[:/]+([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 PR = re.compile(r"(?:#|pr\s*#?\s*|https?://github\.com/([\w.-]+/[\w.-]+)/pull/)?(\d+)/?", re.I)   # 12, #12, PR 12, its address
 BRANCH = re.compile(r"(?!-)(?!.*\.\.)(?!.*\.lock$)[\w.-]+(?:/[\w.-]+)*")         # git's own rules, kept narrow: no option, no range
+SAYS = re.compile(r"\b(?:failed|failure|errors?|timed out)\b", re.I)  # a record's line on what failed; one of its steps is "failures"
+TEST = re.compile(r"[\w./-]+\.py::[\w:.]+(?:\[[^\s,\[\]]*\])?")      # a test as pytest names it; a parameter cut short is left off
+LINES, WIDE = 12, 600                                                # a record's lines said, and each one's width
 
 
 def token(private: Path) -> str:
@@ -119,8 +123,26 @@ def here(tree: Path, branch: str, theirs: str) -> dict[str, Any] | None:
     return out
 
 
-def row(repo: str, p: dict[str, Any], tok: str, now: float) -> dict[str, Any]:
-    """A pull request as the tool says it: open, draft, merged or closed, when, and an open one's head checks."""
+def record(folder: Path, sha: str) -> dict[str, Any] | str:
+    """The box CI's own record of commit `sha`, <full sha>.txt in `folder` ([needs] ci_log), after its last line naming the
+    commit whole, the newest run's header (a run again appends): the tests its lines that say what failed name, in order,
+    one cut inside its parameter as the test alone, and those lines; words when there is no record or it says no failure."""
+    try:
+        text = (folder / f"{sha}.txt").read_text(errors="replace").splitlines() if re.fullmatch(r"[0-9a-f]{40}", sha) else []
+    except OSError:
+        text = []
+    if not text:
+        return words.GITHUB_CI_NONE.format(head=sha[:7])
+    said = [x for x in text[max((i + 1 for i, x in enumerate(text) if sha in x), default=0):] if SAYS.search(x)]
+    if not said:
+        return words.GITHUB_CI_CLEAN.format(head=sha[:7])
+    return {"failing": list(dict.fromkeys(t for x in said for t in TEST.findall(x) if not t.endswith("..."))),
+            "lines": [words.line(x, WIDE) for x in said[:LINES]]}
+
+
+def row(repo: str, p: dict[str, Any], tok: str, now: float, ci: Path | None = None) -> dict[str, Any]:
+    """A pull request as the tool says it: open, draft, merged or closed, when, and an open one's head checks, each red one
+    with its own words on GitHub and, `ci` named, the box CI's record of the head (record), else what names it."""
     state = "merged" if p.get("merged_at") else "closed" if p.get("state") == "closed" else "draft" if p.get("draft") else "open"
     sha, at = str(p["head"]["sha"]), p.get("merged_at") or p.get("closed_at") or p.get("created_at")
     out = {"number": int(p["number"]), "state": state, "title": words.line(str(p.get("title") or ""), 120),
@@ -129,15 +151,16 @@ def row(repo: str, p: dict[str, Any], tok: str, now: float) -> dict[str, Any]:
     if state in ("open", "draft"):
         c = checks(repo, sha, tok)
         out["checks"] = (c["state"] if c["contexts"] else "none yet") if c["ok"] else c["error"]
-        if red := [n for n, (s, _) in c.get("contexts", {}).items() if s in ("failure", "error")]:
-            out["red"] = red
+        if red := {n: d for n, (s, d) in c.get("contexts", {}).items() if s in ("failure", "error")}:
+            out["red"], out["ci"] = red, record(ci, sha) if ci else words.GITHUB_NO_CI
     return out
 
 
-def look(tree: Path, repo: str, asked: str, tok: str, now: float | None = None) -> dict[str, Any]:
+def look(tree: Path, repo: str, asked: str, tok: str, now: float | None = None, ci: Path | None = None) -> dict[str, Any]:
     """The `github_state` tool: pull request N (`asked` 12, #12, PR 12 or its address) or a branch by name in `repo` as GitHub
-    has it now, the branch against Yerk's checkout `tree` (here), with the branch's pull requests, newest first; the token
-    that does not reach the repository, a pull request that is not there and GitHub not answering, each in words."""
+    has it now, the branch against Yerk's checkout `tree` (here), with the branch's pull requests, newest first, a red head
+    read in the box CI's records in `ci` too; the token that does not reach the repository, a pull request that is not
+    there and GitHub not answering, each in words."""
     now, asked = time.time() if now is None else now, asked.strip()
     if not repo:
         return {"ok": False, "error": words.GITHUB_NO_REPO}
@@ -149,7 +172,7 @@ def look(tree: Path, repo: str, asked: str, tok: str, now: float | None = None) 
             return {"ok": False, "error": words.GITHUB_NO_PR.format(n=m[2], repo=repo)}
         if code != 200 or not isinstance(p, dict):
             return wall(repo, code, p)
-        r = row(repo, p, tok, now)
+        r = row(repo, p, tok, now, ci)
         return {"ok": True, "repo": repo, "branch": r["branch"], "here": here(tree, r["branch"], str(p["head"]["sha"])),
                 "pull_requests": [r], "next": words.GITHUB_NEXT}
     if not BRANCH.fullmatch(asked):
@@ -166,7 +189,7 @@ def look(tree: Path, repo: str, asked: str, tok: str, now: float | None = None) 
     gh = {"head": theirs[:7], "commit": words.line(str(commit.get("message") or "").partition("\n")[0], 120),
           "committed": ago((commit.get("committer") or {}).get("date"), now)} if theirs else None
     return {"ok": True, "repo": repo, "branch": asked, "github": gh, "here": here(tree, asked, theirs),
-            "pull_requests": [row(repo, p, tok, now) for p in prs], "next": words.GITHUB_NEXT}
+            "pull_requests": [row(repo, p, tok, now, ci) for p in prs], "next": words.GITHUB_NEXT}
 
 
 def wall(repo: str, code: int, out: Any) -> dict[str, Any]:

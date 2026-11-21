@@ -310,6 +310,8 @@ YERKD_WORDS = {
               "contexts": "how many CI checks a head gets before they count as all in (default 7)",
               "repo": "the GitHub OWNER/NAME of the pipeline's PRs (default: from the daemon tree's origin)",
               "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)",
+              "ci_log": "the folder the box's CI keeps its record of each commit it tests in, <full sha>.txt: github_state reads a red "
+                        "head's failing tests and the lines that say what failed there (default none: GitHub's words for each check)",
               "sensitive": "what a need's change may not touch and still merge on the cold read alone: a path, a folder/ or plugin:NAME; "
                            "one touched holds the need for a deeper check, a person merges (default pipeline.SENSITIVE, replaced "
                            "whole; [] none, the pipeline's road as before)"},

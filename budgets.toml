@@ -459,7 +459,8 @@ typical = 1500
 # 2026-10-23: 5,500 to 5,650, the place part's 150 below.
 # 2026-11-10, need-2026-11-09-74: 5,650 to 5,750, the recall part's 100 below.
 # 2026-11-19, need-2026-11-19-124: 5,750 to 5,850, the recall part's 100 below.
-cap = 5850
+# 2026-11-21, need-2026-11-21-135: 5,850 to 5,950, the recall part's 100 below.
+cap = 5950
 
 # The parts every message carries, one cap each: the clock line, the metadata line and, in an owner room, the place line.
 [per_message.parts]
@@ -490,7 +491,12 @@ output_cap = 10000
 # the fetched docs pages and the doctor's findings) takes it 10 over, 2,110, and the census rides whole or not at all;
 # so 100 more again, room for about six names. The twenty episodic questions' finding at 2,000 stands; the cap above
 # rose by the same 100.
-recall = 2200
+# 2026-11-21, need-2026-11-21-135: 2,300. With need-2026-11-21-134's worker-branch in, the answer to "what can you do"
+# sat 11 characters under 2,200 on main ff00415 (2,189); red-checks's name (why a check on a pull request is red, from
+# the box CI's own record) takes it 1 over, 2,201, and the census rides whole or not at all; so 100 more again, room
+# for about seven names. Each need's branch fit alone: the two met when main was folded in at the deeper check. The
+# twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+recall = 2300
 # Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook
 # or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 rules = 1500
@@ -1848,4 +1854,13 @@ secs = 60
 # with no fsmonitor or signature program run, 6; the read, its head, base and branch, the counts each side lacks, the
 # newest COMMITS and the files not committed, 16 with its clock; the two lines before report; COMMITS 1; report's branches
 # and its docstring, 2), words.py 1 (BRANCH_UNREAD). 33,661: main 0911b5e's 33,625 plus 36.
-lines = 33661
+# 2026-11-21: need-2026-11-21-135 raised it by 35, a red check's why in github_state (that afternoon a room asked whether
+# a worker's tests held on the box heard from github_state on its pull request only that one check was red, no test
+# named; the box CI keeps its record of each commit in a folder of its own and the journal, where the room's Glob was
+# refused, and the room has no shell), not folded to fit: github.py 23 (record, the head's record from its newest run, the
+# tests named failing and the lines that say what failed, or a line on why there are none, 17; SAYS, TEST, LINES and WIDE,
+# 3; row's and look's docstrings, 2; the module's clause, 1), words.py 7 (GITHUB_NEXT's red and ci, 2; the three lines on a
+# record not read and their comment, 5), daemon.py 3 ([needs] ci_log read and handed to look, its docstring's sentence),
+# config.py 2 (the setting's words). 33,696: main ff00415's 33,661 (need 134's 36 in it) plus 35, counted on the merged
+# tree; README.md, which both changed, merged by hand with both mentions inside its size.
+lines = 33696

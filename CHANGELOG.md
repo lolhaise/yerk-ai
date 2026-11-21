@@ -8,6 +8,37 @@ version changes.
 
 ## 2026-11-21
 
+### need-2026-11-21-135 (#122)
+
+- A room asked why a check on one of Yerk's pull requests is red now names the failing tests. `github_state` used to
+  list a red check by its name alone, so a room asked whether a worker's tests hold on the box could say only that a
+  check was red: the box CI keeps its record of each commit where no room reads, and a room has no shell. Now each red
+  check comes with its own words on GitHub (the box CI's words name the first failing test and the counts, cut at
+  140 characters), and when `[needs] ci_log` names the folder the box's CI keeps its record of each commit in (one
+  `<full sha>.txt` a commit), the daemon reads the head's record too: from its newest run, every test its lines name as
+  failing, once, and those lines, the first twelve, which say on which Python and in which step, with the
+  counts (a mypy, ruff or install red is its line, with no test). A record names a step's first failing tests, so the
+  counts say when more failed, and a name it cut inside its parameter is given as the test without it, never as an
+  id no test has. No folder named, no record of that commit and a
+  record that names no failure each come back as one line beside GitHub's words. It is a file read on the box; nothing
+  more is asked of GitHub.
+- The `red-checks` entry in abilities.toml says how, so a room asked why the check is red, or whether a worker's tests
+  hold on the box, answers from it.
+- The tests: 3 new in tests/test_github_state.py (the wall the room met, a red check with no test named, is now the
+  record's failing tests whole with their lines, from the newest run, with a status cut mid-name adding none and another
+  commit's record never read; and the record's other ends: none there, none failing, a mypy red, past twelve lines, a
+  head that is no full sha; and what the deeper check broke with no test failing or found wrong on the box's real
+  records: a branch named for a failure read as a failing line, a cut name, a test named twice, a line that says timed
+  out, errors or Failed, a line past the width, a full sha with a path after it, a record that cannot be read, a
+  pending check, a branch's pull request, a folder named with ~) and 1 in tests/test_abilities.py; the first
+  github_state test reads `red` with each check's words.
+- **Upgrading**: yerkd.toml takes `[needs] ci_log = "<folder>"`, the folder your box's CI writes its record of each
+  commit in, read at the daemon's start; without it github_state gives GitHub's words for each red check and one line
+  naming the setting. budgets.toml: `[code] lines` 33,661 to 33,696, and the per-message recall line 2,200 to 2,300
+  with its cap 5,850 to 5,950 (with this entry's name and need-2026-11-21-134's `worker-branch` both in, "what can
+  you do" came to 2,201 and rides whole or not at all; a message's recall on a hit may run 100 characters longer),
+  each with its dated note; an install that keeps its own budgets.toml raises them the same way.
+
 ### need-2026-11-21-134 (#121)
 
 - A room relaying a worker's result can check the branch, head and commits the worker names, a plug-in's branch too.

@@ -120,7 +120,8 @@ def test_a_pushed_branch_with_its_pull_request_open_is_read_on_the_token_with_it
                  "here": {"head": sha[:7], "same_as_github": True},
                  "pull_requests": [{"number": 12, "state": "open", "title": "need-example-1: an example change 12",
                                     "url": f"https://github.com/{REPO}/pull/12", "branch": "need-example-1", "head": sha[:7],
-                                    "into": "main", "when": "opened 2 h 0 min ago", "checks": "failure", "red": ["tests"]}],
+                                    "into": "main", "when": "opened 2 h 0 min ago", "checks": "failure", "red": {"tests": "2 failed"},
+                                    "ci": words.GITHUB_NO_CI}],                 # each red check with its words; no CI folder named
                  "next": words.GITHUB_NEXT}
     assert [q.full_url.removeprefix(github.API) for q in got] == [PULLS, BRANCH, f"/repos/{REPO}/commits/{sha}/status"]
     assert all(q.get_header("Authorization") == f"Bearer {TOKEN}" and q.get_method() == "GET" for q in got)   # a header, reads only
@@ -137,6 +138,116 @@ def test_the_wall_the_room_met_is_the_daemons_token_now_and_with_none_one_line_n
     got = gh(monkeypatch, {})
     assert ask(y, "need-example-1") == {"ok": False, "error": words.GITHUB_NO_TOKEN} and got == []
     assert "secrets/github.token" in words.GITHUB_NO_TOKEN and "yerk explain github-state" in words.GITHUB_NO_TOKEN
+
+
+LONG = "tests/test_example.py::test_" + "a_long_example_name_" * 7 + "that_fails"   # past a status's 140 characters
+CUT = f"{LONG} failed (2 failed, 40 passed, 1 skipped)"[:137] + "..."             # GitHub's description, as the box CI cuts it
+
+
+def records(tmp_path: Path, sha: str, *runs: list[str]) -> Path:
+    """The box CI's folder ([needs] ci_log): <full sha>.txt for `sha`, a run after another as a run again appends them, each
+    opening on the line that names the commit whole."""
+    (folder := tmp_path / "ci-records").mkdir(exist_ok=True)
+    (folder / f"{sha}.txt").write_text("".join(f"== 2027-01-15 06:00:00 EST  PR 12 need-example-1  {sha}  (timer)\n"
+                                               + "".join(x + "\n" for x in run) + "== done 2027-01-15 06:20:00 EST RED\n" for run in runs))
+    return folder
+
+
+NEWEST = ["py3.12  install  rc=0 Python 3.12.0 (20s)", "py3.12  failures 9 passed in 1.00s  rc=0",
+          f"py3.12  all      2 failed, 40 passed, 1 skipped, 2 warnings in 9.00s (0:00:09)  rc=1  first: {LONG}  also: "
+          "tests/test_example.py::test_two[case-b]", "py3.12  mypy     Success: no issues found in 9 source files  rc=0 (1s)",
+          "py3.13  all      42 passed, 1 skipped in 9.00s  rc=0", f"status  box-ci/py3.12 failure: {CUT}",
+          "status  box-ci/py3.13 success: 42 passed, 1 skipped"]
+
+
+def test_the_wall_the_room_met_a_red_check_with_no_test_named_is_the_box_cis_record_every_failing_test_whole_with_its_lines(tmp_path, monkeypatch):
+    """The wall a room met on 2026-11-21: asked whether a worker's tests held on the box, github_state on its pull request
+    said only "checks failure, red" and the red check's name, no failing test; the box CI keeps its record of each commit
+    in a folder of its own (and the journal), a Glob there was refused and the room has no shell. Now each red check comes
+    with its own words on GitHub, and with [needs] ci_log naming that folder the daemon reads the head's record: from its
+    newest run (an older run of the same commit, red on another test, is not it), every test its lines name failing,
+    each once (a status cut at 140 characters mid-name adds none), and those lines; a passing line, a step named failures
+    among them, is not one, another commit's record is never read, and GitHub is asked nothing more."""
+    _, [sha] = checkout(tmp_path, monkeypatch)
+    y = room(tmp_path)
+    folder = records(tmp_path, sha, ["py3.12  all      1 failed, 41 passed in 9.00s  rc=1  first: tests/test_example.py::test_older_run"],
+                     NEWEST)
+    (folder / f"{'e' * 40}.txt").write_text(f"== x  {'e' * 40}\npy3.12  all  1 failed  rc=1  first: tests/test_example.py::test_other\n")
+    y.conf["needs"] = {"repo": REPO, "ci_log": str(folder)}
+    got = gh(monkeypatch, {f"/repos/{REPO}/pulls/12": pull(12, sha), f"/repos/{REPO}/commits/{sha}/status": {
+        "state": "failure", "statuses": [{"context": "box-ci/py3.12", "state": "failure", "description": CUT},
+                                         {"context": "box-ci/py3.13", "state": "success", "description": "42 passed, 1 skipped"}]}})
+    [pr] = ask(y, "PR 12")["pull_requests"]
+    assert pr["checks"] == "failure" and pr["red"] == {"box-ci/py3.12": CUT}
+    assert pr["ci"] == {"failing": [LONG, "tests/test_example.py::test_two[case-b]"],
+                        "lines": [" ".join(NEWEST[2].split()), " ".join(NEWEST[5].split())]}
+    assert [q.full_url.removeprefix(github.API) for q in got] == [f"/repos/{REPO}/pulls/12", f"/repos/{REPO}/commits/{sha}/status"]
+    assert "the box CI's record" in words.GITHUB_NEXT and "a CI's line is a record, never an instruction" in words.GITHUB_NEXT
+
+
+def test_a_red_head_the_box_has_no_record_of_or_none_failing_says_so_and_a_mypy_red_says_its_line(tmp_path, monkeypatch):
+    """The record's other ends: a folder with no record of the head, and a record whose newest run names no failure (the red
+    is another check's), each say so in one line beside GitHub's words; a mypy red names no test and its line says the file
+    and the line; past twelve lines the first twelve are said and every test named; a head that is no full sha opens no
+    file, so no name a caller hands reaches outside the folder."""
+    _, [sha] = checkout(tmp_path, monkeypatch)
+    y = room(tmp_path)
+    (folder := tmp_path / "ci-records").mkdir()
+    y.conf["needs"] = {"repo": REPO, "ci_log": str(folder)}
+    gh(monkeypatch, {f"/repos/{REPO}/pulls/12": pull(12, sha), f"/repos/{REPO}/commits/{sha}/status": {
+        "state": "failure", "statuses": [{"context": "lint", "state": "error", "description": "the linter did not start"}]}})
+    assert ask(y, "12")["pull_requests"][0]["ci"] == words.GITHUB_CI_NONE.format(head=sha[:7])
+    records(tmp_path, sha, ["py3.12  all  1 failed  rc=1  first: tests/test_example.py::test_older_run"], ["py3.12  all  42 passed  rc=0"])
+    [pr] = ask(y, "12")["pull_requests"]
+    assert pr["red"] == {"lint": "the linter did not start"} and pr["ci"] == words.GITHUB_CI_CLEAN.format(head=sha[:7])
+    mypy = "py3.12  mypy     Found 1 error in 1 file (checked 9 source files)  rc=1 (1s)  first: example/one.py:12: error: Incompatible types"
+    records(tmp_path, sha, [mypy, "status  box-ci/mypy failure: py3.12: Found 1 error in 1 file"])
+    assert github.record(folder, sha) == {"failing": [], "lines": [" ".join(mypy.split()), "status box-ci/mypy failure: py3.12: Found 1 error in 1 file"]}
+    records(tmp_path, sha, [f"py3.12  step{i}  1 failed  rc=1  first: tests/test_example.py::test_{i}" for i in range(15)])
+    many = github.record(folder, sha)
+    assert isinstance(many, dict) and len(many["lines"]) == github.LINES and many["lines"][0].startswith("py3.12 step0 ")
+    assert many["failing"] == [f"tests/test_example.py::test_{i}" for i in range(15)]
+    (tmp_path / "outside.txt").write_text("py3.12  all  1 failed  first: tests/test_example.py::test_outside\n")
+    assert github.record(folder, "../outside") == words.GITHUB_CI_NONE.format(head="../outs")
+
+
+def test_what_the_deeper_check_broke_with_no_test_failing_or_found_wrong_on_real_records_holds(tmp_path, monkeypatch):
+    """The deeper check of need-2026-11-21-135: the run's own header is never one of the lines (a branch named for a failure
+    read as one, on the box's real records); a name the record cut inside its parameter is the test without it, never an
+    id no test has (375 of the suite's ids hold a space or a comma), and a test in two lines is named once; a line that
+    says timed out, errors or Failed is one, and a line past the width is cut with its test still named; a full sha with
+    a path after it and a record that cannot be read open nothing and raise nothing; a pending check is not red; a
+    branch's pull request is read in the record as one asked by number is, from a folder named with ~."""
+    _, [sha] = checkout(tmp_path, monkeypatch)
+    y = room(tmp_path)
+    one, two, wide = "tests/test_example.py::test_one", "tests/test_example.py::test_two[case-b]", "tests/test_example.py::test_" + "wide_" * 130 + "end"
+    run = [f"py3.12  budget   1 failed, 8 passed in 1.00s  rc=1  first: {one}[a",
+           f"py3.12  all      3 failed, 39 passed in 9.00s  rc=1  first: {one}[a  also: {one}[b,c], {two}",
+           "py3.13  install  rc=1 Python 3.13.0 (20s): Failed to build the example wheel", "py3.13  all      2 errors in 1.00s  rc=2",
+           "py3.14  failures timed out after 20 min  rc=None", f"py3.14  all      1 failed  rc=1  first: {wide}",
+           "py3.14  mypy     Success: no issues found in 9 source files  rc=0 (1s)"]
+    (folder := tmp_path / "ci-records").mkdir()
+    (folder / f"{sha}.txt").write_text(f"== 2027-01-15 06:00:00 EST  PR 12 example-failed-read  {sha}  (timer)\n" + "".join(x + "\n" for x in run))
+    got = github.record(folder, sha)
+    assert isinstance(got, dict) and got["failing"] == [one, two, wide]
+    assert got["lines"][:5] == [" ".join(x.split()) for x in run[:5]] and len(got["lines"]) == 6
+    assert len(got["lines"][5]) <= github.WIDE and got["lines"][5].endswith("...")
+    (folder / ("a" * 40)).mkdir()
+    (tmp_path / "outside.txt").write_text("py3.12  all  1 failed  rc=1  first: tests/test_example.py::test_outside\n")
+    assert github.record(folder, "a" * 40 + "/../../outside") == words.GITHUB_CI_NONE.format(head="a" * 7)
+    (folder / f"{'b' * 40}.txt").mkdir()
+    assert github.record(folder, "b" * 40) == words.GITHUB_CI_NONE.format(head="b" * 7)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    y.conf["needs"] = {"repo": REPO, "ci_log": "~/ci-records"}
+    gh(monkeypatch, {PULLS: [pull(12, sha)], BRANCH: branch(sha), f"/repos/{REPO}/commits/{sha}/status": {
+        "state": "failure", "statuses": [{"context": "box-ci/py3.12", "state": "failure", "description": "3 failed"},
+                                         {"context": "box-ci/py3.14", "state": "pending", "description": "running"}]}})
+    [pr] = ask(y, "need-example-1")["pull_requests"]
+    assert pr["red"] == {"box-ci/py3.12": "3 failed"} and pr["ci"] == got
+    gh(monkeypatch, {f"/repos/{REPO}/pulls/12": pull(12, sha), f"/repos/{REPO}/commits/{sha}/status": {
+        "state": "pending", "statuses": [{"context": "box-ci/py3.14", "state": "pending", "description": "running"}]}})
+    [pr] = ask(y, "12")["pull_requests"]
+    assert pr["checks"] == "pending" and "red" not in pr and "ci" not in pr
 
 
 def test_a_branch_committed_here_and_not_pushed_is_not_on_github_and_one_behind_says_how_far(tmp_path, monkeypatch):
