@@ -109,3 +109,15 @@ test("a short shop link gets the link's shape, and a station Scotty has not, its
   assert.ok(none.isError);
   assert.match(none.content[0].text, /no station on ÖBB's timetable matches "Nowhere Example"\. No train and no fare was read, and no other rung was tried/);
 });
+
+test("Scotty down is named as Scotty with its status, and no fare is asked for trains it never gave", async () => {
+  const asked = [];
+  const impl = async (url) => {
+    asked.push(String(url));
+    return new Response("<html><body>Service Unavailable</body></html>", { status: 503, headers: { "content-type": "text/html" } });
+  };
+  const r = await webFetch({ url: LINK }, { at: AT, deps: { oebbFetchImpl: impl } });
+  assert.ok(r.isError);
+  assert.match(r.content[0].text, /^web_fetch could not read the ÖBB journey Example Town Hbf to Placeholder Valley on 2031-02-03 from 08:00: Scotty's station search for "Example Town Hbf" answered HTTP 503, a web page in place of its answer\./);
+  assert.deepEqual(asked, [MGATE]);
+});

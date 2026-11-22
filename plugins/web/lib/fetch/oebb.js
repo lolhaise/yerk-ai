@@ -53,7 +53,7 @@ async function ask(step, url, init, { fetchImpl, signal, left }) {
   try {
     res = await fetchImpl(url, { ...init, signal: sig, redirect: "manual" });
   } catch (err) {
-    throw new Refused(`the shop's ${step} did not answer (${err?.name === "TimeoutError" ? `no answer in ${Math.round(timeoutMs / 1000)} s` : String(err?.message || err).split("\n")[0].slice(0, 120)})`);
+    throw new Refused(`${step} did not answer (${err?.name === "TimeoutError" ? `no answer in ${Math.round(timeoutMs / 1000)} s` : String(err?.message || err).split("\n")[0].slice(0, 120)})`);
   }
   const text = await res.text().catch(() => "");
   let body = null;
@@ -61,12 +61,10 @@ async function ask(step, url, init, { fetchImpl, signal, left }) {
     body = JSON.parse(text);
   } catch {}
   if (res.ok && body && !body.error) return { body, cookies: res.headers.getSetCookie?.() ?? [] };
-  const wall = !body && /<html/i.test(text) ? (/captcha|challenge|just a moment|access temporarily restricted|zugriff/i.test(text) ? ", a bot wall's page, not the shop's answer" : ", a page, not the shop's answer") : "";
+  const wall = !body && /<html/i.test(text) ? (/captcha|challenge|just a moment|access temporarily restricted|zugriff/i.test(text) ? ", a bot wall's page in place of its answer" : ", a web page in place of its answer") : "";
   const said = body?.error ? `: ${String(body.error.data || body.error.message || "").split(" {")[0].slice(0, 200)}${body.error.code ? ` (its error ${body.error.code})` : ""}` : "";
-  throw new Refused(`the shop's ${step} answered HTTP ${res.status}${wall}${said}`);
+  throw new Refused(`${step} answered HTTP ${res.status}${wall}${said}`);
 }
-
-
 
 const span = (ms) => {
   const min = Math.round((Number(ms) || 0) / 60000);
@@ -74,13 +72,12 @@ const span = (ms) => {
 };
 const plain = (s) => String(s || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 const named = (st) => ({ ...st, name: st.name || st.meta });
-const said = (want, st) => `"${want}" read as ${st.name}${st.name === st.meta || !st.meta ? "" : ` (${st.meta})`}${st.number ? `, station ${st.number}` : ""}`;
 const euro = (n) => `EUR ${Number(n).toFixed(2)}`;
 const local = (v, lang) => (v && typeof v === "object" ? v[lang] || v.en || v.de || "" : v || "");
 
 // The stations the link names, each the shop's own match: the one whose number the link gives, else its first.
 async function station(want, ctx) {
-  const { body } = await ask(`station search for "${want.name}"`, `${API}/hafas/v1/stations?count=8&name=${encodeURIComponent(want.name)}`, { headers: ctx.headers }, ctx);
+  const { body } = await ask(`the shop's station search for "${want.name}"`, `${API}/hafas/v1/stations?count=8&name=${encodeURIComponent(want.name)}`, { headers: ctx.headers }, ctx);
   const list = (Array.isArray(body) ? body : []).filter((s) => s && s.number && (s.name || s.meta));
   const hit = list.find((s) => String(s.number) === want.id) || list[0];
   if (!hit) throw new Refused(`no station on ÖBB's timetable matches "${want.name}"`);
@@ -120,7 +117,7 @@ const hms = (t) => {
 
 // One request to Scotty's service: its one answer, or Refused naming the step.
 async function scotty(step, req, ctx) {
-  const { body } = await ask(step, MGATE, { method: "POST", headers: { ...HEADERS, "content-type": "application/json" }, body: JSON.stringify({ lang: ctx.lang === "en" ? "eng" : ctx.lang === "it" ? "ita" : "deu", svcReqL: [req], ...CLIENT }) }, ctx);
+  const { body } = await ask(`Scotty's ${step}`, MGATE, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ lang: ctx.lang === "en" ? "eng" : ctx.lang === "it" ? "ita" : "deu", svcReqL: [req], ...CLIENT }) }, ctx);
   const res = body.svcResL?.[0];
   if (body.err && body.err !== "OK") throw new Refused(`Scotty's ${step} answered ${body.err}${body.errTxt ? `: ${body.errTxt}` : ""}`);
   if (!res || res.err !== "OK") throw new Refused(`Scotty's ${step} answered ${res?.err || "nothing"}${res?.errTxt ? `: ${res.errTxt}` : ""}`);
@@ -139,17 +136,17 @@ async function stop(want, ctx) {
 // The shop's fares for the trains, by their departure and arrival, as the shop's page asks: a Map, or Refused.
 async function shopFares(trip, ctx) {
   const shop = { ...ctx, headers: { ...HEADERS, lang: trip.lang } };
-  const { body: s, cookies } = await ask("session start", `${API}/domain/v4/init`, { headers: shop.headers }, shop);
+  const { body: s, cookies } = await ask("the shop's session start", `${API}/domain/v4/init`, { headers: shop.headers }, shop);
   if (!s.accessToken || !s.sessionId) throw new Refused("the shop's session start gave no session");
   const cookie = cookies.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
   shop.headers = { ...shop.headers, accesstoken: s.accessToken, sessionid: s.sessionId, "x-ts-supportid": `WEB_${s.supportId || ""}`, ...(cookie ? { cookie } : {}) };
   const from = await station(trip.from, shop);
   const to = await station(trip.to, shop);
-  const { body: tt } = await ask("timetable", `${API}/hafas/v4/timetable`, { method: "POST", headers: { ...shop.headers, "content-type": "application/json" }, body: JSON.stringify(timetableBody(trip, from, to, COUNT + 3)) }, shop);
+  const { body: tt } = await ask("the shop's timetable", `${API}/hafas/v4/timetable`, { method: "POST", headers: { ...shop.headers, "content-type": "application/json" }, body: JSON.stringify(timetableBody(trip, from, to, COUNT + 3)) }, shop);
   const trains = (tt.connections || []).filter((c) => c && c.id);
   if (!trains.length) return new Map();
   const ids = trains.map((c) => `connectionIds[]=${encodeURIComponent(c.id)}`).join("&");
-  const { body: p } = await ask("fares", `${API}/offer/v1/prices?${ids}&sortType=DEPARTURE&bestPriceId=undefined`, { headers: shop.headers }, shop);
+  const { body: p } = await ask("the shop's fares", `${API}/offer/v1/prices?${ids}&sortType=DEPARTURE&bestPriceId=undefined`, { headers: shop.headers }, shop);
   const by = new Map((p.offers || []).map((o) => [o.connectionId, o]));
   return new Map(trains.filter((c) => by.has(c.id)).map((c) => [`${String(c.from?.departure).slice(0, 16)}|${String(c.to?.arrival).slice(0, 16)}`, by.get(c.id)]));
 }
