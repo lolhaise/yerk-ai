@@ -480,3 +480,46 @@ def test_undo_of_an_apply_from_before_the_conversion_puts_nothing_back(tree):
     store = files_of(s.root)
     assert curate.apply(priv, state, DAY, "undo", now=NOW) == ["rules.md: changed since the apply, kept as it is"]
     assert files_of(s.root) == store and json.loads((state / curate.PROPOSED).read_text())["applied"] == []
+
+
+def test_a_job_whose_name_holds_a_gates_words_gets_its_one_gate_at_its_lesson_never_at_the_index(converted):
+    priv, state, s = converted
+    lessons.put(s.root, lesson("sign-off-a-letter", "sign off a letter", "End a letter with its sender's name.",
+                               "Since a letter with none reads unsigned.", mid="2010"))
+    index, f = str((s.root / "rules.md").resolve()), str((s.root / "rules" / "sign-off-a-letter.md").resolve())
+    row = "- sign off a letter (rules/sign-off-a-letter.md)"
+    assert row in (s.root / "rules.md").read_text().split("\n") and curate.gated(row)      # the index's own line would be held, if read
+    props = curate.propose(priv, state, s, NOW)[0]
+    assert [[e[0] for e in q["edits"]] for q in props if q["label"] == "sign off a letter"] == [[f]]
+    assert not [q for q in props for e in q["edits"] if e[0] == index]
+
+
+def test_a_rulebook_named_as_the_index_is_still_a_rule_file_since_the_stores_own_are_known_by_path(converted):
+    priv, state, s = converted
+    (priv / "rooms.toml").write_text((priv / "rooms.toml").read_text().replace('rulebook = "rulebook.md"', 'rulebook = "rules.md"'))
+    (book := priv / "rules.md").write_text("\n".join(BOOK))
+    assert curate.kept_off(s, str(book)) == "" and curate.kept_off(s, str(s.root / "rules.md")) == "the index of the lessons"
+    assert curate.kept_off(s, str(priv / "rules" / "send-a-photo.md")) == "" and curate.kept_off(s, str(s.root / "rules" / "send-a-photo.md")) == "a lesson"
+    assert list(curate.rule_files(priv, s)) == [book.resolve()]
+    props = curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"]
+    q, was = next(q for q in props if q["kind"] == "cut"), book.read_bytes()
+    assert {e[0] for e in q["edits"]} == {str(book.resolve())}
+    assert curate.apply(priv, state, DAY, str(q["n"]), now=NOW)[0] == f"{q['n']}. cut: {q['label']}, applied" and book.read_bytes() != was
+
+
+def test_the_refusal_reads_every_edit_of_a_proposal_not_its_first(converted):
+    priv, state, s = converted
+    curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})
+    rec = json.loads((state / curate.PROPOSED).read_text())
+    cut, index = next(q for q in rec["proposals"] if q["kind"] == "cut"), (s.root / "rules.md").resolve()
+    rows = index.read_text().split("\n")
+    i, n = next(k for k, x in enumerate(rows, 1) if x.startswith("- ")), max(int(q["n"]) for q in rec["proposals"]) + 1
+    assert curate.kept_off(s, cut["edits"][0][0]) == ""                                    # the rulebook's line first, then the index's
+    rec["proposals"].append({**cut, "n": n, "kind": "merge", "edits": [*cut["edits"], [str(index), i, rows[i - 1], ""]]})
+    (state / curate.PROPOSED).write_text(json.dumps(rec))
+    before = files_of(priv, state)
+    with pytest.raises(RuntimeError) as e:
+        curate.apply(priv, state, DAY, str(n), now=NOW)
+    assert str(e.value) == (f"{n} would write memory/rules.md, the index of the lessons: a lesson changes only when filed again with `remember` "
+                            "and its job, or retired; nothing applied")
+    assert files_of(priv, state) == before
