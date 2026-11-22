@@ -1782,3 +1782,29 @@ def test_z5_the_daily_run_files_nothing_for_the_rules_own_cite_listed_with_its_g
             in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
     (m.root / lessons.NO_REASON).write_text("example-ledger\t2026-11-21\ttree/rules.md:9\ta reason\n")      # listed for another cause
     assert any("on record" in x for x in doctor.lessons(private, state, m, 1000.0, dry=True))
+
+
+# Run 9, the owner's side's breaks (2026-11-21): the daily run drops a gloss finding by the example list alone, and by it a gloss alone.
+def test_z5_the_daily_run_counts_a_gloss_of_a_lesson_listed_for_another_kind_and_a_quote_of_one_listed_for_its_example(tmp_path, monkeypatch):
+    from yerk_ai import doctor
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {"model": "claude-fable-5-2"}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    from test_lesson_shape import docs_with, every_pin
+    docs_with(state, **every_pin())
+    (m.root / lessons.DIR).mkdir(parents=True)
+    cite = "<example>Bounced, daily/2025-11-09.md:3, the example ledger pinned up on the hall board all week</example>"
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Keep the example ledger in the owner's room.",
+                                       f"Do so since it holds the accounts. {cite}"))
+    for kind in ("whole", "own", "long"):       # listed for the owner's quote, their sentence or the length: none of them excuses a gloss
+        (m.root / lessons.NO_REASON).write_text(f"example-ledger\t2026-11-21\ttree/rules.md:9\t{lessons.MISSING[kind]}\n")
+        assert any("on record" in x for x in doctor.lessons(private, state, m, 1000.0, dry=True)), kind
+    said = "please keep the example ledger in the room where the owner sits all week"      # past the gate's words for a quote
+    m.daily.mkdir(parents=True, exist_ok=True)
+    (m.daily / "2025-11-09.md").write_text(f"# 2025-11-09\n\n- 09:00 owner: {said} [m:1]\n")
+    lessons.put(m.root, lessons.Lesson("example-ledger", "example ledger", "Keep the example ledger in the owner's room.",
+                                       f'Do so since he said "{said}". {cite}'))
+    (m.root / lessons.NO_REASON).write_text(f"example-ledger\t2026-11-21\ttree/rules.md:9\t{lessons.MISSING['uncited']}\n")
+    found = doctor.lessons(private, state, m, 1000.0, dry=True)       # listed for its example: the gloss is no finding, the quote still is
+    assert any("on record" in x for x in found)
