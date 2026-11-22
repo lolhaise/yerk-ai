@@ -92,6 +92,25 @@ def test_yerk_explain_commons_answers_answers_from_the_abilities_file_with_no_ke
     assert [e["key"] for e in found] == ["commons-answers"]
 
 
+def test_yerk_explain_oebb_trains_answers_from_the_abilities_file_and_a_room_s_train_ask_reaches_it(tmp_path, capsys):
+    """Need 136 (2026-11-22): a room asked for a dated journey's train tickets and times met a captcha on every rung of
+    ÖBB's ticket shop and answered off a reseller's times of another month. web_fetch now reads a shop link's trains from
+    Scotty and their fares from the shop's API, never up the ladder (plugins/web/test/oebb.test.mjs has the wall and the
+    read), an ability of its own, free, which a room asked for train tickets and times is handed whole."""
+    assert cli.main(["explain", "oebb-trains", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    tab = abilities.manifest()
+    ab = tab["oebb-trains"]
+    assert lines[:2] == [f"{words.DONE} oebb-trains: {words.ability('on')[1]}", ab["what"]]
+    assert all(w in ab["what"] for w in ("stationOrigName=FROM", "never climbs", "next five trains", "Scotty", "lowest fare", "bot wall", "link's shape"))
+    assert "key" not in ab and ab["tier"] == "free" and "no browser" in ab["needs"]
+    found = abilities.asked("can you get me train tickets and times from Example Town to Placeholder Valley on two dates in January?", None, tab)
+    assert [e["key"] for e in found] == ["oebb-trains"]
+    assert [e["key"] for e in abilities.asked("what does the öbb railjet cost to Example Town?", None, tab)] == ["oebb-trains"]
+    tools = (REPO / "plugins" / "web" / "lib" / "tools.mjs").read_text()
+    assert "const trip = oebbJourney(url);" in tools and "An ÖBB ticket shop link (" in tools
+    assert "(`yerk explain oebb-trains`)" in (REPO / "docs" / "GUIDE.md").read_text()
+
 def test_yerk_explain_web_documents_answers_from_the_abilities_file_and_web_fetch_keeps_a_document_s_bytes(tmp_path, capsys):
     """Need 87 (2026-11-11): a room asked what a province's form asks for met web_fetch's binary wall on the form's own Word
     file and on two PDF copies of it, "these tools read no other binary file", and answered off a forms list page and

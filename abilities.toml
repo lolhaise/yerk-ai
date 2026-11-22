@@ -1879,6 +1879,22 @@ needs = "the web ability's plug-in attached to the room; no key, no browser and 
 free_path = "this is the free path"
 asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
 
+# need-2026-11-22-136: a room asked for a dated journey's train times and tickets met a captcha on every rung (F1, F2,
+# F3, L3) of ÖBB's ticket shop and Scotty's old query page gone, and answered off a reseller's times of another month and
+# printed timetables, the dates' times unconfirmed; filed 2026-11-22.
+[abilities.oebb-trains]
+state = "built"
+what = "Reads ÖBB's trains for a dated journey, their times, legs and fares: web_fetch on a ticket shop link (shop.oebbtickets.at/en/ticket?stationOrigName=FROM&stationDestName=TO&outwardDateTime=YYYY-MM-DDTHH:MM, the departure's local time) never climbs to the shop's captcha; it reads the next five trains from that time from Scotty, ÖBB's own timetable service, each with its changes, legs and platforms and its own shop link, and asks the shop's API for each train's lowest fare (one adult, no discount card), a fare covering only part of the trip said so; a fare step the shop's bot wall refuses is named with its status, the trains still read, and a link short of a station or its date gets the link's shape."
+how = [
+  "The trains: Scotty's station search and trip search (fahrplan.oebb.at/bin/mgate.exe, the service ÖBB's own apps ask), a plain request from this machine; the timetable's later trains come from the same link at a later time.",
+  "The fares: the shop's page's own requests (a session with no account, its station search, its timetable, its prices), matched to each train by its departure and arrival; a refusal (the shop's bot wall answers this machine's Node with HTTP 403) is said as such and never dodged.",
+  "Never a browser, a paid rung, a login or a booking: booking stays the owner's, on each train's own shop link.",
+]
+tier = "free"
+needs = "the web ability's plug-in attached to the room; no key, no browser and no sign-in"
+free_path = "this is the free path"
+asked_as = ["train times", "train tickets", "train fares", "oebb", "öbb", "oebbtickets", "scotty timetable", "sparschiene", "railjet"]
+
 # need-2026-11-11-87: a room asked what a province's form asks for met web_fetch's binary wall on the form's own Word file
 # and on two PDF copies of it ("these tools read no other binary file"), and answered off the forms list page and the
 # search previews of a copy; filed 2026-11-11.

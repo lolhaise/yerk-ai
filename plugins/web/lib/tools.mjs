@@ -13,6 +13,7 @@ import { KINDS, readDocument } from "./fetch/document.js";
 import { IMAGE_CAP, IMAGE_TYPES, imageInfo, imageWall, runImage } from "./fetch/image.js";
 import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
+import { oebbJourney, readJourney, SHAPE as OEBB_SHAPE } from "./fetch/oebb.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
 import { DAILY_USD, formatRun, research, researchResult, waitIn } from "./research.mjs";
 import { paidDomainEntry } from "./search/engines.js";
@@ -98,7 +99,7 @@ export const TOOLS = [
   {
     name: "web_fetch",
     description:
-      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A PDF or a Word file (.docx, .doc, .odt) comes back as its words, a PDF page by page, saved in this room's work folder, where Read opens a PDF's pages. A hard site can take up to about two minutes.",
+      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A PDF or a Word file (.docx, .doc, .odt) comes back as its words, a PDF page by page, saved in this room's work folder, where Read opens a PDF's pages. An ÖBB ticket shop link (" + OEBB_SHAPE + ") comes back as its trains from that time, their legs and fares. A hard site can take up to about two minutes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -195,6 +196,10 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   const maxChars = args.max_chars ?? 20000;
   if (!Number.isInteger(maxChars) || maxChars < 100 || maxChars > 100000) return refuse("web_fetch refused: max_chars must be a whole number from 100 to 100000.");
 
+  // An ÖBB ticket shop link (need 136): its journey from the shop's own API, never up the ladder to its captcha (oebb.js).
+  const trip = oebbJourney(url);
+  if (trip) return oebbRead(url, trip, { signal, maxChars, at, fetchImpl: deps.oebbFetchImpl });
+
   const { conf, note } = readSettings(at);
   const { browserbaseApiKey, browserbaseProjectId, ...rest } = section(conf, "fetch"); // a key comes from secrets/ only
   const key = readKey(at, "browserbase");
@@ -233,6 +238,26 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   if (!wall && p.warning) lines.unshift(p.warning); // the climb, e.g. "fetch-plus read this at F2 after F1:challenge:cloudflare"
   const inner = [!wall && p.title ? `Title: ${p.title}` : "", cut.text].filter(Boolean).join("\n\n");
   return { content: [{ type: "text", text: scrub([head, ...lines, "", wrapWebContent(inner, "web_fetch")].join("\n"), secrets) }] };
+}
+
+// ---- an ÖBB journey ----------------------------------------------------------------------------------------
+// A ticket shop link (need 136, fetch/oebb.js): the shop's page is a script app behind a captcha on every rung, so its
+// trains, legs and fares come from the requests the page itself makes, from this machine, free; a link short of a
+// station or its date gets the link's shape, and a refusal its step and status, with no rung climbed for either.
+async function oebbRead(url, trip, { signal, maxChars, at, fetchImpl }) {
+  if (trip.missing) return refuse(`web_fetch could not read ${url}: ÖBB's ticket shop is a script app behind a captcha, so web_fetch reads a journey on it from the shop's own API, and this link has no ${list(trip.missing)}. Ask for ${OEBB_SHAPE} (a station's name as ÖBB spells it, the departure's local time).`);
+  const capMs = at.limit ? Math.max(at.limit - 10000, at.limit / 2) : 90000;
+  let r;
+  try {
+    r = await readJourney(trip, { fetchImpl: fetchImpl || fetch, signal, capMs });
+  } catch (err) {
+    return refuse(`web_fetch could not read the ÖBB journey: ${firstLine(err)}`);
+  }
+  const what = `${trip.from.name} to ${trip.to.name} on ${trip.date} from ${trip.time}`;
+  if (!r.ok) return refuse(`web_fetch could not read the ÖBB journey ${what}: ${r.why}. No train and no fare was read, and no other rung was tried, since the shop's page is a captcha on every one. The link opens in the owner's own browser: ${url}`);
+  const cut = truncateSanitized(r.text, maxChars);
+  const head = `web_fetch read the ÖBB journey ${what} from Scotty, ÖBB's own timetable service, its fares from the shop's API (the shop's page is a script app behind a captcha; plain reads from this machine, free): ${r.trains} train${r.trains === 1 ? "" : "s"}, ${r.fares} with a fare${cut.truncated ? `, the first ${maxChars} characters below` : ""}. Booking stays the owner's, at ${url}.`;
+  return { content: [{ type: "text", text: [head, "", wrapWebContent(cut.text, "web_fetch")].join("\n") }] };
 }
 
 // ---- a document at the link ---------------------------------------------------------------------------------

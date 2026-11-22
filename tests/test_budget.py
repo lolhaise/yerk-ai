@@ -215,8 +215,9 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
 # plug-in's branch builds them, 5,567 (10,953 together); then (hands-line-2026-11-22) the browser and the mac as two rooms'
 # newest request shapes hold them, 5,587 and 1,309 (10,970 together): the last two changes had been added by the plug-in's
 # own count of its entries, 20 under what a room sends, and the mac's entry stood 3 over.
+# web_fetch then (need-2026-11-22-136) with its sentence on an ÖBB ticket shop link, 200 more as built and as sent, 1,230.
 LIVE_PROMPT = 10889
-LIVE_TOOLS = {"Bash": 4248, "Edit": 1037, "Glob": 785, "Grep": 3362, "Read": 2006, "Write": 694, "mcp__web-ladder__web_fetch": 1030,
+LIVE_TOOLS = {"Bash": 4248, "Edit": 1037, "Glob": 785, "Grep": 3362, "Read": 2006, "Write": 694, "mcp__web-ladder__web_fetch": 1230,
               "mcp__web-ladder__web_search": 621, "mcp__web-ladder__web_research": 1284, "mcp__web-ladder__web_research_result": 432,
               "mcp__web-ladder__web_image": 913, "mcp__hands__browser": 5587, "mcp__hands__desktop": 1381, "mcp__hands__discord": 1168,
               "mcp__hands__mac": 1309, "mcp__hands__mail": 1525, "mcp__yerk__hold": 481, "mcp__yerk__read_memory": 551, "mcp__yerk__recall": 656,
@@ -297,7 +298,9 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     29,388 as sent), the total by the 100 to 133,808; then (need-2026-11-21-133) the hands line to 10,953 for the
     browser's `scroll` and click's and scroll's `nth` (337 more by the plug-in's own measure; the fixture's browser entry
     with need 127's 146 and these 337, 5,567), the total by the 337 to 134,145; then (hands-line-2026-11-22) the hands line
-    to 10,970, what the rooms send (the fixture's browser 5,587 and mac 1,309), the total by the 17 to 134,162."""
+    to 10,970, what the rooms send (the fixture's browser 5,587 and mac 1,309), the total by the 17 to 134,162; then
+    (need-2026-11-22-136) the other entries to 3,781 for web_fetch's sentence on an ÖBB ticket shop link (1,030 to 1,230
+    as sent), the total by the 200 to 134,362."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -308,14 +311,14 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
         r"(?: \(.*?\))?\s+([\d,]+)\s+([\d,]+)", out, re.M)}
     cc = b["session_start"]["claude_code"]
     assert rows == {"system prompt: Claude Code's own": (LIVE_PROMPT, cc["claude_code_prompt"]), "built-in tools": (12132, cc["builtin_tools"]),
-                    "Yerk AI's tools": (11734, cc["yerk_tools"]), "other tool entries": (3581, cc["deferred_tool_names"]),
+                    "Yerk AI's tools": (11734, cc["yerk_tools"]), "other tool entries": (3781, cc["deferred_tool_names"]),
                     "mcp__hands__": (10970, cc["mcp__hands__"]), "mcp__web-ladder__web_image": (913, cc["mcp__web-ladder__web_image"])}
     builtin, other = (next(x for x in out.splitlines() if x.startswith(f"  {k} (")) for k in ("built-in tools", "other tool entries"))
     assert "DeferredToolPlaceholder" in other and "DeferredToolPlaceholder" not in builtin and "hands" not in other and "web_image" not in other
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134162
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134362
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -479,10 +482,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     passphrase, a key or a token a picture shows written [left out]), no part could pay, to 133,808
     (logins-notes-doctor-2026-11-20); then the hands line (337, the browser's `scroll` and click's and scroll's `nth`), no
     other line lowered, to 134,145 (need-2026-11-21-133); then the hands line again (17, set to what the rooms send), no
-    other line lowered, to 134,162 (hands-line-2026-11-22)."""
+    other line lowered, to 134,162 (hands-line-2026-11-22); then the other entries' line (200, web_fetch's sentence on an
+    ÖBB ticket shop link), no other line lowered, to 134,362 (need-2026-11-22-136)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134162
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134362
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
