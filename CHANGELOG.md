@@ -8,6 +8,17 @@ version changes.
 
 ## 2026-11-22
 
+### hands-line-2026-11-22 (#124)
+
+- budgets.toml's `mcp__hands__` line is what the rooms send: 10,970, read from the newest request shapes of the two rooms
+  that started a process after need 133 landed. The plug-in's entries did not change. The last two raises of this line
+  (need 127 and need 133) had added the plug-in's own count of its entries, which is its compact JSON, while Yerk AI
+  counts each entry as a room's request holds it, so the line stood 17 under what a room sends and the morning diff
+  showed `mcp__hands__: 10,970 > 10,953` for those rooms. The budget test's fixture holds the entries as sent (the
+  browser's 5,587, the mac's 1,309).
+- **Upgrading**: budgets.toml's `mcp__hands__` line rises from 10,953 to 10,970 and `total` by the same 17, to 134,162.
+  An install that keeps its own budgets.toml raises both the same way. Nothing a room is sent changes.
+
 ### curate-lessons-2026-11-22 (#123)
 
 - `yerk curate --rules` (the 04:30 job and curate's own phase) now knows a converted store. Its index, `rules-topics.md`
