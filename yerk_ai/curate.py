@@ -496,16 +496,36 @@ SPAN, HELD, EXM, QM = re.compile(r"\"[^\"]*\"|“[^”]*”"), re.compile("[\x00
 
 def rule_files(private: Path, s: memory.Settings) -> dict[Path, tuple[str, int]]:
     """Each line-per-rule file a room loads, once (the rules file, each rulebook), its kind and its line in budgets.toml;
-    then TOPIC_RULES, loaded on demand with no line (there or not), and OVERFLOW until yerkd moves it, in no room."""
+    then TOPIC_RULES, loaded on demand with no line (there or not), and OVERFLOW until yerkd moves it, in no room. A converted
+    store's own files (kept_off) are none: its index holds no rule, and a lesson is read whole by the gates alone."""
     caps, out = budgets()["session_start"]["appended"], dict[Path, tuple[str, int]]()
     for room in rooms(private).values():
         for k, p in shape.files(private, room, s.root / memory.RULES):
-            if k in context.TAIL:
+            if k in context.TAIL and not kept_off(s, str(p)):
                 out.setdefault(p.resolve(), (k, int(caps[k])))
+    if lessons.converted(s.root):
+        return out
     out[(s.root / memory.TOPIC_RULES).resolve()] = ("topics", 0)
     if (o := s.root / memory.OVERFLOW).is_file():
         out[o.resolve()] = ("overflow", 0)
     return out
+
+
+def kept_off(s: memory.Settings, f: str) -> str:
+    """What `f` is when a converted store keeps it (its index, the topic rules or overflow it replaced, a lesson under rules/),
+    a file no proposal is read from or applied to; "" for any other file and on a store not converted."""
+    if not lessons.converted(s.root):
+        return ""
+    p = Path(f).resolve()
+    return "a lesson" if p.is_relative_to(lessons.folder(s.root).resolve()) else {(s.root / n).resolve(): w for n, w in (
+        (memory.RULES, "the index of the lessons"), (memory.TOPIC_RULES, "the topic rules the lessons replaced"),
+        (memory.OVERFLOW, "the overflow the lessons replaced"))}.get(p, "")
+
+
+def gated(said: str) -> str:
+    """A gate's WHY for a rule's words (its trailer and examples out): the checks of GATES they name, each once; "" at none."""
+    checks = list(dict.fromkeys(c.format(*g.groups()) for rx, c in GATES if (g := rx.search(said))))
+    return f"a code check could hold it on every reply: {'; '.join(checks)}; curate names the check and never builds it" if checks else ""
 
 
 def asked(s: memory.Settings, days: list[str], ids_: set[str] | None = None) -> list[str]:
@@ -910,9 +930,15 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
     for p, (kind, _) in files.items():               # gates: a rule a code check could hold on a reply, named, never built
         for i, x in enumerate(rows[str(p)], 1) if kind != "overflow" else []:
             said = memory.EXAMPLE.sub("", TRAILER.sub("", x)) if x.startswith("- ") and mentions.OLD not in x else ""
-            if checks := list(dict.fromkeys(c.format(*g.groups()) for rx, c in GATES if (g := rx.search(said)))):
-                add("gate", short(x), [[str(p), i, x, x]], f"a code check could hold it on every reply: {'; '.join(checks)}; curate names "
-                    "the check and never builds it")
+            if why := gated(said):
+                add("gate", short(x), [[str(p), i, x, x]], why)
+    tomb = lessons.retired(s.root)                   # a live lesson: its rule line read once, its examples out, a gate its one
+    for les in [y for y in lessons.store(s.root) if y.slug not in tomb] if lessons.converted(s.root) else []:   # kind, cited at
+        if why := gated(memory.EXAMPLE.sub("", TRAILER.sub("", les.line))):   # its summary's line (shape.check), saving none
+            f, (k, ev_) = str((s.root / les.cite).resolve()), evidence(les.line, *ev)
+            name[f] = memory.cite(s, s.root / les.cite)
+            out.append({"kind": "gate", "label": short(les.line), "edits": [[f, les.front().count("\n") + 1, les.line, les.line]], "why": why,
+                        "rows": k, "evidence": ev_, "saved": 0})
     out.sort(key=lambda q: (-q["saved"], -q["rows"]))
     for n, q in enumerate(out, 1):
         q["n"] = n
@@ -1079,7 +1105,8 @@ def put(path: Path, backup: Path, new: bytes) -> None:
 
 def apply(private: Path, state: Path, day: str, which: str, now: float | None = None) -> list[str]:
     """The owner's `--apply DAY N[,N...]`: those proposals of DAY written, each file they touch fitted to its line first (refused
-    whole when one would pass it, or a line changed since), backed up by doctor.rewrite and on trial in RUN while it writes,
+    whole when one would pass it, or a line changed since, and before any write when one is a converted store's own, kept_off),
+    backed up by doctor.rewrite and on trial in RUN while it writes,
     so the next curate puts a cut-off one back; `undo`, the last apply put back byte-identical. RuntimeError says why not."""
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
@@ -1103,6 +1130,9 @@ def apply(private: Path, state: Path, day: str, which: str, now: float | None = 
         raise RuntimeError(f"no proposal {bad[0] if want and bad else which} of {day}")
     if gate := [n for n in want if props[n]["kind"] == "gate"]:
         raise RuntimeError(f"{gate[0]} is a gate: it names a check a reply would need, which curate never builds; nothing applied")
+    if mine := [(n, e[0], w) for n in want for e in props[n]["edits"] if (w := kept_off(s, str(e[0])))]:    # before any write
+        raise RuntimeError(f"{mine[0][0]} would write {memory.cite(s, Path(mine[0][1]))}, {mine[0][2]}: a lesson changes only when "
+                           "filed again with `remember` and its job, or retired; nothing applied")       # under apply_main's 200
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]           # a line it writes passes the check a filing does
     if off := [(n, o) for n in want for e in props[n]["edits"] if isinstance(e[3], str) and e[3].startswith("- ") and (o := shape.filing(e[3], acronyms))]:
         raise RuntimeError(f"{off[0][0]} would write a line with {' and '.join(shape.NAMES[k] for k in off[0][1])}, which a rule's filing "

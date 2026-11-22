@@ -6,6 +6,26 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-22
+
+### curate-lessons-2026-11-22 (#123)
+
+- `yerk curate --rules` (the 04:30 job and curate's own phase) now knows a converted store. Its index, `rules-topics.md`
+  and `rules-overflow.md` are no rule files of the pass there, so no merge, cut, condensation, topic move or promotion is
+  read off an index line and the proposals file's size list holds only the rulebooks. Before, an index line repeated its
+  job's words in its file name, so two jobs that open with the same words were proposed as a merge of near-duplicate
+  words, and the gate kind read only each job's name.
+- Each room's rulebook is proposed on as before. Each live lesson is read once as its rule line, its examples out, for a
+  gate alone (a code check named, never built): its BEFORE names the lesson's file by its cite at its summary's line, and
+  it saves nothing. A retired lesson is never read. A lesson changes when it is filed again with `remember` and its job,
+  or retired, so the pass proposes nothing else for one.
+- `yerk curate --apply` on a converted store refuses, before it writes anything, any proposal that would write the index,
+  `rules-topics.md`, `rules-overflow.md` or a lesson's file, and a list holding one is refused whole, nothing applied.
+  This covers a record written before this change, such as a merge of two index lines. A rulebook proposal still applies
+  and its undo still puts the file back byte for byte. An undo of an apply from before the conversion puts nothing back.
+
+**Upgrading:** nothing to do. An install with no `<memory>/rules/` folder is proposed on and applied exactly as before.
+
 ## 2026-11-21
 
 ### lesson-store-2026-11-21 (#119)

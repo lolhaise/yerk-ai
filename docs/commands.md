@@ -333,8 +333,8 @@ the night's card curation: the sweep (repeats, superseded and past-date lines, c
 
 - `--since SINCE`: each day from this date (YYYY-MM-DD) to yesterday, for a backfill
 - `--dry-run`: say what it would change and propose, change nothing
-- `--rules`: the rule files alone: merges, cuts, condensations, moves to the topic rules, promotions and gates (a code check named, never built) proposed into <memory>/rules-proposals/<day>.md, never applied
-- `--apply DAY N`: the owner's word: proposals N[,N...] of DAY written, backed up and fitted to each file's line, or `undo`: the last apply put back
+- `--rules`: the rule files alone: merges, cuts, condensations, moves to the topic rules, promotions and gates (a code check named, never built) proposed into <memory>/rules-proposals/<day>.md, never applied; on a converted store the rulebooks as before and each lesson for a gate alone, never the index
+- `--apply DAY N`: the owner's word: proposals N[,N...] of DAY written, backed up and fitted to each file's line, or `undo`: the last apply put back; never a converted store's index or a lesson
 - `--lessons`: the conversion's dry run: the rule store as lesson files and an index, proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written
 - `--lessons-apply FILE`: that exact proposals file applied, the originals copied first
 - `--lessons-undo DAY`: the originals of DAY's conversion put back
