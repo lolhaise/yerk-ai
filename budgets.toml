@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 134145
+total = 134162
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -321,12 +321,20 @@ total = 134145
 # need-2026-11-21-133 (8f9ffae, its main 94f220f merged in, whose secret-shot left the entries as they were) builds
 # them, 337 more, by the plug-in's own measure, its test's cap moving with it; so 10,953, no part could pay, the total
 # rose by the 337 (to 134,145 on main's 133,808). Yerk AI's own tool entries do not change.
+# 2026-11-22, hands-line-2026-11-22: the hands line is what the rooms send, 10,970, read from the newest request shapes
+# of the two rooms that started a process after need 133 landed (browser 5,587, desktop 1,381, discord 1,168, mac 1,309,
+# mail 1,525, each entry with Claude Code's own key on it). The plug-in's entries did not change. Need 127 and need 133
+# had raised this line by the plug-in's own count of its entries (146 and 337 bytes of its compact JSON), while this file
+# counts each entry as a room's request holds it: over the two the browser's entry rose by 503 as sent, 20 more than the
+# 483, and the mac's stood 3 under what the fixture held. So those rooms sent 17 past the line and the morning diff said
+# so from 2026-11-22. 17 more, no part could pay, the total rose by the 17 (to 134,162 on main's 134,145). A change to
+# the plug-in's entries sets this line from a room's measure of them, never from the plug-in's count.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 29400
 deferred_tool_names = 3581
-mcp__hands__ = 10953
+mcp__hands__ = 10970
 mcp__web-ladder__web_image = 913
 skills = 0
 
