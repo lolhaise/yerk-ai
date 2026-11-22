@@ -965,6 +965,26 @@ key = "make a fine-grained token on GitHub (Settings, Developer settings) for Ye
 free_path = "none for a private repository: without the token the tool names the file that turns it on and asks GitHub nothing"
 asked_as = ["has the branch reached github", "was the branch pushed", "is the pr merged", "is the pr green", "pull request state", "branch on github"]
 
+# need-2026-11-21-135: asked whether a worker's tests held on the box, a room's github_state on the pull request said only
+# that a check was red, no test named; the box CI keeps its record of each commit in a folder of its own and the journal,
+# where a room's Glob was refused, and the room has no shell.
+[abilities.red-checks]
+state = "built"
+what = "Says why a check on a pull request of Yerk's own repository is red: the github_state tool gives each red check its own words on GitHub (the box CI's words name the first failing test and the counts, cut at 140 characters) and reads the box CI's own record of that head, so an owner's room asked whether a worker's tests hold on the box names the failing tests the record names and the lines that say what failed, with their counts where more failed than it names, never only that a check is red, with no shell and no read outside its folders."
+how = [
+  "Where: [needs] ci_log in yerkd.toml names the folder the box's CI keeps one record per commit it tests in, <full sha>.txt; the daemon reads the red head's record only, a file read and no call, the sha GitHub's own, so no other file opens.",
+  "What: from the record's newest run (after its last line naming the commit whole, since a run again appends), the lines that say failed, failure, error or timed out, the first twelve, and every test they name as pytest does (tests/test_x.py::test_y), once, a parameter the record cut left off so the name is the test's own; a record names a step's first failing tests, so the counts in its lines say when more failed; a status cut mid-name adds none.",
+  "Missing: no folder named, no record of the head, or a record that names no failure each come back as one line beside GitHub's words, the first naming the setting for the owner.",
+]
+tier = "key"
+keys = ["github"]
+provider = "GitHub (its REST API, on the pipeline's token)"
+needs = "the github-state token, and [needs] ci_log in yerkd.toml naming the box CI's folder of records (without it, GitHub's words for each red check alone)"
+price = "free: GitHub's REST API on a token's own repositories and a file read on the box"
+key = "the token as github-state says (yerk explain github-state), then [needs] ci_log = the folder the box's CI writes its record of each commit in, in yerkd.toml; read at the daemon's start"
+free_path = "none for a private repository: without the token github_state asks GitHub nothing"
+asked_as = ["why is the check red", "why did the check fail", "why did the ci fail", "why is the ci red", "which tests failed on the box", "tests hold on the box", "box ci failed"]
+
 [abilities.assistant-files]
 state = "built"
 what = "A file another assistant attaches where a room reads (the channel it watches or its own, an assistant `[watch] assistants` lists in yerkd.toml) is saved in the room's work/inbox/<message id>/ as a person's file is, so the room opens it when asked, where before it had the file's name and size in the day log and no copy: the answer a held message waits for has its files saved before that turn and named under it with where each was saved (an owner room's PDF or workbook with its text beside it) or why it could not be fetched, any other message has them saved as it is filed, once a message, a ledger row a file and never a notice in the room."
@@ -1803,6 +1823,16 @@ tier = "free"
 needs = "an owner room with Read, Grep or Glob in its tools that is not sealed; nothing to set"
 free_path = "this is the free path"
 asked_as = ["read the worker's folder", "read a worker's folder", "read the worker's patch", "read a worker's patch", "the worker's files"]
+
+# need-2026-11-21-134: a room relaying a plug-in worker's result, its branch, head and commits named, had its Read of the
+# worktree's HEAD in the plug-in's own .git and its Grep of that .git's refs refused, and checked the worktree's files instead.
+[abilities.worker-branch]
+state = "built"
+what = "Reads a worker's branch, its head and its commits before its result is told: the `worker` tool's report reads each git worktree in the worker's folder with git, Yerk's `wt` and a plug-in's `<plug-in>-wt` alike, and gives the repository's own checkout and the branch that is on (its base), the worktree's branch (none when detached) and head, how many commits each side has that the other lacks, the newest ten of those its base lacks, or of its own when its base already holds them all (`on_base`, a branch landed since), each with its sha, subject and age, and how many of its files are not committed, so a room relaying a worker that names its branch, head and commits checks them there, never on the report's word. A linked worktree's .git is only a pointer into its repository's own .git, which no room's Read opens and whose commits are compressed, and a plug-in kept outside Yerk has no GitHub for `github_state` to read, so the daemon runs git itself: read only (no fetch, no ref, lock or index written), off its loop, and a worktree git cannot read is git's own line of why. The owner's rooms only, as every worker call."
+tier = "free"
+needs = "an owner room, and a worker whose worktree is `wt` or `<name>-wt` in its folder; nothing to set"
+free_path = "this is the free path"
+asked_as = ["the worker's branch", "a worker's branch", "the worker's commits", "a worker's commits", "the worker's head", "a worker's head"]
 
 [abilities.rule-shape]
 state = "built"

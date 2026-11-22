@@ -760,13 +760,16 @@ class Yerkd:
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]:
         """The `github_state` tool: a branch or a pull request of Yerk's own repository ([needs] repo, else the checkout's
         origin) as GitHub has it now, read off the loop on the pipeline's token (github.look), from an owner's room only,
-        since the repository is the owner's and private; the token never in the result. Free: no spend row."""
+        since the repository is the owner's and private; the token never in the result. A red head is read in the box CI's
+        records too, the folder [needs] ci_log names. Free: no spend row."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "error": words.GITHUB_OWNER_ROOMS}
         if not (tok := await asyncio.to_thread(github.token, self.private)):
             return {"ok": False, "error": words.GITHUB_NO_TOKEN}
-        repo = await asyncio.to_thread(github.slug, REPO, str(dict(self.conf.get("needs", {})).get("repo") or ""))
-        r = await asyncio.to_thread(github.look, REPO, repo, branch_or_pr, tok)
+        conf = dict(self.conf.get("needs", {}))
+        repo = await asyncio.to_thread(github.slug, REPO, str(conf.get("repo") or ""))
+        ci = Path(str(conf["ci_log"])).expanduser() if conf.get("ci_log") else None
+        r = await asyncio.to_thread(github.look, REPO, repo, branch_or_pr, tok, ci=ci)
         log.info("github_state: %s, %s", room, f"{r['branch']}, {len(r['pull_requests'])} pull request(s)" if r["ok"] else r["error"][:160])
         return r
 
