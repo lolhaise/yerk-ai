@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from . import addons, backup, deploy, docs, emails, files, hooks, jobs, logins, memindex, memory, pictures, retention, status, texts, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
+from . import lessons as lesson_files                  # the store's layout; doctor.lessons is the daily run
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, uncapped, write_private
 from .context import NONE, TOPICAL, attachments_dir, chars, layer_dir, session_start
@@ -483,9 +484,11 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         for (part, src), (raw, cap, names) in over.items():
             found.append(f"{RED} {Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
                          f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
-        tier, most, on_file = memory.live_rules(m.root / memory.TOPIC_RULES), NONE if uncapped(b) else int(b["per_message"]["on_hit"]["rules"]), set(rooms(private))
-        never = [memory.topic(x) for x in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(x)) is not None and not sc & on_file]
-        found.extend([f"{words.WORKING} {memory.TOPIC_RULES}: {len(never)} topic rule{'s' * (len(never) != 1)} never load, first \"{never[0]}\": "
+        tier = [(x.whole, x.line) for x in lesson_files.store(m.root) if x.body] if lesson_files.converted(m.root) else [
+            (x, x) for x in memory.live_rules(m.root / memory.TOPIC_RULES)]          # (what rides, the line its words and rooms are read off)
+        most, on_file = NONE if uncapped(b) else int(b["per_message"]["on_hit"]["rules"]), set(rooms(private))
+        never = [memory.topic(y) for x, y in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(y)) is not None and not sc & on_file]
+        found.extend([f"{words.WORKING} {lesson_files.DIR + '/' if lesson_files.converted(m.root) else memory.TOPIC_RULES}: {len(never)} topic rule{'s' * (len(never) != 1)} never load, first \"{never[0]}\": "
                       f"longer than the per-message rules part's {most:,} or kept to no room in rooms.toml; shorten it or fix its [rooms: ...]"] if never else [])
         held = memory.live_rules(m.root / memory.OVERFLOW)
         found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} in no room yet; yerkd moves "
@@ -541,7 +544,7 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
     a day. A green day writes the report and says nothing. The pages read follow the rooms (2026-11-09, Claude Fable 5.2): the
     ones every room reads and the prompting page of each model a room runs (shape.pages), and a model whose page `yerk docs
     refresh` does not fetch is a line and a need naming the page to add. A moved sentence, a model with no page and the store's
-    the next run starts the example."""
+    findings each file their own need; an uncapped install's index size is said as a line of its own and files none."""
     from . import needs
     from .config import models
     limits, root = dict(budgets().get("shape") or {}), docs.root(state)
@@ -551,7 +554,8 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
     except (OSError, ValueError):      # rooms.toml or yerkd.toml unreadable: the pages every room reads; layout and fit say why
         conf, by = {}, {}
     r = rule_shape.store(m, limits, root, rule_shape.pages(by))
-    out = rule_shape.unpaged_lines(rule_shape.unpaged(by, docs.pages(dict(conf.get("docs") or {})))) + rule_shape.store_findings(r, limits, root)
+    out = rule_shape.unpaged_lines(rule_shape.unpaged(by, docs.pages(dict(conf.get("docs") or {})))) + \
+        rule_shape.store_findings(r, limits, root, uncapped(budgets(conf)))
     if dry:
         return out
     day = time.strftime("%Y-%m-%d", time.localtime(now))
@@ -561,12 +565,14 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
         return out
     machine = next((n for n, c in rooms(private).items() if c.get("role") == "machine"), "")
     kinds = {PIN_NEED: [x for x in out if x.startswith("docs moved")], MODEL_NEED: [x for x in out if x.startswith("docs: no prompting")]}
-    kinds[LESSON_NEED] = [x for x in out if x not in kinds[PIN_NEED] + kinds[MODEL_NEED]]
+    sized = [x for x in out if x.startswith(rule_shape.SIZED)]          # a measurement: said, never a need
+    kinds[LESSON_NEED] = [x for x in out if x not in kinds[PIN_NEED] + kinds[MODEL_NEED] + sized]
     filed = [needs.file(m, state, machine or "doctor", f"doctor-lessons-{day}", now=now, tried=said[0], needed=need,
                         asked="the owner's order of 2026-11-09: every rule written the way the Claude docs say, never out of date")
-             for need, said in kinds.items() if said][0]
+             for need, said in kinds.items() if said][:1]
     if machine:
-        line = words.LESSONS_LINE.format(first=out[0], n=len(out), s="s" * (len(out) != 1), need=f"{filed.get('day', day)} {filed.get('n', '')}".strip())
+        line = sized[0] if not filed else words.LESSONS_LINE.format(first=out[0], n=len(out), s="s" * (len(out) != 1),
+                                                                    need=f"{filed[0].get('day', day)} {filed[0].get('n', '')}".strip())
         with suppress(OSError, ValueError):
             (post or (lambda p: jobs.post_control(state, p, 60)))({"machine": {"room": machine, "text": line, "key": f"doctor-lessons-{day}"}})
     return out

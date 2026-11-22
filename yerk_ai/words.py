@@ -172,6 +172,8 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
               "filing is {clause}.")
 FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
 RULE_CLAUSE = FILED_AT_MOST + " (every room now does {job} this way)"
+INDEX_NEAR = ("rules.md, the index every session start loads, is at {said}: shorten it by merging lessons that say one thing "
+              "and retiring stale ones, since {sentence}")      # a filing near code-memory's limits: filed, and told so
 TOPIC_CLAUSE = FILED_AT_MOST + " (the rule loads when {triggers} come up, since the shared rules file is full)"
 # a filing fitted under the rules file's cap (memory.rule): each strip and a topic rule in the room's day log, a topic rule in the
 # machine room (rules-on-demand: never "held", it loads when its topic comes up)
@@ -224,7 +226,8 @@ STUB = ("Only your final message reaches the room, and yours, \"{head}\", report
 # the filing rule at Stop (Room.filing_check, 2026-11-09, the owner: a rule's filing told back as "Filed: ..."): a final holding a
 # filing report bounces once, quoting the Claude docs' readability sentence off the fetched page
 FILING_REPORT = re.compile(r"(?im)^[^\w\n]*(?:filed|logged)\b|\bthe rule now says\b|\bI(?:'ve| have)? (?:filed|logged)\b|"
-                           r"\b(?:filed|logged) (?:it|that|this|the rule) (?:as|in|under|to)\b|\brules(?:-topics)?\.md:\d+")
+                           r"\b(?:filed|logged) (?:it|that|this|the rule) (?:as|in|under|to)\b|\brules(?:-topics)?\.md:\d+|"
+                           r"\brules/[a-z0-9]+(?:-[a-z0-9]+)*\.md\b")    # a lesson's cite with or without its line, as a filing gives it
 FILING_TOLD = ("Your final message reports a filing (\"{head}\"), and the room reads the answer only: {sentence}. Send the "
                "answer again as your final message, every word of it but the filing report, which is never said.")
 # the note rule at Stop (seen live: a reply opened with the model's plan for it, and the room posted both whole)

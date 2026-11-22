@@ -1863,4 +1863,91 @@ secs = 60
 # record not read and their comment, 5), daemon.py 3 ([needs] ci_log read and handed to look, its docstring's sentence),
 # config.py 2 (the setting's words). 33,696: main ff00415's 33,661 (need 134's 36 in it) plus 35, counted on the merged
 # tree; README.md, which both changed, merged by hand with both mentions inside its size.
-lines = 33696
+# 2026-11-10: lesson-store-2026-11-10 raised it by 402, the rule store in the Claude docs' shape (the owner's order
+# of 2026-11-09: every rule written the way the docs say), not folded to fit: lessons.py 229 (one lesson per file, its
+# front matter and summary, the index, the tombstones, an old cite's walk to its lesson, the snapshot a session from before a
+# conversion reads), memory.py 88 (the filing and the retire of a lesson, an old cite read as its lesson, the corpus, recall's
+# walk to the live lesson past five hops), context.py 37 (the index or every lesson whole at a start, a lesson's body on its
+# words, news from the snapshot), shape.py 23 (each lesson file scored, its layout too), memindex.py 13 (a lesson one chunk, its
+# front matter out; the originals' folder out of the index), curate.py 7, doctor.py 3, words.py 2. 28,833: main abc0833's
+# 28,431 plus 402.
+# 2026-11-10: lesson-store-2026-11-10 raised it by 356 more, the conversion of a store written before the gate (`yerk curate
+# --lessons`, its apply and undo), not folded to fit: conversion.py 348 (the originals by cite and each replaced line's live end,
+# the plain split, a quote the day log holds cited, the owner's go-ahead written into an absolute, every sentence accounted for,
+# the model pass through curate's propose and knock-down, the frozen trigger test, the proposals file and its exact apply, the
+# copy of the originals and the undo), cli.py 6, config.py 2 (the two [curate] keys its model pass reads, described). 29,189:
+# 28,833 plus 356.
+# 2026-11-10: lesson-store-2026-11-10 took main 76cc360 in a merge: 29,345 is main's ceiling of 28,587 plus this
+# branch's own 758 lines, recounted after the merge (the 402 and the 356 above, which were counted on main abc0833's
+# 28,431); nothing of either side was folded.
+# 2026-11-10: lesson-store-2026-11-10 raised it by 120 more, the conversion's model pass made to produce lessons that pass
+# (the first real dry run on a store of the owner's size: 121 of 217 lessons refused, 47 originals not accounted for, 22
+# losing a trigger), not folded to fit: conversion.py 120 (a rule whose lessons the gate refuses, whose words are not all
+# accounted for or that the knock-down dropped goes back with its findings, two rounds at most, and one still failing is
+# listed; the first proposal and the knock-down in calls side by side; a reason per lesson, taken or refused; each example
+# cited by code; a quote kept whole across its sentence ends; the rule's trigger words in every lesson's `on`; the reasons
+# the owner's side supplies in rules-proposals/reasons.tsv; the verdict's count of lessons with no reason on file). 29,465:
+# 29,345 plus 120.
+# 2026-11-10: lesson-store-2026-11-10 raised it by 24 more, the trigger words a lesson keeps cut to what loads its rule today
+# (each word alone loaded 7.8 times as many rules' lessons as load today over the last 14 days of owner messages on that
+# copy; each smallest set of trigger words that loads it, three words at most, else each word alone, loads 2.7 times and
+# loses none), not folded to fit: conversion.py 24 (keeps). 29,489: 29,465 plus 24.
+# 2026-11-10: lesson-store-2026-11-10 raised it by 17 more, the conversion measured on the owner's real rules (its first
+# real pass read listed sentences as not accounted for and refused lessons whose part the rule gives no reason as
+# refused for cause; a round's failing rules in one call ran 11 minutes), not folded to fit: conversion.py 17 (the
+# listed parts cut as found, the store's marks and the examples' wrapper aside; a lesson with no reason of its own
+# listed; a reasons file's row a part; a long gloss cited alone; an example the model writes cited; the rounds side by
+# side). 29,506: 29,489 plus 17.
+# 2026-11-21: lesson-store-2026-11-21 took main f427a72 in a merge: 34,544 is main's ceiling of 33,625 plus this
+# branch's own 919 lines (the 758, 120, 24 and 17 above), recounted after the merge; nothing of either side was folded.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 49, the index a line a job and the owner's side's open calls settled,
+# not folded to fit: memory.py 16 (a filing on an uncapped install told nothing of the index's size; a held rules file
+# left as it is on a converted store, and why), shape.py 10 (an uncapped install's index size, a measurement line),
+# conversion.py 8 (the index it would write against code-memory's limits; the Fable 5.2 page always read), lessons.py 7
+# (the job lines), doctor.py 3, morning.py 3, daemon.py 2. 34,593: 34,544 plus 49.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 30 more, the judging of its real passes met, not folded to fit:
+# conversion.py 17 (a rule the reviewer still drops after the last round counted in the verdict; a bracket held whole
+# in the accounting, so an abbreviation in it ends no sentence), move.py 6 (room add's measure, a function a test
+# reaches), lessons.py 5 (a lesson's summary line, what a capped start carries again), context.py 1, words.py 1 (a
+# lesson's cite with or without its line). 34,623: 34,593 plus 30.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 45 more, a dry run resumed from an earlier proposals file
+# (`--from FILE`), not folded to fit: conversion.py 43 (each rule's reasons rows in the record; a rule that passed there
+# kept word for word with no model call, its slugs held from the rest; the head's count), cli.py 2 (the flag).
+# 34,668: 34,623 plus 45.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 48 more, "no reason on file" said by the owner's side (a `none` row in
+# reasons.tsv), not folded to fit: conversion.py 22 (a lesson refused for a reason alone listed and left out of the
+# verdict and the rounds back; the apply's pass for it and its sidecar; undo), lessons.py 17 (rules-no-reason.tsv read,
+# and a slug taken off it by a filing or a retire), shape.py 9 (the daily run leaves its missing reason out and names
+# it). 34,716: 34,668 plus 48.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 259 more, run 4: nothing the owner said changed and nothing added they did not
+# say, not folded to fit: conversion.py 239 (the picker that cites the line a passage means or none; no exception added,
+# a never whose rule gives none listed apart; the caution checked in a lesson; quotes kept as runs of their words; the
+# examples shown numbered and placed where the model names; the faults code finds; findings.tsv and what --from redoes
+# and why), lessons.py 13 (one list saying what is missing), shape.py 7 (the daily run leaves a listed exception out and
+# names it). 34,975: 34,716 plus 259.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 193 more, run 5: the owner's words win over the gate's shape, not folded to fit:
+# conversion.py 169 (the words that give a quote as the owner's read from [curate] owner_names, no name in the code; a never read
+# with the rule's sentence it comes from; an exception or a seal added to the owner's never a fault; their quote whole, a part of it a fault; each
+# finding only a change to their words could meet worked out, listed apart and never sent to the model, and worked out
+# again by the apply from the rule's words; a cite the model refuses; a day that is none; the filing's 120 seconds; each
+# example counted by its place; a note beside the gate's exchange finding), lessons.py 8 (what each listed lesson lacks), shape.py 14 (the daily run and its count
+# file nothing for their words listed, and name them), config.py 2 (the key's line). 35,168: 34,975 plus 193.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 20 more, run 6, not folded to fit: conversion.py 20 (a cited example old by
+# its line alone, never its gloss; the excuses' day-log cache on --from; a reason on file read as theirs, whole, in quote marks,
+# and a part of it, one in the lesson's own voice or one not given as theirs a fault; the apply's reasons from the record and the
+# reasons file). 35,188: 35,168 plus 20.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 51 more, run 7, not folded to fit: conversion.py 43 (a sentence giving the owner's
+# reason on file as theirs counts as theirs beside their marked sentence, and the apply reads their names for it; their words kept whole
+# past the length, a listed kind of its own; a rule asked again by name with --redo, a name of no rule refused first, the
+# head naming them), cli.py 3 (the flag), shape.py 4 (the daily run files nothing for it and names it), lessons.py 1 (what it
+# lacks). 35,239: 35,188 plus 51.
+# 2026-11-21: lesson-store-2026-11-21 lowered it by 2, run 8: conversion.py's test for the owner's words kept whole past the length
+# loses its two cases (a sentence of theirs alone past it, or the rule whole), so a body whose every sentence is theirs is never
+# refused for its length. 35,237: 35,239 less 2.
+# 2026-11-21: lesson-store-2026-11-21 raised it by 1, run 9, folded to fit but this line: shape.py's daily run files nothing
+# for the rule's own cite kept with its gloss whole (conversion.py's, listed as an example kept as its words, net none).
+# 35,238: 35,237 plus 1.
+# 2026-11-21: lesson-store-2026-11-21 took main f4de2d6 in a merge (needs 134 and 135, the two notes above this branch's):
+# 35,309 is main's ceiling of 33,696 plus this branch's own 1,613 lines (35,238 less main 0911b5e's 33,625), recounted
+# after the merge; nothing of either side was folded.
+lines = 35309

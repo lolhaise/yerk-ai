@@ -1687,7 +1687,7 @@ class Yerkd:
             return ""
         rdir = self.state / "rooms" / room
         return context.news(rdir / "rules-seen.json", sid, self.private, self.room_confs[room], self.memory.root / memory.RULES,
-                            context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]), rdir / "work" / context.CHANGED)
+                            context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]), rdir / "work" / context.CHANGED, room)
 
     def rules_topic(self, room: str, sid: str, prompt: str | None, budget: int) -> tuple[str, list[str]]:
         """The topic rules this message names, the room's own and every room's, each once per session (context.topics); none in a sealed room.
@@ -1700,10 +1700,12 @@ class Yerkd:
     def move_held(self) -> str:
         """At a start: rules-overflow.md's rules into rules-topics.md, once (memory.move_held), and the machine-room line saying so."""
         try:
-            n = memory.move_held(self.memory, context.books(self.private, self.room_confs))
+            n, why = memory.move_held(self.memory, context.books(self.private, self.room_confs))
         except OSError:
             log.exception("rules: %s did not move to %s; it stays as it was", memory.OVERFLOW, memory.TOPIC_RULES)
             return ""
+        if why:                                          # a converted store: logged, never a machine-room line at every start
+            log.info("rules: %s", why)
         return f"{words.DONE} " + words.TOPICS_MOVED.format(n=n, s="s" * (n != 1)) if n else ""
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False, went: bool = False) -> list[tuple[str, str]]:

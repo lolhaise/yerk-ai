@@ -203,9 +203,7 @@ async def add(a: argparse.Namespace) -> int:
     also = [(priv / Path(str(x)).expanduser()).resolve() for x in block.get("also") or []]
     if saved in also and saved not in s.scope.roots:            # a room's also outside them stops yerkd's start (memory.Settings.only)
         print(f"yerkd.toml [memory] also, by hand before the deploy, or yerkd does not start: add \"{saved}\"")
-    b, now = budgets(), datetime.now(timezone.utc)
-    start = context.session_start(priv, block, b, rules=s.root / memory.RULES)
-    bad = context.violations(start, context.per_message(room, block, "owner", now, now - timedelta(minutes=27), b), b)
+    bad = measure(priv, block, room, conf, s)[1]
     print(f"map: {'; '.join(bad) if bad else 'under budget'} (`yerk map {room}` after the deploy shows each part)")
     print(f"deploy, detached at a quiet moment: setsid nohup yerk deploy > {state}/deploy-{a.room}.log 2>&1 < /dev/null &")
     print(f"warm-up, after it: curl -s -H 'Content-Type: application/json' -d '{{\"content\": \"...\"}}' \"$(cat {url})\"")
@@ -215,6 +213,14 @@ async def add(a: argparse.Namespace) -> int:
         print(f"backfill: {saved} is not in {room}'s also; add it there and to yerkd.toml [memory] also by hand" if "also" in block else
               f"backfill: none, {room} has no also (it recalls every [memory] also root) and a backfill takes only a folder it lists")
     return 1 if bad else 0
+
+
+def measure(priv: Path, block: dict[str, Any], room: str, conf: dict[str, Any], s: memory.Settings) -> tuple[list[context.Part], list[str]]:
+    """A new room's session start as `room add` measures it, with the install's budgets (an uncapped one's start carries its
+    lessons whole) and the room's name (a lesson kept to it counts): its parts and each line past a budget."""
+    b, now = budgets(conf), datetime.now(timezone.utc)
+    start = context.session_start(priv, block, b, rules=s.root / memory.RULES, room_name=room)
+    return start, context.violations(start, context.per_message(room, block, "owner", now, now - timedelta(minutes=27), b), b)
 
 
 async def chats_of(http: Any, guild: str) -> list[dict[str, Any]]:

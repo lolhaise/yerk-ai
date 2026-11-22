@@ -8,6 +8,156 @@ version changes.
 
 ## 2026-11-21
 
+### lesson-store-2026-11-21 (#119)
+
+- The rule store can now be kept the way the Claude docs keep a memory: "Store one lesson per file with a one-line summary
+  at the top." Each lesson is `<memory>/rules/<slug>.md`: its front matter first (`class:` its first key, the block under
+  400 characters so every room's class read finds it), then its summary, one imperative line a room can follow with the
+  body unread, then the body with its reason and cited examples. `rules.md` becomes the index, one line per job, the job
+  and its lessons' files, in the order filed, with no summary, so a store whose rules split into several lessons each
+  stays under code-memory's limits.
+- On a converted store, `remember` with `job` replaces its job's lesson in place (the docs' "update an existing note
+  rather than creating a duplicate"), its old words a note in the day log, or adds a new lesson; a slug never changes and
+  never names two lessons. `retire` deletes the lesson's file and writes a row to `retired.tsv` (slug, day, replaced by),
+  so a cite to it still leads on to the lesson that replaced it. On a capped install, a filing that takes the index near or
+  past code-memory's 200 lines or 25KB is filed, and its result says to shorten the index by merging or retiring lessons;
+  the daily run keeps naming an index past them. On an uncapped install the index's size is a measurement and never an
+  instruction: a filing's result says nothing of it, since a room told to retire lessons to make room would trim the
+  owner's rules by itself, and the daily run says the size as a line of its own from 90% of a limit, filing no need for
+  it. Nothing is refused for the index's size.
+- A session start loads the index; on an uncapped install it carries every lesson whole, so a room knows what it knew. On
+  a capped one it carries a line for each lesson the room may have, its summary and its file, built from the lesson files
+  (the index on disk stays one line a job), and a lesson with a body rides whole on its words where a topic rule did. A room kept to a lesson by its rooms mark, a sealed room and a
+  person's room see what they saw. A session that began before a conversion is told nothing about it, only a lesson changed
+  since, since the docs say to make such changes "in new conversations only".
+- Recall reads each lesson as one chunk with its front matter out, so a room's name in a lesson's scope never matches a
+  search. Its walk from a replaced line to the live one now runs up to 64 hops and stops when a cite repeats (it gave up
+  after five; real chains ran ten), and goes on through old `rules.md:N` and `rules-topics.md:N` cites and tombstones to
+  the live lesson. `read_memory` on an old cite reads the lesson its rule became.
+- `yerk curate --lessons` converts an existing store. Its dry run writes one proposals file,
+  `<memory>/rules-proposals/lessons-<day>.md`, and nothing else: each original rule by its cite, the lessons made of it,
+  each one's result from the gate a filing passes (on the pages every room reads and the Claude Fable 5.2 page, whatever
+  model the rooms run, since the owner's order of 2026-11-09 names that page), and each change as a listed item (a quote of the rule kept whole, word for word,
+  with its day-log line, a sentence left out or rewritten and why, a reason added and its line, the scope written into an
+  absolute, a never whose rule gives no exception carried as written, a rule with no reason on file, the rule's caution). A rule already in the shape is split as it
+  stands; the rest go through curate's propose and knock-down model pass. The dry run is not ready while the index it would
+  write is past either of code-memory's limits, and says by how much. A frozen trigger test refuses a split that loses
+  an owner message of the last 14 days that loads its rule today. `yerk curate --lessons-apply FILE` takes that exact file
+  and refuses unless every lesson passes the gate, every original is accounted for, the trigger test passes and the store
+  is byte for byte the one the dry run read; it copies the originals to `<memory>/rules-backup-<day>/` first.
+  `yerk curate --lessons-undo DAY` puts them back.
+- The conversion's model pass now produces lessons that pass. The `Lessons` prompt states each check the gate makes, in
+  plain words with the docs' sentence where the gate quotes one, and asks for a reason in every lesson's body after
+  because, since or so that, in the rule's own words: "which slows the page" is a reason to a reader and none to the
+  gate. A rule whose lessons the gate refuses, whose words are not all accounted for or that the knock-down dropped goes
+  back to the model with its proposal and the exact findings (`Lessons again`, two rounds at most); one still failing is
+  listed with its findings, never split as it stands in silence. The first proposal, each knock-down and each round back
+  run in calls of 8 rules side by side: on a copy of a store of the owner's size, 16 rules to a call ran 9 minutes, and
+  a round's failing rules in one call came to 189,352 characters and ran 11 minutes.
+- The model sees each rule's examples, numbered, and names the lesson each goes in; code puts it there as the day-log
+  line it means, or as its words when no line passes, never counted toward the body's length; a quote is read whole across the sentence ends inside it, so its halves no longer read as
+  sentences left out. Every lesson keeps the words its rule loads on today as its `on:` words, so a split cannot lose a
+  trigger: each smallest set of its trigger words that loads it today, or each word alone where a set would not do. On a
+  copy of a store of the owner's size, over its last 14 days of owner messages, that loads 2.7 times as many lessons'
+  rules as load today, where each word alone would load 7.8 times as many.
+- A rule with no reason on file stays listed, and so does each lesson of a split rule whose part the rule's words give
+  no reason (its other parts have one); the verdict counts those lessons apart from the gate's other refusals.
+  `<memory>/rules-proposals/reasons.tsv` is where the owner's side supplies one (the proposals file lists each rule or part
+  "for the owner's side"): a row a reason, so a rule may have one
+  for each such part, tab-separated, its cite, the `daily/<day>.md:N` line that holds the reason and the reason in that
+  line's words; the dry run hands each to the model and lists it as supplied.
+- The accounting no longer reads a listed sentence as not accounted for when it holds a quote code cites, when the parts
+  the model listed overlap (a quote left out inside a sentence listed whole), when all that is left is a store mark
+  (landed, bounced) the prompt asks written nowhere, or when it is the `<examples>` wrapper round a rule's examples. An
+  example the rule itself gives as a cite goes in as the rule has it, its gloss whole: past the gate's six words it is
+  listed as an example kept as its words, worked out again by the apply from the rule's words and no finding in the
+  daily run, and a gloss of the conversion's own past them still counts. An `<example>` the
+  model writes that the rule does not give goes back to it. `Lessons` and `Lessons again` say to keep a quote the rule
+  rests on in its lesson, to write in only the scope and the exception the rule gives and none where it gives none, to borrow no other part's reason and to write no caution the rule does not give, the things the knock-down
+  dropped most proposals for.
+- Nothing the owner said is changed and nothing is added that he did not say. An absolute whose rule gives no exception
+  gets none: its lesson is carried as he wrote it, listed apart, not counted in the verdict, passed by the apply for that
+  finding alone and written to `rules-no-reason.tsv`, whose rows now say what is missing (a reason, an exception); the
+  daily run files nothing for it and names it apart. A cite names the line it means or there is none: never a line
+  written after the rule was filed, the day and time a passage names, his own line for his words, else the earliest. A
+  quote of his goes into its lesson whole, word for word, never cut and never a pointer, and the rule's caution stays in
+  a lesson word for word. Each lesson is written to be read alone, and a reason for the whole rule is a `Why:` sentence
+  of its own in each lesson it backs. `<memory>/rules-proposals/findings.tsv` (`cite<TAB>finding`) sends a rule back:
+  `--from` redoes it with the findings shown, redoes a rule whose lessons hold what the code no longer writes, and says
+  how many it redid for each reason.
+- His words win over the gate's shape. Where a finding of the gate on a lesson can only be met by changing a sentence or
+  a quote of his, the lesson is carried as he wrote it, listed for the owner's side, and the model is never sent that
+  finding: a never whose own sentence in the rule gives no exception (an exception in another sentence changes nothing),
+  a quote of his kept whole past the gate's 8 words, a sentence of his holding "landed" or "bounced" beside a quote, and
+  an example of his kept as its words. Each is named in the dry run's head and not counted in its verdict; the apply
+  works each excuse out again from the rule's words in the file and refuses a list they do not bear, then passes that
+  finding alone and writes the lesson to `rules-no-reason.tsv` with what it lacks; the daily run files nothing for it and
+  names it apart. A part of his quote (cut, split into pieces, joined across an ellipsis), an exception or a seal ("no
+  case lifts it") given to a never whose own sentence gives none, and an example placed twice are each a fault sent back,
+  and `--from` redoes a rule whose lessons cut his quote. The model may refuse the line code cites an example to, with
+  its why, and the example goes in as its words; a day named that is none cites nothing; a day-log line stamped up to
+  120 seconds after a rule's trailer time is its filing's own. Each example is counted once, by its place. The words
+  that give a quote as his are he, him, his, the owner, "in reply to" and the names `[curate] owner_names` gives.
+
+- A reason on file is his words too: it goes into its lesson whole, in quote marks, given as his (he said, his words,
+  his order), and where the gate then asks a cite in its place the lesson is listed as his quote kept whole, worked out
+  again by the apply from the file's record and `reasons.tsv`. A part of it, one in the lesson's own voice and one quoted
+  but not given as his are each a fault sent back, and `--from` redoes a rule whose lessons hold one. `--from` no longer
+  redoes a rule for the gloss the model gave a cited example: an example is cited by the old search only when its line
+  is not the one the picker gives today. A dry run from an earlier file reads each day log once for its excuses.
+
+- A sentence giving his reason on file whole and as his, with no "landed" or "bounced" in it, counts as his sentence where
+  the gate reads an exchange beside his own marked sentence, so the lesson is listed as his own sentence kept and its
+  reason as his quote kept whole. A body of his sentences past the 600 characters is listed as his words kept whole, past
+  the length, when every sentence of its body is his as he wrote it, never refused for its length: named in the
+  head, worked out again by the apply, written to `rules-no-reason.tsv` as lacking a body under the length, and no
+  finding in the daily run. `yerk curate --lessons --from FILE --redo CITE` asks a rule again by name, never kept, even
+  one dropped again with its findings shown; a name that is no rule's cite is refused before anything runs.
+
+- A final that restates a lesson's cite (`rules/<slug>.md`, with or without its line, as a filing's own result gives it)
+  is a filing report too, as one restating `rules.md:N` is; `rules.md` and `rules-topics.md` still need their line, since
+  those names come up in plain talk.
+  The morning diff and `yerk room add` measure each room's session start with the install's own budgets and the room's
+  name, so an uncapped install's converted store counts the lessons that room is sent, whole. A rules-overflow.md found on
+  a converted store is left as it is, since that store reads no rules-topics.md, and the start logs why.
+- A capped start on a converted store carries a line for each lesson the room may have, its summary and its file, again:
+  with the job lines alone, a lesson of one sentence (a summary, no body) reached a capped room neither at its start nor on
+  its topic. `rules.md` on disk stays one line a job.
+- The dry run's verdict counts a reviewer's drop: a rule whose proposal the knock-down still drops after the last round
+  makes the file not ready, "N rules the reviewer dropped after the last round, each listed", each such rule carrying a
+  listed item with the reviewer's words, though every lesson of it passes the gate.
+- `Lessons` and `Lessons again` say where a rule is cut, since a lesson cut off from the step its reason belongs to was
+  refused for no reason, and one lent its neighbour's reason was dropped: a rule stays one lesson when it fits the checks;
+  it is split only when it cannot fit, into as few lessons as fit, each cut placed so that every lesson holds a step whose
+  reason the rule gives, a step with none staying in the lesson of the step beside it, in the rule's order; a reason stays
+  in its own step's sentence in the rule's words, and a limit the rule states is written as it states it. A "no reason
+  given" finding on a lesson of a split rule is met by moving its steps into the lesson beside it.
+- The accounting reads a sentence whole across an abbreviation in brackets ("(E. Vol. 12)"): a bracket is never cut at
+  a stop inside it, and a bracket's own last stop still ends its sentence.
+- `yerk curate --lessons --from FILE` resumes a dry run from an earlier proposals file, from any folder or store. A rule
+  is kept from it word for word, with no model call, when FILE has it under the same cite with the same words, each of
+  its lessons passes the gate as an apply reads it today, every sentence is accounted for, it lost no trigger, nothing of
+  it was still failing after the last round (the reviewer's drop among them), no slug of it is retired, and
+  `reasons.tsv` holds the same rows for its cite as then (the record now keeps each rule's rows). Every other rule goes
+  through the pass as in a fresh run, its lessons taking no slug a kept one holds; the trigger test and the verdict read
+  all of them. The file's head says how many rules were kept from which file and how many redone, and each kept rule
+  carries a listed item saying so. A model pass is not repeatable, so a second full pass lost what the first got right;
+  one that keeps what passed only gets nearer to ready, and a rule filed after the review costs one rule's conversion.
+- "No reason on file", said by the owner's side: a row `cite<TAB>none` in `reasons.tsv` says it has looked and no file
+  holds a reason for that rule, or for the parts of it that come out with none (a cite may have reason rows and a `none`
+  row together). A lesson of such a rule refused only for a reason is listed as "no reason on file, as the owner's side
+  says", is not counted in the verdict and is not sent back to the model; any other finding on it still counts. The
+  apply passes those lessons for those findings only while the row is there and writes their slugs to
+  `<memory>/rules-no-reason.tsv` (slug, day, the old cite), beside `retired.tsv`; undo removes it. The doctor's daily run
+  counts no missing reason of a listed lesson and files no need for it, and `docs/shape/lessons.md` names them on a line
+  of its own. A filing that replaces a listed lesson gives its reason at the gate and takes it off the list, as a retire
+  does; the write gate for a new rule is unchanged. Without it a rule with no reason on file could never be applied,
+  and no reason is ever invented for a rule of the owner's.
+
+**Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
+one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then
+`yerk curate --lessons-apply <that file>`. The memory index skips `rules-backup-*` folders from its next start.
+
 ### need-2026-11-21-135 (#122)
 
 - A room asked why a check on one of Yerk's pull requests is red now names the failing tests. `github_state` used to

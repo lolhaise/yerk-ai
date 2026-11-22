@@ -122,7 +122,7 @@ def test_the_index_limits_are_read_off_the_code_memory_page_and_the_store_is_sco
                                        "- dates: Never guess a date. (example-room, 2026-01-02 09:00:00+00:00) [m:2]\n")
     r = shape.store(m, LIMITS, docs)
     assert r == {"lessons": [(f"{memory.cite(m, m.root / memory.RULES)}:7", ["no reason"])], "index": [], "moved": [],
-                 "style limits": [], "read": list(shape.EVERY)}
+                 "style limits": [], "read": list(shape.EVERY), "size": [7, (m.root / memory.RULES).stat().st_size, 200, 25_000], "listed": []}
     found = shape.store_findings(r, LIMITS, docs)
     assert found == [f"rule shape: 1 lesson out of prompting-fable-5's shape, first {memory.cite(m, m.root / memory.RULES)}:7: no reason; "
                      f"{shape.sentence('reason', docs)}"]
@@ -190,6 +190,47 @@ def test_the_doctors_daily_run_files_a_need_and_says_one_line_on_a_finding_and_i
     doctor.lessons(private, state, m, 1000.0 + 86400, post=posts.append)            # the next day: the same need, its count up
     assert len(needs.load(state)) == 1 and len(needs.load(state)[0]["asks"]) == 2
     assert doctor.lessons(private, state, m, 1000.0, dry=True) == out and len(needs.load(state)[0]["asks"]) == 2
+
+
+def test_the_daily_run_counts_no_missing_reason_of_a_lesson_listed_with_none_on_file_and_its_report_names_it(tmp_path, monkeypatch):
+    from yerk_ai import doctor, lessons, needs
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    docs_with(state, **every_pin())
+    (m.root / lessons.DIR).mkdir(parents=True)
+    lessons.put(m.root, lessons.Lesson("open-web-pages", "open web pages", *GOOD.split(" Since", 1)[0:1], "Since" + GOOD.split(" Since", 1)[1]))
+    lessons.put(m.root, lessons.Lesson("dates", "dates", "Keep each date as the file gives it."))      # no reason on file
+    (m.root / lessons.NO_REASON).write_text("dates\t2026-11-21\ttree/rules.md:9\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    at = next(a for a, *_ in shape.rows_of(m) if "/dates.md" in a)
+    assert (f"Listed as no reason on file, as the owner's side says (rules-no-reason.tsv), its missing reason no finding: 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    (m.root / lessons.NO_REASON).write_text("")
+    out = doctor.lessons(private, state, m, 1000.0, dry=True)               # off the list: its missing reason a finding again
+    assert len(out) == 1 and out[0].startswith("rule shape: 1 lesson out of") and "no reason" in out[0] and at in out[0]
+
+
+def test_an_uncapped_installs_daily_run_says_the_index_size_as_a_line_of_its_own_and_files_no_need_for_it(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    (private / "yerkd.toml").write_text("[limits]\nuncapped = true\n")
+    m = memory.settings(private, state)
+    docs_with(state, **every_pin())
+    m.root.mkdir(parents=True, exist_ok=True)
+    rules = m.root / memory.RULES
+    rules.write_text("".join(f"- job {i}: {GOOD} (example-room, 2026-01-02 09:00:00+00:00) [m:{i}]\n" for i in range(181)))
+    posts: list[dict] = []
+    out = doctor.lessons(private, state, m, 1000.0, post=posts.append)
+    assert out == [f"{shape.SIZED} rules.md is 181 lines of 200 and {rules.stat().st_size:,} bytes of 25,000, code-memory's limits for a "
+                   "capped start; a measurement, since this install is uncapped and nothing is trimmed to fit"]
+    assert needs.load(state) == [] and [p["machine"]["text"] for p in posts] == out        # said, never a need to trim the owner's rules
+    (private / "yerkd.toml").write_text("")
+    assert not [x for x in doctor.lessons(private, state, m, 1000.0, dry=True) if x.startswith(shape.SIZED)]     # capped: as built
 
 
 def test_a_rule_that_turned_out_wrong_is_retired_its_line_emptied_and_its_words_kept_in_the_day_log(tmp_path):

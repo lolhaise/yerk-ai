@@ -25,6 +25,7 @@ from typing import Any
 
 from .config import REPO, flag
 from .context import MECHANICS, layer_dir
+from . import lessons
 from .memory import EXAMPLE, FRONT, RULES, Settings, cite
 from .mentions import OLD
 
@@ -127,15 +128,20 @@ def install(docs: dict[str, Any]) -> tuple[dict[str, str], frozenset[str]]:
 
 def score(path: Path, rules: bool = False, topics: dict[str, str] | None = None,
           acronyms: frozenset[str] = ACRONYMS) -> dict[str, Any]:
-    """One file: the lines read, each count's offending lines as (line number, text), and the topics it says."""
+    """One file: the lines read, each count's offending lines as (line number, text), and the topics it says. A converted
+    store's index is scored as its lessons, each whole on a line (lessons.Lesson.whole), since a summary's reason is in its body."""
     rx = {k: re.compile(v, re.I) for k, v in (topics or TOPICS).items()}
     out: dict[str, Any] = {"lines": 0, "topics": set(), **{k: [] for k in COUNTS}}
-    for n, raw, ex in lines(path.read_text(encoding="utf-8", errors="replace"), rules):
+    have = lessons.store(path.parent) if rules and lessons.converted(path.parent) else None
+    own = lessons.listed_for(path.parent, "own") if have else {}      # the owner's own sentence kept: no exchange count, named apart
+    text = "\n".join(x.whole for x in have) if have is not None else path.read_text(encoding="utf-8", errors="replace")
+    for n, raw, ex in lines(text, rules):
         if ex:
             continue
         out["lines"] += 1
         for k in offenses(raw, rules, acronyms):
-            out[k].append((n, raw.strip()))
+            if not (k == "untagged" and have and n <= len(have) and have[n - 1].slug in own):
+                out[k].append((n, raw.strip()))
         said = QUOTED.sub(" ", TRAILER.sub("", raw) if rules else raw)          # code in backticks names a topic too
         out["topics"] |= {t for t, r in rx.items() if r.search(said)}
     return out
@@ -175,7 +181,12 @@ def check(private: Path, m: Settings, rooms: dict[str, dict[str, Any]], docs: di
         for t, fs in per_room[name]["twice"].items():
             twice.setdefault(t, fs)
     fresh = []
-    if rules.is_file():
+    if lessons.converted(m.root):                 # each lesson filed in the last day, by its file
+        for x in lessons.store(m.root):
+            at = STAMP.search(x.line)
+            if at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := offenses(x.line, True, acronyms)):
+                fresh.append((f"{cite(m, m.root / x.cite)}:{x.front().count(chr(10)) + 1}", o))
+    elif rules.is_file():
         for n, raw, ex in lines(rules.read_text(encoding="utf-8", errors="replace"), rules=True):
             at = STAMP.search(raw)
             if not ex and at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := offenses(raw, True, acronyms)):
@@ -508,31 +519,73 @@ def lessons_of(path: Path) -> list[tuple[int, str, str]]:
     return out
 
 
+def rows_of(m: Settings) -> list[tuple[str, str, str, dict[str, list[str]]]]:
+    """(cite, job, words, the layout's own misses) of each live rule: a converted store's lessons, each cited at its summary, a
+    summary line past lessons.SUMMARY_MAX, or a front matter past lessons.FRONT_MAX or with no class first, a "summary" miss
+    (the lesson pin's "one-line summary at the top"); else each rule line of RULES and TOPIC_RULES."""
+    from .memory import TOPIC_RULES
+    if not lessons.converted(m.root):
+        return [(f"{cite(m, p)}:{n}", job, text, {}) for p in (m.root / RULES, m.root / TOPIC_RULES) for n, job, text in lessons_of(p)]
+    out = []
+    for x in lessons.store(m.root):
+        head = (m.root / x.cite).read_text(encoding="utf-8", errors="replace")[:lessons.FRONT_MAX]
+        layout = {"summary": [f"a summary line of {len(x.summary)} characters"]} if len(x.summary) > lessons.SUMMARY_MAX else {}
+        if not (FRONT.match(head) and head.startswith("---\nclass: ")):       # the summary not at the top a room's class read finds
+            layout["summary"] = [*layout.get("summary", []), "a front matter past 400 characters or with no class first"]
+        out.append((f"{cite(m, m.root / x.cite)}:{x.front().count(chr(10)) + 1}", x.job, f"{x.summary} {x.body}".strip(), layout))
+    return out
+
+
+SIZED = "rule index size:"        # an uncapped install's daily line for its index's size: a measurement, it files no need
+
+
 def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: Any = None) -> dict[str, Any]:
     """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
     cite with its checks, each style limit counted apart (COUNT_ONLY), and RULES, the index a session start loads, against the
-    code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store."""
-    from .memory import TOPIC_RULES
+    code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store.
+    A lesson lessons.NO_REASON lists has no reason on file, as the owner's side says, or no exception, as its rule gives none:
+    that missing reason or exception (its scope written in) is no finding, and it is named apart; so is a long body of one
+    listed as his words kept whole, past the length."""
     found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
-    for name in (RULES, TOPIC_RULES):
-        p = m.root / name
-        for n, job, text in lessons_of(p):
-            missed = lesson(job, text, m.daily, limits, seen, read)
-            counted += [f"{cite(m, p)}:{n}"] * any(k in COUNT_ONLY for k in missed)
-            if bad := [k for k in missed if k not in COUNT_ONLY]:
-                found.append((f"{cite(m, p)}:{n}", bad))
+    listed, named, unlifted, open_ = lessons.no_reason(m.root), list[str](), list[str](), lessons.no_exception(m.root)
+    kept = {k: lessons.listed_for(m.root, k) for k in ("whole", "own", "uncited", "long")}    # the owner's words carried as they wrote them
+    apart: dict[str, list[str]] = {k: [] for k in kept}
+    for at, job, text, layout in rows_of(m):
+        missed = lesson(job, text, m.daily, limits, seen, read) | layout
+        if (c := lessons.CITE.search(at)) and c[1] in listed:
+            missed.pop("no reason", None)
+            named.append(at)
+        if c and c[1] in open_:
+            if all("no scope" not in x for x in missed.get("absolute", [])):
+                missed.pop("absolute", None)
+            unlifted.append(at)
+        if c and (got := [k for k in kept if c[1] in kept[k]]):     # an on-record finding naming the owner's quote or example alone is none
+            heads = tuple(h for k, h in (("whole", "a quote the day log holds"), ("uncited", "an example the day log holds"),
+                                         ("uncited", "a gloss of")) if k in got)    # the rule's own cite, its gloss whole
+            if heads and all(x.startswith(heads) for x in missed.get("on record", [])):
+                missed.pop("on record", None)
+            if "long" in got:                                       # the owner's words past the length: no finding, named apart
+                missed.pop("long", None)
+            for k in got:
+                apart[k].append(at)
+        counted += [at] * any(k in COUNT_ONLY for k in missed)
+        if bad := [k for k in missed if k not in COUNT_ONLY]:
+            found.append((at, bad))
     p, (most, size) = m.root / RULES, index_limits(docs)
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
-    return {"lessons": found, "index": over, "moved": pinned(docs, read), "style limits": counted, "read": list(read or EVERY)}
+    return {"lessons": found, "index": over, "size": [len(rows), have, most, size], "moved": pinned(docs, read), "style limits": counted,
+            "read": list(read or EVERY), "listed": named, **({"unlifted": unlifted} if unlifted else {}), **{k: v for k, v in apart.items() if v}}
 
 
-def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None) -> list[str]:
+def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None, whole: bool = False) -> list[str]:
     """The doctor's daily lines for the store: a pin its page moved off, the index past code-memory's limits, and the lessons that
     miss the shape past lesson_findings (zero), a line per page whose checks they miss, the first named with its checks and the
-    sentence of that page its first check enforces. A style limit is counted in the report, never a line here."""
+    sentence of that page its first check enforces. A style limit is counted in the report, never a line here. `whole`, an
+    uncapped install: the index's size is a measurement, never a finding, said last as a line of its own (SIZED) from
+    lessons.NEAR of a limit, since nothing of the owner's is trimmed to fit."""
     out = [f"docs moved: {slug} no longer says the sentence the {k} check enforces: \"{said}\"" for k, slug, said in r["moved"]]
-    if r["index"]:
+    if r["index"] and not whole:
         out.append(f"rule index {RULES}: {' and '.join(r['index'])}, the code-memory limit a session start loads, {sentence('index', docs)}")
     if len(r["lessons"]) > threshold(limits, "lesson_findings", 0):
         on: dict[str, list[tuple[str, list[str]]]] = {}
@@ -543,6 +596,10 @@ def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None 
             at, bad = rows[0]
             out.append(f"rule shape: {len(rows)} lesson{'s' * (len(rows) != 1)} out of {slug}'s shape, first {at}: "
                        f"{', '.join(bad)}; {said(bad[0], docs)}")
+    lines, have, most, size = r.get("size") or [0, 0, 1, 1]
+    if whole and (lines >= lessons.NEAR * most or have >= lessons.NEAR * size):
+        out.append(f"{SIZED} {RULES} is {lines} lines of {most} and {have:,} bytes of {size:,}, code-memory's limits for a capped "
+                   "start; a measurement, since this install is uncapped and nothing is trimmed to fit")
     return out
 
 
@@ -560,6 +617,17 @@ def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
            "The doctor's daily check of every live rule against the Claude docs' lesson shape (shape.LESSON), each check's "
            "sentence pinned to its fetched page (shape.PINS). `yerk curate --rules` proposes the fixes.", ""]
     out += [f"- {x}" for x in found] or ["- in the shape: every pinned sentence on its page, every lesson in the shape, the index under its limits"]
+    if n := len(r.get("listed") or ()):
+        out += ["", f"Listed as no reason on file, as the owner's side says ({lessons.NO_REASON}), its missing reason no finding: {n} "
+                f"lesson{'s' * (n != 1)}, {', '.join(r['listed'])}."]
+    if n := len(r.get("unlifted") or ()):
+        out += ["", f"Listed as no exception, as its rule gives none ({lessons.NO_REASON}), its missing exception no finding: {n} "
+                f"lesson{'s' * (n != 1)}, {', '.join(r['unlifted'])}."]
+    for k, what in (("whole", "his quote kept whole, as he wrote it, the cite the gate asks in its place"), ("own", "his own sentence kept, word "
+                    "for word, the example tags the gate asks round it"), ("uncited", "an example kept as its words, the cite the gate asks of it"),
+                    ("long", "his words kept whole, past the length, the shorter body the gate asks")):
+        if n := len(r.get(k) or ()):
+            out += ["", f"Listed as {what} no finding ({lessons.NO_REASON}): {n} lesson{'s' * (n != 1)}, {', '.join(r[k])}."]
     out += ["", f"Pages read, those of every model a room runs: {', '.join(r.get('read') or EVERY)}."]
     if r["lessons"]:
         out += ["", f"## Lessons out of the shape: {len(r['lessons'])}", "", *[f"- {c}: {', '.join(k)}" for c, k in r["lessons"]]]

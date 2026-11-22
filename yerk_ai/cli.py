@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import __version__, context, memory, taste
+from . import __version__, context, lessons, memory, taste
 from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir, uncapped
 
 
@@ -35,9 +35,9 @@ def cmd_map(a: argparse.Namespace) -> int:
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
     sent, src = context.sent(priv, state_dir(a.state), a.room, b)        # Claude Code's parts as last sent, else at their line
     print(context.render(a.room, label, start, msg, b, hit, sent, src))
-    tier = memory.live_rules(root / memory.TOPIC_RULES)
+    tier = [x.line for x in lessons.store(root) if x.body] if lessons.converted(root) else memory.live_rules(root / memory.TOPIC_RULES)
     mine, (seen, jobs) = [x for x in tier if (sc := memory.scope(x)) is None or a.room in sc], context.rode(state_dir(a.state), a.room)
-    print(f"\nTopic rules ({memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
+    print(f"\nTopic rules ({lessons.DIR + '/, each lesson body' if lessons.converted(root) else memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
           f"this room's; " + ("each rides whole in the session start's `rules` part, a message only one filed since the session started"
                               if whole else "each rides in a message's `rules` part when the message names its topic, never at session start"))
     print(f"  on its last {seen} messages: " + (", ".join(f"{j} ({k})" for j, k in sorted(jobs.items(), key=lambda kv: -kv[1])) or "none rode"))
@@ -546,7 +546,10 @@ def cmd_curate(a: argparse.Namespace) -> int:
     """The night's card curation (curate.py): the sweep, then yesterday's facts, or each day from --since, proposed,
     knocked down, checked and landed past the bench, then the rule files' proposals; --dry-run changes nothing. --rules:
     the proposals alone; --apply DAY N[,N...]: the owner's word, those proposals written (or `undo`, the last apply back)."""
-    from . import curate
+    from . import conversion, curate
+    if a.lessons or a.lessons_apply or a.lessons_undo or a.lessons_from or a.redo:
+        return conversion.main(private_dir(a.private), state_dir(a.state), a.lessons_apply or "", a.lessons_undo or "", a.lessons_from or "",
+                               tuple(a.redo or ()))
     if a.apply:
         return curate.apply_main(private_dir(a.private), state_dir(a.state), *a.apply)
     if a.rules:
@@ -1044,6 +1047,14 @@ def parser() -> argparse.ArgumentParser:
                     "and the (test reads it back, as plain) text with <one>/more-line/<for>.the, check while")
     cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
                     "back as plain text with one more, line `for`: the check while a second")
+    cu.add_argument("--lessons", action="store_true", help="the conversion's dry run: the rule store as lesson files and an index, "
+                    "proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written")
+    cu.add_argument("--lessons-apply", metavar="FILE", help="that exact proposals file applied, the originals copied first")
+    cu.add_argument("--lessons-undo", metavar="DAY", help="the originals of DAY's conversion put back")
+    cu.add_argument("--from", dest="lessons_from", metavar="FILE", help="with --lessons: each rule that passed in that earlier "
+                    "proposals file kept word for word, with no model call; every other rule proposed again")
+    cu.add_argument("--redo", action="append", metavar="CITE", help="with --from: the rule of that cite (memory/rules.md:N) asked "
+                    "again by name, never kept, even one dropped again with its findings shown")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory, room); all when left out")

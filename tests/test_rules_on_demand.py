@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from yerk_ai import context, curate, mcp_server, memory, words
+from yerk_ai import context, curate, lessons, mcp_server, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 
 from fake_channel import ConsoleChannel
@@ -129,6 +129,19 @@ def test_the_overflow_moves_to_the_topic_rules_once_with_its_backup_and_one_log_
     assert y.move_held() == "" and (y.memory.root / memory.TOPIC_RULES).read_text().splitlines() == tier     # once
     held.write_bytes(before)                     # a start cut off between the write and the rename: nothing moves twice
     assert y.move_held() == line and (y.memory.root / memory.TOPIC_RULES).read_text().splitlines() == tier
+
+
+def test_a_start_on_a_converted_store_moves_no_held_rule_logs_why_and_posts_no_machine_room_line(tmp_path, caplog):
+    y = daemon(tmp_path)
+    held = y.memory.root / memory.OVERFLOW
+    (y.memory.root / lessons.DIR).mkdir(parents=True, exist_ok=True)            # a converted store
+    held.write_text(f"# Rules held: past the rules file's cap, in no room\n\n{HALL}\n")
+    with caplog.at_level(logging.INFO, logger="yerk.daemon"):
+        assert y.move_held() == ""
+    said = [r.getMessage() for r in caplog.records if r.name == "yerk.daemon"]
+    assert said == [f"rules: nothing moved: the store is converted ({lessons.DIR}/ is there) and reads no {memory.TOPIC_RULES}, "
+                    f"so {memory.OVERFLOW} stays as it is"]
+    assert held.read_text().endswith(f"{HALL}\n") and not (y.memory.root / memory.TOPIC_RULES).exists()
 
 
 def test_a_rooms_mark_typed_on_a_held_rule_is_kept_through_the_move(tmp_path):

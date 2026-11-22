@@ -45,6 +45,7 @@ CHUNK_MAX = 900                        # characters per chunk; a heading always 
 VERSION = "2"                          # the chunker and tokenizer: a change here chunks every file again on the next pass (sync)
 TOKENIZER = "porter unicode61 remove_diacritics 2"
 SKIP_DIRS = {"node_modules", "__pycache__", "overwrite-backups"}     # and every dot-folder
+SKIP_GLOBS = ("rules-backup-*",)     # the rule store's originals, kept by a conversion (curate.lessons): its lessons hold them
 SKIP_NAMES = ("*.tmp", "*.bak", "*.swp", "*~", ".#*", "*.part", "*.pre-*")   # temp and backup copies (L52)
 GRACE = 30.0                           # a change younger than this is pending, not stale
 FTS_TABLES = ("chunks_fts_data", "chunks_fts_idx", "chunks_fts_docsize", "chunks_fts_config")   # what one MATCH reads
@@ -167,7 +168,7 @@ class Scope:
                 return not self.skipped(path)
             if root.is_dir() and path.is_relative_to(root):
                 parts = path.relative_to(root).parts[:-1]
-                return not any(p.startswith(".") or p in SKIP_DIRS for p in parts) and not self.skipped(path) and (
+                return not any(skip_dir(p) for p in parts) and not self.skipped(path) and (
                     kinds(root) != UPLOADS or path.name.endswith(UPLOADS))
         return False
 
@@ -187,7 +188,7 @@ class Scope:
                 if deadline is not None and time.monotonic() > deadline:
                     raise Timeout(f"walking {root} ran past the deadline")
                 folders.append(dirpath)
-                dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
+                dirnames[:] = sorted(d for d in dirnames if not skip_dir(d))
                 for n in filenames:
                     p = Path(dirpath, n)
                     if not n.endswith(kinds(root)) or self.skipped(p) or p.is_symlink():
@@ -215,12 +216,24 @@ def lane(line: str) -> tuple[str, str] | None:
     return None if not line.strip() or DAY_HEAD.match(line) or line.startswith("  - attachment: ") else ("", "")
 
 
-def chunks_of(text: str) -> list[tuple[int, int, str]]:
+def skip_dir(name: str) -> bool:
+    return name.startswith(".") or name in SKIP_DIRS or any(fnmatch(name, g) for g in SKIP_GLOBS)
+
+
+LESSON = re.compile(r"\A---\nclass: [\w-]+\n(?:[^\n]*\n)*?job: [^\n]*\n(?:[^\n]*\n)*?---\n")    # a lesson file's front matter
+
+
+def chunks_of(text: str, path: str = "") -> list[tuple[int, int, str]]:
     """(first line, last line, text) per chunk. A heading starts a chunk, a blank line past half the
     size ends one, lines gather up to CHUNK_MAX and a longer line is cut in pieces. A chunk depends
     only on the lines up to the one after it, so appending to a file changes its last chunk only.
     A day log is chunked by room id and class too (`lane`): a line of another lane than the chunk's starts a new one, and an
-    attachment line stays with its line (after a line cut in pieces it is a chunk of its own), so a room that may read a chunk reads all of it."""
+    attachment line stays with its line (after a line cut in pieces it is a chunk of its own), so a room that may read a chunk reads all of it.
+    A lesson file (lessons.py, under a rules/ folder) is one chunk from its summary, its front matter out, since the job and scope
+    words every lesson carries there would match a search for a room's name."""
+    if Path(path).parent.name == "rules" and (m := LESSON.match(text)):
+        lo, body = text.count("\n", 0, m.end()) + 1, text[m.end():].strip()
+        return [(lo, lo + body.count("\n"), body)] if body else []
     out: list[tuple[int, int, str]] = []
     buf: list[str] = []
     start = size = n = 0
@@ -319,7 +332,7 @@ class Index:
         old: dict[str, list[tuple[int, int, int]]] = {}
         for cid, lo, hi, sha in self.conn.execute("SELECT id, lo, hi, sha FROM chunks WHERE path = ?", (path,)):
             old.setdefault(sha, []).append((cid, lo, hi))
-        new = chunks_of(text)
+        new = chunks_of(text, path)
         ins, moves = [], []
         for lo, hi, body in new:
             sha = hashlib.sha1(body.encode()).hexdigest()
