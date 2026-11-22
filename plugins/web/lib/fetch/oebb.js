@@ -110,17 +110,21 @@ const at = (date, t) => {
   const d = new Date(Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8) + days));
   return { hm, day: d.toISOString().slice(0, 10) };
 };
+// A duration in the same shape: "DDHHMMSS" is days, hours and minutes, so "01024500" is 26 h 45 min, never 102 h.
 const hms = (t) => {
   const v = String(t || "").padStart(6, "0");
-  return (Number(v.slice(0, -4)) * 60 + Number(v.slice(-4, -2))) * 60000;
+  const days = v.length > 6 ? Number(v.slice(0, -6)) : 0;
+  return ((days * 24 + Number(v.slice(-6, -4))) * 60 + Number(v.slice(-4, -2))) * 60000;
 };
 
 // One request to Scotty's service: its one answer, or Refused naming the step.
 async function scotty(step, req, ctx) {
   const { body } = await ask(`Scotty's ${step}`, MGATE, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ lang: ctx.lang === "en" ? "eng" : ctx.lang === "it" ? "ita" : "deu", svcReqL: [req], ...CLIENT }) }, ctx);
   const res = body.svcResL?.[0];
-  if (body.err && body.err !== "OK") throw new Refused(`Scotty's ${step} answered ${body.err}${body.errTxt ? `: ${body.errTxt}` : ""}`);
-  if (!res || res.err !== "OK") throw new Refused(`Scotty's ${step} answered ${res?.err || "nothing"}${res?.errTxt ? `: ${res.errTxt}` : ""}`);
+  // Its code alone: a refusal reaches the room outside the untrusted wrapper, so Scotty's own errTxt never rides in it.
+  const code = (e) => String(e || "nothing").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40) || "an unnamed error";
+  if (body.err && body.err !== "OK") throw new Refused(`Scotty's ${step} answered ${code(body.err)}`);
+  if (!res || res.err !== "OK") throw new Refused(`Scotty's ${step} answered ${code(res?.err)}`);
   return res.res || {};
 }
 
@@ -166,7 +170,7 @@ export async function readJourney(trip, { fetchImpl = fetch, signal, capMs = 900
     const to = await stop(trip.to, ctx);
     const r = await scotty("timetable", { meth: "TripSearch", req: { depLocL: [{ type: "S", lid: from.lid }], arrLocL: [{ type: "S", lid: to.lid }], outDate: trip.date.replaceAll("-", ""), outTime: `${trip.time.replace(":", "")}00`, outFrwd: true, numF: COUNT, getPasslist: false, getPolyline: false, trfReq: { jnyCl: 2, tvlrProf: [{ type: "E" }], cType: "PK" } } }, ctx);
     const locs = r.common?.locL || [], prods = r.common?.prodL || [];
-    const trains = (r.outConL || []).filter((c) => c && c.dep && c.arr);
+    const trains = (r.outConL || []).filter((c) => c && c.dep && c.arr).slice(0, COUNT); // numF is a floor to Scotty, not a cap
     let fares = new Map(), fareWhy = "";
     if (trains.length) {
       try {

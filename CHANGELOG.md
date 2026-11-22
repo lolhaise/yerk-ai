@@ -16,6 +16,10 @@ version changes.
   (one adult, no discount card; a fare covering only part of the trip said so). The shop's page is a script app behind a
   captcha on every rung, so no rung climbs to it; a fare step the shop's bot wall refuses is named with its status and
   the trains still come, and a link short of a station or its date gets the link's shape (`oebb-trains`).
+- The cold read's fixes (PR 125): docs/GUIDE.md's Web reach names the ÖBB reader, and tests/test_web.py pins
+  `yerk explain oebb-trains` and a room's ask for train tickets and times reaching it. A read lists five trains at most
+  (Scotty gave seven live), a trip of a day or more is timed in days' hours (26 h 45 min, never 102 h), and a Scotty
+  refusal names its code alone, since it reaches the room outside the untrusted wrapper.
 - **Upgrading**: budgets.toml's `deferred_tool_names` is 3,781 (web_fetch's description one sentence longer, 200 more)
   and `[session_start] total` 134,362; an install that keeps its own budgets.toml takes both.
 
