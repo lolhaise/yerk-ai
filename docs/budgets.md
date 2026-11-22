@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 134162`
+- `total = 134362`
 
 ## [session_start.claude_code]
 
@@ -138,10 +138,12 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-22, hands-line-2026-11-22: the hands line is what the rooms send, 10,970, read from the newest request shapes of the two rooms that started a process after need 133 landed (browser 5,587, desktop 1,381, discord 1,168, mac 1,309, mail 1,525, each entry with Claude Code's own key on it). The plug-in's entries did not change. Need 127 and need 133 had raised this line by the plug-in's own count of its entries (146 and 337 bytes of its compact JSON), while this file counts each entry as a room's request holds it: over the two the browser's entry rose by 503 as sent, 20 more than the 483, and the mac's stood 3 under what the fixture held. So those rooms sent 17 past the line and the morning diff said so from 2026-11-22. 17 more, no part could pay, the total rose by the 17 (to 134,162 on main's 134,145). A change to the plug-in's entries sets this line from a room's measure of them, never from the plug-in's count.
 
+2026-11-22, need-2026-11-22-136: web_fetch reads an ÖBB ticket shop link (the trains from Scotty, ÖBB's own timetable service, their legs and each one's fare from the shop's API when it answers), since a room asked for a dated journey's train times and tickets met a captcha on every rung of the shop's page and answered off a reseller's times and printed timetables; filed 2026-11-22. Its description one sentence longer, the link's shape in it, 615 to 815 characters as this tree builds it, 200 more as sent (a plug-in's description goes out as written), so the other entries (web-ladder's four and the placeholder) 3,781 on the 3,581 line; no other line lowered for it, the total rose by the 200 (to 134,362 on main's 134,162). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 29400`
-- `deferred_tool_names = 3581`
+- `deferred_tool_names = 3781`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`

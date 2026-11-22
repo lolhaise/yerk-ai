@@ -8,6 +8,17 @@ version changes.
 
 ## 2026-11-22
 
+### need-2026-11-22-136 (#125)
+
+- web_fetch reads an ÖBB ticket shop link (`shop.oebbtickets.at/en/ticket?stationOrigName=FROM&stationDestName=TO&outwardDateTime=YYYY-MM-DDTHH:MM`)
+  as the next five trains from that time, each with its changes, legs, platforms and its own shop link, read from
+  Scotty, ÖBB's own timetable service, and each train's lowest fare asked of the shop's API as the shop's page asks it
+  (one adult, no discount card; a fare covering only part of the trip said so). The shop's page is a script app behind a
+  captcha on every rung, so no rung climbs to it; a fare step the shop's bot wall refuses is named with its status and
+  the trains still come, and a link short of a station or its date gets the link's shape (`oebb-trains`).
+- **Upgrading**: budgets.toml's `deferred_tool_names` is 3,781 (web_fetch's description one sentence longer, 200 more)
+  and `[session_start] total` 134,362; an install that keeps its own budgets.toml takes both.
+
 ### hands-line-2026-11-22 (#124)
 
 - budgets.toml's `mcp__hands__` line is what the rooms send: 10,970, read from the newest request shapes of the two rooms
