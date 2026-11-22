@@ -227,7 +227,7 @@ def cmd_calls(a: argparse.Namespace) -> int:
     got: dict[str, Any] = memory.read(s, a.source, lines=1) if a.source.rpartition(":")[2].isdigit() else {"ok": False, "error": "give the line as path:line"}
     if not (c := led.call_row(a.id) or {}):
         got = {"ok": False, "error": f"no call {a.id}"}
-    elif got["ok"] and got["path"] in kept:
+    elif got["ok"] and (got["path"] in kept or got["path"].startswith(f"{lessons.folder(s.root).resolve()}/")):   # a lesson is a rule file too
         got = {"ok": False, "error": f"{got['path'].rsplit('/', 1)[-1]} is a persona or a rule file: fix the line the call stood on"}
     elif got["ok"] and (not got["text"].strip() or got["text"].lstrip().startswith("#")):
         got = {"ok": False, "error": f"{a.source} is a heading or a blank"}

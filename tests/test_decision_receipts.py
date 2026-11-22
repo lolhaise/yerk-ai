@@ -8,7 +8,7 @@ import test_gates
 from test_gates import call, human_turn
 from test_observe import NOW, layer
 
-from yerk_ai import cli, evidence, hooks, memory, mentions, morning, status, words
+from yerk_ai import cli, evidence, hooks, lessons, memory, mentions, morning, status, words
 from yerk_ai.evidence import Evidence
 from yerk_ai.ledger import Ledger
 
@@ -146,3 +146,17 @@ def test_calls_fix_files_the_correction_beside_the_wrong_line_and_never_in_a_per
     assert f"{mentions.OLD} by {row['correction']}]" in wrong and {p: p.read_text() for p in before} == before
     fixed = "\n".join(x for _, x in morning.calls(led, float(row["fixed"]) - 1, float(row["fixed"]) + 1)).splitlines()
     assert fixed[-2:] == [f"{words.DONE} call 1: memory/plans.md:12 corrected", f"-# by {row['correction']}"]     # the next morning
+
+
+def test_calls_fix_never_files_a_correction_on_a_lesson_of_a_converted_store(tmp_path, capsys):
+    priv, state, accounts, cool, led, y0 = receipts_layer(tmp_path)
+    root = priv / "memory"
+    lessons.put(root, lessons.Lesson("quote-the-plan", "quote the plan", "Quote the plan's monthly price.", "Since a yearly price reads lower.",
+                                     filed="example-room, 2026-01-05 10:00:00+00:00 [m:m-2]"))
+    x, days = lessons.parse(f := root / "rules" / "quote-the-plan.md"), sorted((root / "daily").iterdir())
+    was, logs = f.read_bytes(), {p: p.read_bytes() for p in days}
+    src = f"memory/rules/quote-the-plan.md:{x.front().count(chr(10)) + 1}"
+    assert cli.main(["calls", "fix", "1", src, "Plan B is 45 a month", "--private", str(priv), "--state", str(state)]) == 2
+    assert "quote-the-plan.md is a persona or a rule file" in capsys.readouterr().err
+    assert led.call_row(1)["fixed"] is None and f.read_bytes() == was
+    assert {p: p.read_bytes() for p in sorted((root / "daily").iterdir())} == logs

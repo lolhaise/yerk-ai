@@ -23,6 +23,9 @@ version changes.
   `rules-topics.md`, `rules-overflow.md` or a lesson's file, and a list holding one is refused whole, nothing applied.
   This covers a record written before this change, such as a merge of two index lines. A rulebook proposal still applies
   and its undo still puts the file back byte for byte. An undo of an apply from before the conversion puts nothing back.
+- `yerk calls fix` refuses a line of a lesson's file up front, as it refuses a line of the rules file: nothing is filed and
+  the call stays unfixed. Before, on a converted store the correction's note was filed in the day log while the lesson's
+  line was left as it was, so a rule read as corrected when it was not.
 
 **Upgrading:** nothing to do. An install with no `<memory>/rules/` folder is proposed on and applied exactly as before.
 
