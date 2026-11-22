@@ -227,7 +227,7 @@ def cmd_calls(a: argparse.Namespace) -> int:
     got: dict[str, Any] = memory.read(s, a.source, lines=1) if a.source.rpartition(":")[2].isdigit() else {"ok": False, "error": "give the line as path:line"}
     if not (c := led.call_row(a.id) or {}):
         got = {"ok": False, "error": f"no call {a.id}"}
-    elif got["ok"] and got["path"] in kept:
+    elif got["ok"] and (got["path"] in kept or got["path"].startswith(f"{lessons.folder(s.root).resolve()}/")):   # a lesson is a rule file too
         got = {"ok": False, "error": f"{got['path'].rsplit('/', 1)[-1]} is a persona or a rule file: fix the line the call stood on"}
     elif got["ok"] and (not got["text"].strip() or got["text"].lstrip().startswith("#")):
         got = {"ok": False, "error": f"{a.source} is a heading or a blank"}
@@ -1044,9 +1044,10 @@ def parser() -> argparse.ArgumentParser:
     cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
     cu.add_argument("--dry-run", action="store_true", help="say what it would change and propose, change nothing")
     cu.add_argument("--rules", action="store_true", help="the rule files alone: merges, cuts, condensations, moves to the topic rules, promotions "
-                    "and the (test reads it back, as plain) text with <one>/more-line/<for>.the, check while")
+                    "and gates (a code check named, never built) proposed into <memory>/rules-proposals/<day>.md, never applied; on a "
+                    "converted store the rulebooks as before and each lesson for a gate alone, never the index")
     cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
-                    "back as plain text with one more, line `for`: the check while a second")
+                    "up and fitted to each file's line, or `undo`: the last apply put back; never a converted store's index or a lesson")
     cu.add_argument("--lessons", action="store_true", help="the conversion's dry run: the rule store as lesson files and an index, "
                     "proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written")
     cu.add_argument("--lessons-apply", metavar="FILE", help="that exact proposals file applied, the originals copied first")

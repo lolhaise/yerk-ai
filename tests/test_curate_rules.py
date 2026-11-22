@@ -6,10 +6,11 @@ import json
 import shutil
 import stat
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
-from yerk_ai import curate, memory, morning, words
+from yerk_ai import curate, lessons, memory, morning, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
@@ -318,3 +319,207 @@ def test_the_morning_lists_the_nights_proposals_by_kind_and_number_for_apply(tre
                             Ledger(state / "ledger.sqlite"), {"started": NOW - 86400, "units": []}, NOW + 3600)
     assert all(x in diff for x in lines) and curate.rules_lines(state, NOW + 2 * 86400) == []
     assert curate.spans([1, 2, 3, 5, 8, 9]) == "1-3, 5, 8, 9"
+
+
+def lesson(slug, job, summary, body, at="2026-10-21 09:00:00+00:00", mid="2001"):
+    return lessons.Lesson(slug, job, summary, body, filed=f"example-room, {at} [m:{mid}]")
+
+
+STORE = [lesson("greet-a-guest", "greet a guest", "Say hello by name.", "Since a cold open reads rude.", mid="2001"),
+         lesson("greet-a-guest-2", "greet a guest", "Wave once at the door.", "Since a wave reads warm.", mid="2002"),
+         lesson("greet-a-guest-at-the-door", "greet a guest at the door", "Hold the door open.", "Since a shut door reads closed.", mid="2003"),
+         lesson("tell-the-menu", "tell the menu", "Name the soup first, then the bread.", f"Since the soup sells out first {EX}, then stop.", mid="2004"),
+         lesson("quote-a-day", "quote a day", "Quote a day only from its line.", "Since memory/daily/2026-10-19.md:99 holds the menu.", mid="2005"),
+         lesson("send-a-photo", "send a photo", "Send a photo inline, never as a file.", "Since a file goes unopened; keep its caption free of "
+                "em dashes.", mid="2006"),
+         lesson("draw-a-chart", "draw a chart", "Draw the chart as an image.", "Since a chart drawn in text breaks on a phone. <example>Landed: "
+                "\"never a table, the chart as an image\"</example>", mid="2007")]
+GONE = [lesson("sign-a-card", "sign a card", "End a card with a sign-off.", "Since a card with none reads cold.", mid="2008"),
+        lesson("keep-it-short", "keep it short", "Keep a reply under 80 words.", "Since a long reply goes unread.", mid="2009")]
+
+
+@pytest.fixture
+def converted(tree):
+    """The curate fixture's store converted the way a filing writes a lesson (lessons.put): rules/ made, a lesson a file,
+    rules.md the index, the overflow file still there; two jobs that open with the same words, one job of two lessons, one
+    lesson past 600 characters, one with a lost day-log cite, one a gate holds, one whose only gate is in its example; then
+    two retired, one deleted with its tombstone and one whose retire was cut off after its tombstone, its file still there."""
+    priv, state, s = tree
+    for x in STORE + GONE:
+        lessons.put(s.root, x)
+    lessons.drop(s.root, "sign-a-card", DAY)
+    with (s.root / lessons.RETIRED).open("a") as f:
+        f.write(f"keep-it-short\t{DAY}\t\n")
+    with (s.daily / f"{DAY}.md").open("a") as f:                                          # a `yerk` line quoting a lesson's job
+        f.write(memory.format_line(datetime(2026, 10, 21, 8, 30, tzinfo=timezone.utc), "example-room", "discord:100", "yerk", "",
+                                   words.RULE_STRIPPED.format(job="send a photo", cap=12500), "shared", "m21-2") + "\n")
+    assert lessons.converted(s.root) and len(STORE[3].line) > 600 and (s.root / "rules" / "keep-it-short.md").is_file()
+    return priv, state, s
+
+
+def files_of(*dirs):
+    return {p: p.read_bytes() for d in dirs for p in sorted(d.rglob("*")) if p.is_file()}
+
+
+def test_a_converted_stores_index_is_no_rule_file_so_two_jobs_of_the_same_words_are_no_merge(converted):
+    priv, state, s = converted
+    index = (s.root / "rules.md").read_text()
+    assert "- greet a guest (rules/greet-a-guest.md, rules/greet-a-guest-2.md)\n" in index and "- greet a guest at the door (" in index
+    props, sizes, _ = curate.propose(priv, state, s, NOW)
+    book, store = str((priv / "rulebook.md").resolve()), {str((s.root / n).resolve()) for n in ("rules.md", "rules-topics.md", "rules-overflow.md")}
+    assert props and not [e for q in props for e in q["edits"] if e[0] in store]
+    assert {e[0] for q in props if q["kind"] != "gate" for e in q["edits"]} == {book}      # merge, cut, condense: the rulebook's
+    assert {q["kind"] for q in props} == {"cut", "gate"} and not (s.root / "rules-topics.md").exists()
+    lesson_files = {e[0] for q in props for e in q["edits"] if e[0] != book}
+    assert lesson_files and all(Path(f).parent == (s.root / "rules").resolve() for f in lesson_files)
+    assert [x[0] for x in sizes] == ["rulebook.md"]
+
+
+def test_a_lessons_gate_is_read_off_its_rule_line_cited_at_its_summary_and_the_page_names_its_file_by_its_cite(converted):
+    priv, state, s = converted
+    x = lessons.parse(f := s.root / "rules" / "send-a-photo.md")
+    at = x.front().count("\n") + 1
+    assert f.read_text().splitlines()[at - 1] == x.summary
+    props, sizes, name = curate.propose(priv, state, s, NOW)
+    gate = [q for q in props if q["kind"] == "gate" and q["label"] == "send a photo"]
+    why = "a code check could hold it on every reply: a reply holding an em dash (U+2014); curate names the check and never builds it"
+    assert len(gate) == 1 and gate[0]["edits"] == [[str(f.resolve()), at, x.line, x.line]] and gate[0]["saved"] == 0 and gate[0]["why"] == why
+    assert gate[0]["evidence"] == curate.evidence(x.line, *curate.week(priv, state, s, NOW))[1] and gate[0]["rows"] == 2   # shadow, `yerk`
+    assert [q["label"] for q in props if q["kind"] == "gate"] == ["send a photo"]          # once; no other lesson, no index line
+    r = curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})
+    q, page = next(q for q in r["proposals"] if q["label"] == "send a photo"), Path(r["file"]).read_text()
+    cite = f"memory/rules/send-a-photo.md:{at}"
+    assert (f"\n## {q['n']}. gate: send a photo (+0 chars)\n\nBEFORE\n{cite}: {x.line}\n\nAFTER\n{cite}: (unchanged: a gate would hold it)\n\n"
+            f"WHY: {why}\n\nEVIDENCE: {q['evidence']}\n") in page
+    assert page.count("send-a-photo.md") == page.count("memory/rules/send-a-photo.md") == 2
+    head = [y for y in page.split("\n## ")[0].splitlines() if y.startswith("- ")]
+    assert len(head) == 1 and head[0].startswith("- rulebook.md: ") and [y[0] for y in r["sizes"]] == ["rulebook.md"]
+
+
+def test_a_gate_said_only_in_a_lessons_example_and_a_retired_lessons_gate_are_none(converted):
+    priv, state, s = converted
+    assert curate.gated(STORE[6].line) and curate.gated(GONE[0].line) and curate.gated(GONE[1].line)    # each would, if read
+    labels = {q["label"] for q in curate.propose(priv, state, s, NOW)[0]}
+    assert not labels & {"draw a chart", "sign a card", "keep it short"}
+
+
+def test_the_nightly_path_on_a_converted_store_writes_says_once_reuses_and_lists_its_gates(converted):
+    priv, state, s = converted
+    sent: list = []
+
+    def post(p):
+        sent.append(p)
+        return {"ok": True}
+    r = curate.rules(priv, state, s, False, NOW, post)                                    # the 04:30 job
+    rec = json.loads((state / curate.PROPOSED).read_text())
+    assert Path(r["file"]).is_file() and rec["proposals"] == r["proposals"] and rec["said"] == DAY and len(sent) == 1
+    curate.run(priv, state, now=NOW + 1800, model=lambda p, t: "")                       # curate's own phase at 05:00
+    assert json.loads((state / curate.PROPOSED).read_text())["proposals"] == r["proposals"] and len(sent) == 1
+    lines = [x for _, x in curate.rules_lines(state, NOW + 3600)]
+    gates = [q["n"] for q in r["proposals"] if q["kind"] == "gate"]
+    assert gates and f"gate: {curate.spans(gates)}" in lines and lines[-1] == f"apply: yerk curate --apply {DAY} N"
+
+
+def old_record(s, state):
+    """The night's record with three proposals as the code before this change wrote them on a converted store: a merge of two
+    index lines, a topic move of one into the topic file, and a cut of a lesson's line."""
+    index = str((r := s.root / "rules.md").resolve())
+    rows = r.read_text().split("\n")
+    i, j = (rows.index(x) + 1 for x in rows if x.startswith("- greet a guest "))
+    a, b, x = rows[i - 1], rows[j - 1], lessons.parse(s.root / "rules" / "tell-the-menu.md")
+    rec = json.loads((state / curate.PROPOSED).read_text())
+    n = len(rec["proposals"])
+    rec["proposals"] += [
+        {"n": n + 1, "kind": "merge", "label": f"{curate.short(a)} + {curate.short(b)}", "edits": [[index, i, a, curate.merged(a, b)], [index, j, b, ""]],
+         "why": "near-duplicate words", "rows": 0, "evidence": "0 in 7 days (shadow 0, taste 0, yerk 0)", "saved": len(b)},
+        {"n": n + 2, "kind": "topic", "label": curate.short(a), "edits": [[index, i, a, ""], [str((s.root / memory.TOPIC_RULES).resolve()), 0, "", a]],
+         "why": "one topic", "rows": 0, "evidence": "0 in 7 days (shadow 0, taste 0, yerk 0)", "saved": len(a)},
+        {"n": n + 3, "kind": "cut", "label": x.job, "edits": [[str((s.root / x.cite).resolve()), x.front().count("\n") + 1, x.summary, ""]],
+         "why": "its cite is lost", "rows": 0, "evidence": "0 in 7 days (shadow 0, taste 0, yerk 0)", "saved": len(x.summary)}]
+    (state / curate.PROPOSED).write_text(json.dumps(rec))
+    return n
+
+
+def test_an_apply_never_writes_a_converted_stores_index_topic_file_or_lesson_nor_a_list_holding_one(converted):
+    priv, state, s = converted
+    curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})
+    n, cut = old_record(s, state), next(q["n"] for q in json.loads((state / curate.PROPOSED).read_text())["proposals"] if q["kind"] == "cut")
+    before = files_of(priv, state)
+    for which, what in [(f"{n + 1}", "memory/rules.md, the index of the lessons"), (f"{n + 2}", "memory/rules.md, the index of the lessons"),
+                        (f"{n + 3}", "memory/rules/tell-the-menu.md, a lesson"), (f"{cut},{n + 1}", "memory/rules.md, the index of the lessons")]:
+        with pytest.raises(RuntimeError) as e:
+            curate.apply(priv, state, DAY, which, now=NOW)
+        assert str(e.value) == (f"{which.split(',')[-1]} would write {what}: a lesson changes only when filed again with `remember` and its job, "
+                                "or retired; nothing applied")
+        assert files_of(priv, state) == before and not (s.root / memory.TOPIC_RULES).exists()
+    rec = json.loads((state / curate.PROPOSED).read_text())
+    rec["proposals"][-2]["edits"] = rec["proposals"][-2]["edits"][1:]                      # the topic file's edit alone
+    (state / curate.PROPOSED).write_text(json.dumps(rec))
+    before = files_of(priv, state)
+    with pytest.raises(RuntimeError, match=f"^{n + 2} would write memory/rules-topics.md, the topic rules the lessons replaced: .*; nothing applied$"):
+        curate.apply(priv, state, DAY, f"{n + 2}", now=NOW)
+    assert files_of(priv, state) == before and not (s.root / memory.TOPIC_RULES).exists()
+
+
+def test_a_rulebook_proposal_alone_applies_on_a_converted_store_and_undo_puts_it_back_byte_identical(converted):
+    priv, state, s = converted
+    props = curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"]
+    q, book = next(q for q in props if q["kind"] == "cut"), priv / "rulebook.md"
+    store, was = files_of(s.root), book.read_bytes()
+    assert curate.apply(priv, state, DAY, str(q["n"]), now=NOW)[0] == f"{q['n']}. cut: {q['label']}, applied" and book.read_bytes() != was
+    assert curate.apply(priv, state, DAY, "undo", now=NOW) == ["rulebook.md: put back as it was"] and book.read_bytes() == was
+    assert files_of(s.root) == store
+
+
+def test_undo_of_an_apply_from_before_the_conversion_puts_nothing_back(tree):
+    priv, state, s = tree
+    by = kinds(curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"])
+    curate.apply(priv, state, DAY, str(by["merge"]["n"]), now=NOW)                        # rules.md as one rule a line
+    for x in STORE:
+        lessons.put(s.root, x)                                                             # then the store converted
+    store = files_of(s.root)
+    assert curate.apply(priv, state, DAY, "undo", now=NOW) == ["rules.md: changed since the apply, kept as it is"]
+    assert files_of(s.root) == store and json.loads((state / curate.PROPOSED).read_text())["applied"] == []
+
+
+def test_a_job_whose_name_holds_a_gates_words_gets_its_one_gate_at_its_lesson_never_at_the_index(converted):
+    priv, state, s = converted
+    lessons.put(s.root, lesson("sign-off-a-letter", "sign off a letter", "End a letter with its sender's name.",
+                               "Since a letter with none reads unsigned.", mid="2010"))
+    index, f = str((s.root / "rules.md").resolve()), str((s.root / "rules" / "sign-off-a-letter.md").resolve())
+    row = "- sign off a letter (rules/sign-off-a-letter.md)"
+    assert row in (s.root / "rules.md").read_text().split("\n") and curate.gated(row)      # the index's own line would be held, if read
+    props = curate.propose(priv, state, s, NOW)[0]
+    assert [[e[0] for e in q["edits"]] for q in props if q["label"] == "sign off a letter"] == [[f]]
+    assert not [q for q in props for e in q["edits"] if e[0] == index]
+
+
+def test_a_rulebook_named_as_the_index_is_still_a_rule_file_since_the_stores_own_are_known_by_path(converted):
+    priv, state, s = converted
+    (priv / "rooms.toml").write_text((priv / "rooms.toml").read_text().replace('rulebook = "rulebook.md"', 'rulebook = "rules.md"'))
+    (book := priv / "rules.md").write_text("\n".join(BOOK))
+    assert curate.kept_off(s, str(book)) == "" and curate.kept_off(s, str(s.root / "rules.md")) == "the index of the lessons"
+    assert curate.kept_off(s, str(priv / "rules" / "send-a-photo.md")) == "" and curate.kept_off(s, str(s.root / "rules" / "send-a-photo.md")) == "a lesson"
+    assert list(curate.rule_files(priv, s)) == [book.resolve()]
+    props = curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"]
+    q, was = next(q for q in props if q["kind"] == "cut"), book.read_bytes()
+    assert {e[0] for e in q["edits"]} == {str(book.resolve())}
+    assert curate.apply(priv, state, DAY, str(q["n"]), now=NOW)[0] == f"{q['n']}. cut: {q['label']}, applied" and book.read_bytes() != was
+
+
+def test_the_refusal_reads_every_edit_of_a_proposal_not_its_first(converted):
+    priv, state, s = converted
+    curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})
+    rec = json.loads((state / curate.PROPOSED).read_text())
+    cut, index = next(q for q in rec["proposals"] if q["kind"] == "cut"), (s.root / "rules.md").resolve()
+    rows = index.read_text().split("\n")
+    i, n = next(k for k, x in enumerate(rows, 1) if x.startswith("- ")), max(int(q["n"]) for q in rec["proposals"]) + 1
+    assert curate.kept_off(s, cut["edits"][0][0]) == ""                                    # the rulebook's line first, then the index's
+    rec["proposals"].append({**cut, "n": n, "kind": "merge", "edits": [*cut["edits"], [str(index), i, rows[i - 1], ""]]})
+    (state / curate.PROPOSED).write_text(json.dumps(rec))
+    before = files_of(priv, state)
+    with pytest.raises(RuntimeError) as e:
+        curate.apply(priv, state, DAY, str(n), now=NOW)
+    assert str(e.value) == (f"{n} would write memory/rules.md, the index of the lessons: a lesson changes only when filed again with `remember` "
+                            "and its job, or retired; nothing applied")
+    assert files_of(priv, state) == before

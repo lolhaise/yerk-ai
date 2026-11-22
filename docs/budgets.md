@@ -853,7 +853,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-21: lesson-store-2026-11-21 took main f4de2d6 in a merge (needs 134 and 135, the two notes above this branch's): 35,309 is main's ceiling of 33,696 plus this branch's own 1,613 lines (35,238 less main 0911b5e's 33,625), recounted after the merge; nothing of either side was folded.
 
-- `lines = 35309`
+2026-11-22: curate-lessons-2026-11-22 raised it by 31, not folded to fit: the proposals pass and its apply on a converted store (curate.py 30: kept_off, the store's own files no rule file of the pass and refused by an apply before any write; gated, a gate's WHY shared by a rulebook's line and a lesson's; the lesson gate loop over the live lessons, cited at the summary's line) and the --rules and --apply help that docs/commands.md is written from (cli.py 1). 35,340: 35,309 plus 31.
+
+- `lines = 35340`
 
 ## Uncapped
 
