@@ -1273,8 +1273,10 @@ class Yerkd:
         lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py). A builder that
         cannot start holds the need with why under [needs] auto, as a fix's or a read's does; on the hand road it is filed."""
         day, n = str(req.get("day") or ""), int(req.get("n") or 0)
-        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": "", "fixes": 0},
-                                   lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
+        if needs.refused(got := await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building",
+                         "worker": "", "fixes": 0}, lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck"))):
+            return got                                   # the store cannot be read: nothing claimed, nothing started
+        if got is None:
             row = needs.find(needs.load(self.state), day, n)
             return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
                     words.NEED_BUSY.format(n=needs.called(self.state, row), state=needs.said(row))}
@@ -1317,6 +1319,8 @@ class Yerkd:
         plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done", plugs)
+        if needs.refused(r):                             # the store cannot be read: its end is not written, the note says why
+            kept, r = [*kept, str(r["error"])], None
         if r is not None and r.get("state") == "filed" and self.pipeline.auto() and workers.cut_off(end):   # no verdict: the next tick's
             r = await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "queued", "worker": ""},
                                         lambda x: x.get("state") == "filed")

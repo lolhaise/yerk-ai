@@ -195,7 +195,11 @@ def cmd_needs(a: argparse.Namespace) -> int:
     need's plug-in branches, needs.land); build goes through the running yerkd, which owns the workers and their cards."""
     from . import memory, needs, words
     if a.action == "list":
-        print("\n".join(needs.listing(state_dir(a.state))) or "no needs filed")
+        try:
+            print("\n".join(needs.listing(state_dir(a.state))) or "no needs filed")
+        except needs.Unreadable as e:
+            print(e, file=sys.stderr)
+            return 1
         return 0
     if not (a.day and a.n) or a.action == "done" and not a.pr:
         print(f"{a.action} needs DAY N" + " PR" * (a.action == "done"), file=sys.stderr)
@@ -206,6 +210,9 @@ def cmd_needs(a: argparse.Namespace) -> int:
         return 0 if out.get("ok") else 1
     priv, state = private_dir(a.private), state_dir(a.state)
     r = needs.update(memory.settings(priv, state), state, a.day, a.n, {"state": "merged", "pr": a.pr, "merged_at": time.time()})
+    if needs.refused(r):
+        print(r["error"], file=sys.stderr)
+        return 1
     print(f"need {a.n} of {a.day}: {needs.said(r)}" if r else words.NEED_NONE.format(day=a.day, n=a.n))
     whys = {k: needs.land(k, p) for k, p in dict((r or {}).get("plugins") or {}).items()}       # its plug-in branches land too
     print("".join(f"{w or f'the {k} plug-in landed'}\n" for k, w in whys.items()), end="")

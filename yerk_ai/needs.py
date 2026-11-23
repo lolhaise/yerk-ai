@@ -51,12 +51,26 @@ TASKS = ["worktree on its own branch", "the ability, with its tests", "the full 
          "committed, REPORT.md"]
 
 
+class Unreadable(Exception):
+    """<state>/needs.json is there and cannot be read as the store: no need of it is known, so nothing writes it."""
+
+
 def load(state: Path) -> list[dict[str, Any]]:
+    """The needs; [] when there is no store yet. One there that cannot be read is Unreadable, never an empty store."""
     try:
         rows = json.loads((state / STORE).read_text())
-    except (OSError, ValueError):
+        if not isinstance(rows, list):
+            raise ValueError("not a list")
+    except FileNotFoundError:
         return []
-    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+    except (OSError, ValueError) as e:
+        raise Unreadable(words.NEEDS_UNREADABLE.format(path=state / STORE, why=type(e).__name__)) from e
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def refused(r: dict[str, Any] | None) -> bool:
+    """`file`'s or `update`'s answer when the store could not be read: nothing was written."""
+    return isinstance(r, dict) and r.get("ok") is False
 
 
 def find(rows: list[dict[str, Any]], day: str, n: int) -> dict[str, Any] | None:
@@ -158,7 +172,10 @@ def file(s: Settings, state: Path, room: str, mid: str, asked: str, tried: str, 
     at = datetime.fromtimestamp(time.time() if now is None else now, timezone.utc).astimezone(s.tz)
     a |= {"room": room, "at": f"{at:%Y-%m-%d %H:%M}", "mid": mid}
     with daily_lock(s.daily):                          # the memory writers' lock: curate's rewrite of the page waits on it too
-        rows = load(state)
+        try:
+            rows = load(state)
+        except Unreadable as e:
+            return {"ok": False, "error": str(e)}
         r = next((x for x in rows if x.get("state") not in CLOSED and same(str(x["ability"]), a["needed"])), None)
         again = r is not None and any((x["room"], x["mid"], x["needed"]) == (room, mid, a["needed"]) for x in r["asks"])
         if r is None:
@@ -178,9 +195,12 @@ def file(s: Settings, state: Path, room: str, mid: str, asked: str, tried: str, 
 def update(s: Settings, state: Path, day: str, n: int, changes: dict[str, Any],
            when: Callable[[dict[str, Any]], bool] | None = None) -> dict[str, Any] | None:
     """The need's record changed and its block written again, under the lock, so a check (`when`) and its change are one
-    step; None when there is no such need or `when` does not hold."""
+    step; None when there is no such need or `when` does not hold; {"ok": False, "error"} when the store cannot be read."""
     with daily_lock(s.daily):
-        rows = load(state)
+        try:
+            rows = load(state)
+        except Unreadable as e:
+            return {"ok": False, "error": str(e)}
         if (r := find(rows, day, n)) is None or when is not None and not when(r):
             return None
         r.update(changes)

@@ -11,6 +11,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from test_pictures import Rec, Units
 from test_remember import daemon
 
@@ -62,6 +64,44 @@ def test_a_room_files_one_line_on_the_days_page_and_the_machine_room_hears_it_in
     assert "; needed: read a scanned PDF; did anyway: asked the owner to type it out [shadow] [m:m-1]" in page.read_text()
     assert len(rec.lines) == 2 and needs.find(needs.load(y.state), day, 2)["asks"][0]["shadow"] == lease[3]
     assert need(y, "example-room", "post a reel", "", "upload a video")["ok"] is False and len(rec.lines) == 2
+
+
+def spoil(y, how: str) -> bytes:
+    """The store made unreadable `how`, as a crash or a hand edit leaves it; what is there now, to compare after."""
+    f = y.state / needs.STORE
+    if how == "a directory":
+        f.unlink()
+        f.mkdir()
+        return b"a directory"
+    f.write_text(f.read_text()[:-9] if how == "not json" else '{"needs": []}')
+    return f.read_bytes()
+
+
+def there(y) -> bytes:
+    f = y.state / needs.STORE
+    return b"a directory" if f.is_dir() else f.read_bytes()
+
+
+@pytest.mark.parametrize("how", ["not json", "not a list", "a directory"])
+def test_a_store_that_cannot_be_read_refuses_a_filing_an_update_a_build_and_done_and_writes_nothing(tmp_path, capsys, how):
+    y, rec = ops(tmp_path)
+    day = need(y, "example-room", *ASK)["day"]
+    page = y.memory.root / needs.FOLDER / f"{day}.md"
+    was, shown = spoil(y, how), page.read_text()
+    r = need(y, "example-room", *FLYER)                              # a second need, as a room files it
+    assert list(r) == ["ok", "error"] and r["ok"] is False and r["error"].startswith(f"needs: {y.state / needs.STORE} cannot be read (")
+    assert there(y) == was and page.read_text() == shown
+    assert needs.refused(needs.update(y.memory, y.state, day, 1, {"state": "merged"})) and there(y) == was
+    assert asyncio.run(y.need_build({"day": day, "n": 1}))["ok"] is False and y.workers.launcher.calls == []
+    assert cli.main(["needs", "list", "--state", str(tmp_path)]) == 1 and str(y.state / needs.STORE) in capsys.readouterr().err
+    assert cli.main(["needs", "done", day, "1", "7", "--state", str(tmp_path), "--private", str(y.private)]) == 1
+    assert str(y.state / needs.STORE) in capsys.readouterr().err and there(y) == was and page.read_text() == shown
+    assert len(rec.lines) == 1                                       # the first need's line only
+    if how == "a directory":
+        (y.state / needs.STORE).rmdir()
+    else:
+        (y.state / needs.STORE).unlink()
+    assert need(y, "example-room", *FLYER)["ok"]                     # a missing store files as before
 
 
 def test_the_need_tool_is_preloaded_and_the_mechanics_say_file_it_in_place_of_a_workaround(tmp_path):
