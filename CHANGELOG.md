@@ -8,6 +8,25 @@ version changes.
 
 ## 2026-11-23
 
+### harness-holes-2026-11-23 (#127)
+
+- Texting: a `cursor.json` that is there but cannot be read (not JSON, not a mapping, a directory, no permission) no
+  longer counts as a first start, which skipped every text that came in while the link was down. Texting stays
+  unconnected, says so once in the machine room, shows `held` in `<state>/texting/status.json`, and reads the file again
+  each minute: once it reads, it goes on from its saved rows; once it is gone, it is a first start as before. Yerk AI
+  never renames or deletes the file.
+- Needs: a `needs.json` that is there but cannot be read is no longer read as empty, which let the next filing overwrite
+  every other need with one. A filing (the `need` tool), a change, `yerk needs build`, `list` and `done` are refused,
+  naming the file, and nothing is written; the pipeline does nothing on it and says so once in the machine room.
+- Jobs: an agent job whose timer fired while yerkd was down past the 90 s hand-off window is no longer lost. Its
+  definition is kept in its run's folder (`job.json`, 0600) before a one-shot leaves `jobs.toml`, so the file still
+  loads; at the next daemon start the run is fired once when it is under a day old, its job unchanged, no later run of
+  it has fired and no worker of it started since. Otherwise one line in the machine room names the job, when it should
+  have run and why it was not run now. A second start fires nothing.
+- Rooms with more than one person: a message folds into the running turn only when its sender is the person in that
+  turn, and waiting messages are joined into one turn only while the sender is the same, so one person's message is
+  never answered inside another's turn. A room with one person, Yerk AI's own messages, relays and notes work as before.
+
 ### need-2026-11-23-137 (#126)
 
 - A lesson the doctor's daily run finds out of the Claude docs' lesson shape now gets a proposal that settles it:

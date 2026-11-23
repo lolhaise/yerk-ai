@@ -863,7 +863,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-23: need-2026-11-23-137's fix of its cold read raised it by 15, not folded to fit: a keep holds the checks its row names and no other (shape.py 4: a check added or tightened since counts; "to keep", a lesson's word misses, never its front matter, so a front matter alone gets no keep; lessons.py 11: keep_row, a later keep of the same words holding the earlier one's checks, and checks). 35,418: 35,403 plus 15.
 
-- `lines = 35418`
+2026-11-23: harness-holes raised it by 118, the four fixes (the owner's ask), not folded to fit (texting/link.py 21: a cursor that cannot be read holds the link; needs.py 20, pipeline.py 16, daemon.py 4, cli.py 7: a store that cannot be read is unknown, never empty; room.py 7: fold and batch by sender; jobs.py 40: an agent run no daemon took kept and fired once at the next start, its `at` key's words; words.py 3). 35,536: 35,418 plus 118.
+
+- `lines = 35536`
 
 ## Uncapped
 
