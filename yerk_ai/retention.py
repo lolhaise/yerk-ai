@@ -45,6 +45,7 @@ from .accounts import load_accounts
 from .config import load_toml, write_private
 from .engine import project_dir
 from .hooks import rolled
+from .jobs import HELD
 from .ledger import Ledger
 from .workers import settings as worker_settings
 
@@ -215,10 +216,10 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
                         if (kind := "pytest" if name.startswith("pytest-of-") else "built") in due and not os.path.islink(tmp := os.path.join(at, name)):
                             move(kind, Path(tmp), f"workers/{folder.name}/{os.path.relpath(tmp, folder)}")
         runs = (state / "jobs").resolve()
-        for j in ledger.job_runs(limit=10**6):           # ended and delivered past its days; one marked undelivered stays
-            folder = Path(str(j["folder"] or ""))
+        for j in ledger.job_runs(limit=10**6):           # ended and delivered past its days; one marked undelivered stays, and
+            folder = Path(str(j["folder"] or ""))        # a watch's finding held (its output is what its room is told)
             if (j["ended"] and j["ended"] < now - days["jobs"] * DAY and j["delivery"] and not str(j["delivery"]).startswith("undelivered")
-                    and folder.is_absolute() and folder.is_dir() and folder.resolve().parent.parent == runs):
+                    and j["delivery"] != HELD and folder.is_absolute() and folder.is_dir() and folder.resolve().parent.parent == runs):
                 move("jobs", folder, f"jobs/{folder.parent.name}/{folder.name}")
         for r in (r for r in rooms if r.name not in flight):              # scratch: past its days, then the oldest past the cap
             listed, emptied, work, took = scratch(r), set[Path](), r / "work", list[str]()
