@@ -99,6 +99,13 @@ class Inbound:
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
+
+
+def joins(msg: Inbound, turn: list[Inbound]) -> bool:
+    """Whether `msg` may be answered in the turn of `turn` (folded into it, or batched with it): only when the person in it
+    sent it. Yerk AI's own messages, and a turn with no person in it yet, keep the old rule: it joins."""
+    who = next((m.sender for m in turn if m.sender != HARNESS), None)
+    return msg.sender == HARNESS or who is None or msg.sender == who
 RESERVE = 33000                           # Claude Code compacts at its window less this (2.1.304's output reserve and buffer)
 FILING = ("remember", "schedule", "hold", "settings", "people")   # Yerk AI's calls that file or set something, answering nothing
 STUB_CHARS = 200                          # the stub rule's size line (Room.stub_check)
@@ -611,7 +618,7 @@ class Room:
             self.seen[msg.text.strip()] = msg
             while len(self.seen) > 200:
                 self.seen.pop(next(iter(self.seen)))
-            if self.reading and self.rp and self.rp.alive() and not self.queue and not msg.alone:
+            if self.reading and self.rp and self.rp.alive() and not self.queue and not msg.alone and joins(msg, self.inflight):
                 self._write(msg, folded=True)
                 self.ledger.inbound_set(msg.id, state="running", folded=1, attempts=msg.attempt + 1)
                 return "folded"
@@ -1054,7 +1061,7 @@ class Room:
                         self.last_active = time.time()
                     else:
                         batch = [self.queue.popleft()]
-                        while not batch[0].alone and self.queue and not self.queue[0].alone:
+                        while not batch[0].alone and self.queue and not self.queue[0].alone and joins(self.queue[0], batch):
                             batch.append(self.queue.popleft())
                 if took:
                     self._took(*took)
