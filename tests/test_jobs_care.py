@@ -180,6 +180,20 @@ def test_a_run_that_ends_by_itself_while_the_unit_stops_keeps_its_own_end_and_sa
     assert (r["exit"], r["result"], r["delivery"]) == ("exited 0", "output", "delivered") and ops.notified == [] and rec.sent
 
 
+def test_a_stop_systemd_refuses_or_that_leaves_the_unit_up_is_no_stop(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
+    rid = started(s.ledger, "nightly", 60)
+    sd.active.add("yerk-job-nightly.service")
+    sd.stop = lambda unit: "systemctl --user stop yerk-job-nightly.service exited 1: no such unit"
+    out = stop(j, "nightly")
+    assert not out["ok"] and out["error"].startswith("nightly was not stopped: systemctl --user stop")
+    sd.stop = lambda unit: ""                                        # it says it is down and the unit still runs
+    out = stop(j, "nightly")
+    assert not out["ok"] and out["error"] == "nightly was not stopped: yerk-job-nightly.service still runs"
+    assert s.ledger.job_run_get(rid)["ended"] is None and ops.notified == []
+
+
 def test_a_stop_before_the_run_is_on_record_names_no_older_run(setup, tmp_path):
     """The runner is up and its row not written yet (its first second): the last run, a day old and done, is not the one stopped."""
     s = setup
@@ -326,6 +340,60 @@ def test_a_channel_with_no_edit_posts_as_today(setup, tmp_path):
     ended_at(j, "flaky", 3, 1800)
     ended_at(j, "flaky", 3, 1200)
     assert [t for _, t in ops.notified] == [FAILED, FAILED]
+
+
+def test_a_failure_whose_alert_could_not_be_posted_is_posted_by_the_next_one(setup, tmp_path):
+    """The first failure's post never went (no ids on its row): there is nothing to edit, so the next equal failure posts."""
+    class Mute(Edits):
+        muted = True
+
+        async def notify(self, room, text):
+            return [] if self.muted else await super().notify(room, text)
+    ops = Mute()
+    j, *_ = care(setup, tmp_path, FLAKY, ops=ops)
+    one = ended_at(j, "flaky", 3, 1800)
+    ops.muted = False
+    two = ended_at(j, "flaky", 3, 1200)
+    assert one["message_ids"] in (None, "") and ops.edits == [] and [t for _, t in ops.notified] == [FAILED] and two["message_ids"] == "n1"
+
+
+def agent_end(j, n, exit, ago, worker):
+    """An agent job's run and its worker's end (NO_REPLY, so a good one is told nowhere), handed to the daemon's completion."""
+    rid = started(j.ledger, n, ago + 5, kind="agent")
+    j.ledger.job_run_set(rid, worker=worker)
+    asyncio.run(j.worker_done({"id": worker, "job": n, "staging": "/nonexistent", "room": "r", "cap": 15.0, "started": time.time() - ago - 5},
+                              {"exit": exit, "finished": time.time() - ago, "detail": "exited 1", "result_code": "", "result": "NO_REPLY"}))
+    return j.ledger.job_run_get(rid)
+
+
+AGENT = '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "x"\n'
+
+
+def test_an_agent_jobs_equal_ends_are_one_post_whose_id_every_run_keeps(setup, tmp_path):
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, AGENT, ops=ops)
+    one, two, three = (agent_end(j, "think", "died", ago, f"w{ago}") for ago in (1800, 1200, 600))
+    assert [r["message_ids"] for r in (one, two, three)] == ["n1", "n1", "n1"] and len(ops.notified) == 1 and len(ops.edits) == 2
+    assert ops.edits[-1][2].endswith("3 times since " + clock(one, "UTC") + ", last " + clock(three, "UTC"))
+
+
+def test_a_did_not_start_alert_is_no_failed_run_and_a_good_run_edits_nothing_for_it(setup, tmp_path):
+    """Its post is of another kind (the fire's own alert): a good run after it has no streak to close."""
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, AGENT, ops=ops)
+    rid = started(j.ledger, "think", 900, kind="agent")
+    j.ledger.job_run_set(rid, ended=time.time() - 900, exit="not run", result="did not start", delivery="alert", message_ids="n9")
+    good = agent_end(j, "think", "done", 300, "w300")
+    assert good["result"] == "no_reply" and ops.edits == []
+
+
+def test_a_one_shots_good_run_edits_no_older_alert_of_its_name(setup, tmp_path):
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, SCRIPT.format(n="once", key="at", when="2099-01-01 09:00"), ops=ops)
+    old = started(j.ledger, "once", 1800)
+    j.ledger.job_run_set(old, ended=time.time() - 1700, exit="exited 3", result="exit 3", delivery="alert", message_ids="n5")
+    good = ended_at(j, "once", 0, 60)
+    assert good["result"] == "nothing" and ops.edits == []
 
 
 def test_a_restart_between_the_runs_changes_nothing(setup, tmp_path):
