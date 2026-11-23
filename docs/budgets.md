@@ -873,9 +873,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-23: compact-focus-2026-11-23 raised it by 10, the words a compaction is sent with and the room key over them (the owner's ask, Mon Nov 23), not folded to fit (words.py 6, daemon.py 2, config.py 1, room.py 1). 35,678: 35,668 plus 10.
 
-2026-11-23: jobs-care-2026-11-23 raised it by 207, the four decisions of jobs care (the owner's ask of 13:26, Mon Nov 23), not folded to fit (jobs.py 156: Systemd.stop, stop_script, stop_now, idle, next_fire and Jobs.stop, a stop's row closed as stopped; failure, streak, edit, hhmm, failed and recovered, one alert per unchanged failure edited in place and its ok-again edit; doctor.py 36: job_review, read only; cli.py 7: `yerk jobs stop NAME`; words.py 6; retention.py 1: a held finding's folder kept; mcp_server.py 1). 35,885: 35,678 plus 207, recounted after main d5a6b59 was merged in.
+2026-11-23: jobs-care-2026-11-23 raised it by 210, the four decisions of jobs care (the owner's ask, Mon Nov 23), not folded to fit (jobs.py 159: Systemd.stop, stop_script, stop_now, idle, next_fire and Jobs.stop, a stop's row closed as stopped; failure, streak, edit, hhmm, failed and recovered, one alert per unchanged failure edited in place and its ok-again edit; doctor.py 36: job_review, read only; cli.py 7: `yerk jobs stop NAME`; words.py 6; retention.py 1: a held finding's folder kept; mcp_server.py 1). 35,888: 35,678 plus 210, recounted after main d5a6b59 was merged in (jobs.py 3 more: the judge's fixes, a stop names the run it found and clears the unit's failed state).
 
-- `lines = 35885`
+- `lines = 35888`
 
 ## Uncapped
 

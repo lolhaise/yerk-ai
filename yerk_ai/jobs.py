@@ -562,7 +562,9 @@ class Systemd:
         return self._unit_cmd("disable", "--now", timer)
 
     def stop(self, unit: str) -> str:                         # back once it is down: systemd's stop wait, then its kill
-        return self._unit_cmd("stop", unit, timeout=STOP_WAIT)
+        why = self._unit_cmd("stop", unit, timeout=STOP_WAIT)
+        self._unit_cmd("reset-failed", unit)                  # a oneshot killed reads failed (Result=signal): a stop is no failure
+        return why
 
     def running(self, unit: str) -> bool:                     # a one-shot service is activating while its run goes
         return systemctl("is-active", unit).stdout.strip() in ("active", "activating")
@@ -982,18 +984,18 @@ def stop_script(path: Path, units: Systemd, env: Env, ledger: Ledger, job: Job, 
     file and its units go, as at the end of any run; a recurring job's timer is never touched."""
     if not units.running(service := f"{job.unit}.service"):
         return idle(job, units, ledger)
+    found = ledger.job_runs(job=job.name, unended=True, limit=10**6)      # the run going now, as the stop found it
     if (why := units.stop(service)) or units.running(service):
         return {"ok": False, "error": f"{job.name} was not stopped: {why or service + ' still runs'}"}
-    now, newest, closed = time.time(), ledger.job_runs(job=job.name, limit=1), []
-    for r in ledger.job_runs(job=job.name, unended=True, limit=10**6):
+    now, closed = time.time(), ledger.job_runs(job=job.name, unended=True, limit=10**6)
+    for r in closed:
         ledger.job_run_set(int(r["id"]), ended=now, exit="stopped", result="stopped", delivery="none", note=f"stopped from {who}")
-        closed.append(int(r["id"]))
     if job.when == "at":
         remove(path, job.name)
         sync(path, units, env)
-    run = newest[0] if newest else {"id": 0, "fired": now}
-    return {"ok": True, "name": job.name, "run": int(run["id"]), "closed": closed, "line": words.JOB_STOP.format(
-        name=job.name, what=f"script run {run['id']}", ran=words.span(now - float(run["fired"])),
+    run = (closed or found or [{"id": 0, "fired": now}])[0]      # none on file yet: stopped as the runner started
+    return {"ok": True, "name": job.name, "run": int(run["id"]), "closed": [int(r["id"]) for r in closed], "line": words.JOB_STOP.format(
+        name=job.name, what=f"script run {run['id']}" if run["id"] else "script, its run not on record yet", ran=words.span(now - float(run["fired"])),
         next="none: a one-shot, out of the jobs file, its units gone" if job.when == "at" else next_fire(job, units))}
 
 
@@ -1141,14 +1143,15 @@ class Jobs:
             if (out := await asyncio.to_thread(stop_script, self.path, self.units, self.env(), self.ledger, job, who)).get("closed"):
                 await self.alert(job, words.job_line(name, "stopped"), out["closed"][0])     # a run the runner ended says itself
             return out
-        run = self.ledger.job_runs(job=name, limit=1) if job.kind == "agent" else []
-        row = self.ledger.worker_get(str(run[0]["worker"])) if run and run[0]["worker"] else None
-        if row is None or row["finished"]:
+        rows = [r for r in self.ledger.workers(running=True) if r.get("job") == name] if job.kind == "agent" else []
+        if not rows:
             return await asyncio.to_thread(idle, job, self.units, self.ledger)
-        if not (out := await self.workers.stop(str(row["id"])))["ok"]:
-            return out
-        log.info("job %s: worker %s stopped from %s", name, row["id"], who)
-        return {"ok": True, "name": name, "run": int(run[0]["id"]), "worker": row["id"], "line": words.JOB_STOP.format(
+        for row in rows:                         # an older run's still going counts; the newest is the one named
+            if not (out := await self.workers.stop(str(row["id"])))["ok"]:
+                return out
+            log.info("job %s: worker %s stopped from %s", name, row["id"], who)
+        return {"ok": True, "name": name, "run": int((self.ledger.job_run_for_worker(str(row["id"])) or {}).get("id") or 0),
+                "worker": row["id"], "line": words.JOB_STOP.format(
             name=name, what=f"worker {row['id']}", ran=words.span(time.time() - float(row["started"])),
             next=await asyncio.to_thread(next_fire, job, self.units))}
 

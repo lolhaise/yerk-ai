@@ -147,6 +147,55 @@ def test_an_agent_jobs_worker_is_stopped_and_its_run_reads_stopped_with_one_line
     assert len(ops.notified) == 1
 
 
+def test_systemds_stop_waits_out_the_unit_and_clears_the_failed_state_a_killed_run_leaves(monkeypatch, tmp_path):
+    """A oneshot ended by `systemctl stop` reads failed (Result=signal, measured on the box 2026-11-23): the state goes."""
+    import subprocess
+    sent = []
+
+    def systemctl(*args, timeout=60, check=""):
+        sent.append((args, timeout))
+        return subprocess.CompletedProcess(args, 0, "", "")
+    monkeypatch.setattr(jobs, "systemctl", systemctl)
+    assert jobs.Systemd(tmp_path, tmp_path).stop("yerk-job-x.service") == ""
+    assert sent == [(("stop", "yerk-job-x.service"), jobs.STOP_WAIT), (("reset-failed", "yerk-job-x.service"), 60)]
+    monkeypatch.setattr(jobs, "systemctl", lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "no such unit"))
+    assert jobs.Systemd(tmp_path, tmp_path).stop("yerk-job-x.service").startswith("systemctl --user stop yerk-job-x.service exited 1")
+
+
+def test_a_stop_before_the_run_is_on_record_names_no_older_run(setup, tmp_path):
+    """The runner is up and its row not written yet (its first second): the last run, a day old and done, is not the one stopped."""
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
+    old = started(s.ledger, "nightly", 86400)
+    s.ledger.job_run_set(old, ended=time.time() - 86000, exit="exited 0", result="nothing", delivery="silent (no output)")
+    sd.active.add("yerk-job-nightly.service")
+    out = stop(j, "nightly")
+    assert out["ok"] and (out["run"], out["closed"]) == (0, []) and out["line"].startswith("stopped nightly's script, its run not on record yet after ")
+    assert "24 h" not in out["line"] and f"run {old}" not in out["line"] and s.ledger.job_run_get(old)["result"] == "nothing"
+
+
+def test_a_stop_ends_the_jobs_running_worker_though_a_newer_run_did_not_start(setup, tmp_path):
+    """The newest run's worker is not the only one going: an older run's worker the account was busy with is what the person means."""
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path,
+                                           '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "FAKE sleep=30"\n')
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        assert await asyncio.to_thread(jobs.run, "think", priv, state, sd, handoff) == 0
+        run = s.ledger.job_runs(job="think")[0]
+        await asyncio.sleep(0.3)
+        now = time.time()
+        s.ledger.job_run_add(job="think", kind="agent", room="r", unit="yerk-job-think", planned=now, fired=now, ended=now,
+                             exit="not run", result="did not start", delivery="alert", note="its account is busy")
+        out = await j.handle("r", {"action": "stop", "name": "think"})
+        return out, run, await ended(s.ledger, run["worker"], relay=False)
+    out, run, row = asyncio.run(go())
+    assert out["ok"] and out["run"] == run["id"] and out["worker"] == row["id"] and row["exit"] == "stopped"
+
+
 def test_the_command_line_stops_a_script_with_the_daemon_down_and_an_agent_job_not(setup, tmp_path, monkeypatch):
     s = setup
     j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00")
