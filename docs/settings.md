@@ -15,6 +15,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `card`: count: a room with people shows its newest holding line and a step count, never a step's words (unset, steps or any other value: the owner rooms' card, the model's newest line and one row per step, done or not done)
 - `channel`: the chat the room is, discord:<channel id>
 - `class`: the class the room's day-log lines carry: private, room or shared (default: private in an owner room, room in any other)
+- `compact_focus`: what the room's compactions are told to keep, the text after /compact (unset: Yerk AI's own; empty or false: none)
 - `compact_window`: tokens the session keeps before Claude Code compacts (unset: budgets.toml [session]; 0: the model's own)
 - `daily_notes`: the room's day-log folder (default memory/daily)
 - `effort`: passed as --effort: low, medium, high, xhigh or max (unset: the model's own default)

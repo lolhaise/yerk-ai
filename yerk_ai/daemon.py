@@ -422,11 +422,13 @@ class Yerkd:
             channel = self.page.mirror(channel)
         if (midturn := str(s.get("precompact_midturn", "off"))) not in MIDTURN:   # off, as unset, and said once
             log.warning("room %s: precompact_midturn = %r is none of off, log and on, so it is off", name, s["precompact_midturn"])
+        focus = conf.get("compact_focus", words.COMPACT_FOCUS)
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
                     compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0)),
                              float(s.get("idle_compact_within", 0))), precompact=float(s.get("precompact_within", 0)),
-                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))), midturn=midturn)
+                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))), midturn=midturn,
+                    focus=focus if isinstance(focus, str) else "")
         room.cite = self.day_cite                                # a long tail names its oldest exchanges by their lines
         self.rooms[name], self.channels[name] = room, channel
         if paged:

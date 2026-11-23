@@ -1993,4 +1993,6 @@ secs = 60
 # released from the ledger, YERK_WATCH_STATE, the tool's and the sync's refusals, the list's words; ledger.py 11: told,
 # job_told and the delivery filter; words.py 7: the watch's frame, its held line, its kind and its refusal; cli.py 2;
 # mcp_server.py 1). 35,668: 35,536 plus 132 (jobs.py 1 more: the judge's fix, a watch's stdout read in a slice).
-lines = 35668
+# 2026-11-23: compact-focus-2026-11-23 raised it by 10, the words a compaction is sent with and the room key over them
+# (the owner's ask, Mon Nov 23), not folded to fit (words.py 6, daemon.py 2, config.py 1, room.py 1). 35,678: 35,668 plus 10.
+lines = 35678

@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from test_idle_compact import IDLE, band, compactions, echoed, reap, say, until, wait_idle
+from test_idle_compact import COMPACT, IDLE, band, compactions, compacts, echoed, reap, say, until, wait_idle
 
 from yerk_ai import words
 from yerk_ai.accounts import Account
@@ -318,7 +318,7 @@ def test_the_compaction_copy_never_runs_in_fast_mode(tmp_path, monkeypatch):
         time.sleep(0.05)
     assert [fork for fork, _ in launches] == [False, True]         # the room's process, then the copy
     assert "fastMode" in launches[0][1] and "fastMode" not in launches[1][1]
-    assert lines(tmp_path) == ["/fast on", "CONTEXT:195000 hello", "/compact"]   # no /fast on ahead of the copy's /compact
+    assert lines(tmp_path) == ["/fast on", "CONTEXT:195000 hello", COMPACT]   # no /fast on ahead of the copy's /compact
 
 
 @pytest.fixture
@@ -564,7 +564,7 @@ def test_a_fast_room_idle_near_its_window_compacts_on_a_copy_without_fast_mode_a
     room, chan, launches, sent = idle()
     reap(y, room, IDLE)
     until(lambda: compactions(tmp_path) == 1)
-    assert (True, "/compact") not in sent                       # never written to a process launched with the key
+    assert not compacts(sent, True)                       # never written to a process launched with the key
     copy = copied(y)
     wait_idle(room)
     say(y, room, "2", "CONTEXT:21000 and now?")
@@ -603,7 +603,7 @@ def test_a_room_fast_mode_does_not_reach_compacts_while_idle_on_a_copy_it_keeps_
     room, chan, launches, sent = idle(setting)
     reap(y, room, IDLE)
     assert copied(y) == room.rp.session_id                    # taken and kept: no fast mode to give back
-    assert launches == [(False, False), (True, False)] and sent == [(False, "CONTEXT:200000 hello"), (False, "/compact")] and compactions(tmp_path) == 1
+    assert launches == [(False, False), (True, False)] and sent == [(False, "CONTEXT:200000 hello"), (False, COMPACT)] and compactions(tmp_path) == 1
 
 
 def test_a_failed_idle_copy_in_a_fast_room_is_not_tried_again_at_the_next_minute(idle, y, tmp_path, monkeypatch, caplog):
@@ -612,11 +612,11 @@ def test_a_failed_idle_copy_in_a_fast_room_is_not_tried_again_at_the_next_minute
     reap(y, room, IDLE)
     until(lambda: compactions(tmp_path) == 1)
     wait_idle(room)
-    assert (True, "/compact") not in sent
+    assert not compacts(sent, True)
     until(lambda: any("is dropped" in m for m in caplog.messages))
     reap(y, room, IDLE)
     wait_idle(room)
-    assert launches == [(False, True), (True, False)] and compactions(tmp_path) == 1 and (True, "/compact") not in sent
+    assert launches == [(False, True), (True, False)] and compactions(tmp_path) == 1 and not compacts(sent, True)
 
 
 def test_a_message_during_a_fast_rooms_idle_copy_is_answered_at_once_on_its_fast_session_and_rides_to_the_copy(idle, y, tmp_path, monkeypatch):
@@ -632,7 +632,7 @@ def test_a_message_during_a_fast_rooms_idle_copy_is_answered_at_once_on_its_fast
     live = room.rp
     reap(y, room, IDLE)
     until(lambda: compactions(tmp_path) == 1)
-    assert (True, "/compact") not in sent
+    assert not compacts(sent, True)
     say(y, room, "2", "CONTEXT:21000 meanwhile")
     until(lambda: len(chan.replies) == 2)                       # the copy still held
     assert room.rp is live and chan.replies[1] == "echo: CONTEXT:21000 meanwhile" and sent[-1] == (True, "CONTEXT:21000 meanwhile")

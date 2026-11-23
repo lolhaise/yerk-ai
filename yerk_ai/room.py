@@ -202,7 +202,7 @@ class Room:
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
                  idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
                  meters: Meters | None = None, compact: tuple[int, float, float, float] = (0, 0.0, 0.0, 0.0),
-                 precompact: float = 0.0, copy: tuple[int, int] = (12000, 30000), midturn: str = "off"):
+                 precompact: float = 0.0, copy: tuple[int, int] = (12000, 30000), midturn: str = "off", focus: str = ""):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
         self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
@@ -259,6 +259,7 @@ class Room:
         self.overtook = 0                         # the turns that ran on the live session since the copy was made
         self.dropped = ""                         # why the copy in flight was ended (_drop_fork), for its thread's line
         self.shrunk = False                       # the live session compacted since the copy was made: the copy is moot
+        self.compact_line = " ".join(("/compact", *focus.split()))   # what a compaction sends: one line, the focus its argument
         self.midturn = midturn if midturn in MIDTURN[1:] else "off"   # the copy started mid-turn too (_midturn): log, on, else off
         self.midturn_said, self.midturn_at = False, 0   # ... at most once a turn, and the most a call of this turn started at
         self.midturn_of = ""                      # the key of the turn the copy in flight was made in, mid-turn ("": none)
@@ -415,7 +416,7 @@ class Room:
         started, t, why = time.time(), None, ""
         try:
             rp.start(fork=True)
-            t = rp.read_turn(rp.send("/compact"), self.turn_timeout, record=False)
+            t = rp.read_turn(rp.send(self.compact_line), self.turn_timeout, record=False)
             if t.compacted is not None:           # asked here, the copy idle and the room free; _take holds the lock
                 t.context = rp.size() or t.context
         except Exception as e:
@@ -1360,7 +1361,7 @@ class Room:
     def _slash_compact(self) -> Turn:
         """/compact, both paths' one call: no text comes back, so a row that compacted says so, never a failed turn."""
         assert self.rp
-        t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
+        t = self.rp.read_turn(self.rp.send(self.compact_line), self.turn_timeout, record=False)
         t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
         if t.outcome == "compacted":              # the whole prompt from here, the row's and _compact_held's
             t.context = self.rp.size() or t.context
