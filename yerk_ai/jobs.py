@@ -1152,7 +1152,8 @@ class Jobs:
         under = words.under(self.workers.conf.relay_reply)
         if run["kind"] == "note":
             return words.NOTE_DUE.format(name=run["job"], message=(folder / "message").read_text().strip(), at=at, under=under)
-        output, held = capped((folder / "stdout").read_text(errors="replace"), str(folder / "stdout")), ""
+        with open(folder / "stdout", errors="replace") as f:     # a slice, never the whole: a script can print anything
+            output, held = capped(f.read(4 * OUTPUT_MAX), str(folder / "stdout")), ""
         if run.get("note") == HELD_BACK:            # the newest of the findings the bound held back: how many, and since when
             batch = [run, *self.ledger.job_runs(job=str(run["job"]), delivery=f"{BATCHED}{run['id']}", limit=10**6)]
             oldest = min(float(r["fired"]) for r in batch)

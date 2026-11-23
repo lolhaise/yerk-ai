@@ -867,9 +867,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-23: harness-holes raised it by 118, the four fixes (the owner's ask), not folded to fit (texting/link.py 21: a cursor that cannot be read holds the link; needs.py 20, pipeline.py 16, daemon.py 4, cli.py 7: a store that cannot be read is unknown, never empty; room.py 7: fold and batch by sender; jobs.py 40: an agent run no daemon took kept and fired once at the next start, its `at` key's words; words.py 3). 35,536: 35,418 plus 118.
 
-2026-11-23: watch-jobs-2026-11-23 raised it by 131, the four decisions of watch jobs (the owner's ask of 13:26, Mon Nov 23), not folded to fit (jobs.py 110: deliver = "tell" told through the note's path, the wakes bound held and released from the ledger, YERK_WATCH_STATE, the tool's and the sync's refusals, the list's words; ledger.py 11: told, job_told and the delivery filter; words.py 7: the watch's frame, its held line, its kind and its refusal; cli.py 2; mcp_server.py 1). 35,667: 35,536 plus 131.
+2026-11-23: watch-jobs-2026-11-23 raised it by 132, the four decisions of watch jobs (the owner's ask, Mon Nov 23), not folded to fit (jobs.py 110: deliver = "tell" told through the note's path, the wakes bound held and released from the ledger, YERK_WATCH_STATE, the tool's and the sync's refusals, the list's words; ledger.py 11: told, job_told and the delivery filter; words.py 7: the watch's frame, its held line, its kind and its refusal; cli.py 2; mcp_server.py 1). 35,668: 35,536 plus 132 (jobs.py 1 more: the judge's fix, a watch's stdout read in a slice).
 
-- `lines = 35667`
+- `lines = 35668`
 
 ## Uncapped
 
