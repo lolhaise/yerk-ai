@@ -333,7 +333,7 @@ YERKD_WORDS = {
                "cap_minutes": "the longest a deploy waits for that quiet (default 60)", "proof_seconds": "how long the proof may take (default 60)"},
     "retention": {"logs": "days the daemon's logs keep", "assembled": "days the rooms' assembled.jsonl keep",
                   "transcripts": "days Claude Code's transcripts keep", "ledger": "days of the ledger's timing rows",
-                  "jobs": "days a job run's folder keeps after the run ended, and a run still undelivered keeps it",
+                  "jobs": "days a job run's folder keeps after the run ended; a run still undelivered, or a watch's finding held, keeps it",
                   "workers": "days a finished worker's folder keeps",
                   "pytest": "days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days",
                   "built": "days what a finished worker's run built keeps in its folder: each virtual environment (a folder holding "

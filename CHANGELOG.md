@@ -8,6 +8,24 @@ version changes.
 
 ## 2026-11-23
 
+### jobs-care-2026-11-23 (#130)
+
+- Jobs: `yerk jobs stop NAME`, and the schedule tool's `stop` in an owner room, end a job's run in progress. A script's
+  unit is stopped and its run closed as stopped; an agent job's worker is stopped; the machine room gets one stopped
+  line, never the failure alert. The timer is left, so the next fire stays; a one-shot leaves the jobs file. A
+  script's run is stopped with the daemon down too, the command saying the machine room was not told. A stop reads as
+  a failure nowhere, and a stop with nothing running says when the job last ran and its next fire.
+- Jobs: a recurring job that keeps failing the same way edits its one alert in the machine room ("3 times since
+  02:10, last 02:30") instead of posting a red line per run, and its first good run edits it once more to say it is
+  ok again. A different failure, a good run between or a post that cannot be edited posts anew; one-shots and the
+  other lines in the machine room post as before.
+- Doctor: `yerk doctor` reviews the jobs: a job whose room or account is not on file, a one-shot past its time still
+  in the jobs file, runs of the last day that did not start, were cut or are undelivered, and a watch's findings held
+  more than a day, one line each with what to do. It changes nothing, and a jobs file or ledger it cannot read is said.
+- Retention: the folder of a watch's held finding is kept whatever its age.
+
+**Upgrading**: nothing to do. budgets.toml's `[code] lines` and `yerk_tools` rise with the change.
+
 ### compact-focus-2026-11-23 (#129)
 
 - Compaction: every compaction Yerk AI starts (the copy's, the held one, the one before an overflow's rerun and
