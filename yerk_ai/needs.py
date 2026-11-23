@@ -28,7 +28,7 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeGuard
 
 from . import memindex, words
 from .config import write_private
@@ -68,7 +68,7 @@ def load(state: Path) -> list[dict[str, Any]]:
     return [r for r in rows if isinstance(r, dict)]
 
 
-def refused(r: dict[str, Any] | None) -> bool:
+def refused(r: dict[str, Any] | None) -> TypeGuard[dict[str, Any]]:
     """`file`'s or `update`'s answer when the store could not be read: nothing was written."""
     return isinstance(r, dict) and r.get("ok") is False
 
