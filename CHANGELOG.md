@@ -31,9 +31,11 @@ version changes.
 - Compaction: every compaction Yerk AI starts (the copy's, the held one, the one before an overflow's rerun and
   `yerk room compact`) now tells Claude Code what its summary keeps besides its own: the person's standing orders in
   their words, everything still owed to them as it was said, and `UNVERIFIED:` in front of anything no tool result
-  confirmed. Measured on copies of three real sessions, three summaries with the words and three without, scored blind
-  against items listed off the conversation: more of what is owed and more of the guesses came back, the guesses marked
-  as guesses; orders, facts and failures held. Claude Code's own compaction inside a turn is unchanged.
+  confirmed. Measured on copies of real sessions, summaries with the words and without, scored blind against items listed
+  off the conversation: at Claude Code's default effort more of what is owed came back and more of the guesses were
+  marked as guesses; at the rooms' own effort (max) what is owed, orders, facts and failures were equal and the guesses
+  written as facts fell from 2.0 to 1.0 of 6 on Fable 5.2 (2.0 to 1.5 on Opus 5.5), a compaction taking 20 to 30% longer, on
+  a copy with the room free. Claude Code's own compaction inside a turn is unchanged.
 - rooms.toml: a room's `compact_focus` is its own text for that; empty or false sends `/compact` alone, as before.
 
 ### watch-jobs-2026-11-23 (#128)
