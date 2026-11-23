@@ -300,7 +300,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     with need 127's 146 and these 337, 5,567), the total by the 337 to 134,145; then (hands-line-2026-11-22) the hands line
     to 10,970, what the rooms send (the fixture's browser 5,587 and mac 1,309), the total by the 17 to 134,162; then
     (need-2026-11-22-136) the other entries to 3,781 for web_fetch's sentence on an ÖBB ticket shop link (1,030 to 1,230
-    as sent), the total by the 200 to 134,362."""
+    as sent), the total by the 200 to 134,362; then (watch-jobs-2026-11-23) `yerk_tools` to 29,600 for the `schedule`
+    tool's "tell" and `wakes` (181 more as built), the total by the 200 to 134,562."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -318,7 +319,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134362
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134562
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -483,10 +484,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     (logins-notes-doctor-2026-11-20); then the hands line (337, the browser's `scroll` and click's and scroll's `nth`), no
     other line lowered, to 134,145 (need-2026-11-21-133); then the hands line again (17, set to what the rooms send), no
     other line lowered, to 134,162 (hands-line-2026-11-22); then the other entries' line (200, web_fetch's sentence on an
-    ÖBB ticket shop link), no other line lowered, to 134,362 (need-2026-11-22-136)."""
+    ÖBB ticket shop link), no other line lowered, to 134,362 (need-2026-11-22-136); then Yerk AI's tools' line (200, the
+    `schedule` tool's "tell" and `wakes`, a watch), no part could pay, to 134,562 (watch-jobs-2026-11-23)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134362
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 134562
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 134362`
+- `total = 134562`
 
 ## [session_start.claude_code]
 
@@ -140,9 +140,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-22, need-2026-11-22-136: web_fetch reads an ÖBB ticket shop link (the trains from Scotty, ÖBB's own timetable service, their legs and each one's fare from the shop's API when it answers), since a room asked for a dated journey's train times and tickets met a captcha on every rung of the shop's page and answered off a reseller's times and printed timetables; filed 2026-11-22. Its description one sentence longer, the link's shape in it, 615 to 815 characters as this tree builds it, 200 more as sent (a plug-in's description goes out as written), so the other entries (web-ladder's four and the placeholder) 3,781 on the 3,581 line; no other line lowered for it, the total rose by the 200 (to 134,362 on main's 134,162). The hands plug-in's tool entries do not change.
 
+2026-11-23, watch-jobs-2026-11-23: the `schedule` tool's `deliver` "tell" (a watch: a script whose output, when there is any, the room is told) and its `wakes` (at most that many turns an hour), since a polling check ran a model turn on every fire, a check that found nothing too (the owner's ask, Mon Nov 23): schedule 2,694 to 2,875 as this tree builds it, all 25 from 26,941 to 27,122 (181 more, measured on main f49c652 and on this tree the same way, each entry's compact JSON), on the about 29,388 the rooms send, so about 29,569, 169 over the line; so 29,600, no part could pay, the total rose by the 200 (to 134,562 on main's 134,362). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 29400`
+- `yerk_tools = 29600`
 - `deferred_tool_names = 3781`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -865,7 +867,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-23: harness-holes raised it by 118, the four fixes (the owner's ask), not folded to fit (texting/link.py 21: a cursor that cannot be read holds the link; needs.py 20, pipeline.py 16, daemon.py 4, cli.py 7: a store that cannot be read is unknown, never empty; room.py 7: fold and batch by sender; jobs.py 40: an agent run no daemon took kept and fired once at the next start, its `at` key's words; words.py 3). 35,536: 35,418 plus 118.
 
-- `lines = 35536`
+2026-11-23: watch-jobs-2026-11-23 raised it by 131, the four decisions of watch jobs (the owner's ask of 13:26, Mon Nov 23), not folded to fit (jobs.py 110: deliver = "tell" told through the note's path, the wakes bound held and released from the ledger, YERK_WATCH_STATE, the tool's and the sync's refusals, the list's words; ledger.py 11: told, job_told and the delivery filter; words.py 7: the watch's frame, its held line, its kind and its refusal; cli.py 2; mcp_server.py 1). 35,667: 35,536 plus 131.
+
+- `lines = 35667`
 
 ## Uncapped
 

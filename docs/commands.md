@@ -170,7 +170,8 @@ add a one-shot or a recurring job, remove one, or list them (the room's `schedul
 - `--kind KIND`: one of agent, script, note; default agent
 - `--tz TZ`: add: an IANA zone (default: the room's timezone, else [memory] timezone)
 - `--room ROOM`: add: the room it lands in (default: the only room)
-- `--deliver DELIVER`: one of announce, silent; default announce
+- `--deliver DELIVER`: add: "tell", a script job only (a watch): its output, when there is any, is told to the room's own session; one of announce, silent, tell; default announce
+- `--wakes WAKES`: add: a watch, the most turns it wakes its room in any hour, 1 to 60 (default 6)
 - `--cap CAP`: add: minutes before the run is stopped
 - `--account ACCOUNT`: add: agent jobs, the account to run on
 - `--model MODEL`: add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)

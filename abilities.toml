@@ -310,8 +310,8 @@ asked_as = ["in spam", "to spam", "in people's spam", "in their spam", "in his s
 state = "described"
 what = "Wakes Yerk when an email that matters lands, by rules in the private folder, and stays quiet otherwise."
 how = [
-  "A watch on the mailbox: new mail matched against sender and subject rules.",
-  "A match becomes a room message or an agent job; no match prints nothing, so nothing wakes.",
+  "A script job with deliver = tell and a room: it reads new mail against sender and subject rules in the private folder, the mail it has seen kept in its YERK_WATCH_STATE folder.",
+  "A match is printed and the room tells it in its own voice, at most `wakes` turns an hour; no match prints nothing, so nothing wakes and no model runs.",
 ]
 tier = "free"
 needs = "the email ability and the jobs ability"
@@ -723,8 +723,8 @@ asked_as = ["smart glasses", "camera glasses"]
 state = "described"
 what = "Watches a web page and tells the owner when it changes in a way that matters: a new date, a new listing, a price."
 how = [
-  "An agent job per page, with the page and what counts as a change in its brief.",
-  "Silence when nothing changed; one line in the room when something did.",
+  "A script job with deliver = tell and a room, one per page: it fetches the page and compares what counts as a change with the last copy kept in its YERK_WATCH_STATE folder.",
+  "Silence when nothing changed, with no model run; a change is printed and the room tells it in its own voice.",
 ]
 tier = "free"
 needs = "the jobs ability, and the web ability for pages that block plain fetches"
@@ -738,7 +738,7 @@ upgrade = "jobs"
 state = "described"
 what = "Watches a classifieds site for listings under a set price, reads the replies to the owner's messages and keeps one pipeline sheet."
 how = [
-  "A listing poll every few minutes against the price rules in the private folder.",
+  "A script job with deliver = tell and a room: a listing poll every few minutes against the price rules in the private folder, the listings it has seen kept in its YERK_WATCH_STATE folder, a new one under the price told by the room.",
   "A reply reader in the owner's browser that posts new replies to the room.",
   "One sheet that merges sends and replies.",
 ]
