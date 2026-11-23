@@ -8,6 +8,16 @@ version changes.
 
 ## 2026-11-23
 
+### compact-focus-2026-11-23 (#129)
+
+- Compaction: every compaction Yerk AI starts (the copy's, the held one, the one before an overflow's rerun and
+  `yerk room compact`) now tells Claude Code what its summary keeps besides its own: the person's standing orders in
+  their words, everything still owed to them as it was said, and `UNVERIFIED:` in front of anything no tool result
+  confirmed. Measured on copies of three real sessions, three summaries with the words and three without, scored blind
+  against items listed off the conversation: more of what is owed and more of the guesses came back, the guesses marked
+  as guesses; orders, facts and failures held. Claude Code's own compaction inside a turn is unchanged.
+- rooms.toml: a room's `compact_focus` is its own text for that; empty or false sends `/compact` alone, as before.
+
 ### watch-jobs-2026-11-23 (#128)
 
 - Jobs: a script job may set `deliver = "tell"` (a watch). When its run prints something, the room's own session is

@@ -25,6 +25,7 @@ FAKE = Path(__file__).with_name("fake_claude.py")
 ROOM = "example-room"            # the example layer's room: the budget's 250,000 window, so 0.7 of it is 175,000, Claude
                                  # Code's line is 217,000 and 0.05 of the window under it is 204,500
 IDLE = 26 * 60                   # past the budget's 25 minutes, under the 30 a room's process stays open
+COMPACT = f"/compact {words.COMPACT_FOCUS}"     # what a room with no compact_focus of its own sends
 
 
 class Chan:
@@ -109,6 +110,12 @@ def compactions(tmp_path):
     return len(f.read_text().splitlines()) if f.is_file() else 0
 
 
+def compacts(sent, which):
+    """The /compact lines of `sent` (with words after it or none) whose first part is `which`: a copy's here, a fast process's in
+    test_fast. A test that none went asks this, not for the bare command: the line it would miss has the focus after it."""
+    return [t for first, t in sent if first is which and t.split()[:1] == ["/compact"]]
+
+
 @pytest.fixture
 def written(monkeypatch):
     """Each line written to a Claude Code process, as (a copy's, the line)."""
@@ -133,7 +140,7 @@ def test_the_reaper_compacts_a_room_idle_near_its_window_once_and_the_next_messa
     rows = y.ledger.rows(2)                                  # the copy's row holds the size after it, its session the room's
     assert [r["context"] for r in rows] == [20000, 200000] and room.rp.session_id == rows[0]["session_id"] != rows[1]["session_id"]
     assert rows[0]["outcome"] == "compacted" and y.ledger.turn_summary(0)[1] == []   # never one of the day's failed turns
-    assert written == [(False, "CONTEXT:200000 hello"), (True, "/compact")]          # nothing to the room's own process
+    assert written == [(False, "CONTEXT:200000 hello"), (True, COMPACT)]          # nothing to the room's own process
     reap(y, room, IDLE)                                      # once per growth: not again at this size
     wait_idle(room)
     assert compactions(tmp_path) == 1
@@ -300,7 +307,7 @@ def test_with_no_process_alive_the_room_is_held_for_its_start_only_and_then_comp
     say(y, room, "3", "and now?")
     wait_idle(room)
     assert echoed(chan, 2).startswith(TAIL_HEAD) and "CONTEXT:21000 meanwhile" in echoed(chan, 2) and room.rp.session_id == bound(tmp_path)
-    assert (False, "/compact") not in written and written.count((True, "/compact")) == 1
+    assert not compacts(written, False) and compacts(written, True) == [COMPACT]
     room.rp.close()
 
 
@@ -803,3 +810,33 @@ def test_the_copys_start_is_cleared_on_each_kind_of_drop_and_the_row_says_null(y
         gate.set()
         until(lambda: any("compaction on a copy is dropped" in m for m in caplog.messages))
     assert room.fork is None and room.forked is None and room.ready is None and copy_row(y, tmp_path) is None
+
+
+@pytest.mark.parametrize("key,line", [(None, COMPACT), ("  keep   the\n map ", "/compact keep the map"), ("", "/compact"), (False, "/compact")])
+def test_every_compaction_says_on_one_line_what_its_summary_keeps(y, tmp_path, written, key, line):
+    """The one before an overflow's rerun, the held one (`yerk room compact`) and the copy's: the room's own compact_focus,
+    else Yerk AI's; empty or false, /compact alone and Claude Code's own summary."""
+    if key is not None:
+        y.room_confs[ROOM]["compact_focus"] = key
+    room = y.add_room(ROOM, chan := Chan())
+    say(y, room, "1", "TOO_LONG_ONCE hello")
+    wait_idle(room)
+    assert compacts(written, False) == [line] and chan.replies == ["echo: TOO_LONG_ONCE hello"]
+    say(y, room, "2", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.compact_now() == "ok" and compacts(written, False) == [line, line] and compacts(written, True) == []
+    say(y, room, "3", "CONTEXT:200000 and now?")
+    wait_idle(room)
+    reap(y, room, IDLE)
+    until(lambda: room.fork is None and compactions(tmp_path) == 3)
+    assert compacts(written, True) == [line] and compacts(written, False) == [line, line]
+    wait_idle(room)
+    room.rp.close()
+
+
+def test_yerks_own_words_for_a_compaction_are_one_short_line_and_ask_for_guesses_to_be_marked():
+    """A slash command ends at its line, and the words ride every compaction of every room. What they are for, off the
+    2026-11-23 reading: orders and what is owed survive, and a guess comes back marked as one."""
+    text = words.COMPACT_FOCUS
+    assert text == " ".join(text.split()) and not text.startswith("/") and len(text) <= 500
+    assert all(w in text for w in ("by default", "standing order", "still owed", "UNVERIFIED:"))
