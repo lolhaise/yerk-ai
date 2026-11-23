@@ -119,9 +119,11 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
              f"(default {WAKES}); past it each finding waits in its run's folder, and once the hour allows the newest is told "
              "as one turn naming how many were held back, so none is lost and none is told twice",
     "command": "script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the "
-               "job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this "
-               "install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts "
-               "it, exit 0 with nothing posts nothing, anything else alerts",
+               "job's zone, YERK_JOB and YERK_JOB_DIR set (a watch's YERK_WATCH_STATE too: a folder of the job's own, "
+               "0700, the same every run, where its script keeps what it has seen; Yerk never reads it), YERK_PRIVATE and "
+               "YERK_STATE as the unit has them and this install's `yerk` first on PATH, so a `yerk` line runs on this "
+               "install's folders; exit 0 with output posts it (a watch: tells it), exit 0 with nothing posts nothing, "
+               "anything else alerts",
     "message": "agent jobs: the brief the worker gets, written as the whole job; its last message is what the room "
                "hears, and exactly NO_REPLY means nothing is posted. Notes: the text the room is told when it is due",
 }
@@ -743,6 +745,10 @@ def run_script(job: Job, folder: Path) -> dict[str, Any]:
     env = {k: v for k, v in os.environ.items() if k in ENV_KEEP or k in ("YERK_PRIVATE", "YERK_STATE")}
     env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_JOB_DIR=str(folder), YERK_ROOM=job.room,
                PATH=os.pathsep.join([str(Path(sys.executable).parent), *filter(None, [env.get("PATH")])]))
+    if job.deliver == "tell":                   # a watch's own memory, the same folder every run: Yerk never reads it
+        (watch := folder.parent / "watch").mkdir(mode=0o700, exist_ok=True)
+        watch.chmod(0o700)
+        env["YERK_WATCH_STATE"] = str(watch)
     t0 = time.time()
     with open(folder / "stdout", "wb") as out, open(folder / "stderr", "wb") as err:
         p = subprocess.Popen(["/bin/sh", "-c", job.payload], cwd=folder, env=env, stdout=out, stderr=err,

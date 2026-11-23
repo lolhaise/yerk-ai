@@ -1279,6 +1279,26 @@ def test_a_watchs_wakes_is_a_whole_number_from_1_to_60_and_only_a_watch_takes_on
     assert "1 to 60 (default 6)" in jobs.KEYS["wakes"] and '"tell", script jobs only' in jobs.KEYS["deliver"]
 
 
+def test_a_watch_keeps_its_own_0700_state_folder_across_runs_and_no_other_job_shares_it(setup, tmp_path):
+    """YERK_WATCH_STATE: <state>/jobs/<name>/watch, made by the runner at 0700, the same folder every run of the job (the
+    script primes and marks what it has seen there itself), another watch's its own, and a script that tells nothing none."""
+    s = setup
+    seen = 'echo seen >> "${YERK_WATCH_STATE:?}/seen"; wc -l < "$YERK_WATCH_STATE/seen"; echo "$YERK_WATCH_STATE"'
+    v = watching(setup, tmp_path, watch("a", seen) + watch("b", seen) +
+                 '[jobs.plain]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ndeliver = "silent"\n'
+                 'command = "echo ${YERK_WATCH_STATE-none}"\n')
+    t0, took = time.time() - 60, lambda p: {"ok": True}           # the runs alone: no daemon tells them here  # noqa: E731
+    assert asyncio.run(ran(v, "a", "b", "plain", handoff=took, now=t0)) == {"a": 0, "b": 0, "plain": 0}
+    assert asyncio.run(ran(v, "a", handoff=took, now=t0 + 1)) == {"a": 0}
+    out = {r["id"]: (Path(r["folder"]) / "stdout").read_text().split() for r in s.ledger.job_runs()}
+    a1, a2 = (out[r["id"]] for r in s.ledger.job_runs(job="a")[::-1])
+    (b1,), (plain,) = ([out[r["id"]] for r in s.ledger.job_runs(job=n)] for n in ("b", "plain"))
+    folder = v.state / "jobs" / "a" / "watch"
+    assert (a1, a2, b1) == (["1", str(folder)], ["2", str(folder)], ["1", str(v.state / "jobs" / "b" / "watch")])
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o700 and (folder / "seen").read_text() == "seen\nseen\n"
+    assert plain == ["none"] and not (v.state / "jobs" / "plain" / "watch").exists()
+
+
 # the schedule tool
 def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     s = setup
