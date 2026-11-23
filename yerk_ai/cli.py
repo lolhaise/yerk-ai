@@ -254,11 +254,16 @@ def cmd_calls(a: argparse.Namespace) -> int:
 
 def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
-    fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
+    fire read back from systemd; list: the read-back alone. Both work with the daemon down; stop NAME ends a job's run in
+    progress (a script's with the daemon down too), its timer left as it is."""
     from . import jobs
     priv, state = private_dir(a.private), state_dir(a.state)
     units, path = jobs.Systemd(), private_dir(a.private) / jobs.FILE
     try:
+        if a.action == "stop":
+            out = jobs.stop_now(priv, state, units, a.name or "")
+            print(json.dumps(out) if a.json else out.get("line") or out.get("error"))
+            return 0 if out.get("ok") else 1
         if a.action == "sync":
             p, back = jobs.sync(path, units, jobs.env_for(priv, state))
             lines = jobs.diff_lines(p) + ["next fire, read back from systemd:"] + jobs.read_lines(back, p.jobs)
@@ -940,8 +945,10 @@ def parser() -> argparse.ArgumentParser:
     cl.add_argument("source", help="the wrong line, as path:line (a cite the diff shows)")
     cl.add_argument("note", help="what is true instead")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
-                        "service per job, the diff, then every next fire time read back) or list (the read-back)")
-    jb.add_argument("action", choices=["sync", "list"])
+                        "service per job, the diff, then every next fire time read back), list (the read-back) or stop "
+                        "NAME (its run in progress ends; the timer and the next fire stay)")
+    jb.add_argument("action", choices=["sync", "list", "stop"])
+    jb.add_argument("name", nargs="?", help="stop: the job's name")
     jb.add_argument("--json", action="store_true")
     sc = sub.add_parser("schedule", help="add a one-shot or a recurring job, remove one, or list them (the room's "
                         "`schedule` tool, from the command line)")

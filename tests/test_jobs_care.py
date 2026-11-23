@@ -1,0 +1,168 @@
+"""Checks how scheduled jobs are stopped, alerted on and reviewed, on the fakes of the jobs tests. The cases: a job's
+run in progress stopped by `yerk jobs stop` or the schedule tool (J1), one alert per unchanged failure, edited in
+place (J2), the doctor's review of the jobs (J3), and a held finding's folder kept by the sweep (J4)."""
+import asyncio
+import hashlib
+import io
+import time
+from contextlib import redirect_stdout
+
+from yerk_ai import cli, jobs
+from yerk_ai import words as W
+
+from test_jobs import ENV, FakeSystemd, Rec, manager, write_jobs
+from test_workers import ended, setup  # noqa: F401  (the worker fixture: fake units, fake claude, a room)
+
+SCRIPT = '[jobs.{n}]\nkind = "script"\n{key} = "{when}"\ntz = "UTC"\nroom = "r"\ncommand = "sleep 600"\n'
+
+
+class Units(FakeSystemd):
+    """The jobs tests' systemd and its stop: the service is down once it returns."""
+
+    def stop(self, unit):
+        self.calls.append(("stop", unit))
+        self.active.discard(unit)
+        return ""
+
+
+def care(setup, tmp_path, table, conf=None):
+    """A manager with a room and the machine room, the jobs file synced, on a ledger at the runner's path."""
+    s = setup
+    rec, ops = Rec(), Rec()
+    j, w, _, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops},
+                                   conf=conf or {}, room_confs={"r": {"model": "m", "timezone": "UTC"},
+                                                                "ops": {"model": "m", "timezone": "UTC", "role": "machine"}})
+    j.units = sd = Units(tmp_path / "units")
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    write_jobs(priv / "jobs.toml", table)
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+    return j, w, sd, priv, state, rec, ops
+
+
+def started(ledger, job, ago, kind="script"):
+    """The row jobs.run writes as a run starts, and nothing after it (the runner is killed with its unit)."""
+    now = time.time()
+    return ledger.job_run_add(job=job, kind=kind, room="r", unit=f"{jobs.UNIT}{job}", planned=now - ago, fired=now - ago)
+
+
+def stop(j, name, caller=""):
+    return asyncio.run(j.handle(caller, {"action": "stop", "name": name}))
+
+
+# J1: stop a running job
+def test_a_running_script_job_is_stopped_its_row_closed_as_stopped_one_line_said_and_its_timer_left(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
+    rid = started(s.ledger, "nightly", 125)
+    sd.active.add("yerk-job-nightly.service")
+    before = list(sd.calls)
+    out = stop(j, "nightly")
+    assert out["ok"] and out["line"].startswith(f"stopped nightly's script run {rid} after 2 min; next fire ")
+    assert sd.calls[len(before):] == [("stop", "yerk-job-nightly.service")]                # the timer is never touched
+    assert sd.enabled == {"yerk-job-nightly.timer": True} and sd.read("yerk-job-nightly.timer")
+    r = s.ledger.job_run_get(rid)
+    assert (r["exit"], r["result"], r["delivery"], r["note"]) == ("stopped", "stopped", "none", "stopped from the command line")
+    assert r["ended"] >= r["fired"]
+    assert ops.notified == [("ops", W.job_line("nightly", "stopped"))] and "failed" not in ops.notified[0][1]
+    asyncio.run(j.reattach())                                     # an ended row is never closed again, nothing alerts
+    assert s.ledger.job_run_get(rid) == {**r, "message_ids": "n1"} and len(ops.notified) == 1 and rec.notified == []
+    assert "nightly" in jobs.load(priv / "jobs.toml")[0]
+
+
+def test_a_one_shot_stopped_leaves_the_file_and_its_units_go(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="once", key="at", when="2099-01-01 09:00")
+                                           + SCRIPT.format(n="stay", key="schedule", when="*:00"))
+    started(s.ledger, "once", 30)
+    sd.active.add("yerk-job-once.service")
+    out = stop(j, "once", "r")
+    assert out["ok"] and out["line"].endswith("next fire none: a one-shot, out of the jobs file, its units gone")
+    assert list(jobs.load(priv / "jobs.toml")[0]) == ["stay"]
+    assert sd.read("yerk-job-once.timer") is None and sd.read("yerk-job-once.service") is None
+    assert s.ledger.job_runs(job="once")[0]["note"] == "stopped from room r"
+
+
+def test_a_row_the_runner_ended_first_is_left_as_it_is(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
+    rid = started(s.ledger, "nightly", 60)
+    s.ledger.job_run_set(rid, ended=time.time() - 1, exit="exited 0", result="output", delivery="delivered", message_ids="s9")
+    kept = s.ledger.job_run_get(rid)
+    sd.active.add("yerk-job-nightly.service")                      # its hand-off still going when the stop came
+    assert stop(j, "nightly")["ok"]
+    assert s.ledger.job_run_get(rid) == kept and ops.notified == []          # its own end says it
+
+
+def test_a_stop_with_nothing_running_says_when_it_last_ran_and_an_unknown_name_gets_removes_refusal(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00")
+                                           + '[jobs.nudge]\nkind = "note"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "x"\n')
+    rid = started(s.ledger, "nightly", 60)
+    s.ledger.job_run_set(rid, ended=time.time(), exit="exited 0", result="nothing")
+    out = stop(j, "nightly")
+    assert not out["ok"] and out["error"].startswith("nothing of nightly is running; it last ran ") and ", next " in out["error"]
+    assert stop(j, "nudge")["error"].startswith("nothing of nudge is running; it last ran never, next ")
+    assert ("stop", "yerk-job-nightly.service") not in sd.calls and ops.notified == []
+    gone = stop(j, "nope")
+    assert gone == {"ok": False, "error": jobs.no_job("nope", ["nightly", "nudge"])}
+    assert gone["error"] == jobs.schedule_remove(priv / "jobs.toml", sd, ENV, "nope")["error"]
+
+
+def test_an_agent_jobs_worker_is_stopped_and_its_run_reads_stopped_with_one_line(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path,
+                                           '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "FAKE sleep=30"\n')
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        assert await asyncio.to_thread(jobs.run, "think", priv, state, sd, handoff) == 0
+        run = s.ledger.job_runs(job="think")[0]
+        await asyncio.sleep(0.3)
+        out = await j.handle("r", {"action": "stop", "name": "think"})
+        row = await ended(s.ledger, run["worker"], relay=False)
+        await asyncio.sleep(0.2)
+        return out, run, row
+    out, run, row = asyncio.run(go())
+    assert out["ok"] and out["line"].startswith(f"stopped think's worker {row['id']} after ") and row["exit"] == "stopped"
+    r = s.ledger.job_run_get(run["id"])
+    assert (r["exit"], r["result"], r["delivery"]) == ("stopped", "stopped", "none")
+    assert ops.notified == [("ops", W.job_line("think", "stopped"))]          # today's path says it, once
+    asyncio.run(j.reattach())
+    assert len(ops.notified) == 1
+
+
+def test_the_command_line_stops_a_script_with_the_daemon_down_and_an_agent_job_not(setup, tmp_path, monkeypatch):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00")
+                                           + '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "x"\n')
+    rid = started(s.ledger, "nightly", 200)
+    sd.active.add("yerk-job-nightly.service")
+    monkeypatch.setattr(jobs, "Systemd", lambda: sd)
+    buf = io.StringIO()
+    with redirect_stdout(buf):                                                     # no yerkd.json: no daemon
+        rc = cli.main(["jobs", "stop", "nightly", "--private", str(priv), "--state", str(state)])
+        rc2 = cli.main(["jobs", "stop", "think", "--private", str(priv), "--state", str(state)])
+        rc3 = cli.main(["jobs", "stop", "nightly", "--private", str(priv), "--state", str(state)])
+    said = buf.getvalue().splitlines()
+    assert (rc, rc2, rc3) == (0, 1, 1)
+    assert said[0].startswith(f"stopped nightly's script run {rid} after 3 min; next fire ") and said[0].endswith(W.JOB_STOP_UNTOLD)
+    assert said[1] == W.JOB_STOP_DOWN.format(name="think") and said[2].startswith("nothing of nightly is running")
+    assert s.ledger.job_run_get(rid)["result"] == "stopped" and ops.notified == []
+
+
+def test_the_tools_stop_works_in_an_owner_room_and_is_refused_elsewhere_with_todays_line(setup, tmp_path):
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
+    rid = started(s.ledger, "nightly", 60)
+    sd.active.add("yerk-job-nightly.service")
+    out = asyncio.run(j.notes("guests", {"action": "stop", "name": "nightly"}))
+    assert out == {"ok": False, "line": W.JOBS_OWNER_ONLY} and sd.active and s.ledger.job_run_get(rid)["ended"] is None
+    from yerk_ai.daemon import Yerkd
+    d = Yerkd.__new__(Yerkd)
+    d.jobs, d.owner, d.owner_only = j, lambda room: room == "r", lambda room, named: None
+    assert asyncio.run(d.tool_schedule("guests", {"action": "stop", "name": "nightly"}))["line"] == W.JOBS_OWNER_ONLY
+    assert asyncio.run(d.tool_schedule("r", {"action": "stop", "name": "nightly"}))["ok"]
+    assert s.ledger.job_run_get(rid)["note"] == "stopped from room r" and not sd.active

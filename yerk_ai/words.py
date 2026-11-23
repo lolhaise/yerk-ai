@@ -293,6 +293,10 @@ def died(result: str) -> str:
 # `yerk status --full`, never in the line
 JOB_FAILED, JOB_STOPPED = "job {name} failed: {why}", "job {name} {stopped}"
 JOB_RUNNING = "{name}: running"        # yerk status and the jobs list: a one-shot whose own run is going
+JOB_IDLE = "nothing of {name} is running; it last ran {last}, next {next}"     # `yerk jobs stop`, the tool's stop
+JOB_STOP = "stopped {name}'s {what} after {ran}; next fire {next}"
+JOB_STOP_DOWN = "the daemon is not running, so nothing of {name} was stopped: its worker is the daemon's"
+JOB_STOP_UNTOLD = "the machine room was not told: the daemon is not running"
 NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
 
 
