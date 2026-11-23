@@ -162,6 +162,24 @@ def test_systemds_stop_waits_out_the_unit_and_clears_the_failed_state_a_killed_r
     assert jobs.Systemd(tmp_path, tmp_path).stop("yerk-job-x.service").startswith("systemctl --user stop yerk-job-x.service exited 1")
 
 
+def test_a_run_that_ends_by_itself_while_the_unit_stops_keeps_its_own_end_and_says_itself(setup, tmp_path):
+    """The script finishes in the second the stop goes out: the runner's row and hand-off win, and no stopped line is posted."""
+    s = setup
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
+    rid = started(s.ledger, "nightly", 60)
+    sd.active.add("yerk-job-nightly.service")
+    down = sd.stop
+
+    def stops(unit):
+        s.ledger.job_run_set(rid, ended=time.time(), exit="exited 0", chars=5)
+        asyncio.run(j.result({"name": "nightly", "run": rid, "exit": 0, "timed_out": False, "output": "done!", "stderr_tail": ""}))
+        return down(unit)
+    sd.stop = stops
+    assert stop(j, "nightly")["ok"]
+    r = s.ledger.job_run_get(rid)
+    assert (r["exit"], r["result"], r["delivery"]) == ("exited 0", "output", "delivered") and ops.notified == [] and rec.sent
+
+
 def test_a_stop_before_the_run_is_on_record_names_no_older_run(setup, tmp_path):
     """The runner is up and its row not written yet (its first second): the last run, a day old and done, is not the one stopped."""
     s = setup
