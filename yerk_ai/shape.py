@@ -547,10 +547,12 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
     A lesson lessons.NO_REASON lists has no reason on file, as the owner's side says, or no exception, as its rule gives none:
     that missing reason or exception (its scope written in) is no finding, and it is named apart; so is a long body of one
     listed as the owner's words kept whole, past the length. A lesson KEPT holds kept as it stands, on the owner's word, is named apart
-    and its words' misses are none while its words are the ones he kept (lessons.said_hash); changed since, they count again."""
+    and the misses of the checks its row names are none while its words are the ones the owner kept (lessons.said_hash); changed since,
+    they count again, and a check its row does not name counts, since the owner never kept that one. "to keep": each lesson
+    found with the checks a keep would hold, its words' misses; a front matter a room cannot read is none: no keep holds it."""
     found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
     listed, named, unlifted, open_ = lessons.no_reason(m.root), list[str](), list[str](), lessons.no_exception(m.root)
-    held, keeps = lessons.kept(m.root), dict[str, list[str]](kept=[], changed=[])
+    held, keeps, to_keep = lessons.kept(m.root), dict[str, list[str]](kept=[], changed=[]), list[tuple[str, list[str]]]()
     kept = {k: lessons.listed_for(m.root, k) for k in ("whole", "own", "uncited", "long")}    # the owner's words carried as they wrote them
     apart: dict[str, list[str]] = {k: [] for k in kept}
     for at, job, text, layout in rows_of(m):
@@ -571,19 +573,21 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: A
                 missed.pop("long", None)
             for k in got:
                 apart[k].append(at)
-        if c and c[1] in held:                                      # kept on his word: only a layout miss of its file counts
-            same = held[c[1]][1] == lessons.said_hash(text)
-            keeps["kept" if same else "changed"].append(at)
-            missed = {k: w for k, v in missed.items() if (w := [x for x in v if FRONT_MISS in x] if same else v)}
+        if c and c[1] in held:     # kept on the owner's word: the checks its row names, while its words hash the same; never its layout
+            on = set(lessons.checks(held[c[1]][2])) if (same := held[c[1]][1] == lessons.said_hash(text)) else set()
+            keeps["kept" if same else "changed"].append(at)        # a check added or tightened since, missed now, counts
+            missed = {k: w for k, v in missed.items() if (w := [x for x in v if FRONT_MISS in x] if k in on else v)}
         counted += [at] * any(k in COUNT_ONLY for k in missed)
         if bad := [k for k in missed if k not in COUNT_ONLY]:
             found.append((at, bad))
+            if c and (mine := [k for k in bad if any(FRONT_MISS not in x for x in missed[k])]):   # a keep's: the words' misses
+                to_keep.append((at, mine))
     p, (most, size) = m.root / RULES, index_limits(docs)
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
     return {"lessons": found, "index": over, "size": [len(rows), have, most, size], "moved": pinned(docs, read), "style limits": counted,
             "read": list(read or EVERY), "listed": named, **({"unlifted": unlifted} if unlifted else {}), **{k: v for k, v in apart.items() if v},
-            **{k: v for k, v in keeps.items() if v}}
+            **{k: v for k, v in keeps.items() if v}, **({"to keep": to_keep} if to_keep else {})}
 
 
 def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None, whole: bool = False) -> list[str]:
@@ -636,8 +640,8 @@ def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
                     ("long", "his words kept whole, past the length, the shorter body the gate asks")):
         if n := len(r.get(k) or ()):
             out += ["", f"Listed as {what} no finding ({lessons.NO_REASON}): {n} lesson{'s' * (n != 1)}, {', '.join(r[k])}."]
-    for k, what in (("kept", "kept as it stands, on the owner's word, its misses no finding"), ("changed", "kept on the owner's word "
-                    "and changed since, its misses found again")):
+    for k, what in (("kept", "kept as it stands, on the owner's word, the misses kept no finding"), ("changed", "kept on the "
+                    "owner's word and changed since, its misses found again")):
         if n := len(r.get(k) or ()):
             out += ["", f"Listed as {what} ({lessons.KEPT}): {n} lesson{'s' * (n != 1)}, {', '.join(r[k])}."]
     out += ["", f"Pages read, those of every model a room runs: {', '.join(r.get('read') or EVERY)}."]

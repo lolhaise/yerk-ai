@@ -939,9 +939,9 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
             name[f] = memory.cite(s, s.root / les.cite)
             out.append({"kind": "gate", "label": short(les.line), "edits": [[f, les.front().count("\n") + 1, les.line, les.line]], "why": why,
                         "rows": k, "evidence": ev_, "saved": 0})
-    for at, bad in doctor.store_read(private, state, s)[0]["lessons"] if lessons.converted(s.root) else []:   # keeps: a lesson
+    for at, bad in doctor.store_read(private, state, s)[0].get("to keep", []) if lessons.converted(s.root) else []:   # keeps: a
         if not (c := lessons.CITE.search(at)) or (lsn := lessons.parse(f_ := s.root / lessons.DIR / f"{c[1]}.md")) is None:
-            continue                                 # the daily run finds out of the shape, kept as it stands on the owner's word
+            continue           # lesson the daily run finds out of the shape, its words' misses kept as they stand on the owner's word
         f, (k, ev_) = str(f_.resolve()), evidence(lsn.line, *ev)
         name[f] = memory.cite(s, f_)
         why = words.RULES_KEEP_WHY.format(checks=", ".join(words.LESSON_NAMES.get(x, x) for x in bad), sentence=shape.said(bad[0], docs.root(state)))
@@ -1157,7 +1157,7 @@ def apply(private: Path, state: Path, day: str, which: str, now: float | None = 
             if not (held := (s.root / lessons.KEPT).resolve()).is_file():
                 write_private(held, "")
             files[held], today = ("kept", 0), datetime.fromtimestamp(now, s.tz).date().isoformat()
-            edited(rows, [[str(held), 0, "", "\t".join([Path(props[n]["edits"][0][0]).stem, today, props[n]["hash"], ", ".join(props[n]["checks"])])]
+            edited(rows, [[str(held), 0, "", lessons.keep_row(s.root, Path(props[n]["edits"][0][0]).stem, today, props[n]["hash"], props[n]["checks"])]
                           for n in keep], s)
         for f, r in rows.items():
             if (kind_cap := files.get(Path(f))) is None:

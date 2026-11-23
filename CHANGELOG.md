@@ -26,11 +26,18 @@ version changes.
   again and the report names it as changed since. A front matter a room cannot read (no class first, or past 400
   characters) is never kept, since that is the file's layout and not his words. A filing with `remember` and its job, or
   a retire, takes the lesson off the list, as it takes one off `rules-no-reason.tsv`.
+- A keep holds only the checks its row names, the ones the owner said yes to. A check added or tightened after that word
+  (a lower number in budgets.toml `[shape]`, a re-pinned sentence, the page of a model a room starts running) that the
+  lesson misses counts, and the next night's keep names that check alone; applied, its row holds the earlier keep's
+  checks beside it while the words hash the same.
+- A keep names only what the lesson's words miss. A lesson whose only miss is its front matter (no class first, or past
+  400 characters) gets no keep, since no keep holds the file's layout, and a lesson missing both gets one keep, for its
+  words, and none for its front matter the nights after.
 - `yerk curate --rules` reads the store as the daily run does (`doctor.store_read`, the pages of every model a room
-  runs), so it proposes a keep for exactly the lessons the run finds (`yerk explain lesson-keeps`).
+  runs), so it proposes a keep for each lesson the run finds whose words miss the shape (`yerk explain lesson-keeps`).
 
 **Upgrading:** nothing to do. An install with no `<memory>/rules/` folder gets no keep. budgets.toml's `[code] lines`
-rises from 35,340 to 35,403, with its dated reason; an install that keeps its own budgets.toml takes it.
+rises from 35,340 to 35,418, with its dated reasons; an install that keeps its own budgets.toml takes it.
 
 ## 2026-11-22
 

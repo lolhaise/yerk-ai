@@ -235,7 +235,7 @@ def test_a_lesson_edited_by_hand_files_the_need_until_kept_as_it_stands_and_agai
     assert [n["ability"] for n in needs.load(state)] == [doctor.LESSON_NEED]
     (m.root / lessons.KEPT).write_text(f"dates\t2026-11-23\t{lessons.said_hash('Never guess a date.')}\tno reason\n")   # the keep applied
     assert doctor.lessons(private, state, m, 1000.0 + 86400, post=posts.append) == [] and len(needs.load(state)[0]["asks"]) == 1
-    assert (f"Listed as kept as it stands, on the owner's word, its misses no finding (rules-kept.tsv): 1 lesson, {at}."
+    assert (f"Listed as kept as it stands, on the owner's word, the misses kept no finding (rules-kept.tsv): 1 lesson, {at}."
             in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
     f.write_text(gated.front().replace("class: shared\n", "") + "Never guess a date.\n")              # the owner's words, its class gone
     assert shape.store(m, LIMITS, state / "docs")["lessons"] == [(at, ["summary"])]                   # a layout miss still counts

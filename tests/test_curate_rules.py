@@ -571,3 +571,51 @@ def test_a_keep_proposed_before_a_hand_edits_the_lesson_again_is_refused_and_wri
         curate.apply(priv, state, DAY, str(q["n"]), now=NOW)
     assert str(e.value) == f"{q['n']}: memory/rules/quote-a-day.md changed since it was proposed; nothing applied"
     assert files_of(priv, state) == before and not (s.root / lessons.KEPT).exists()
+
+
+def test_a_front_matter_a_keep_cannot_hold_gets_no_keep_and_a_keep_names_only_the_misses_of_his_words(converted):
+    """PR 126's cold read (2026-11-23): a front matter a room cannot read is the file's layout, never kept, yet it got a keep that
+    settled nothing and came back every night; a lesson missing its reason too got a second keep, for that layout, each night."""
+    from yerk_ai import docs, doctor, shape
+    priv, state, s = converted
+    f, x = s.root / "rules" / "quote-a-day.md", lessons.parse(s.root / "rules" / "quote-a-day.md")
+    f.write_text(x.front().replace("class: shared\n", "") + f"{x.summary} {x.body}\n")      # words in the shape, the class line gone
+    at = f"memory/rules/quote-a-day.md:{lessons.parse(f).front().count(chr(10)) + 1}"
+    assert doctor.store_read(priv, state, s)[0]["lessons"] == [(at, ["summary"])]           # found: a room cannot read it
+    def keeps(t):
+        return [q for q in curate.rules(priv, state, s, False, t, post=lambda p: {"ok": True})["proposals"] if q["kind"] == "keep"]
+
+    assert keeps(NOW) == [] and "to keep" not in doctor.store_read(priv, state, s)[0]
+    f.write_text(x.front().replace("class: shared\n", "") + "Quote a day only from its line.\n")   # its reason gone as well
+    [q] = keeps(NOW)
+    why = words.RULES_KEEP_WHY.format(checks="no reason given", sentence=shape.said("no reason", docs.root(state)))
+    assert q["checks"] == ["no reason"] and q["why"] == why
+    curate.apply(priv, state, DAY, str(q["n"]), now=NOW)
+    assert lessons.kept(s.root)["quote-a-day"][2] == "no reason"
+    after = doctor.store_read(priv, state, s)[0]
+    assert after["lessons"] == [(at, ["summary"])] and after["kept"] == [at] and "to keep" not in after   # the layout still counts
+    assert keeps(NOW + 86400) == []                                                          # and no keep comes back for it
+
+
+def test_a_keep_holds_the_checks_it_names_so_a_check_tightened_after_the_owners_word_counts_and_its_keep_holds_both(converted, monkeypatch):
+    """PR 126's cold read: a keep held every miss of the lesson's words, so a check tightened or added after the owner's word,
+    one the owner never kept, was silent. Now it counts, its own keep names it, and its row holds the checks of the keep before it."""
+    from yerk_ai import doctor
+    priv, state, s = converted
+    hand(s, "quote-a-day", "Quote a day only from its line, and say the day log's own words for the menu, the soup and the bread.")
+    [(at, bad)] = doctor.store_read(priv, state, s)[0]["lessons"]
+    assert bad == ["no reason"]
+    q = next(q for q in curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"] if q["kind"] == "keep")
+    curate.apply(priv, state, DAY, str(q["n"]), now=NOW)
+    assert doctor.store_read(priv, state, s)[0]["lessons"] == []
+    real = doctor.budgets
+    monkeypatch.setattr(doctor, "budgets", lambda *a: {**real(*a), "shape": {**real(*a)["shape"], "lesson_summary_chars": 60}})
+    r = doctor.store_read(priv, state, s)[0]                                                  # [shape] tightened after the owner's word
+    assert (at, ["summary"]) in r["lessons"] and (at, ["summary"]) in r["to keep"] and r["kept"] == [at]
+    [q2] = [q for q in curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"]
+            if q["kind"] == "keep" and q["label"] == "quote a day"]
+    assert q2["checks"] == ["summary"] and q2["hash"] == q["hash"] and "no one-line summary first" in q2["why"]
+    curate.apply(priv, state, DAY, str(q2["n"]), now=NOW)
+    assert lessons.kept(s.root)["quote-a-day"] == (DAY, q["hash"], "no reason, summary")       # the earlier keep's check held too
+    assert [x for x in doctor.store_read(priv, state, s)[0]["lessons"] if x[0] == at] == []
+    assert lessons.keep_row(s.root, "quote-a-day", DAY, "0" * 12, ["long"]) == f"quote-a-day\t{DAY}\t{'0' * 12}\tlong"   # other words: its own

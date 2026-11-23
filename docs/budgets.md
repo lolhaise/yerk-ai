@@ -861,7 +861,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-23: need-2026-11-23-137 raised it by 63, not folded to fit: a lesson out of the lesson shape kept as it stands on the owner's word (lessons.py 22: KEPT, said_hash, kept, unkeep, off it on a filing or a retire; shape.py 12: a kept lesson's word misses none while its hash holds, named apart, its layout still counted; doctor.py 6: store_read, the daily run's read shared with curate; curate.py 17: the keep proposal and its apply, one row, refused once their words moved; words.py 6: its WHY and AFTER). 35,403: 35,340 plus 63.
 
-- `lines = 35403`
+2026-11-23: need-2026-11-23-137's fix of its cold read raised it by 15, not folded to fit: a keep holds the checks its row names and no other (shape.py 4: a check added or tightened since counts; "to keep", a lesson's word misses, never its front matter, so a front matter alone gets no keep; lessons.py 11: keep_row, a later keep of the same words holding the earlier one's checks, and checks). 35,418: 35,403 plus 15.
+
+- `lines = 35418`
 
 ## Uncapped
 

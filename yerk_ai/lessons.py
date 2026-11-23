@@ -231,6 +231,17 @@ def kept(root: Path) -> dict[str, tuple[str, str, str]]:
     return {r[0]: (r[1], r[2], r[3] if len(r) > 3 else "") for r in rows if len(r) >= 3 and r[0]}
 
 
+def keep_row(root: Path, slug: str, day: str, said: str, missed: list[str]) -> str:
+    """KEPT's row for a keep of `slug`'s words (their said_hash `said`): the checks it names after those a row of the same words
+    holds, so a keep of a check added or tightened since holds the earlier ones too. checks(): a row's, the owner's word's."""
+    was = kept(root).get(slug)
+    return "\t".join([slug, day, said, ", ".join(dict.fromkeys([*checks(was[2] if was and was[1] == said else ""), *missed]))])
+
+
+def checks(held: str) -> list[str]:
+    return [x.strip() for x in held.split(",") if x.strip()]
+
+
 def unkeep(root: Path, slug: str) -> None:
     """`slug` off KEPT: a filing replaced its words through the gate, or a retire took it away."""
     if slug in (have := kept(root)):
