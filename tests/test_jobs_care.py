@@ -67,11 +67,11 @@ def stop(j, name, caller=""):
 def test_a_running_script_job_is_stopped_its_row_closed_as_stopped_one_line_said_and_its_timer_left(setup, tmp_path):
     s = setup
     j, w, sd, priv, state, rec, ops = care(setup, tmp_path, SCRIPT.format(n="nightly", key="schedule", when="*:00"))
-    rid = started(s.ledger, "nightly", 125)
+    rid = started(s.ledger, "nightly", 800)                   # past its unit's limit (10 min and 2): what reattach closes
     sd.active.add("yerk-job-nightly.service")
     before = list(sd.calls)
     out = stop(j, "nightly")
-    assert out["ok"] and out["line"].startswith(f"stopped nightly's script run {rid} after 2 min; next fire ")
+    assert out["ok"] and out["line"].startswith(f"stopped nightly's script run {rid} after 13 min; next fire ")
     assert sd.calls[len(before):] == [("stop", "yerk-job-nightly.service")]                # the timer is never touched
     assert sd.enabled == {"yerk-job-nightly.timer": True} and sd.read("yerk-job-nightly.timer")
     r = s.ledger.job_run_get(rid)
