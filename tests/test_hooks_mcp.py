@@ -117,7 +117,7 @@ def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
     assert "`account` an account's name (tried first, the others behind it)" in str(tools["settings"].description)
     assert list(tools["schedule"].inputSchema["properties"]) == ["action", "name", "when", "what", "kind", "tz",
                                                                 "deliver", "room", "cap_minutes", "account", "model", "effort",
-                                                                "addons"]
+                                                                "addons", "wakes"]
     said = " ".join(str(tools["schedule"].description).split())   # an agent job's worker on its own level and model (need 79)
     assert "`effort` its thinking level, low, medium, high, xhigh or max, and `model` one from the install's list, default this room's live ones" in said
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]

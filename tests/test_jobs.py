@@ -1360,6 +1360,45 @@ def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     assert "= 3 unchanged: remind, paris, cli-job" in text and "cli-job: removed" in text and "cli-job" not in path.read_text()
 
 
+def test_the_schedule_tool_and_the_command_line_book_a_watch_and_refuse_tell_where_nothing_would_hear_it(setup, tmp_path, monkeypatch):
+    """`deliver = "tell"` and `wakes` through the tool and `yerk schedule add`, the list saying a script that tells; a note
+    or an agent job with deliver = "tell", wakes off a watch, and a hand-edited watch whose room is not in rooms.toml are
+    refused with why, nothing written or scheduled."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    path = priv / "jobs.toml"
+    add = lambda **req: asyncio.run(j.handle("r", {"action": "add", "when": "*:0/15", "tz": "UTC", **req}))  # noqa: E731
+    out = add(name="shop", kind="script", what="echo new", deliver="tell", wakes=3)
+    assert out["ok"] and (out["kind"], out["deliver"], out["wakes"]) == ("script", "tell", 3)
+    assert 'deliver = "tell"\nwakes = 3\n' in path.read_text() and jobs.load(path)[0]["shop"].wakes == 3
+    listed = asyncio.run(j.handle("r", {"action": "list"}))
+    assert "room r, script that tells the room, at most 3 turns an hour" in listed["lines"][0] and listed["jobs"][0]["wakes"] == 3
+    kept = path.read_text()
+    for req, why in ((dict(kind="note", what="x", deliver="tell"), "a note is told to its room already"),
+                     (dict(kind="agent", what="x", deliver="tell"), "an agent job's last message is told by its room already"),
+                     (dict(kind="script", what="x", wakes=2), '`wakes` is for a script job with deliver = "tell"'),
+                     (dict(kind="script", what="x", deliver="tell", wakes=61), "1 to 60")):
+        got = add(name="no", **req)
+        assert not got["ok"] and why in got["error"] and '`deliver = "tell"` is for a script job (a watch)' in got["error"] \
+            if "deliver" in req and req["kind"] != "script" else why in got["error"], (req, got)
+    assert path.read_text() == kept and sd.ours() == ["shop"]
+    monkeypatch.setattr(jobs, "Systemd", lambda: sd)
+    monkeypatch.setattr(cli, "rooms", lambda p: {"r": {"timezone": "UTC"}})
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli.main(["schedule", "add", "inbox", "--when", "*:0/10", "--what", "echo mail", "--kind", "script", "--deliver",
+                       "tell", "--wakes", "2", "--room", "r", "--private", str(priv), "--state", str(state)])
+        rc2 = cli.main(["jobs", "list", "--private", str(priv), "--state", str(state)])
+    assert (rc, rc2) == (0, 0) and buf.getvalue().startswith("inbox: calendar `*:0/10` UTC, script job, room r, deliver tell, wakes 2; next ")
+    assert "inbox: next " in buf.getvalue() and "script that tells the room, at most 2 turns an hour" in buf.getvalue()
+    (priv / "rooms.toml").write_text('[rooms.r]\nmodel = "m"\n')                      # by hand: a watch for a room not there
+    path.write_text(path.read_text() + '\n[jobs.lost]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "gone"\n'
+                    'deliver = "tell"\ncommand = "echo x"\n')
+    p = jobs.plan(path, sd, jobs.env_for(priv, state))
+    assert p.errors == {"lost": "room 'gone' is not in rooms.toml, so the watch (deliver = \"tell\") has no room to tell"}
+    assert "lost" not in p.added and {"shop", "inbox"} <= set(p.unchanged)
+
+
 def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_owners(tmp_path):
     """Seen live: a person's room could not set the reminder they asked for, since every job ran as the owner. A
     room that is not the owner's now adds, lists and removes its own notes, and no answer names another job; an agent

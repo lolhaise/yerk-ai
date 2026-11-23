@@ -298,7 +298,7 @@ def cmd_schedule(a: argparse.Namespace) -> int:
         out = jobs.schedule_add(path, units, env, a.name, a.kind, a.when, a.what, room,
                                 a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "",
                                 int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)), a.model or "", a.effort or "", models(conf),
-                                a.addon, rs[room])
+                                a.addon, rs[room], a.wakes)
     if a.json:
         print(json.dumps(out, default=str))
     elif not out["ok"]:
@@ -309,7 +309,7 @@ def cmd_schedule(a: argparse.Namespace) -> int:
         print("\n".join([f"{a.name}: removed"] + out["diff"]))
     else:
         print(f"{out['name']}: {out['schedule']}, {out['kind']} job, room {out['room']}, deliver {out['deliver']}"
-              + "".join(f", {k} {out[k]}" for k in ("model", "effort", "addons") if k in out) + f"; next {out['next_text']}; unit {out['unit']}")
+              + "".join(f", {k} {out[k]}" for k in ("wakes", "model", "effort", "addons") if k in out) + f"; next {out['next_text']}; unit {out['unit']}")
     return 0 if out["ok"] else 1
 
 
@@ -954,7 +954,9 @@ def parser() -> argparse.ArgumentParser:
     sc.add_argument("--kind", choices=["agent", "script", "note"], default="agent")
     sc.add_argument("--tz", help="add: an IANA zone (default: the room's timezone, else [memory] timezone)")
     sc.add_argument("--room", help="add: the room it lands in (default: the only room)")
-    sc.add_argument("--deliver", choices=["announce", "silent"], default="announce")
+    sc.add_argument("--deliver", choices=["announce", "silent", "tell"], default="announce",
+                    help='add: "tell", a script job only (a watch): its output, when there is any, is told to the room\'s own session')
+    sc.add_argument("--wakes", type=int, default=0, help="add: a watch, the most turns it wakes its room in any hour, 1 to 60 (default 6)")
     sc.add_argument("--cap", type=float, default=0.0, help="add: minutes before the run is stopped")
     sc.add_argument("--account", help="add: agent jobs, the account to run on")
     sc.add_argument("--model", help="add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)")

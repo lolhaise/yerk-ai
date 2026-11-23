@@ -416,7 +416,7 @@ def remove(path: Path, name: str) -> bool:
 
 
 def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str = "announce", cap: float = 0.0,
-               account: str = "", model: str = "", effort: str = "", addons: Collection[str] = ()) -> dict[str, Any]:
+               account: str = "", model: str = "", effort: str = "", addons: Collection[str] = (), wakes: int = 0) -> dict[str, Any]:
     """The table a `schedule add` writes: `when` is a time (a one-shot) or a systemd calendar line
     (recurring); `what` is the message (agent, note) or the command (script)."""
     w = when.strip()
@@ -431,6 +431,8 @@ def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str
         out["cap"] = cap
     if deliver != "announce":
         out["deliver"] = deliver
+    if wakes:
+        out["wakes"] = wakes
     if account:
         out["account"] = account
     out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
@@ -600,10 +602,13 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
     jobs, errors = load(path, now)
     kept = running_one_shots(path, units, errors)               # kept as they are, never checked for a next fire
     p = Plan(jobs=jobs, errors=errors)
-    confs = room_confs(env.private) if any(j.addons for j in jobs.values()) else None
+    confs = room_confs(env.private) if any(j.addons or j.deliver == "tell" for j in jobs.values()) else None
     for name, job in jobs.items():
         if confs is not None and job.addons and (why := addons_refusal(confs.get(job.room, {}), job.addons)):
             p.errors[name] = why
+            continue
+        if confs is not None and job.deliver == "tell" and job.room not in confs:
+            p.errors[name] = words.TELL_NO_ROOM.format(room=job.room)
             continue
         for spec in job.calendar():
             if (why := units.check(spec)):
@@ -698,9 +703,14 @@ def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float
             nxt = when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})" if r["next"] else "")
             last = f", last {when_text(r['last'], r['tz'])}" if r["last"] else ", never fired yet"
             head = words.JOB_RUNNING.format(name=name) if name in running else f"{name}: next {nxt}{last}"
-            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
+            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {kind_text(jobs[name])}"
                        + "".join(f", {k} {v}" for k, v in jobs[name].runs_on().items()))
     return out or ["jobs: none"]
+
+
+def kind_text(job: Job) -> str:
+    """The job's kind as its list line says it: a watch is a script that tells, with its bound."""
+    return words.WATCH_KIND.format(wakes=job.wakes) if job.deliver == "tell" else job.kind
 
 
 def phone(text: str) -> str:
@@ -888,7 +898,7 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
 def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
                  deliver: str = "announce", cap: float = 0.0, account: str = "", note_chars: int = NOTE_CHARS,
                  model: str = "", effort: str = "", models: dict[str, str] | None = None, addons: Collection[str] = (),
-                 room_conf: dict[str, Any] | None = None) -> dict[str, Any]:
+                 room_conf: dict[str, Any] | None = None, wakes: int = 0) -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
     a job systemd will not schedule is taken out of the file again. A note longer than `note_chars` is refused, and so is
     a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list,
@@ -906,7 +916,7 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
         return {"ok": False, "error": f"give `tz` (an IANA name such as Europe/Paris): room {room!r} has no timezone "
                                       "configured, and nothing is put on UTC by accident"}
     try:
-        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort, addons)
+        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort, addons, wakes)
         job = add(path, name, fields)
         p, back = sync(path, units, env)
     except JobError as e:
@@ -920,7 +930,7 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
         return {"ok": False, "error": f"not scheduled: {why}; the job was taken out of the file again"}
     now = time.time()
     return {"ok": True, "name": name, "unit": r["unit"], "schedule": job.describe(), "room": room, "tz": job.tz,
-            "kind": kind, "deliver": job.deliver, **job.runs_on(), "next": r["next"],
+            "kind": kind, "deliver": job.deliver, **({"wakes": job.wakes} if job.deliver == "tell" else {}), **job.runs_on(), "next": r["next"],
             "next_text": f"{when_text(r['next'], job.tz)} ({in_text(r['next'], now)})", "diff": diff_lines(p)}
 
 
@@ -950,8 +960,9 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
     now = time.time()
     rows = [{"name": n, **r, "next_text": when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})"
                                                                              if r["next"] else ""),
-             **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind,
-                 "deliver": jobs[n].deliver, **jobs[n].runs_on()} if n in jobs else {})} for n, r in back.items()]
+             **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind, "deliver": jobs[n].deliver,
+                 **({"wakes": jobs[n].wakes} if jobs[n].deliver == "tell" else {}), **jobs[n].runs_on()} if n in jobs else {})}
+            for n, r in back.items()]
     lines = read_lines(back, jobs, now, kept) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
     return {"ok": True, "jobs": rows, "errors": errors, "lines": lines}
 
@@ -1037,7 +1048,7 @@ class Jobs:
                            str(req.get("deliver") or "announce"), float(req.get("cap_minutes") or 0),
                            str(req.get("account") or ""), int(self.conf.get("note_chars", NOTE_CHARS)),
                            str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models,
-                           [str(a) for a in req.get("addons") or []], self.room_confs[room])
+                           [str(a) for a in req.get("addons") or []], self.room_confs[room], int(req.get("wakes") or 0))
         if out["ok"]:
             log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line", out["schedule"], out["next_text"])
         return out
