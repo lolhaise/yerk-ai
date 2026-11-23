@@ -68,7 +68,7 @@ FILE = "jobs.toml"
 UNIT = "yerk-job-"
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,59}$")
 KINDS = ("script", "agent", "note")
-DELIVER = ("announce", "silent")
+DELIVER = ("announce", "silent", "tell")
 NO_REPLY = "NO_REPLY"
 WAITING = "undelivered: waiting for the room's turn"       # a told note's run until its turn ends (Jobs.tell)
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
@@ -109,7 +109,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
     "cap": "minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); "
            "a stopped run alerts",
     "deliver": '"announce" (default): the output or the relay goes to the room; "silent": the run and its ledger '
-               "row happen, nothing is posted, a failure still alerts the ops room",
+               'row happen, nothing is posted, a failure still alerts the ops room; "tell", script jobs only (a watch): '
+               "output is told to the room's own session, which says it in its own voice as a due note is said, output "
+               "cut at 4,000 characters with the path of the whole of it; no output tells nothing and costs no turn",
     "command": "script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the "
                "job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this "
                "install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts "
@@ -255,7 +257,10 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if kind != "note" and not cap > 0:
         raise JobError("`cap` must be above 0 minutes")
     if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
-        raise JobError('`deliver` must be "announce" or "silent"')
+        raise JobError('`deliver` must be "announce", "silent" or "tell"')
+    if deliver == "tell" and kind != "script":
+        raise JobError('`deliver = "tell"` is for a script job (a watch): ' + ("a note is told to its room already" if kind == "note"
+                       else "an agent job's last message is told by its room already"))
     account, model = str(raw.get("account", "") or ""), str(raw.get("model", "") or "").strip()
     if not isinstance(addons := raw.get("addons", []), list) or not all(isinstance(a, str) and ADDON_NAME.match(a) for a in addons):
         raise JobError('`addons` must be a list of the room\'s add-on tools or servers, like addons = ["mcp__web__web_fetch"]')
@@ -740,6 +745,18 @@ def run_script(job: Job, folder: Path) -> dict[str, Any]:
             "stderr_tail": tail[-1][:200] if tail else "", "seconds": round(time.time() - t0, 3)}
 
 
+def capped(text: str, where: str = "the run's folder") -> str:
+    """A script's output as its room gets it: OUTPUT_MAX characters at most, a cut said with where the whole of it is."""
+    if len(text := text.strip()) <= OUTPUT_MAX:
+        return text
+    return text[:OUTPUT_MAX].rstrip() + "\n" + words.OUTPUT_CUT.format(most=OUTPUT_MAX, where=where)
+
+
+def told_id(run: dict[str, Any]) -> str:
+    """The inbound id of a run's told turn: a note's, or a watch's (a script job with deliver = "tell")."""
+    return f"{'note' if run['kind'] == 'note' else 'watch'}-{run['id']}"
+
+
 def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False, path: str = "control") -> dict[str, Any]:
     """One POST to the running daemon's /control (or /status) under the install's secret (a worker's own
     server: the worker secret, reads only); OSError when no daemon runs on this state folder. yerkd.json
@@ -933,6 +950,7 @@ class Jobs:
         self.path = private / FILE
         self.ops_room = str(conf.get("ops_room", ""))
         self.started = time.time()                      # a note fired before this is the last process's (reattach)
+        self.told: set[int] = set()                     # runs this process asked a told turn for: in hand (reattach)
         self.added: dict[str, list[float]] = {}         # a room that is not the owner's: when it added its recent notes
         workers.hooks.append(self.worker_done)
 
@@ -1039,29 +1057,40 @@ class Jobs:
         return {"ok": True, "worker": out["id"], "run": run_id}
 
     def tell(self, run: dict[str, Any], deliver: str = "announce") -> dict[str, Any]:
-        """A note is due: its room's own session is told the text the runner kept in the run's folder, in a harness
-        turn of its own once the room is idle (as a job worker's result is), and says it in its voice. The run reads
-        undelivered until that turn ends, so a restart before then has it told at the next start (reattach)."""
-        rid, room, mid = int(run["id"]), str(run["room"]), f"note-{run['id']}"
+        """A note is due, or a watch found something (a script job with deliver = "tell" whose run had output): its room's
+        own session is told the text the runner kept in the run's folder (the note's message, the script's stdout), in a
+        harness turn of its own once the room is idle (as a job worker's result is), and says it in its voice. The run
+        reads undelivered until that turn ends, so a restart before then has it told at the next start (reattach)."""
+        rid, room, note, mid = int(run["id"]), str(run["room"]), run["kind"] == "note", told_id(run)
+        done = {"ended": time.time(), "exit": "done", "result": "note"} if note else {}     # a script's own end stays
         if deliver == "silent" or room not in self.rooms:
             why = "silent (deliver = silent)" if deliver == "silent" else f"skipped: no room {room!r} in this daemon"
-            self.ledger.job_run_set(rid, ended=time.time(), exit="done", result="note", delivery=why)
+            self.ledger.job_run_set(rid, **done, delivery=why)
             return {"ok": True, "run": rid}
         try:
-            message = (Path(str(run["folder"])) / "message").read_text().strip()
+            text = self.told_text(run)
         except OSError as e:
-            return {"ok": False, "error": f"the note's text could not be read: {e}"}
-        text = words.NOTE_DUE.format(name=run["job"], message=message, at=words.clock(float(run["planned"])),
-                                     under=words.under(self.workers.conf.relay_reply))
-        self.ledger.inbound_add(mid, room, "note", HARNESS, len(text))
-        self.ledger.job_run_set(rid, delivery=WAITING)
+            return {"ok": False, "error": f"the {'note' if note else 'watch'}'s text could not be read: {e}"}
+        self.ledger.inbound_add(mid, room, "note" if note else "watch", HARNESS, len(text))
+        self.ledger.job_run_set(rid, delivery=WAITING, told=time.time())
+        self.told.add(rid)
 
         def then(state: str, ids: list[str], chars: int) -> None:
-            self.ledger.job_run_set(rid, ended=time.time(), exit="done", result="note",
+            self.ledger.job_run_set(rid, **({**done, "ended": time.time()} if note else {}),
                                     delivery="delivered" if state == "answered" else "failed", message_ids=",".join(ids))
         self.workers.ask(room, Inbound(mid, HARNESS, text, cap=self.workers.conf.relay_reply, then=then, alone=True))
-        log.info("note %s: run %d asked a turn in %s", run["job"], rid, room)
+        log.info("%s %s: run %d asked a turn in %s", "note" if note else "watch", run["job"], rid, room)
         return {"ok": True, "run": rid, "inbound": mid}
+
+    def told_text(self, run: dict[str, Any]) -> str:
+        """The told turn's text: words.NOTE_DUE with the note's message, or words.WATCH_FOUND with the script's output
+        (capped, the cut naming the file the whole of it is in). OSError: the run's folder cannot be read."""
+        folder, at = Path(str(run["folder"])), words.clock(float(run["planned"]))
+        under = words.under(self.workers.conf.relay_reply)
+        if run["kind"] == "note":
+            return words.NOTE_DUE.format(name=run["job"], message=(folder / "message").read_text().strip(), at=at, under=under)
+        output = capped((folder / "stdout").read_text(errors="replace"), str(folder / "stdout"))
+        return words.WATCH_FOUND.format(name=run["job"], at=at, held="", output=output, under=under)
 
     async def result(self, req: dict[str, Any]) -> dict[str, Any]:
         """A script's end, delivered by the cron-wrap rule."""
@@ -1087,12 +1116,15 @@ class Jobs:
             result = "output"
             if deliver == "silent":
                 delivery = "silent (deliver = silent)"
+            elif deliver == "tell":                 # the room's own session is told it, as a due note is (W1)
+                if not (told := self.tell(run, deliver)).get("ok"):        # read again at the next start (reattach)
+                    self.ledger.job_run_set(run_id, delivery=f"undelivered: {told.get('error')}")
+                self.ledger.job_run_set(run_id, result=result)
+                delivery = str((self.ledger.job_run_get(run_id) or {}).get("delivery") or "")
+                log.info("job %s: run %d %s, %s", name, run_id, result, delivery)
+                return {"ok": True, "run": run_id, "result": result, "delivery": delivery, "message_ids": []}
             else:
-                text = output.strip()
-                if len(text) > OUTPUT_MAX:
-                    text = text[:OUTPUT_MAX].rstrip() + f"\n[cut at {OUTPUT_MAX:,} characters; the whole output is in " \
-                                                        "the run's folder]"
-                ids = await self.post(room, text, f"job-{run_id}-out")
+                ids = await self.post(room, capped(output), f"job-{run_id}-out")
                 delivery = "delivered" if ids else "undelivered: the room could not be posted to"
         else:
             result, delivery = "nothing", "silent (no output)"
@@ -1188,9 +1220,10 @@ class Jobs:
         await self.fire(name, rid, job)
 
     async def reattach(self) -> None:
-        """After a daemon start: a script run that ended while no daemon was up is delivered late; a note that fired
-        then, or whose turn the restart cut, is told now, unless its reply was in the room already. A script run with no
-        end past its unit's limit was cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
+        """After a daemon start: a script run that ended while no daemon was up is delivered late (a watch's: its result
+        now, as it would have been then); a note that fired then, or a note or a watch's finding whose turn the restart
+        cut, is told now, unless its reply was in the room already. A script run with no end past its unit's limit was
+        cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
         for r in self.ledger.job_runs(unended=True):        # a script whose job has left the file: the default cap, nobody to tell
             job = self.jobs().get(str(r["job"])) if r["kind"] == "script" else None
             limit = start_limit(job) if job else int(DEFAULT_CAP["script"] * 60) + 120
@@ -1200,11 +1233,13 @@ class Jobs:
             if job is not None:
                 await self.alert(job, words.job_line(job.name, "failed", result="signal"), int(r["id"]), str(r["room"]))
         for r in self.ledger.job_runs(undelivered=True):
-            if r["kind"] == "note" and (r["delivery"] != WAITING or float(r["fired"]) < self.started):   # one told here is in hand
-                if (posted := self.ledger.delivered_for(mid := f"note-{r['id']}")):
+            if r["kind"] == "note" or r["delivery"] == WAITING:          # a note, or a watch's finding told to its room
+                if r["delivery"] == WAITING and (float(r["fired"]) >= self.started or r["kind"] == "script" and int(r["id"]) in self.told):
+                    continue                                              # one told here is in hand (a script may end after the start)
+                if (posted := self.ledger.delivered_for(mid := told_id(r))):
                     self.ledger.inbound_set(mid, state="answered", reply_ids=",".join(posted), note="found delivered after a restart")
-                    self.ledger.job_run_set(int(r["id"]), ended=time.time(), exit="done", result="note", delivery="delivered",
-                                            message_ids=",".join(posted))
+                    self.ledger.job_run_set(int(r["id"]), **({"ended": time.time(), "exit": "done", "result": "note"} if r["kind"] == "note"
+                                                             else {}), delivery="delivered", message_ids=",".join(posted))
                 else:
                     self.tell(r, j.deliver if (j := self.jobs().get(str(r["job"]))) else "announce")
                 continue
@@ -1217,6 +1252,11 @@ class Jobs:
             except OSError:
                 continue
             job = self.jobs().get(str(r["job"]))
+            if job is not None and job.deliver == "tell":       # a watch's run no daemon took: its result, as at its end
+                code = str(r["exit"] or "")
+                await self.result({"name": job.name, "run": r["id"], "output": output, "timed_out": code == "timed out",
+                                   "exit": int(code.split()[-1]) if code.startswith("exited ") else code})
+                continue
             if not output or (job is not None and job.deliver == "silent"):
                 self.ledger.job_run_set(int(r["id"]), delivery="silent (late; no output or deliver = silent)")
                 continue

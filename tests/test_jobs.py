@@ -19,6 +19,7 @@ import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace as NS
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -156,7 +157,7 @@ def test_a_calendar_line_and_a_time_are_the_two_schedules_and_a_cron_line_is_ref
     ({"kind": "agent", "schedule": "*:00", "tz": "UTC", "room": "r"}, "needs `message`"),
     ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "account": "one"}, "runs with no account"),
     ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "colour": "red"}, "unknown key colour"),
-    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "deliver": "loud"}, '"announce" or "silent"'),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "deliver": "loud"}, '"announce", "silent" or "tell"'),
     ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "cap": 0}, "above 0"),
     ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "command": "echo x"}, "runs nothing, so it takes no `command`"),
     ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "account": "one"}, "takes no `account`"),
@@ -1115,6 +1116,113 @@ def test_a_note_whose_hand_off_failed_after_the_start_is_told_by_that_start(setu
         return await settled(s.ledger, rid)
     assert asyncio.run(go())["delivery"] == "delivered"
     assert s.chan.replies[0][0].startswith("echo: [reminder water due] Water the plants.")
+
+
+# watches: a script job with deliver = "tell"
+def watch(name, command, extra=""):
+    return (f'[jobs.{name}]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ndeliver = "tell"\n{extra}'
+            f"command = {json.dumps(command)}\n\n")
+
+
+def watching(setup, tmp_path, table):
+    """The note tests' manager with an ops room, the runner's ledger, the table synced, and every turn the jobs ask
+    recorded as Workers.ask gets it (the room, the Inbound) before it is queued."""
+    s, rec, ops = setup, Rec(), Rec()
+    rooms, chans = {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops}
+    j, w, sd, priv, state = manager(setup, tmp_path, rooms, chans, conf={"ops_room": "ops"})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    jobs.sync(write_jobs(priv / "jobs.toml", table), sd, ENV)
+    asked, ask = [], w.ask
+    w.ask = lambda room, msg: (asked.append((room, msg)), ask(room, msg))[1]
+    restart = lambda: jobs.Jobs(priv, state, s.ledger, {"ops_room": "ops"}, rooms, chans,  # noqa: E731  (a new daemon's)
+                                {n: {"model": "m", "timezone": "UTC"} for n in rooms}, {}, w, units=sd)
+    return NS(j=j, w=w, sd=sd, priv=priv, state=state, rec=rec, ops=ops, asked=asked, restart=restart)
+
+
+async def ran(v, *names, handoff=None, now=None):
+    """Each job's run in turn through the daemon's /control on this loop (`handoff` in its place), its row's id."""
+    loop = asyncio.get_running_loop()
+    handoff = handoff or (lambda p: asyncio.run_coroutine_threadsafe(v.j.handle("", p["job"]), loop).result(30))
+    out = {}
+    for n in names:
+        out[n] = await asyncio.to_thread(jobs.run, n, v.priv, v.state, v.sd, handoff, now)
+    return out
+
+
+def test_a_watch_that_finds_something_is_told_by_its_rooms_own_session_as_a_note_is_and_one_that_finds_nothing_costs_nothing(setup, tmp_path):
+    """deliver = "tell": output is told to the room's own session in a harness turn of its own (as a due note is), cut at
+    OUTPUT_MAX with the path of the whole output; no output asks no turn and posts nothing; a failure alerts the machine
+    room and tells nothing; nothing is posted as is."""
+    s = setup
+    v = watching(setup, tmp_path, watch("found", "echo a new message from the shop") +
+                 watch("long", "python3 -c \"print('x' * 4100 + 'TAIL')\"") + watch("quiet", "true") +
+                 watch("bad", "echo half a finding; exit 3"))
+
+    async def go():
+        v.w.begin(asyncio.get_running_loop())
+        codes = await ran(v, "found", "long", "quiet", "bad")
+        rows = {r["job"]: r for r in s.ledger.job_runs()}
+        return codes, rows, {n: await settled(s.ledger, rows[n]["id"]) for n in ("found", "long")}
+    codes, rows, told = asyncio.run(go())
+    assert codes == {"found": 0, "long": 0, "quiet": 0, "bad": 1}
+    found, long = rows["found"], rows["long"]
+    assert [(room, m.id, m.sender, m.alone) for room, m in v.asked] == [("r", f"watch-{found['id']}", jobs.HARNESS, True),
+                                                                      ("r", f"watch-{long['id']}", jobs.HARNESS, True)]
+    under = W.under(v.w.conf.relay_reply)
+    assert v.asked[0][1].text == W.WATCH_FOUND.format(name="found", at=W.clock(found["planned"]), held="",
+                                                      output="a new message from the shop", under=under)
+    assert "[watch found ran at " in v.asked[0][1].text and "the watch found:\na new message from the shop\n" in v.asked[0][1].text
+    cut = v.asked[1][1].text
+    assert "x" * jobs.OUTPUT_MAX in cut and "x" * (jobs.OUTPUT_MAX + 1) not in cut and "TAIL" not in cut
+    assert f"\n[cut at 4,000 characters; the whole output is in {long['folder']}/stdout]\n" in cut
+    assert (Path(long["folder"]) / "stdout").read_text().strip().endswith("TAIL")       # the whole of it stays there
+    for n in ("found", "long"):
+        assert (told[n]["exit"], told[n]["result"], told[n]["delivery"]) == ("exited 0", "output", "delivered")
+        assert told[n]["message_ids"] and told[n]["told"] >= told[n]["fired"]
+    assert [inbound for _, inbound in s.chan.replies] == [[f"watch-{found['id']}"], [f"watch-{long['id']}"]]
+    assert s.chan.replies[0][0].startswith("echo: [watch found ran at ")
+    assert (rows["quiet"]["result"], rows["quiet"]["delivery"], rows["quiet"]["told"]) == ("nothing", "silent (no output)", None)
+    assert (rows["bad"]["result"], rows["bad"]["delivery"], rows["bad"]["told"]) == ("exit 3", "alert", None)
+    assert v.ops.notified == [("ops", f"{W.NOT_DONE} job bad failed: it ended with an error")]
+    assert v.rec.sent == v.ops.sent == v.rec.notified == []                                 # nothing posted as is
+
+
+def test_a_watchs_finding_a_restart_kept_from_its_room_is_told_once_at_the_next_start_and_never_again(setup, tmp_path):
+    """Three ways a restart comes between a finding and its turn: no daemon took the run (its result is had at the next
+    start, as at its end); the room was asked and the restart cut the turn (asked again, unless its reply was in the room
+    already); and one that ended after the start and was told by this process is in hand, never asked twice."""
+    s = setup
+    v = watching(setup, tmp_path, watch("missed", "echo found while you were out") + watch("cut", "echo found before the cut")
+                 + watch("racing", "echo found as the daemon started"))
+
+    def down(payload):
+        raise OSError("connection refused")
+
+    async def go():
+        v.w.begin(asyncio.get_running_loop())
+        await ran(v, "missed", handoff=down)
+        await ran(v, "cut", handoff=lambda p: {"ok": True})                  # taken, its turn asked, then the restart
+        m, c = (s.ledger.job_runs(job=n)[0]["id"] for n in ("missed", "cut"))
+        assert s.ledger.job_run_get(m)["delivery"] == "undelivered: the daemon is not running (OSError)"
+        s.ledger.job_run_set(c, delivery=jobs.WAITING, told=time.time())
+        v.j = j2 = v.restart()                                                  # the next start
+        await j2.reattach()
+        first = [await settled(s.ledger, m), await settled(s.ledger, c)]
+        await ran(v, "racing", now=j2.started - 30)                            # fired before the start, ended after it
+        r = s.ledger.job_runs(job="racing")[0]["id"]
+        await j2.reattach()                                                     # this start's reattach, late
+        first.append(await settled(s.ledger, r))
+        while v.w.asked.get("r") or v.w.waiting.get("r"):
+            await asyncio.sleep(0.01)
+        await v.restart().reattach()                                            # a second start
+        await asyncio.sleep(0.2)
+        return first, (m, c, r)
+    first, ids = asyncio.run(go())
+    assert [r["delivery"] for r in first] == ["delivered"] * 3
+    assert sorted(m.id for _, m in v.asked) == sorted(f"watch-{i}" for i in ids)            # each asked once, and no more
+    assert sorted(inbound[0] for _, inbound in s.chan.replies) == sorted(f"watch-{i}" for i in ids)
+    assert v.rec.sent == v.ops.notified == []
 
 
 # the schedule tool

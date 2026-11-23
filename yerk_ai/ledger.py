@@ -142,7 +142,8 @@ WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging",
            "started", "finished", "exit", "exit_detail", "result", "stop_requested", "relay", "relay_note",
            "relay_chars", "job", "queued", "waiting")
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
-            "worker", "chars", "folder", "note")
+            "worker", "chars", "folder", "note", "told")
+ADDED["job_runs"] = {"told": "REAL"}     # when the run's room was asked its told turn (a note, a watch's finding: its wakes)
 TEXTING = ("person", "handle", "inbound", "decision", "parts", "react", "reply_to", "statements", "verdict", "delay",
            "fire_at", "state", "reason", "approval_id", "card", "handed", "claimed", "account", "seconds", "tokens", "mode",
            "shown", "why")
@@ -612,11 +613,15 @@ class Ledger:
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
 
-    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False, unended: bool = False) -> list[dict[str, Any]]:
-        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon; `unended`: no end yet."""
+    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False, unended: bool = False,
+                 delivery: str | None = None) -> list[dict[str, Any]]:
+        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon; `unended`: no end yet;
+        `delivery`: runs whose delivery reads exactly that."""
         sql, args = "SELECT * FROM job_runs WHERE 1", tuple[Any, ...]()
         if job:
             sql, args = sql + " AND job = ?", (*args, job)
+        if delivery is not None:
+            sql, args = sql + " AND delivery = ?", (*args, delivery)
         if undelivered:
             sql = sql + " AND delivery LIKE 'undelivered:%'"
         if unended:
@@ -657,6 +662,12 @@ class Ledger:
         return self._select("SELECT DISTINCT d.* FROM deliveries d JOIN message_links l ON l.tbl = 'deliveries' AND "
                             "l.col = 'inbound' AND l.row_key = d.key WHERE d.kind = 'file' AND d.state = 'sent' AND "
                             f"l.message_id IN ({', '.join('?' * len(want))}) ORDER BY d.created", tuple(want))
+
+    def job_told(self, job: str, since: float) -> list[float]:
+        """When each run of the job had its room told since `since`, oldest first: a watch's wakes (jobs.py), read here and
+        never from a file its script could write."""
+        return [float(r["told"]) for r in self._select("SELECT told FROM job_runs WHERE job = ? AND told >= ? ORDER BY told",
+                                                       (job, since))]
 
     def delivered_for(self, message_id: str) -> list[str]:
         """The message ids a turn answering `message_id` posted, from the delivery ledger ([] if none)."""
