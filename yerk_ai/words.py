@@ -130,6 +130,12 @@ WHY = {                                   # a failed turn, in plain words: the f
     "crashed": "the harness failed; it is in the log", "undelivered": "Discord did not take the reply"}
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
+COMPACT_FOCUS = (                         # after /compact, what its summary keeps besides its own (Room; rooms.toml compact_focus)
+    "Keep everything you would keep by default, and make sure of these too: every standing order, preference and limit the "
+    "person has given, in their own words; everything still owed to them (promises, reminders, unanswered questions, "
+    "unfinished work), copied as it was said, adding no date, time or number of your own; and UNVERIFIED: in front of "
+    "anything inferred, guessed, estimated or reported by someone that no tool result confirmed, kept even when other "
+    "detail goes.")
 MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
 OUT_OF = "on {name}, {pinned} back {until}"       # every account out of the model the room was put on: the room's own one runs it
 EMPTY_AGAIN, NEW_SESSION, AFTER_FAILED = ("empty reply, asking the session again", "starting a new session, with a recap",

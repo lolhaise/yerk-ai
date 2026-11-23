@@ -21,7 +21,7 @@ message and a success result echoing the text. Variations:
 - a line containing FIXTURE:<name>: the events of fixtures/<name>.jsonl the first time (marker
   FAKE_CLAUDE_MARK.<name>), then the plain echo; {sid} in a fixture is the session id
 - a line containing TOO_LONG_ONCE: "Prompt is too long" (invalid_request) until a /compact
-- the line /compact: a compact_boundary as 2.1.304 streams it (post_tokens FAKE_CLAUDE_POST, else 20000), then a
+- the line /compact, with or without words after it: a compact_boundary as 2.1.304 streams it (post_tokens FAKE_CLAUDE_POST, else 20000), then a
   compaction result; each one appends a line to FAKE_CLAUDE_MARK.compacted. FAKE_CLAUDE_COMPACT_SLOW=S waits S seconds
   first; FAKE_CLAUDE_COMPACT_FAIL=1: Claude Code's failed-compaction status and an error result, no boundary
 - a control request (get_context_usage), its line appended to FAKE_CLAUDE_ASKS: FAKE_CLAUDE_CONTEXT=N answers
@@ -239,7 +239,7 @@ def answer(text):
         out({"type": "assistant", "error": "authentication_failed",
              "message": {"content": [{"type": "text", "text": "Not logged in · Please run /login"}]}})
         return result("Not logged in · Please run /login", error=True)
-    if text.strip() == "/compact":
+    if text.split()[:1] == ["/compact"]:
         if mark:
             with open(f"{mark}.compacted", "a") as f:
                 f.write("compact\n")
