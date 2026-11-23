@@ -7,7 +7,7 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 - A personal tool. You run it on your own machine, for yourself.
 - Bring your own Claude Code. Yerk AI starts your `claude` command under the login you made with it. Each account is a Claude Code config folder named in your `accounts.toml`.
 - No login handling for anyone else. Yerk AI never offers, brokers or copies a login, nor reads the credential files in a config folder (a test greps the package for any read under one). One thing touches your credentials: a one-year token you minted with `claude setup-token` can be kept in your private folder (`secrets/claude-<account>.token`, 0600) and is handed to Claude Code in `CLAUDE_CODE_OAUTH_TOKEN`. The usage meters in `yerk status` come from what Claude Code prints: `claude -p /usage` on the account's config folder when the card asks and every 15 minutes, ending a rest once usage is back (`usage-back`; no model call; a one-year token cannot read them, so it is left out), else the usage events in each room's stream. It never writes a config folder.
-- Nothing stored for anyone else. Persona, memory and room settings live in your private folder outside this repository.
+- Nothing stored for anyone else. Persona, memory and room settings live in your private folder.
 - Who it trusts. One person per install: it runs as your user and serves you; a room's people (`room-people`) are answered there, never trusted with your memory or machine. The machine's other users are not trusted: yerkd makes its state folder 0700, writes every file holding a credential or your words 0600, hands a room's token to its hooks through a 0600 file, never on a command line (any local user reads those in /proc), and `yerk doctor` names any file or folder in your private or state folder another user can read; keep the private folder 0700 too. A room's shell runs in Claude Code's sandbox, and no room may read a secret (a token, the bot token, a provider key, the daemon's own secrets, an account folder's login) with its Read tool or its shell, because a web page, a mail or a pasted message can steer a model. What a room recalls or imports, and what anyone but you writes (mail, a web page, a quoted message), reaches it marked as a record, never an instruction; a person's own message in their room is an ask to act on there, and an order in it to act as you, in another room or against a rule is reported, not followed. An outward action (a send to another room, a public post, a login, money, a text in your name, a message out through another tool) and a delete outside a room's work folder wait for your word in the room; a person's room can never post into yours. No credential is printed or logged; the doctor names a secret-shaped line or a saved password in memory, imports or inboxes by file:line, never by value, to scrub and rotate. It does not defend against root or anyone who can log in as you, a stolen token, a model that is wrong or that you tell to do harm, or a room you give an unsandboxed shell.
 
 ## Install
@@ -30,7 +30,7 @@ token_file = "secrets/discord.token"
 owner = "<your user id>"
 ```
 
-In rooms.toml give `example-room` your channel, `channel = "discord:<channel id>"` (a room per chat; yerkd starts none without one), and in accounts.toml keep a line per Claude Code config folder you have (`one` is `~/.claude`), each room's `accounts` naming only those. Do not copy yerkd.toml.example whole: its `[watch] assistants` placeholder stops yerkd's start. `uv run pytest` runs the tests. The units in `units/` run yerkd and its nightly jobs as services.
+In rooms.toml give `example-room` your channel, `channel = "discord:<channel id>"` (a room per chat; yerkd starts none without one), and in accounts.toml keep a line per Claude Code config folder you have (`one` is `~/.claude`), each room's `accounts` naming only those. Do not copy yerkd.toml.example whole: its `[watch] assistants` placeholder stops yerkd's start. The units in `units/` run yerkd and its nightly jobs as services.
 
 ## The private folder
 
@@ -70,7 +70,7 @@ What a room does past Claude Code's tools comes as add-ons: MCP servers in rooms
 
 - [CHANGELOG.md](CHANGELOG.md) says what each merge changes, [STYLE.md](STYLE.md) how every card and notice reads, and [NOTICE](NOTICE) where the lifted code comes from.
 
-`yerk docs own` writes the first six from the code; a test fails the build when one is stale. `yerk docs refresh` is the other half: the Claude docs Yerk AI runs on, kept for every room ([docs/GUIDE.md](docs/GUIDE.md), Yerk knows its harness), the rule checks quoting them word for word, re-pinned when a page moves (`lesson-pins`).
+`yerk docs own` writes the first six from the code; a test fails a stale one. `yerk docs refresh` is the other half: the Claude docs Yerk AI runs on, kept for every room ([docs/GUIDE.md](docs/GUIDE.md), Yerk knows its harness), the rule checks quoting them word for word, re-pinned when a page moves (`lesson-pins`), a lesson off their shape kept only on your word (`lesson-keeps`).
 
 ## License
 

@@ -482,6 +482,21 @@ def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule
     assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
 
 
+def test_a_room_asked_how_to_settle_a_lesson_out_of_the_shape_hears_the_keep_way_never_a_rewrite_of_his_words(tmp_path, capsys):
+    """need-2026-11-23-137: the doctor found lessons written by hand out of the lesson shape every day and filed the need, and
+    no proposal could settle one. Asked, a room gets lesson-keeps whole: a keep applied on the owner's word, none of their words
+    changed, and `yerk explain curate` names it beside the other abilities its command serves."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("the doctor says a lesson out of the shape again; how do we settle it?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["lesson-keeps"]
+    text = found[0]["text"]
+    assert text.startswith(f"lesson-keeps, a Yerk AI ability ({words.ability('on')[1]}): Keeps the rule store in the Claude docs' lesson shape")
+    assert "changes none of them" in text and "a keep proposed before the change is refused" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert cli.main(["explain", "curate", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    assert TAB["lesson-keeps"]["what"] in capsys.readouterr().out.splitlines()
+
+
 def test_a_room_whose_job_fired_as_the_jobs_file_was_rewritten_hears_the_job_fires_way(tmp_path):
     """need-2026-11-16-101: a job a script started answered "no job" from the daemon's fire in the second a one-shot took
     itself out of the jobs file, and the room had its script try the start again. Asked that way, a room gets job-fires

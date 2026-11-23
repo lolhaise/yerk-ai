@@ -6,6 +6,32 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-23
+
+### need-2026-11-23-137 (#126)
+
+- A lesson the doctor's daily run finds out of the Claude docs' lesson shape now gets a proposal that settles it:
+  `yerk curate --rules` proposes a keep for each one, numbered with the night's other proposals, saving nothing. Its WHY
+  names what the lesson misses (no reason given, an absolute rule missing its scope or exception, no one-line summary
+  first) and the docs sentence that asks for it. Before, a lesson whose words were written by hand after its filing,
+  past the gate, was found out of the shape every day and filed the lesson need every day. The doctor's line said
+  `yerk curate --rules` proposes the fix, but it proposed nothing for a lesson, since no proposal writes a lesson's
+  words and none of the owner's words is ever changed or added to.
+- `yerk curate --apply DAY N` on a keep writes one row to `<memory>/rules-kept.tsv` (the slug, the day, a hash of the
+  lesson's words, the checks it missed) and changes nothing else: the lesson's file stays byte for byte. A keep applies
+  beside a rulebook proposal, and undo puts the row file back as it was. A keep whose lesson's words changed after it
+  was proposed is refused before anything is written.
+- The daily run names a kept lesson apart in `docs/shape/lessons.md` ("kept as it stands, on the owner's word") and
+  files no need for its misses while its words hash the same. Once its words change again, by hand, its misses count
+  again and the report names it as changed since. A front matter a room cannot read (no class first, or past 400
+  characters) is never kept, since that is the file's layout and not his words. A filing with `remember` and its job, or
+  a retire, takes the lesson off the list, as it takes one off `rules-no-reason.tsv`.
+- `yerk curate --rules` reads the store as the daily run does (`doctor.store_read`, the pages of every model a room
+  runs), so it proposes a keep for exactly the lessons the run finds (`yerk explain lesson-keeps`).
+
+**Upgrading:** nothing to do. An install with no `<memory>/rules/` folder gets no keep. budgets.toml's `[code] lines`
+rises from 35,340 to 35,403, with its dated reason; an install that keeps its own budgets.toml takes it.
+
 ## 2026-11-22
 
 ### need-2026-11-22-136 (#125)

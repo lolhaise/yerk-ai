@@ -29,6 +29,8 @@ NO_REASON = "rules-no-reason.tsv"  # slug, day, the old cite, what is missing (a
 MISSING = {"no_exception": "an exception", "whole": "a cite for his quote", "own": "tags round his sentence",
            "uncited": "a cite for its example", "long": "a body under the length"}   # what a listed lesson lacks, by the record's list
 CITES = "rules-cites.tsv"          # an old store cite (rules.md:N, rules-topics.md:N), the slug its rule became
+KEPT = "rules-kept.tsv"            # slug, day, its words' hash (said_hash), the checks it missed: a lesson out of the shape kept as
+                                   # it stands on the owner's word (a keep `yerk curate --apply` wrote), held while its words are those
 SNAPSHOT = "converted.json"        # in the backup folder: the lessons as converted, news's look for a session from before
 BACKUP = "rules-backup-"           # <memory>/rules-backup-<day>/: the originals, copied before a conversion writes
 HEAD = ["---", "class: shared", "---", "# Rules: one line per job, its lessons' files under rules/", ""]
@@ -217,20 +219,39 @@ def unlist(root: Path, slug: str) -> None:
         write_private(root / NO_REASON, "".join(f"{k}\t{d}\t{c}\t{w}\n" for k, (d, c, w) in have.items() if k != slug))
 
 
+def said_hash(words: str) -> str:
+    """A lesson's words (its summary, then its body) as a keep holds them, white space aside: a hand's edit since changes it."""
+    return hashlib.sha1(" ".join(words.split()).encode()).hexdigest()[:12]
+
+
+def kept(root: Path) -> dict[str, tuple[str, str, str]]:
+    """slug -> (day, the words' hash, the checks it missed) of each lesson KEPT holds as it stands, its newest row last."""
+    f = root / KEPT
+    rows = [x.split("\t") for x in f.read_text(encoding="utf-8", errors="replace").splitlines()] if f.is_file() else []
+    return {r[0]: (r[1], r[2], r[3] if len(r) > 3 else "") for r in rows if len(r) >= 3 and r[0]}
+
+
+def unkeep(root: Path, slug: str) -> None:
+    """`slug` off KEPT: a filing replaced its words through the gate, or a retire took it away."""
+    if slug in (have := kept(root)):
+        write_private(root / KEPT, "".join(f"{k}\t{d}\t{h}\t{c}\n" for k, (d, h, c) in have.items() if k != slug))
+
+
 def put(root: Path, lesson: Lesson) -> Lesson | None:
     """`lesson` written: its file replaced in place, or a new file, listed on its job's index line, or a new job's line after the
-    last; off NO_REASON, since it passed the gate. The lesson it replaced, None for a new one. The caller holds the writers' lock."""
+    last; off NO_REASON and KEPT, since it passed the gate. The lesson it replaced, None for a new one. The caller holds the writers' lock."""
     (root / DIR).mkdir(mode=0o700, parents=True, exist_ok=True)
     path, have = root / DIR / f"{lesson.slug}.md", store(root)
     was = next((x for x in have if x.slug == lesson.slug), None)
     write_private(path, lesson.text())
     write_private(root / INDEX, index_text([lesson if x.slug == lesson.slug else x for x in have] + ([] if was else [lesson])))
     unlist(root, lesson.slug)
+    unkeep(root, lesson.slug)
     return was
 
 
 def drop(root: Path, slug: str, day: str, by: str = "") -> Lesson | None:
-    """A lesson retired: its file deleted and off its job's index line and NO_REASON, a row in RETIRED (by: the slug that replaced
+    """A lesson retired: its file deleted and off its job's index line, NO_REASON and KEPT, a row in RETIRED (by: the slug that replaced
     it). The lesson."""
     was = parse(path := root / DIR / f"{slug}.md")
     if was is None:
@@ -240,6 +261,7 @@ def drop(root: Path, slug: str, day: str, by: str = "") -> Lesson | None:
     path.unlink()
     write_private(root / INDEX, index_text(store(root)))
     unlist(root, slug)
+    unkeep(root, slug)
     return was
 
 

@@ -213,6 +213,44 @@ def test_the_daily_run_counts_no_missing_reason_of_a_lesson_listed_with_none_on_
     assert len(out) == 1 and out[0].startswith("rule shape: 1 lesson out of") and "no reason" in out[0] and at in out[0]
 
 
+def test_a_lesson_edited_by_hand_files_the_need_until_kept_as_it_stands_and_again_once_its_words_change(tmp_path, monkeypatch):
+    """Need 137's wall: words written by hand into a lesson after its filing, out of the shape, filed the lesson need every day
+    with nothing to settle it. A row of KEPT holding their hash (the owner's apply of a keep) names it apart and files nothing;
+    words changed since count again; the file's own layout still counts; a filing through the gate or a retire takes it off."""
+    from yerk_ai import doctor, lessons, needs
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    docs_with(state, **every_pin())
+    (m.root / lessons.DIR).mkdir(parents=True)
+    gated = lessons.Lesson("dates", "dates", "Take a date from a file.", "Since a guessed one reads as fact.")
+    lessons.put(m.root, gated)
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and needs.load(state) == []
+    (f := m.root / lessons.DIR / "dates.md").write_text(gated.front() + "Never guess a date.\n")       # by hand, past the gate
+    out = doctor.lessons(private, state, m, 1000.0, post=posts.append)
+    at = f"memory/rules/dates.md:{gated.front().count(chr(10)) + 1}"
+    assert len(out) == 1 and out[0].startswith(f"rule shape: 1 lesson out of prompting-fable-5's shape, first {at}: no reason")
+    assert [n["ability"] for n in needs.load(state)] == [doctor.LESSON_NEED]
+    (m.root / lessons.KEPT).write_text(f"dates\t2026-11-23\t{lessons.said_hash('Never guess a date.')}\tno reason\n")   # the keep applied
+    assert doctor.lessons(private, state, m, 1000.0 + 86400, post=posts.append) == [] and len(needs.load(state)[0]["asks"]) == 1
+    assert (f"Listed as kept as it stands, on the owner's word, its misses no finding (rules-kept.tsv): 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    f.write_text(gated.front().replace("class: shared\n", "") + "Never guess a date.\n")              # the owner's words, its class gone
+    assert shape.store(m, LIMITS, state / "docs")["lessons"] == [(at, ["summary"])]                   # a layout miss still counts
+    f.write_text(gated.front() + "Never guess a date, ever.\n")                                       # by hand again
+    out = doctor.lessons(private, state, m, 1000.0 + 2 * 86400, post=posts.append)
+    assert len(out) == 1 and at in out[0] and "no reason" in out[0] and len(needs.load(state)[0]["asks"]) == 2
+    assert (f"Listed as kept on the owner's word and changed since, its misses found again (rules-kept.tsv): 1 lesson, {at}."
+            in (state / "docs" / "shape" / "lessons.md").read_text().splitlines())
+    lessons.put(m.root, gated)                                                       # filed again through the gate's writer
+    assert lessons.kept(m.root) == {} and doctor.lessons(private, state, m, 1000.0, dry=True) == []
+    (m.root / lessons.KEPT).write_text(f"dates\t2026-11-23\t{lessons.said_hash(gated.summary + ' ' + gated.body)}\t\n")
+    lessons.drop(m.root, "dates", "2026-11-23")
+    assert lessons.kept(m.root) == {} and (m.root / lessons.KEPT).read_text() == ""
+
+
 def test_an_uncapped_installs_daily_run_says_the_index_size_as_a_line_of_its_own_and_files_no_need_for_it(tmp_path, monkeypatch):
     from yerk_ai import doctor, needs
     monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})

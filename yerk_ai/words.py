@@ -1078,6 +1078,12 @@ CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {firs
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 RULES_CARD, RULES_MORE, RULES_APPLY = "rules: {n} proposed, -{chars} chars", "and {n} more in the proposals file", "apply: yerk curate --apply {day} N"
 RULES_KIND, RULES_NONE = "{kind}: {numbers}", "rules: none proposed {day}"     # the morning's list of the night's (curate.rules_lines)
+# a keep (curate.propose): a live lesson the doctor's daily run finds out of the Claude docs' lesson shape, kept as it stands on
+# the owner's word, since only a filing with `remember` and its job or a retire changes a lesson's words, and no word of the owner's is changed
+RULES_KEEP_WHY = ("it misses the Claude docs' lesson shape, {checks}, and the docs say {sentence}; a lesson's words change only when "
+                  "it is filed again with `remember` and its job, or retired, and none of yours is changed here, so applied, this keeps "
+                  "it as it stands, on your word, named apart in the doctor's report until its words change")
+RULES_KEPT_AFTER = "(unchanged: kept as it stands, on your word)"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK: re.Pattern[str]              # compiled by dialect() below: the neutral filler words, then the owner's own
 # decision receipts (claim 19, evidence.calls): code decides that a sentence of a reply makes a call for the person the room

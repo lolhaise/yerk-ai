@@ -1969,4 +1969,9 @@ secs = 60
 # store (curate.py 30: kept_off, the store's own files no rule file of the pass and refused by an apply before any write;
 # gated, a gate's WHY shared by a rulebook's line and a lesson's; the lesson gate loop over the live lessons, cited at the
 # summary's line) and the --rules and --apply help that docs/commands.md is written from (cli.py 1). 35,340: 35,309 plus 31.
-lines = 35340
+# 2026-11-23: need-2026-11-23-137 raised it by 63, not folded to fit: a lesson out of the lesson shape kept as it stands on
+# the owner's word (lessons.py 22: KEPT, said_hash, kept, unkeep, off it on a filing or a retire; shape.py 12: a kept
+# lesson's word misses none while its hash holds, named apart, its layout still counted; doctor.py 6: store_read, the daily
+# run's read shared with curate; curate.py 17: the keep proposal and its apply, one row, refused once their words moved;
+# words.py 6: its WHY and AFTER). 35,403: 35,340 plus 63.
+lines = 35403
