@@ -68,10 +68,13 @@ FILE = "jobs.toml"
 UNIT = "yerk-job-"
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,59}$")
 KINDS = ("script", "agent", "note")
-DELIVER = ("announce", "silent")
+DELIVER = ("announce", "silent", "tell")
 NO_REPLY = "NO_REPLY"
 WAITING = "undelivered: waiting for the room's turn"       # a told note's run until its turn ends (Jobs.tell)
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
+WAKES, WAKES_MOST, HOUR = 6, 60, 3600.0   # a watch's turns in any hour: its default and most (`wakes`)
+HELD, BATCHED = "held: past its wakes in the hour", "held: told with run "   # a watch's finding the bound kept (Jobs.release)
+HELD_BACK = "told for the findings held back before it"                     # the note of the run that told them
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
 KEPT, UNHEARD, RETRY_WITHIN = "job.json", "undelivered: the daemon is not running", 86400.0   # an agent run no daemon took (Jobs.retry)
@@ -109,11 +112,18 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
     "cap": "minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); "
            "a stopped run alerts",
     "deliver": '"announce" (default): the output or the relay goes to the room; "silent": the run and its ledger '
-               "row happen, nothing is posted, a failure still alerts the ops room",
+               'row happen, nothing is posted, a failure still alerts the ops room; "tell", script jobs only (a watch): '
+               "output is told to the room's own session, which says it in its own voice as a due note is said, output "
+               "cut at 4,000 characters with the path of the whole of it; no output tells nothing and costs no turn",
+    "wakes": f"script jobs with deliver = \"tell\": the most turns the watch wakes its room in any hour, 1 to {WAKES_MOST} "
+             f"(default {WAKES}); past it each finding waits in its run's folder, and once the hour allows the newest is told "
+             "as one turn naming how many were held back, so none is lost and none is told twice",
     "command": "script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the "
-               "job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this "
-               "install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts "
-               "it, exit 0 with nothing posts nothing, anything else alerts",
+               "job's zone, YERK_JOB and YERK_JOB_DIR set (a watch's YERK_WATCH_STATE too: a folder of the job's own, "
+               "0700, the same every run, where its script keeps what it has seen; Yerk never reads it), YERK_PRIVATE and "
+               "YERK_STATE as the unit has them and this install's `yerk` first on PATH, so a `yerk` line runs on this "
+               "install's folders; exit 0 with output posts it (a watch: tells it), exit 0 with nothing posts nothing, "
+               "anything else alerts",
     "message": "agent jobs: the brief the worker gets, written as the whole job; its last message is what the room "
                "hears, and exactly NO_REPLY means nothing is posted. Notes: the text the room is told when it is due",
 }
@@ -196,6 +206,7 @@ class Job:
     model: str = ""               # agent jobs: the worker's own model and thinking level; "" the room's
     effort: str = ""
     addons: tuple[str, ...] = ()  # agent jobs: the room's own add-on tools its worker gets too
+    wakes: int = WAKES            # a watch (deliver = "tell"): the most turns it wakes its room in any hour
 
     @property
     def unit(self) -> str:
@@ -255,7 +266,16 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if kind != "note" and not cap > 0:
         raise JobError("`cap` must be above 0 minutes")
     if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
-        raise JobError('`deliver` must be "announce" or "silent"')
+        raise JobError('`deliver` must be "announce", "silent" or "tell"')
+    if deliver == "tell" and kind != "script":
+        raise JobError('`deliver = "tell"` is for a script job (a watch): ' + ("a note is told to its room already" if kind == "note"
+                       else "an agent job's last message is told by its room already"))
+    if "wakes" in raw and deliver != "tell":
+        raise JobError('`wakes` is for a script job with deliver = "tell": how often its findings may wake the room')
+    if isinstance(wakes := raw.get("wakes", WAKES), str) and wakes.strip().isdigit():
+        wakes = int(wakes)
+    if isinstance(wakes, bool) or not isinstance(wakes, int) or not 1 <= wakes <= WAKES_MOST:
+        raise JobError(f"`wakes` must be a whole number of turns in an hour, 1 to {WAKES_MOST}")
     account, model = str(raw.get("account", "") or ""), str(raw.get("model", "") or "").strip()
     if not isinstance(addons := raw.get("addons", []), list) or not all(isinstance(a, str) and ADDON_NAME.match(a) for a in addons):
         raise JobError('`addons` must be a list of the room\'s add-on tools or servers, like addons = ["mcp__web__web_fetch"]')
@@ -293,7 +313,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             tz_name = "UTC"
         if at_epoch <= now:
             raise JobError(f"`at` {when_text(at_epoch, tz_name)} is in the past")
-    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort, tuple(addons))
+    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort, tuple(addons), wakes)
 
 
 def load(path: Path, now: float | None = None) -> tuple[dict[str, Job], dict[str, str]]:
@@ -396,7 +416,7 @@ def remove(path: Path, name: str) -> bool:
 
 
 def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str = "announce", cap: float = 0.0,
-               account: str = "", model: str = "", effort: str = "", addons: Collection[str] = ()) -> dict[str, Any]:
+               account: str = "", model: str = "", effort: str = "", addons: Collection[str] = (), wakes: int = 0) -> dict[str, Any]:
     """The table a `schedule add` writes: `when` is a time (a one-shot) or a systemd calendar line
     (recurring); `what` is the message (agent, note) or the command (script)."""
     w = when.strip()
@@ -411,6 +431,8 @@ def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str
         out["cap"] = cap
     if deliver != "announce":
         out["deliver"] = deliver
+    if wakes:
+        out["wakes"] = wakes
     if account:
         out["account"] = account
     out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
@@ -580,10 +602,13 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
     jobs, errors = load(path, now)
     kept = running_one_shots(path, units, errors)               # kept as they are, never checked for a next fire
     p = Plan(jobs=jobs, errors=errors)
-    confs = room_confs(env.private) if any(j.addons for j in jobs.values()) else None
+    confs = room_confs(env.private) if any(j.addons or j.deliver == "tell" for j in jobs.values()) else None
     for name, job in jobs.items():
         if confs is not None and job.addons and (why := addons_refusal(confs.get(job.room, {}), job.addons)):
             p.errors[name] = why
+            continue
+        if confs is not None and job.deliver == "tell" and job.room not in confs:
+            p.errors[name] = words.TELL_NO_ROOM.format(room=job.room)
             continue
         for spec in job.calendar():
             if (why := units.check(spec)):
@@ -678,9 +703,14 @@ def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float
             nxt = when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})" if r["next"] else "")
             last = f", last {when_text(r['last'], r['tz'])}" if r["last"] else ", never fired yet"
             head = words.JOB_RUNNING.format(name=name) if name in running else f"{name}: next {nxt}{last}"
-            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
+            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {kind_text(jobs[name])}"
                        + "".join(f", {k} {v}" for k, v in jobs[name].runs_on().items()))
     return out or ["jobs: none"]
+
+
+def kind_text(job: Job) -> str:
+    """The job's kind as its list line says it: a watch is a script that tells, with its bound."""
+    return words.WATCH_KIND.format(wakes=job.wakes) if job.deliver == "tell" else job.kind
 
 
 def phone(text: str) -> str:
@@ -725,6 +755,10 @@ def run_script(job: Job, folder: Path) -> dict[str, Any]:
     env = {k: v for k, v in os.environ.items() if k in ENV_KEEP or k in ("YERK_PRIVATE", "YERK_STATE")}
     env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_JOB_DIR=str(folder), YERK_ROOM=job.room,
                PATH=os.pathsep.join([str(Path(sys.executable).parent), *filter(None, [env.get("PATH")])]))
+    if job.deliver == "tell":                   # a watch's own memory, the same folder every run: Yerk never reads it
+        (watch := folder.parent / "watch").mkdir(mode=0o700, exist_ok=True)
+        watch.chmod(0o700)
+        env["YERK_WATCH_STATE"] = str(watch)
     t0 = time.time()
     with open(folder / "stdout", "wb") as out, open(folder / "stderr", "wb") as err:
         p = subprocess.Popen(["/bin/sh", "-c", job.payload], cwd=folder, env=env, stdout=out, stderr=err,
@@ -738,6 +772,18 @@ def run_script(job: Job, folder: Path) -> dict[str, Any]:
     tail = (folder / "stderr").read_text(errors="replace").strip().splitlines()
     return {"exit": rc, "timed_out": timed_out, "output": text, "chars": len(text),
             "stderr_tail": tail[-1][:200] if tail else "", "seconds": round(time.time() - t0, 3)}
+
+
+def capped(text: str, where: str = "the run's folder") -> str:
+    """A script's output as its room gets it: OUTPUT_MAX characters at most, a cut said with where the whole of it is."""
+    if len(text := text.strip()) <= OUTPUT_MAX:
+        return text
+    return text[:OUTPUT_MAX].rstrip() + "\n" + words.OUTPUT_CUT.format(most=OUTPUT_MAX, where=where)
+
+
+def told_id(run: dict[str, Any]) -> str:
+    """The inbound id of a run's told turn: a note's, or a watch's (a script job with deliver = "tell")."""
+    return f"{'note' if run['kind'] == 'note' else 'watch'}-{run['id']}"
 
 
 def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False, path: str = "control") -> dict[str, Any]:
@@ -852,7 +898,7 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
 def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
                  deliver: str = "announce", cap: float = 0.0, account: str = "", note_chars: int = NOTE_CHARS,
                  model: str = "", effort: str = "", models: dict[str, str] | None = None, addons: Collection[str] = (),
-                 room_conf: dict[str, Any] | None = None) -> dict[str, Any]:
+                 room_conf: dict[str, Any] | None = None, wakes: int = 0) -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
     a job systemd will not schedule is taken out of the file again. A note longer than `note_chars` is refused, and so is
     a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list,
@@ -870,7 +916,7 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
         return {"ok": False, "error": f"give `tz` (an IANA name such as Europe/Paris): room {room!r} has no timezone "
                                       "configured, and nothing is put on UTC by accident"}
     try:
-        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort, addons)
+        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort, addons, wakes)
         job = add(path, name, fields)
         p, back = sync(path, units, env)
     except JobError as e:
@@ -884,7 +930,7 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
         return {"ok": False, "error": f"not scheduled: {why}; the job was taken out of the file again"}
     now = time.time()
     return {"ok": True, "name": name, "unit": r["unit"], "schedule": job.describe(), "room": room, "tz": job.tz,
-            "kind": kind, "deliver": job.deliver, **job.runs_on(), "next": r["next"],
+            "kind": kind, "deliver": job.deliver, **({"wakes": job.wakes} if job.deliver == "tell" else {}), **job.runs_on(), "next": r["next"],
             "next_text": f"{when_text(r['next'], job.tz)} ({in_text(r['next'], now)})", "diff": diff_lines(p)}
 
 
@@ -914,8 +960,9 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
     now = time.time()
     rows = [{"name": n, **r, "next_text": when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})"
                                                                              if r["next"] else ""),
-             **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind,
-                 "deliver": jobs[n].deliver, **jobs[n].runs_on()} if n in jobs else {})} for n, r in back.items()]
+             **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind, "deliver": jobs[n].deliver,
+                 **({"wakes": jobs[n].wakes} if jobs[n].deliver == "tell" else {}), **jobs[n].runs_on()} if n in jobs else {})}
+            for n, r in back.items()]
     lines = read_lines(back, jobs, now, kept) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
     return {"ok": True, "jobs": rows, "errors": errors, "lines": lines}
 
@@ -933,6 +980,8 @@ class Jobs:
         self.path = private / FILE
         self.ops_room = str(conf.get("ops_room", ""))
         self.started = time.time()                      # a note fired before this is the last process's (reattach)
+        self.told: set[int] = set()                     # runs this process asked a told turn for: in hand (reattach)
+        self.releases: dict[str, asyncio.TimerHandle] = {}   # a watch whose findings the bound holds: its release
         self.added: dict[str, list[float]] = {}         # a room that is not the owner's: when it added its recent notes
         workers.hooks.append(self.worker_done)
 
@@ -999,7 +1048,7 @@ class Jobs:
                            str(req.get("deliver") or "announce"), float(req.get("cap_minutes") or 0),
                            str(req.get("account") or ""), int(self.conf.get("note_chars", NOTE_CHARS)),
                            str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models,
-                           [str(a) for a in req.get("addons") or []], self.room_confs[room])
+                           [str(a) for a in req.get("addons") or []], self.room_confs[room], int(req.get("wakes") or 0))
         if out["ok"]:
             log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line", out["schedule"], out["next_text"])
         return out
@@ -1039,29 +1088,78 @@ class Jobs:
         return {"ok": True, "worker": out["id"], "run": run_id}
 
     def tell(self, run: dict[str, Any], deliver: str = "announce") -> dict[str, Any]:
-        """A note is due: its room's own session is told the text the runner kept in the run's folder, in a harness
-        turn of its own once the room is idle (as a job worker's result is), and says it in its voice. The run reads
-        undelivered until that turn ends, so a restart before then has it told at the next start (reattach)."""
-        rid, room, mid = int(run["id"]), str(run["room"]), f"note-{run['id']}"
+        """A note is due, or a watch found something (a script job with deliver = "tell" whose run had output): its room's
+        own session is told the text the runner kept in the run's folder (the note's message, the script's stdout), in a
+        harness turn of its own once the room is idle (as a job worker's result is), and says it in its voice. The run
+        reads undelivered until that turn ends, so a restart before then has it told at the next start (reattach)."""
+        rid, room, note, mid = int(run["id"]), str(run["room"]), run["kind"] == "note", told_id(run)
+        done = {"ended": time.time(), "exit": "done", "result": "note"} if note else {}     # a script's own end stays
         if deliver == "silent" or room not in self.rooms:
             why = "silent (deliver = silent)" if deliver == "silent" else f"skipped: no room {room!r} in this daemon"
-            self.ledger.job_run_set(rid, ended=time.time(), exit="done", result="note", delivery=why)
+            self.ledger.job_run_set(rid, **done, delivery=why)
             return {"ok": True, "run": rid}
         try:
-            message = (Path(str(run["folder"])) / "message").read_text().strip()
+            text = self.told_text(run)
         except OSError as e:
-            return {"ok": False, "error": f"the note's text could not be read: {e}"}
-        text = words.NOTE_DUE.format(name=run["job"], message=message, at=words.clock(float(run["planned"])),
-                                     under=words.under(self.workers.conf.relay_reply))
-        self.ledger.inbound_add(mid, room, "note", HARNESS, len(text))
-        self.ledger.job_run_set(rid, delivery=WAITING)
+            return {"ok": False, "error": f"the {'note' if note else 'watch'}'s text could not be read: {e}"}
+        self.ledger.inbound_add(mid, room, "note" if note else "watch", HARNESS, len(text))
+        self.ledger.job_run_set(rid, delivery=WAITING, told=time.time())
+        self.told.add(rid)
 
         def then(state: str, ids: list[str], chars: int) -> None:
-            self.ledger.job_run_set(rid, ended=time.time(), exit="done", result="note",
+            self.ledger.job_run_set(rid, **({**done, "ended": time.time()} if note else {}),
                                     delivery="delivered" if state == "answered" else "failed", message_ids=",".join(ids))
         self.workers.ask(room, Inbound(mid, HARNESS, text, cap=self.workers.conf.relay_reply, then=then, alone=True))
-        log.info("note %s: run %d asked a turn in %s", run["job"], rid, room)
+        log.info("%s %s: run %d asked a turn in %s", "note" if note else "watch", run["job"], rid, room)
         return {"ok": True, "run": rid, "inbound": mid}
+
+    def found(self, job: Job, run: dict[str, Any]) -> dict[str, Any]:
+        """A watch's run had output: told now when its room was told fewer than the job's `wakes` times in the last hour
+        (the told runs of job_runs, never a file its script could write) and none of its findings waits; else held, its
+        output in its run's folder, until the hour allows (release)."""
+        if not self.ledger.job_runs(job=job.name, delivery=HELD, limit=1) and \
+                len(self.ledger.job_told(job.name, time.time() - HOUR)) < job.wakes:
+            return self.tell(run, job.deliver)
+        self.ledger.job_run_set(int(run["id"]), delivery=HELD)
+        log.info("watch %s: run %s held, past its %d wakes in the hour", job.name, run["id"], job.wakes)
+        self.release(job.name)
+        return {"ok": True, "run": int(run["id"]), "held": True}
+
+    def release(self, name: str) -> None:
+        """A watch's held findings once its room may be woken again: the newest told as ONE turn naming how many were held
+        back (words.WATCH_HELD), the others marked told with it, so none is lost and none is told twice. Too soon: a timer
+        on the daemon's loop for when the hour allows (the next run of it, or the next start, releases them too)."""
+        if not (held := self.ledger.job_runs(job=name, delivery=HELD, limit=10**6)):
+            return
+        job, now = self.jobs().get(name), time.time()
+        wakes = job.wakes if job else WAKES
+        if len(told := self.ledger.job_told(name, now - HOUR)) >= wakes:
+            if (h := self.releases.pop(name, None)) is not None:
+                h.cancel()
+            with suppress(RuntimeError):                    # no loop runs (a direct call): the next run or start
+                self.releases[name] = asyncio.get_running_loop().call_later(told[-wakes] + HOUR - now + 0.5, self.release, name)
+            return
+        newest = held[0]
+        for r in held[1:]:
+            self.ledger.job_run_set(int(r["id"]), delivery=f"{BATCHED}{newest['id']}")
+        self.ledger.job_run_set(int(newest["id"]), note=HELD_BACK)
+        self.tell({**newest, "note": HELD_BACK}, job.deliver if job else "tell")
+
+    def told_text(self, run: dict[str, Any]) -> str:
+        """The told turn's text: words.NOTE_DUE with the note's message, or words.WATCH_FOUND with the script's output
+        (capped, the cut naming the file the whole of it is in). OSError: the run's folder cannot be read."""
+        folder, at = Path(str(run["folder"])), words.clock(float(run["planned"]))
+        under = words.under(self.workers.conf.relay_reply)
+        if run["kind"] == "note":
+            return words.NOTE_DUE.format(name=run["job"], message=(folder / "message").read_text().strip(), at=at, under=under)
+        with open(folder / "stdout", errors="replace") as f:     # a slice, never the whole: a script can print anything
+            output, held = capped(f.read(4 * OUTPUT_MAX), str(folder / "stdout")), ""
+        if run.get("note") == HELD_BACK:            # the newest of the findings the bound held back: how many, and since when
+            batch = [run, *self.ledger.job_runs(job=str(run["job"]), delivery=f"{BATCHED}{run['id']}", limit=10**6)]
+            oldest = min(float(r["fired"]) for r in batch)
+            held = words.WATCH_HELD.format(n=len(batch), findings="finding was" if len(batch) == 1 else "findings were",
+                                           since="in the last hour" if oldest >= time.time() - HOUR else f"since {words.clock(oldest)}")
+        return words.WATCH_FOUND.format(name=run["job"], at=at, held=held, output=output, under=under)
 
     async def result(self, req: dict[str, Any]) -> dict[str, Any]:
         """A script's end, delivered by the cron-wrap rule."""
@@ -1087,12 +1185,15 @@ class Jobs:
             result = "output"
             if deliver == "silent":
                 delivery = "silent (deliver = silent)"
+            elif deliver == "tell":                 # the room's own session is told it, as a due note is (W1)
+                if not (told := self.found(job, run) if job else self.tell(run, deliver)).get("ok"):   # read again at the next start
+                    self.ledger.job_run_set(run_id, delivery=f"undelivered: {told.get('error')}")
+                self.ledger.job_run_set(run_id, result=result)
+                delivery = str((self.ledger.job_run_get(run_id) or {}).get("delivery") or "")
+                log.info("job %s: run %d %s, %s", name, run_id, result, delivery)
+                return {"ok": True, "run": run_id, "result": result, "delivery": delivery, "message_ids": []}
             else:
-                text = output.strip()
-                if len(text) > OUTPUT_MAX:
-                    text = text[:OUTPUT_MAX].rstrip() + f"\n[cut at {OUTPUT_MAX:,} characters; the whole output is in " \
-                                                        "the run's folder]"
-                ids = await self.post(room, text, f"job-{run_id}-out")
+                ids = await self.post(room, capped(output), f"job-{run_id}-out")
                 delivery = "delivered" if ids else "undelivered: the room could not be posted to"
         else:
             result, delivery = "nothing", "silent (no output)"
@@ -1188,9 +1289,10 @@ class Jobs:
         await self.fire(name, rid, job)
 
     async def reattach(self) -> None:
-        """After a daemon start: a script run that ended while no daemon was up is delivered late; a note that fired
-        then, or whose turn the restart cut, is told now, unless its reply was in the room already. A script run with no
-        end past its unit's limit was cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
+        """After a daemon start: a script run that ended while no daemon was up is delivered late (a watch's: its result
+        now, as it would have been then); a note that fired then, or a note or a watch's finding whose turn the restart
+        cut, is told now, unless its reply was in the room already. A script run with no end past its unit's limit was
+        cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
         for r in self.ledger.job_runs(unended=True):        # a script whose job has left the file: the default cap, nobody to tell
             job = self.jobs().get(str(r["job"])) if r["kind"] == "script" else None
             limit = start_limit(job) if job else int(DEFAULT_CAP["script"] * 60) + 120
@@ -1200,11 +1302,13 @@ class Jobs:
             if job is not None:
                 await self.alert(job, words.job_line(job.name, "failed", result="signal"), int(r["id"]), str(r["room"]))
         for r in self.ledger.job_runs(undelivered=True):
-            if r["kind"] == "note" and (r["delivery"] != WAITING or float(r["fired"]) < self.started):   # one told here is in hand
-                if (posted := self.ledger.delivered_for(mid := f"note-{r['id']}")):
+            if r["kind"] == "note" or r["delivery"] == WAITING:          # a note, or a watch's finding told to its room
+                if r["delivery"] == WAITING and (float(r["fired"]) >= self.started or r["kind"] == "script" and int(r["id"]) in self.told):
+                    continue                                              # one told here is in hand (a script may end after the start)
+                if (posted := self.ledger.delivered_for(mid := told_id(r))):
                     self.ledger.inbound_set(mid, state="answered", reply_ids=",".join(posted), note="found delivered after a restart")
-                    self.ledger.job_run_set(int(r["id"]), ended=time.time(), exit="done", result="note", delivery="delivered",
-                                            message_ids=",".join(posted))
+                    self.ledger.job_run_set(int(r["id"]), **({"ended": time.time(), "exit": "done", "result": "note"} if r["kind"] == "note"
+                                                             else {}), delivery="delivered", message_ids=",".join(posted))
                 else:
                     self.tell(r, j.deliver if (j := self.jobs().get(str(r["job"]))) else "announce")
                 continue
@@ -1217,12 +1321,19 @@ class Jobs:
             except OSError:
                 continue
             job = self.jobs().get(str(r["job"]))
+            if job is not None and job.deliver == "tell":       # a watch's run no daemon took: its result, as at its end
+                code = str(r["exit"] or "")
+                await self.result({"name": job.name, "run": r["id"], "output": output, "timed_out": code == "timed out",
+                                   "exit": int(code.split()[-1]) if code.startswith("exited ") else code})
+                continue
             if not output or (job is not None and job.deliver == "silent"):
                 self.ledger.job_run_set(int(r["id"]), delivery="silent (late; no output or deliver = silent)")
                 continue
             text = f"(late: the daemon was not running when job {r['job']} ran at {when_text(r['fired'], job.tz if job else 'UTC')})\n{output[:OUTPUT_MAX]}"
             ids = await self.post(str(r["room"]), text, f"job-{r['id']}-late")
             self.ledger.job_run_set(int(r["id"]), delivery="delivered late" if ids else r["delivery"], message_ids=",".join(ids))
+        for name in dict.fromkeys(str(r["job"]) for r in self.ledger.job_runs(delivery=HELD, limit=10**6)):
+            self.release(name)                            # a watch's findings the bound held when the last process stopped
 
 
 def main(argv: list[str] | None = None) -> int:

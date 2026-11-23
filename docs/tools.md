@@ -123,7 +123,8 @@ only the add-ons this room gives every worker, those `addons` names and recall a
 workers those, never send, text or email, so a light timed check needing your tools is a note); "script", the shell
 line to run (no model call, its output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
 adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
-rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
+rooms set one. `deliver` "announce" (default), "silent" (run and ledger, never post) or, for a script, "tell" (a watch:
+this room is told its output when there is any, at most `wakes` turns an hour, default 6). Returns the
 next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.
 <example>"remind me Saturday at 10 to call the clinic": action "add", kind "note", name
 "call-clinic", when "2026-10-24 10:00", what "Remind them to call the clinic now."</example>
@@ -142,6 +143,7 @@ next fire time read back from systemd. "remove": by `name`. "list": the jobs thi
 - `model`: string, default ""
 - `effort`: string, default ""
 - `addons`: list of string or null, default null
+- `wakes`: integer, default 0
 
 ## settings
 

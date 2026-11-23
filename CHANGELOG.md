@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-23
 
+### watch-jobs-2026-11-23 (#128)
+
+- Jobs: a script job may set `deliver = "tell"` (a watch). When its run prints something, the room's own session is
+  told the output in a turn of its own once the room is idle, as a due note is, and says it in its own voice; the
+  output is cut at 4,000 characters with the path of the whole of it. A run that prints nothing tells nothing and
+  costs no turn; a failing run alerts the machine room as any script job does. `announce` and `silent` are unchanged.
+- Jobs: a watch wakes its room at most `wakes` times in any hour (default 6, 1 to 60), counted from the ledger. Past
+  that, each finding waits in its run's folder, and once the hour allows the newest is told as one turn naming how
+  many were held back; none is lost and none is told twice, across a restart too.
+- Jobs: a watch's script gets `YERK_WATCH_STATE`, a 0700 folder of its own kept across runs
+  (`<state>/jobs/<name>/watch/`), for what it has already seen. Yerk AI never reads or writes it.
+- `yerk schedule add --kind script --deliver tell [--wakes N]` and the schedule tool book a watch; `yerk jobs list`
+  shows it as a script that tells the room. `deliver = "tell"` on a note or an agent job is refused with why, and a
+  watch whose room is not in rooms.toml is named at the sync and never scheduled.
+
+**Upgrading**: nothing to do. The ledger's `job_runs` gains a `told` column at the next start.
+
 ### harness-holes-2026-11-23 (#127)
 
 - Texting: a `cursor.json` that is there but cannot be read (not JSON, not a mapping, a directory, no permission) no
