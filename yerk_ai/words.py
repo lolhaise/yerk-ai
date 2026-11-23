@@ -297,6 +297,8 @@ JOB_IDLE = "nothing of {name} is running; it last ran {last}, next {next}"     #
 JOB_STOP = "stopped {name}'s {what} after {ran}; next fire {next}"
 JOB_STOP_DOWN = "the daemon is not running, so nothing of {name} was stopped: its worker is the daemon's"
 JOB_STOP_UNTOLD = "the machine room was not told: the daemon is not running"
+JOB_AGAIN = "{n} times since {since}, last {last}"     # an unchanged failure's alert, edited in place (jobs.Jobs.failed)
+JOB_OK_AGAIN = "job {name} is ok again at {at}; it failed {failed}"
 NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
 
 

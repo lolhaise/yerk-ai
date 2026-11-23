@@ -948,6 +948,14 @@ def schedule_remove(path: Path, units: Systemd, env: Env, name: str) -> dict[str
     return {"ok": True, "name": name, "removed": True, "diff": diff_lines(p)}
 
 
+def failure(r: dict[str, Any]) -> bool:
+    """A run J2 counts as failed: a script's error exit or time out, an agent job's end that is not done, did not start or
+    stopped (a person's stop is neither a failure nor a good run)."""
+    if r["kind"] == "script":
+        return r["result"] == "timed out" or str(r["result"]).startswith("exit ")
+    return r["kind"] == "agent" and r["result"] not in ("done", "no_reply", "did not start", "stopped", None)
+
+
 def no_job(name: str, jobs: Collection[str]) -> str:
     return f"no job {name!r} in the jobs file; jobs: {', '.join(jobs) or 'none'}"
 
@@ -1260,13 +1268,13 @@ class Jobs:
         if timed_out:                      # the exit code and the stderr tail: the run's note and status --full
             result, delivery = "timed out", "alert"
             self.ledger.job_run_set(run_id, note=f"timed out after {job.cap:g} min" if job else "timed out")
-            ids = await self.alert(job, words.job_line(name, "timed out", job.cap * 60 if job else 0.0), run_id, room)
+            ids = await self.failed(job, words.job_line(name, "timed out", job.cap * 60 if job else 0.0), run_id, room, result)
         elif code != 0:
             result, delivery = f"exit {code}", "alert"
             self.ledger.job_run_set(run_id, note=f"exit {code}" + (f": {tail}" if tail else ""))
-            ids = await self.alert(job, words.job_line(name, "failed", result="signal" if isinstance(code, int) and
-                                                       (code < 0 or code > 128) else "exit-code"), run_id, room)
-        elif output.strip():
+            ids = await self.failed(job, words.job_line(name, "failed", result="signal" if isinstance(code, int) and
+                                                        (code < 0 or code > 128) else "exit-code"), run_id, room, result)
+        elif not await self.recovered(job, run_id) and output.strip():
             result = "output"
             if deliver == "silent":
                 delivery = "silent (deliver = silent)"
@@ -1296,10 +1304,71 @@ class Jobs:
             log.exception("jobs: posting to %s failed", room)
             return []
 
+    def alert_room(self, job: Job | None, room: str = "") -> str:
+        machine = [n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels]
+        return (machine or [self.ops_room if self.ops_room in self.channels else (job.room if job else room)])[0]
+
+    def streak(self, name: str, run_id: int, result: str) -> list[dict[str, Any]]:
+        """The job's failed runs just before run `run_id` with `result`, alerted by one post, newest first (J2): its ended
+        runs read back, a stopped one skipped, until one differs. Rows are the only state, so it holds across a restart."""
+        out: list[dict[str, Any]] = []
+        for r in self.ledger.job_runs(job=name, limit=500):
+            if int(r["id"]) >= run_id or not r["ended"] or r["result"] == "stopped":
+                continue
+            if not (r["result"] == result and r["delivery"] == "alert" and r["message_ids"] and failure(r)) or \
+                    out and r["message_ids"] != out[0]["message_ids"]:
+                break
+            out.append(r)
+        return out
+
+    async def edit(self, job: Job, rows: list[dict[str, Any]], text: str, room: str = "") -> bool:
+        """The alert post of `rows` edited in the machine room; False when it cannot be (no edit_post, deleted, refused)."""
+        target = self.alert_room(job, room)
+        if (edit := getattr(self.channels.get(target), "edit_post", None)) is None:
+            return False
+        try:
+            await edit(target, str(rows[0]["message_ids"]).split(",")[0], text)
+        except Exception as e:
+            log.warning("jobs: the alert post of %s could not be edited (%s); posted anew", job.name, e)
+            return False
+        return True
+
+    def hhmm(self, t: float, job: Job, room: str = "") -> str:      # a time in the machine room's clock
+        with suppress(JobError):
+            return datetime.fromtimestamp(t, zone(default_tz(self.room_confs, self.alert_room(job, room), self.daemon_conf) or "UTC")).strftime("%H:%M")
+        return datetime.fromtimestamp(t).strftime("%H:%M")
+
+    async def failed(self, job: Job | None, line: str, run_id: int, room: str, result: str) -> list[str]:
+        """A recurring job's failed run (J2): when its previous ended run (a stop skipped) failed with the same result and its
+        alert post is known, that post is edited to the line and how many times since when, and this run takes its ids;
+        anything else, and an edit that fails, posts anew. A one-shot posts as today."""
+        if job is not None and job.when != "at" and (rows := self.streak(job.name, run_id, result)):
+            at = lambda r: float(r["ended"] or r["fired"])  # noqa: E731
+            now = at(self.ledger.job_run_get(run_id) or {"ended": time.time()})
+            text = f"{line[:ALERT_MAX]}\n" + words.JOB_AGAIN.format(n=len(rows) + 1, since=self.hhmm(at(rows[-1]), job, room),
+                                                                   last=self.hhmm(now, job, room))
+            if await self.edit(job, rows, text, room):
+                self.ledger.job_run_set(run_id, message_ids=str(rows[0]["message_ids"]))
+                return str(rows[0]["message_ids"]).split(",")
+        return await self.alert(job, line, run_id, room)
+
+    async def recovered(self, job: Job | None, run_id: int) -> bool:
+        """A recurring job's good run after alerted failures (J2): their post edited once to say it is ok again and when;
+        the next failure posts anew. False always: the run's own delivery goes on."""
+        if job is None or job.when == "at":
+            return False
+        prev = next((r for r in self.ledger.job_runs(job=job.name, limit=500) if int(r["id"]) < run_id and r["ended"]
+                     and r["result"] != "stopped"), None)
+        if prev is not None and (rows := self.streak(job.name, run_id, str(prev["result"]))):
+            t = [self.hhmm(float(x), job) for x in (float((self.ledger.job_run_get(run_id) or {}).get("ended") or time.time()),
+                                                   rows[-1]["ended"], rows[0]["ended"])]
+            failed = f"at {t[1]}" if len(rows) == 1 else words.JOB_AGAIN.format(n=len(rows), since=t[1], last=t[2])
+            await self.edit(job, rows, f"{DONE} " + words.JOB_OK_AGAIN.format(name=job.name, at=t[0], failed=failed))
+        return False
+
     async def alert(self, job: Job | None, line: str, run_id: int, room: str = "") -> list[str]:
         """One line to the machine room (rooms.toml role = "machine"), else [jobs] ops_room, else the job's room."""
-        machine = [n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels]
-        target = (machine or [self.ops_room if self.ops_room in self.channels else (job.room if job else room)])[0]
+        target = self.alert_room(job, room)
         if (ch := self.channels.get(target)) is None:
             log.warning("jobs: no room to alert (%r); %s", target, line)
             return []
@@ -1326,10 +1395,12 @@ class Jobs:
         if end["exit"] != "done":                       # a stop is a person's, never read as a failure (J1)
             self.ledger.job_run_set(run_id, result=str(end["exit"]), delivery="none" if end["exit"] == "stopped" else "alert",
                                     note=f"worker {row['id']}: {end.get('detail') or 'no exit record'}")
-            await self.alert(job, words.job_line(name, str(end["exit"]), float(row.get("cap") or 0),
-                                                 "oom-kill" if for_memory(end) else str(end.get("result_code") or ""))
-                             + f"\n{note}" * bool(note), run_id, str(row["room"]))
+            line = words.job_line(name, str(end["exit"]), float(row.get("cap") or 0),
+                                  "oom-kill" if for_memory(end) else str(end.get("result_code") or "")) + f"\n{note}" * bool(note)
+            await (self.alert(job, line, run_id, str(row["room"])) if end["exit"] == "stopped" else
+                   self.failed(job, line, run_id, str(row["room"]), str(end["exit"])))
             return True
+        await self.recovered(job, run_id)
         if text.strip() == NO_REPLY:
             self.ledger.job_run_set(run_id, result="no_reply", delivery="silent (NO_REPLY)")
             self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="the job answered NO_REPLY")

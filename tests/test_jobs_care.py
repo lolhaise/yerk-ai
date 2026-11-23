@@ -25,13 +25,26 @@ class Units(FakeSystemd):
         return ""
 
 
-def care(setup, tmp_path, table, conf=None):
+class Edits(Rec):
+    """The machine room's channel with edit_post, as discord.py has it; `fail`: every edit refused (a deleted post)."""
+
+    def __init__(self, fail=False):
+        super().__init__()
+        self.edits, self.fail = [], fail
+
+    async def edit_post(self, room, message_id, text):
+        if self.fail:
+            raise RuntimeError("404 Not Found (error code: 10008): Unknown Message")
+        self.edits.append((room, message_id, text))
+
+
+def care(setup, tmp_path, table, conf=None, ops=None, tz="UTC"):
     """A manager with a room and the machine room, the jobs file synced, on a ledger at the runner's path."""
     s = setup
-    rec, ops = Rec(), Rec()
+    rec, ops = Rec(), ops or Rec()
     j, w, _, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops},
                                    conf=conf or {}, room_confs={"r": {"model": "m", "timezone": "UTC"},
-                                                                "ops": {"model": "m", "timezone": "UTC", "role": "machine"}})
+                                                                "ops": {"model": "m", "timezone": tz, "role": "machine"}})
     j.units = sd = Units(tmp_path / "units")
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
@@ -166,3 +179,136 @@ def test_the_tools_stop_works_in_an_owner_room_and_is_refused_elsewhere_with_tod
     assert asyncio.run(d.tool_schedule("guests", {"action": "stop", "name": "nightly"}))["line"] == W.JOBS_OWNER_ONLY
     assert asyncio.run(d.tool_schedule("r", {"action": "stop", "name": "nightly"}))["ok"]
     assert s.ledger.job_run_get(rid)["note"] == "stopped from room r" and not sd.active
+
+
+# J2: one alert per unchanged failure
+def ended_at(j, name, code, ago, timed_out=False):
+    """A script run as the runner leaves it (its row and its end, `ago` seconds back), handed to the daemon's result."""
+    rid = started(j.ledger, name, ago + 5)
+    j.ledger.job_run_set(rid, ended=time.time() - ago, exit="timed out" if timed_out else f"exited {code}")
+    asyncio.run(j.handle("", {"action": "result", "name": name, "run": rid, "exit": code, "timed_out": timed_out,
+                              "output": "", "stderr_tail": ""}))
+    return j.ledger.job_run_get(rid)
+
+
+def clock(row, tz="Asia/Tokyo"):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.fromtimestamp(row["ended"], ZoneInfo(tz)).strftime("%H:%M")
+
+
+FLAKY = SCRIPT.format(n="flaky", key="schedule", when="*:0/10") + SCRIPT.format(n="other", key="schedule", when="*:0/10")
+FAILED = f"{W.NOT_DONE} job flaky failed: it ended with an error"
+
+
+def test_equal_failures_are_one_post_edited_with_the_count_since_the_first_in_the_machine_rooms_clock(setup, tmp_path):
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, FLAKY, ops=ops, tz="Asia/Tokyo")
+    one = ended_at(j, "flaky", 3, 1800)
+    theirs = ended_at(j, "other", 3, 1700)                  # another job's equal failures count for it alone
+    two = ended_at(j, "flaky", 3, 1200)
+    assert ops.notified == [("ops", FAILED), ("ops", FAILED.replace("flaky", "other"))]
+    assert ops.edits == [("ops", "n1", f"{FAILED}\n2 times since {clock(one)}, last {clock(two)}")]
+    assert (two["message_ids"], j.ledger.job_run_get(two["id"])["message_ids"], theirs["message_ids"]) == ("n1", "n1", "n2")
+    three = ended_at(j, "flaky", 3, 600)
+    assert ops.edits[-1] == ("ops", "n1", f"{FAILED}\n3 times since {clock(one)}, last {clock(three)}")
+    assert len(ops.notified) == 2 and three["delivery"] == "alert" and three["result"] == "exit 3"
+    ended_at(j, "other", 3, 500)
+    assert ops.edits[-1] == ("ops", "n2", f"{FAILED.replace('flaky', 'other')}\n2 times since {clock(theirs)}, last "
+                                          f"{clock(j.ledger.job_runs(job='other')[0])}")
+    ended_at(j, "flaky", 3, 400, timed_out=True)            # a time out is another failure: posted anew
+    assert ops.notified[-1] == ("ops", W.job_line("flaky", "timed out", jobs.DEFAULT_CAP["script"] * 60)) and len(ops.notified) == 3
+
+
+def test_a_different_exit_posts_anew_a_good_run_says_ok_again_once_and_the_next_failure_posts_anew(setup, tmp_path):
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, FLAKY, ops=ops)
+    ended_at(j, "flaky", 3, 1800)
+    four = ended_at(j, "flaky", 4, 1200)
+    assert [t for _, t in ops.notified] == [FAILED, FAILED] and ops.edits == [] and four["message_ids"] == "n2"
+    good = ended_at(j, "flaky", 0, 600)
+    assert ops.edits == [("ops", "n2", f"{W.DONE} job flaky is ok again at {clock(good, 'UTC')}; it failed at {clock(four, 'UTC')}")]
+    assert (good["result"], good["delivery"]) == ("nothing", "silent (no output)")
+    ended_at(j, "flaky", 0, 500)
+    assert len(ops.edits) == 1                                                       # once
+    ended_at(j, "flaky", 4, 400)
+    assert len(ops.notified) == 3 and len(ops.edits) == 1                          # after a good run: anew
+
+
+def test_ok_again_counts_the_failures_it_ends(setup, tmp_path):
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, FLAKY, ops=ops)
+    one, _, three = (ended_at(j, "flaky", 3, ago) for ago in (1800, 1200, 900))
+    good = ended_at(j, "flaky", 0, 600)
+    assert ops.edits[-1] == ("ops", "n1", f"{W.DONE} job flaky is ok again at {clock(good, 'UTC')}; it failed 3 times since "
+                                          f"{clock(one, 'UTC')}, last {clock(three, 'UTC')}")
+
+
+def test_an_edit_that_fails_or_a_channel_with_none_posts_anew(setup, tmp_path):
+    ops = Edits(fail=True)
+    j, *_ = care(setup, tmp_path, FLAKY, ops=ops)
+    ended_at(j, "flaky", 3, 1800)
+    two = ended_at(j, "flaky", 3, 1200)
+    assert [t for _, t in ops.notified] == [FAILED, FAILED] and two["message_ids"] == "n2"
+    three = ended_at(j, "flaky", 3, 600)                    # counted from the post it can edit: none
+    assert len(ops.notified) == 3 and three["message_ids"] == "n3"
+
+
+def test_a_channel_with_no_edit_posts_as_today(setup, tmp_path):
+    j, w, sd, priv, state, rec, ops = care(setup, tmp_path, FLAKY)
+    ended_at(j, "flaky", 3, 1800)
+    ended_at(j, "flaky", 3, 1200)
+    assert [t for _, t in ops.notified] == [FAILED, FAILED]
+
+
+def test_a_restart_between_the_runs_changes_nothing(setup, tmp_path):
+    ops = Edits()
+    j, w, sd, priv, state, rec, _ = care(setup, tmp_path, FLAKY, ops=ops)
+    one = ended_at(j, "flaky", 3, 1800)
+    again = jobs.Jobs(priv, state, j.ledger, {}, j.rooms, j.channels, j.room_confs, {}, w, units=sd)     # a new process
+    two = ended_at(again, "flaky", 3, 1200)
+    assert ops.edits == [("ops", "n1", f"{FAILED}\n2 times since {clock(one, 'UTC')}, last {clock(two, 'UTC')}")]
+
+
+def test_a_stopped_run_between_two_failures_is_skipped(setup, tmp_path):
+    ops = Edits()
+    j, w, sd, priv, state, rec, _ = care(setup, tmp_path, FLAKY, ops=ops)
+    one = ended_at(j, "flaky", 3, 1800)
+    started(j.ledger, "flaky", 1500)
+    sd.active.add("yerk-job-flaky.service")
+    assert stop(j, "flaky")["ok"] and ops.notified[-1] == ("ops", W.job_line("flaky", "stopped"))
+    two = ended_at(j, "flaky", 3, 1200)
+    assert ops.edits == [("ops", "n1", f"{FAILED}\n2 times since {clock(one, 'UTC')}, last {clock(two, 'UTC')}")]
+    assert len(ops.notified) == 2
+
+
+def test_one_shots_and_other_alert_lines_post_as_today(setup, tmp_path):
+    ops = Edits()
+    j, *_ = care(setup, tmp_path, SCRIPT.format(n="once", key="at", when="2099-01-01 09:00"), ops=ops)
+    ended_at(j, "once", 3, 1800)
+    ended_at(j, "once", 3, 1200)                            # a one-shot runs once; an equal row before it changes nothing
+    assert len(ops.notified) == 2 and ops.edits == []
+    asyncio.run(j.alert(None, "a line of another part", 0))
+    asyncio.run(j.alert(None, "a line of another part", 0))
+    assert ops.notified[-2:] == [("ops", "a line of another part")] * 2 and ops.edits == []
+
+
+def test_an_agent_jobs_equal_ends_are_one_post_and_did_not_start_posts_as_today(setup, tmp_path):
+    ops = Edits()
+    j, w, sd, priv, state, rec, _ = care(setup, tmp_path, '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\n'
+                                                       'room = "r"\nmessage = "x"\n', ops=ops)
+
+    def end(exit, ago):
+        rid = started(j.ledger, "think", ago + 60, kind="agent")
+        j.ledger.job_run_set(rid, worker=f"w{rid}")
+        asyncio.run(j.worker_done({"id": f"w{rid}", "job": "think", "staging": str(tmp_path / "none"), "room": "r", "cap": 600,
+                                   "started": time.time() - ago - 60}, {"exit": exit, "finished": time.time() - ago,
+                                                                        "detail": "exit-code, exited 3", "result_code": "exit-code"}))
+        return j.ledger.job_run_get(rid)
+    one, two = end("died", 1800), end("died", 1200)
+    assert ops.notified == [("ops", f"{W.NOT_DONE} job think failed: it ended with an error")]
+    assert ops.edits == [("ops", "n1", f"{ops.notified[0][1]}\n2 times since {clock(one, 'UTC')}, last {clock(two, 'UTC')}")]
+    j.ledger.job_run_set(started(j.ledger, "think", 900, kind="agent"), ended=time.time() - 900, exit="not run",
+                         result="did not start", delivery="alert", message_ids="n9")
+    end("died", 600)                                        # a did-not-start between: not the same failure, posted anew
+    assert len(ops.notified) == 2
