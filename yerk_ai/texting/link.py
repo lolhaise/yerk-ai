@@ -73,7 +73,7 @@ class Link:
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         write_private(self.folder / "status.json", json.dumps({"mode": self.mode, "up": self.connected, "since": self.since,
                                                                "last_in": self.last_in, "watched": len(self.chats), **self.out,
-                                                               **({"held": self.held} if self.held else {})}))
+                                                               **({"cursor_error": self.held} if self.held else {})}))
 
     def more(self, fields: dict[str, Any]) -> None:
         self.out.update(fields)

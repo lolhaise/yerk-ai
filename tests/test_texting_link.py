@@ -291,7 +291,9 @@ def test_an_unreadable_cursor_holds_the_link_says_so_once_and_resumes_from_its_r
         assert fb.lines == [] and not link.connected and took == []  # never subscribed, never a start from the newest row
         assert (st.st_ino, st.st_mtime_ns, st.st_size, st.st_mode) == was
         assert len(said) == 1 and said[0] == words.TEXTING_HELD.format(why=link.held) and str(cur) in said[0]
-        assert str(cur) in json.loads((tmp_path / "texting" / "status.json").read_text())["held"]
+        link.more({"held": 3, "unseen": 1})                          # the sender's own counts keep their keys beside the reason
+        got = json.loads((tmp_path / "texting" / "status.json").read_text())
+        assert str(cur) in got["cursor_error"] and got["held"] == 3 and got["unseen"] == 1
         if bad == "a directory":
             cur.rmdir()
         if bad == "no permission":
@@ -300,7 +302,8 @@ def test_an_unreadable_cursor_holds_the_link_says_so_once_and_resumes_from_its_r
             cur.write_text(json.dumps({"cursor": {"1": 101}}))
         await until(lambda: took)
         assert took == ["while down"] and len(said) == 1             # from its saved rows, and said once
-        assert "held" not in json.loads((tmp_path / "texting" / "status.json").read_text())
+        got = json.loads((tmp_path / "texting" / "status.json").read_text())
+        assert "cursor_error" not in got and got["held"] == 3
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         await fb.stop()

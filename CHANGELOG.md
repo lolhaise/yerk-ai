@@ -12,7 +12,8 @@ version changes.
 
 - Texting: a `cursor.json` that is there but cannot be read (not JSON, not a mapping, a directory, no permission) no
   longer counts as a first start, which skipped every text that came in while the link was down. Texting stays
-  unconnected, says so once in the machine room, shows `held` in `<state>/texting/status.json`, and reads the file again
+  unconnected, says so once in the machine room, shows `cursor_error` in `<state>/texting/status.json` (its own key: `held` stays
+  the sender's count), and reads the file again
   each minute: once it reads, it goes on from its saved rows; once it is gone, it is a first start as before. Yerk AI
   never renames or deletes the file.
 - Needs: a `needs.json` that is there but cannot be read is no longer read as empty, which let the next filing overwrite
