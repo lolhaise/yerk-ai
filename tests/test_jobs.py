@@ -571,23 +571,35 @@ def test_the_next_start_fires_a_run_no_daemon_took_once_and_a_second_start_fires
     assert len(briefs) == 1 and ops.notified == []
 
 
-@pytest.mark.parametrize("case", ["a day old", "changed", "a later run", "a worker"])
+@pytest.mark.parametrize("case", ["a day old", "changed", "a later run", "a worker", "a worker of the job in the table"])
 def test_a_run_no_daemon_took_that_cannot_be_retried_alerts_once_and_fires_nothing(setup, tmp_path, monkeypatch, case):
     s, j, sd, priv, state, ops, briefs = retried(setup, tmp_path, monkeypatch)
     r = unheard(s, priv, state, sd, EVERY if case == "changed" else SHOT, ago=86400 if case == "a day old" else 0)
     why = {"a day old": "it is more than a day old", "changed": "its job was changed or removed since",
-           "a later run": "a later run of it has fired since", "a worker": "a worker of it started since"}[case]
+           "a later run": "a later run of it has fired since", "a worker": "a worker of it started since",
+           "a worker of the job in the table": "a worker of it started since"}[case]
     if case == "changed":
         write_jobs(priv / "jobs.toml", EVERY.replace("the brief", "another brief"))
     if case == "a later run":
         s.ledger.job_run_add(job="boot", kind="agent", room="r", unit="yerk-job-boot", planned=time.time(), fired=time.time())
     if case == "a worker":
         s.ledger.job_run_set(r["id"], worker="w0")                                  # the daemon took it after all
+    if case == "a worker of the job in the table":                                 # the run row never learned its worker: the table knows
+        s.ledger.worker_add(id="w9", room="r", job="boot", started=time.time())
     for _ in range(2):
         asyncio.run(j.reattach())
     when = jobs.when_text(r["planned"], "UTC")
     assert briefs == [] and ops.notified == [("ops", W.JOB_NOT_RETRIED.format(name="boot", when=when, why=why))]
     assert s.ledger.job_run_get(r["id"])["note"] == f"not retried: {why}"
+
+
+def test_a_run_a_live_daemon_refused_is_never_fired_again_nor_alerted_twice_by_the_next_start(setup, tmp_path, monkeypatch):
+    s, j, sd, priv, state, ops, briefs = retried(setup, tmp_path, monkeypatch)
+    r = unheard(s, priv, state, sd, took=lambda payload: {"ok": False, "error": "no room 'r'"})     # it answered: it was up
+    assert r["delivery"] == "undelivered: no room 'r'" and (Path(r["folder"]) / jobs.KEPT).is_file()   # its definition is there too
+    for _ in range(2):
+        asyncio.run(j.reattach())
+    assert briefs == [] and ops.notified == [] and s.ledger.job_run_get(r["id"])["delivery"] == "undelivered: no room 'r'"
 
 
 def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):

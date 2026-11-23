@@ -158,6 +158,18 @@ def test_the_harness_and_a_note_keep_their_rules_in_a_room_of_two(env):
     room.rp.close()
 
 
+def test_a_persons_message_into_a_turn_with_no_person_in_it_yet_folds_as_before(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    assert sent_by(room, ledger, "1", HARNESS, "SLOW a relay", alone=True) == "started"
+    time.sleep(0.4)
+    assert sent_by(room, ledger, "2", "alex", "second") == "folded"               # nobody's turn yet: the old rule
+    wait_idle(room)
+    assert [ids for _, ids in chan.replies] == [["1", "2"]] and ledger.inbound_get("2")["folded"] == 1
+    room.rp.close()
+
+
 def test_a_message_from_the_watched_channel_folds_with_no_line_ahead_since_its_own_line_says_how_it_is_answered(env):
     make, ledger, _ = env
     chan = Chan()
