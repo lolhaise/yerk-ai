@@ -260,6 +260,82 @@ def test_link_tells_the_machine_room_once_away_and_once_back(sock, tmp_path):
     asyncio.run(go())
 
 
+@pytest.mark.parametrize("bad", ["not json", "not a mapping", "a directory", "no permission"])
+def test_an_unreadable_cursor_holds_the_link_says_so_once_and_resumes_from_its_rows_once_it_reads(sock, tmp_path, bad):
+    if bad == "no permission" and os.geteuid() == 0:
+        pytest.skip("root reads a file of mode 0")
+
+    async def go() -> None:
+        fb = FakeBridge(sock)
+        fb.chat(1, A1)
+        fb.add(1, "seen", ago=60)                                   # 101: the saved row
+        fb.add(1, "while down", ago=50)                             # 102: came in while the link was away
+        await fb.start()
+        cur = tmp_path / "texting" / "cursor.json"
+        cur.parent.mkdir(mode=0o700)
+        if bad == "a directory":
+            cur.mkdir()
+        else:
+            cur.write_text({"not json": '{"cursor": {"1": 1', "not a mapping": "[101]"}.get(bad, '{"cursor": {"1": 101}}'))
+        if bad == "no permission":
+            os.chmod(cur, 0)
+        st = cur.stat()
+        was = (st.st_ino, st.st_mtime_ns, st.st_size, st.st_mode)
+        said: list[str] = []
+        took: list[str] = []
+        link = Link(listed(tmp_path), tmp_path, lambda p, m: took.append(m["text"]) or "them", machine=said.append, unix=sock)
+        link.reread = 0.05
+        task = asyncio.create_task(link.start())
+        await asyncio.sleep(0.4)                                    # read again several times meanwhile
+        st = cur.stat()
+        assert fb.lines == [] and not link.connected and took == []  # never subscribed, never a start from the newest row
+        assert (st.st_ino, st.st_mtime_ns, st.st_size, st.st_mode) == was
+        assert len(said) == 1 and said[0] == words.TEXTING_HELD.format(why=link.held) and str(cur) in said[0]
+        link.more({"held": 3, "unseen": 1})                          # the sender's own counts keep their keys beside the reason
+        got = json.loads((tmp_path / "texting" / "status.json").read_text())
+        assert str(cur) in got["cursor_error"] and got["held"] == 3 and got["unseen"] == 1
+        if bad == "a directory":
+            cur.rmdir()
+        if bad == "no permission":
+            os.chmod(cur, 0o600)
+        else:
+            cur.write_text(json.dumps({"cursor": {"1": 101}}))
+        await until(lambda: took)
+        assert took == ["while down"] and len(said) == 1             # from its saved rows, and said once
+        got = json.loads((tmp_path / "texting" / "status.json").read_text())
+        assert "cursor_error" not in got and got["held"] == 3
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+    asyncio.run(go())
+
+
+def test_an_unreadable_cursor_that_is_removed_is_a_first_start(sock, tmp_path):
+    async def go() -> None:
+        fb = FakeBridge(sock)
+        fb.chat(1, A1)
+        fb.add(1, "old", ago=60)
+        await fb.start()
+        cur = tmp_path / "texting" / "cursor.json"
+        cur.parent.mkdir(mode=0o700)
+        cur.write_text("{")
+        took: list[str] = []
+        link = Link(listed(tmp_path), tmp_path, lambda p, m: took.append(m["text"]) or "them", unix=sock)
+        link.reread = 0.05
+        task = asyncio.create_task(link.start())
+        await asyncio.sleep(0.2)
+        assert fb.lines == [] and cur.read_text() == "{"
+        cur.unlink()
+        await until(lambda: link.connected)
+        fb.push(fb.add(1, "new"))
+        await until(lambda: took)
+        assert took == ["new"] and json.loads(cur.read_text()) == {"cursor": {"1": 102}}   # the newest row, never a replay
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await fb.stop()
+    asyncio.run(go())
+
+
 def test_texting_is_off_by_default_and_with_mode_off(tmp_path, monkeypatch):
     opened: list[Any] = []
     monkeypatch.setattr(Bridge, "open", lambda self: opened.append(self))   # any connection at all would land here

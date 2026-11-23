@@ -280,7 +280,7 @@ One `[jobs.NAME]` table a scheduled job; `yerk jobs sync` makes its systemd time
 
 - `kind`: what runs: "script" (a shell command, no model call, its output posted as is), "agent" (a worker: a headless Claude Code run with the message as its brief, its last message told by the room) or "note" (a reminder: when it is due the room's own session is told its message and says it in its voice; no worker, no shell, no account, no cap, so any room may set one for itself)
 - `schedule`: a systemd calendar line (OnCalendar, `man systemd.time`: "Mon 10:00", "Mon..Fri *-*-* 07:30", "*:0/30" every half hour), read in `tz`; a missed run fires once on return. One of schedule or at
-- `at`: one date and time ("2026-03-09 09:00", or with an offset), read in `tz` when it has none: a one-shot, removed from this file after it fires; a time missed while the box was down fires once on return
+- `at`: one date and time ("2026-03-09 09:00", or with an offset), read in `tz` when it has none: a one-shot, removed from this file after it fires; a time missed while the box was down fires once on return; an agent job no daemon took in time is kept in its run's folder (job.json) and fired once at the next start when under a day old and unchanged, else the machine room is told why not
 - `tz`: the IANA time zone the schedule or the time is read in (such as Europe/Paris); required with schedule, and with at when the time carries no offset
 - `room`: the room the output, the relay or the note lands in (a name from rooms.toml); an agent job's card is there too. A room that is not the owner's adds, lists and removes its own notes and no other job
 - `account`: agent jobs: the account (accounts.toml) the worker runs on; unset, the first one not resting

@@ -5,6 +5,7 @@ job becomes a worker with the right account and cap and relays, NO_REPLY is sile
 its room's own session (late after a restart, never twice), the schedule tool round-trips through the
 owner's keeps its own notes and nothing else, under its caps."""
 import asyncio
+import dataclasses
 import hashlib
 import io
 import json
@@ -506,6 +507,99 @@ def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_
         assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=time.time() - ago) == 1 and len(calls) == 1
         r = s.ledger.job_runs(job="boot")[0]
         assert (r["kind"], r["delivery"], sd.ours()) == (kind, "undelivered: the daemon is not running (URLError)", [])
+
+
+SHOT = '[jobs.boot]\nkind = "agent"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n'
+EVERY = SHOT.replace('at = "2099-01-02 09:00"', 'schedule = "*:00"')
+
+
+def unheard(s, priv, state, sd, text=SHOT, ago=0.0, took=None):
+    """jobs.run past its hand-off window with no daemon listening (`took`: the hand-off that answers instead): its run."""
+    jobs.sync(write_jobs(priv / "jobs.toml", text), sd, ENV)
+
+    def refused(payload):
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+    jobs.run("boot", priv, state, units=sd, handoff=took or refused, now=time.time() - 200 - ago)
+    return s.ledger.job_runs(job="boot")[0]
+
+
+def retried(setup, tmp_path, monkeypatch):
+    s = setup
+    ops = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": Rec(), "ops": ops},
+                                    conf={"ops_room": "ops"})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    briefs = []
+
+    async def start(room, brief, **kw):                     # the workers' start, as fire calls it
+        briefs.append(brief)
+        return {"ok": True, "id": f"w{len(briefs)}"}
+    monkeypatch.setattr(w, "start", start)
+    return s, j, sd, priv, state, ops, briefs
+
+
+def test_a_one_shot_no_daemon_took_is_kept_in_its_runs_folder_the_file_loads_and_one_taken_goes_as_before(setup, tmp_path, monkeypatch):
+    s, j, sd, priv, state, ops, briefs = retried(setup, tmp_path, monkeypatch)
+    r = unheard(s, priv, state, sd)
+    kept = Path(r["folder"]) / jobs.KEPT
+    assert (r["result"], r["delivery"]) == ("did not start", "undelivered: the daemon is not running (URLError)")
+    assert jobs.load(priv / "jobs.toml") == ({}, {}) and sd.ours() == []           # loads: nothing past its time is left in it
+    assert stat.S_IMODE(kept.stat().st_mode) == 0o600
+    assert json.loads(kept.read_text()) == json.loads(json.dumps(dataclasses.asdict(jobs.load(write_jobs(tmp_path / "x.toml", SHOT), 0)[0]["boot"])))
+    r = unheard(s, priv, state, sd, ago=-100, took=lambda payload: {"ok": True})     # taken: removed as before, nothing kept
+    assert "[jobs.boot]" not in (priv / "jobs.toml").read_text() and not (Path(r["folder"]) / jobs.KEPT).exists()
+    real = jobs.write_private
+
+    def full(path, text):
+        if path.name == jobs.KEPT:
+            raise OSError(28, "No space left on device")
+        return real(path, text)
+    monkeypatch.setattr(jobs, "write_private", full)
+    r = unheard(s, priv, state, sd, ago=-50)                                      # it could not be kept: it stays in the file
+    assert "[jobs.boot]" in (priv / "jobs.toml").read_text() and not (Path(r["folder"]) / jobs.KEPT).exists()
+
+
+def test_the_next_start_fires_a_run_no_daemon_took_once_and_a_second_start_fires_nothing(setup, tmp_path, monkeypatch):
+    s, j, sd, priv, state, ops, briefs = retried(setup, tmp_path, monkeypatch)
+    r = unheard(s, priv, state, sd)
+    asyncio.run(j.reattach())
+    again = s.ledger.job_run_get(r["id"])
+    assert len(briefs) == 1 and f"(run {r['id']})" in briefs[0] and again["worker"] == "w1"
+    assert (again["result"], again["delivery"], again["ended"], again["note"]) == (None, None, None, "retried at a daemon start")
+    asyncio.run(j.reattach())                                                       # one retry a run
+    assert len(briefs) == 1 and ops.notified == []
+
+
+@pytest.mark.parametrize("case", ["a day old", "changed", "a later run", "a worker", "a worker of the job in the table"])
+def test_a_run_no_daemon_took_that_cannot_be_retried_alerts_once_and_fires_nothing(setup, tmp_path, monkeypatch, case):
+    s, j, sd, priv, state, ops, briefs = retried(setup, tmp_path, monkeypatch)
+    r = unheard(s, priv, state, sd, EVERY if case == "changed" else SHOT, ago=86400 if case == "a day old" else 0)
+    why = {"a day old": "it is more than a day old", "changed": "its job was changed or removed since",
+           "a later run": "a later run of it has fired since", "a worker": "a worker of it started since",
+           "a worker of the job in the table": "a worker of it started since"}[case]
+    if case == "changed":
+        write_jobs(priv / "jobs.toml", EVERY.replace("the brief", "another brief"))
+    if case == "a later run":
+        s.ledger.job_run_add(job="boot", kind="agent", room="r", unit="yerk-job-boot", planned=time.time(), fired=time.time())
+    if case == "a worker":
+        s.ledger.job_run_set(r["id"], worker="w0")                                  # the daemon took it after all
+    if case == "a worker of the job in the table":                                 # the run row never learned its worker: the table knows
+        s.ledger.worker_add(id="w9", room="r", job="boot", started=time.time())
+    for _ in range(2):
+        asyncio.run(j.reattach())
+    when = jobs.when_text(r["planned"], "UTC")
+    assert briefs == [] and ops.notified == [("ops", W.JOB_NOT_RETRIED.format(name="boot", when=when, why=why))]
+    assert s.ledger.job_run_get(r["id"])["note"] == f"not retried: {why}"
+
+
+def test_a_run_a_live_daemon_refused_is_never_fired_again_nor_alerted_twice_by_the_next_start(setup, tmp_path, monkeypatch):
+    s, j, sd, priv, state, ops, briefs = retried(setup, tmp_path, monkeypatch)
+    r = unheard(s, priv, state, sd, took=lambda payload: {"ok": False, "error": "no room 'r'"})     # it answered: it was up
+    assert r["delivery"] == "undelivered: no room 'r'" and (Path(r["folder"]) / jobs.KEPT).is_file()   # its definition is there too
+    for _ in range(2):
+        asyncio.run(j.reattach())
+    assert briefs == [] and ops.notified == [] and s.ledger.job_run_get(r["id"])["delivery"] == "undelivered: no room 'r'"
 
 
 def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):

@@ -523,6 +523,9 @@ TEXT_MAYBE = "it may have gone out, and the Mac never confirmed it: tell the own
 # texting (texting/): the machine room hears the bridge go and come back; the report room the texts too old to answer
 TEXTING_AWAY = "texting: the Mac's bridge is away\nno answer for 5 minutes; texts wait there and are read when it is back"
 TEXTING_BACK = "texting: the Mac's bridge is back\nwhat came meanwhile is read"
+JOB_NOT_RETRIED = "job {name} did not run at {when}: no daemon took it, and it is not run now: {why}"
+NEEDS_UNREADABLE = "needs: {path} cannot be read ({why}), so no need is filed, changed or built until it can be"
+TEXTING_HELD = "texting is not connected: {why}, and texts may be missed until it is readable"
 TEXTING_MISSED = "missed: {n} text{s} from {first} since {at}\nolder than {hours} h when it came in, so not answered"
 TEXTING_STATUS, TEXTING_STATES = "texting {mode}, {state} {since}, {last}", ("down", "up")     # the card's line: the bridge
 TEXTING_IN, TEXTING_NONE_IN = "in {at}", "none in yet"

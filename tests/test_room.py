@@ -13,7 +13,7 @@ from yerk_ai.config import override, table
 from yerk_ai.engine import RoomSpec
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
-from yerk_ai.room import Inbound, Room, covered_by
+from yerk_ai.room import HARNESS, Inbound, Room, covered_by
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 
@@ -100,6 +100,73 @@ def test_mid_turn_message_folds_into_the_running_turn(env):
     a, b = ledger.inbound_get("1"), ledger.inbound_get("2")
     assert a["state"] == b["state"] == "answered" and a["turn_id"] == b["turn_id"] and b["folded"] == 1
     assert chan.cards[0] == f"{words.WORKING} working on it" and "echo" in chan.cards[-1] and not room.folds
+    room.rp.close()
+
+
+def sent_by(room, ledger, mid, who, text, **kw):
+    ledger.inbound_add(mid, "r", "c", who, len(text))
+    return room.submit(Inbound(mid, who, text, **kw))
+
+
+def test_a_second_persons_message_mid_turn_waits_for_its_own_turn_and_the_first_persons_folds(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    assert sent_by(room, ledger, "1", "alex", "SLOW first") == "started"
+    time.sleep(0.4)
+    assert sent_by(room, ledger, "2", "beta", "second") == "queued"        # another person: never answered in this turn
+    wait_idle(room)
+    assert [ids for _, ids in chan.replies] == [["1"], ["2"]] and not ledger.inbound_get("2")["folded"]
+    assert ledger.inbound_get("1")["turn_id"] != ledger.inbound_get("2")["turn_id"]
+    assert sent_by(room, ledger, "3", "alex", "SLOW third") == "started"
+    time.sleep(0.4)
+    assert sent_by(room, ledger, "4", "alex", "fourth") == "folded"        # the same person: folded, as before
+    wait_idle(room)
+    assert [ids for _, ids in chan.replies][2:] == [["3", "4"]]
+    room.rp.close()
+
+
+def test_waiting_messages_are_batched_only_while_the_sender_is_the_batchs_first(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    batches, turn = [], room._turn
+    room._turn = lambda batch: (batches.append([m.id for m in batch]), turn(batch))[1]     # what the loop hands one turn
+    assert sent_by(room, ledger, "1", "alex", "SLOW first") == "started"
+    time.sleep(0.4)
+    for mid, who in (("2", "beta"), ("3", "beta"), ("4", "alex"), ("5", "beta")):
+        assert sent_by(room, ledger, mid, who, f"from {who}, {mid}") == "queued"
+    wait_idle(room)
+    assert batches == [["1"], ["2", "3"], ["4"], ["5"]] and [ids for _, ids in chan.replies] == [[m] for m in "12345"]
+    room.rp.close()
+
+
+def test_the_harness_and_a_note_keep_their_rules_in_a_room_of_two(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    assert sent_by(room, ledger, "1", "alex", "SLOW first") == "started"
+    time.sleep(0.4)
+    assert sent_by(room, ledger, "2", HARNESS, "a line of the harness") == "folded"   # Yerk AI's own folds, as before
+    wait_idle(room)
+    assert sent_by(room, ledger, "3", "alex", "SLOW third") == "started"
+    time.sleep(0.4)
+    assert sent_by(room, ledger, "4", HARNESS, "a note", alone=True) == "queued"     # a note: a turn of its own, as before
+    assert sent_by(room, ledger, "5", "alex", "fifth") == "queued"
+    wait_idle(room)
+    assert [ids for _, ids in chan.replies] == [["1", "2"], ["3"], ["4"], ["5"]]
+    room.rp.close()
+
+
+def test_a_persons_message_into_a_turn_with_no_person_in_it_yet_folds_as_before(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    assert sent_by(room, ledger, "1", HARNESS, "SLOW a relay", alone=True) == "started"
+    time.sleep(0.4)
+    assert sent_by(room, ledger, "2", "alex", "second") == "folded"               # nobody's turn yet: the old rule
+    wait_idle(room)
+    assert [ids for _, ids in chan.replies] == [["1", "2"]] and ledger.inbound_get("2")["folded"] == 1
     room.rp.close()
 
 

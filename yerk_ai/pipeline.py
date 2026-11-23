@@ -113,6 +113,7 @@ class Pipeline:
     def __init__(self, y: Any) -> None:
         self.y, self.units, self.now, self.tree = y, Units(), time.time, REPO
         self.lock = asyncio.Lock()
+        self.unread = False                              # the store could not be read at the last tick: said once
 
     def conf(self) -> dict[str, Any]:
         return dict(self.y.conf.get("needs", {}))
@@ -134,9 +135,11 @@ class Pipeline:
         return str(self.conf().get("account") or dict(self.y.conf.get("curate", {})).get("account") or "")
 
     async def set(self, r: dict[str, Any], changes: dict[str, Any], *was: str) -> dict[str, Any] | None:
-        """The need changed, only while it is still in one of the states `was` (when given)."""
-        return await asyncio.to_thread(needs.update, self.y.memory, self.y.state, str(r["day"]), int(r["n"]), changes,
-                                       (lambda x: x.get("state") in was) if was else None)
+        """The need changed, only while it is still in one of the states `was` (when given); None when it did not change, as
+        when the store could not be read (needs.refused)."""
+        got = await asyncio.to_thread(needs.update, self.y.memory, self.y.state, str(r["day"]), int(r["n"]), changes,
+                                      (lambda x: x.get("state") in was) if was else None)
+        return None if needs.refused(got) else got
 
     async def say(self, line: str) -> None:
         await self.y.jobs.alert(None, line, 0)
@@ -176,8 +179,13 @@ class Pipeline:
     def begin(self) -> None:
         """The daemon's start, before any of its tasks: a need left building with no worker (need_build's claim, the daemon
         gone before the start answered) is queued again, so the queue starts it; building is in flight, so it held the queue
-        for good. One building with a worker is left alone: its end comes through workers.reattach."""
-        for r in needs.load(self.y.state):
+        for good. One building with a worker is left alone: its end comes through workers.reattach. A store that cannot be
+        read is left as it is: the first tick says so."""
+        try:
+            rows = needs.load(self.y.state)
+        except needs.Unreadable:
+            return
+        for r in rows:
             if r.get("state") == "building" and not r.get("worker") and needs.update(
                     self.y.memory, self.y.state, str(r["day"]), int(r["n"]), {"state": "queued"},
                     lambda x: x.get("state") == "building" and not x.get("worker")):
@@ -205,9 +213,17 @@ class Pipeline:
                 log.exception("needs: the pipeline's tick failed")
 
     async def _tick(self) -> None:
+        try:                                             # unknown, never empty: no step runs, and it is said once
+            rows = needs.load(self.y.state)
+        except needs.Unreadable as e:
+            if not self.unread:
+                await self.say(str(e))
+            self.unread = True
+            return
+        self.unread = False
         tok = await asyncio.to_thread(github.token, self.y.private)
         repo = await asyncio.to_thread(github.slug, REPO, str(self.conf().get("repo") or "")) if tok else ""
-        for r in needs.load(self.y.state):
+        for r in rows:
             if r.get("state") in ("built", "pr"):
                 await self.checked(r, tok, repo)
             elif r.get("state") == "stuck" and r.get("pr") and r.get("head") and tok and repo:

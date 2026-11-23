@@ -12,7 +12,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from test_needs import ASK, FLYER, listed, need, ops, twins
+from test_needs import ASK, FLYER, listed, need, ops, spoil, there, twins
 from test_pictures import Rec
 from test_slash import OWNER, run_discord
 
@@ -116,6 +116,45 @@ def test_auto_off_starts_nothing_and_the_line_carries_the_command(pipe):
     assert rec.lines == [words.NEED_FILED.format(n=1, room="example-room", ability=ASK[2], day=day)]
     asyncio.run(y.pipeline.tick())
     assert row(y, day)["state"] == "filed" and hub.calls == []
+
+
+def test_the_tick_on_a_store_that_cannot_be_read_does_nothing_and_says_so_once_in_three_ticks(pipe):
+    y, rec, hub, units, rooms = pipe
+    y.conf["needs"]["auto"] = False                      # filed by the hand road: the first tick it reads queues and starts it
+    day = need(y, "example-room", *ASK)["day"]
+    good = (y.state / needs.STORE).read_bytes()
+    was, lines = spoil(y, "not json"), len(rec.lines)
+    y.conf["needs"]["auto"] = True
+    y.pipeline.begin()                                   # the daemon's start: nothing queued from it, nothing written
+    for _ in range(3):
+        asyncio.run(y.pipeline.tick())
+    said = rec.lines[lines:]
+    assert len(said) == 1 and str(y.state / needs.STORE) in said[0] and said[0].startswith("needs: ")
+    assert there(y) == was and y.workers.launcher.calls == []
+    (y.state / needs.STORE).write_bytes(good)            # readable again: the tick goes on from it
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "building" and len(y.workers.launcher.calls) == 1
+
+
+def test_a_step_whose_update_a_store_that_cannot_be_read_refused_reads_no_change(pipe):
+    y, rec, hub, units, rooms = pipe
+    r = row(y, need(y, "example-room", *ASK)["day"])
+    spoil(y, "not json")
+    assert asyncio.run(y.pipeline.set(r, {"state": "queued"}, "filed")) is None      # never the refusal's dict taken for the row
+
+
+def test_the_tick_says_again_about_a_store_that_fails_once_more_after_it_read(pipe):
+    y, rec, hub, units, rooms = pipe
+    y.conf["needs"]["auto"] = False
+    need(y, "example-room", *ASK)
+    good, lines = (y.state / needs.STORE).read_bytes(), len(rec.lines)
+    y.conf["needs"]["auto"] = True
+    for spoiled in (True, True, False, True, True):           # two bad ticks say once, a good one forgets it, two more say once
+        (y.state / needs.STORE).write_text('{"needs": []') if spoiled else (y.state / needs.STORE).write_bytes(good)
+        y.workers.launcher.calls.clear()
+        asyncio.run(y.pipeline.tick())
+    said = [x for x in rec.lines[lines:] if x.startswith("needs: ") and "cannot be read" in x]
+    assert len(said) == 2
 
 
 def test_a_need_filed_before_the_pipeline_is_queued_on_a_tick_one_whose_build_came_back_is_not(pipe):

@@ -48,7 +48,7 @@ import tomllib
 import urllib.error
 import urllib.request
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Collection, Iterator
@@ -74,6 +74,7 @@ WAITING = "undelivered: waiting for the room's turn"       # a told note's run u
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
+KEPT, UNHEARD, RETRY_WITHIN = "job.json", "undelivered: the daemon is not running", 86400.0   # an agent run no daemon took (Jobs.retry)
 RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # an agent job's hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
                                          # tried every RETRY_EVERY s until its unit's limit less RETRY_SPARE s; a script or a note gives up at once
 ROOM_NOTES, ROOM_NOTE_MINUTES, NOTE_CHARS = 20, 5, 600     # the [jobs] defaults (CONF)
@@ -89,7 +90,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
     "schedule": 'a systemd calendar line (OnCalendar, `man systemd.time`: "Mon 10:00", "Mon..Fri *-*-* 07:30", "*:0/30" '
                 'every half hour), read in `tz`; a missed run fires once on return. One of schedule or at',
     "at": 'one date and time ("2026-03-09 09:00", or with an offset), read in `tz` when it has none: a one-shot, '
-          'removed from this file after it fires; a time missed while the box was down fires once on return',
+          'removed from this file after it fires; a time missed while the box was down fires once on return; an agent job '
+          "no daemon took in time is kept in its run's folder (job.json) and fired once at the next start when under a day "
+          "old and unchanged, else the machine room is told why not",
     "tz": "the IANA time zone the schedule or the time is read in (such as Europe/Paris); required with schedule, "
           "and with at when the time carries no offset",
     "room": "the room the output, the relay or the note lands in (a name from rooms.toml); an agent job's card is "
@@ -813,7 +816,8 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
             ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start", delivery=f"undelivered: {why}")
         print(f"job {name}: {why}", file=sys.stderr)
         rc = rc or 1
-    if job.when == "at":
+    kept = job.kind != "agent" or bool(out.get("ok")) or keep(folder, job)     # not taken: its definition kept first (0600)
+    if job.when == "at" and kept:
         try:
             remove(private / FILE, name)
             p, _ = sync(private / FILE, units, env_for(private, state))
@@ -821,6 +825,17 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         except (OSError, subprocess.SubprocessError, JobError) as e:
             print(f"job {name}: fired, but could not be removed from the file: {e}", file=sys.stderr)
     return rc
+
+
+def keep(folder: Path, job: Job) -> bool:
+    """An agent job's definition in its run's folder, for Jobs.retry and a person, when no daemon took the run: so a one-shot
+    can leave the jobs file (past its time it would be refused there) and nothing of it is lost. False: it stays in the file."""
+    try:
+        write_private(folder / KEPT, json.dumps(asdict(job)))
+        return True
+    except OSError as e:
+        print(f"job {job.name}: its definition could not be kept, so it stays in the file: {e}", file=sys.stderr)
+        return False
 
 
 def brief_for(job: Job, run_id: int, fired: float) -> str:
@@ -1003,8 +1018,8 @@ class Jobs:
         return {"ok": True, "diff": diff_lines(p), "lines": read_lines(back, p.jobs)}
 
     # the runner's hand-offs
-    async def fire(self, name: str, run_id: int) -> dict[str, Any]:
-        job = self.jobs().get(name)
+    async def fire(self, name: str, run_id: int, job: Job | None = None) -> dict[str, Any]:
+        job = job or self.jobs().get(name)
         run = self.ledger.job_run_get(run_id)
         if job is None or run is None:
             return {"ok": False, "error": f"no job {name!r}" if job is None else f"no run {run_id}"}
@@ -1149,6 +1164,29 @@ class Jobs:
             self.ledger.job_run_set(run_id, result="done", delivery=f"skipped: {why}")
         return True
 
+    async def retry(self, r: dict[str, Any]) -> None:
+        """An agent run no daemon took (jobs.run kept its job in its folder): fired once more through `fire` when it is under a
+        day old, its job is as it was, no later run of it has fired and no worker of it started since; else one line in the
+        machine room says why not. Marked either way, so the next start leaves it. A run with no kept job is left as it was."""
+        try:
+            d = json.loads((Path(r["folder"]) / KEPT).read_text())
+            job = Job(**{**d, "addons": tuple(d.get("addons") or ())})
+        except (OSError, ValueError, TypeError):
+            return
+        name, rid, now, there = job.name, int(r["id"]), time.time(), self.jobs().get(job.name)
+        why = ("it is more than a day old" if now - float(r["fired"]) >= RETRY_WITHIN else
+               "its job was changed or removed since" if (json.loads(json.dumps(asdict(there))) != d if there else job.when != "at") else
+               "a later run of it has fired since" if self.ledger.job_runs(job=name, limit=1)[0]["id"] != rid else
+               "a worker of it started since" if r["worker"] or any(w.get("job") == name and float(w.get("started") or 0) >= float(
+                   r["fired"]) for w in self.ledger.workers(limit=200)) else "")
+        self.ledger.job_run_set(rid, delivery="alert" if why else None, note=f"not retried: {why}" if why else "retried at a daemon start")
+        if why:
+            await self.alert(job, words.JOB_NOT_RETRIED.format(name=name, when=when_text(job.planned(float(r["fired"])), job.tz), why=why), rid)
+            return
+        self.ledger.job_run_set(rid, ended=None, exit=None, result=None)
+        log.info("job %s: run %d, which no daemon took, fired again", name, rid)
+        await self.fire(name, rid, job)
+
     async def reattach(self) -> None:
         """After a daemon start: a script run that ended while no daemon was up is delivered late; a note that fired
         then, or whose turn the restart cut, is told now, unless its reply was in the room already. A script run with no
@@ -1170,6 +1208,8 @@ class Jobs:
                 else:
                     self.tell(r, j.deliver if (j := self.jobs().get(str(r["job"]))) else "announce")
                 continue
+            if r["kind"] == "agent" and r["folder"] and str(r["delivery"]).startswith(UNHEARD):
+                await self.retry(r)
             if r["kind"] != "script" or not r["folder"]:
                 continue
             try:

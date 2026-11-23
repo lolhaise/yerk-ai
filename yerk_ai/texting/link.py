@@ -20,6 +20,7 @@ from .people import People, Person, norm
 log = logging.getLogger("yerk.texting")
 HELD = 60.0                  # seconds the link holds before the backoff starts over at 1 s
 CHATS = 1000                 # chats.list's limit: a listed person's chat past it is not watched until it is in it
+REREAD = 60.0                # seconds between reads of a cursor file that could not be read, the link held meanwhile
 
 
 def refusal(chat: dict[str, Any], p: Person) -> str | None:
@@ -47,11 +48,21 @@ class Link:
         self.away_said = False
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.out: dict[str, Any] = {}               # the sender's: the last text out, how many held, how many unseen
+        self.reread, self.held_said = REREAD, False
+        self.held = self._read()
+
+    def _read(self) -> str:
+        """The saved rows into `cursor`; "" when read, or when there is no file yet (a first start). Else why not: a file
+        there that cannot be read holds the link (start), never a first start, nothing saved, the file left as it is."""
+        self.cursor: dict[str, int] = {}
         try:
             got = json.loads((self.folder / "cursor.json").read_text())
             self.cursor = {str(k): int(v) for k, v in dict(got.get("cursor", {})).items()}
-        except (OSError, ValueError, AttributeError):
-            self.cursor = {}
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, AttributeError, TypeError) as e:
+            return f"{self.folder / 'cursor.json'} cannot be read ({type(e).__name__})"
+        return ""
 
     def _save(self) -> None:
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -61,7 +72,8 @@ class Link:
         """<state>/texting/status.json, what `yerk status` shows: the mode, the bridge up or down since when, the last text in."""
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         write_private(self.folder / "status.json", json.dumps({"mode": self.mode, "up": self.connected, "since": self.since,
-                                                               "last_in": self.last_in, "watched": len(self.chats), **self.out}))
+                                                               "last_in": self.last_in, "watched": len(self.chats), **self.out,
+                                                               **({"cursor_error": self.held} if self.held else {})}))
 
     def more(self, fields: dict[str, Any]) -> None:
         self.out.update(fields)
@@ -70,6 +82,15 @@ class Link:
     async def start(self) -> None:
         delay = 1.0
         self.status()
+        while self.held:                             # said once in the machine room; it connects once the file reads or is gone
+            if not self.held_said:
+                log.warning("texting: not connected: %s", self.held)
+                if self.machine is not None:
+                    self.machine(words.TEXTING_HELD.format(why=self.held))
+            self.held_said = True
+            await asyncio.sleep(self.reread)
+            self.held = self._read()
+            self.status()
         while True:
             try:
                 await self._connect()
