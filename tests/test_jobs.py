@@ -1217,9 +1217,17 @@ def test_a_watchs_finding_a_restart_kept_from_its_room_is_told_once_at_the_next_
             await asyncio.sleep(0.01)
         await v.restart().reattach()                                            # a second start
         await asyncio.sleep(0.2)
+        turn = s.ledger.inbound_get(f"watch-{m}")["turn_id"]                     # its reply posted, then a restart before
+        key = s.ledger.db.execute("SELECT turn_key FROM turns WHERE id = ?", (turn,)).fetchone()[0]    # its end was ledgered
+        s.ledger.delivery_plan(f"{key}:0", "r", "reply", "said", f"watch-{m}")
+        s.ledger.delivery_set(f"{key}:0", state="sent", message_id="d1")
+        s.ledger.job_run_set(m, delivery=jobs.WAITING)
+        await v.restart().reattach()
+        await asyncio.sleep(0.2)
+        first.append(s.ledger.job_run_get(m))
         return first, (m, c, r)
     first, ids = asyncio.run(go())
-    assert [r["delivery"] for r in first] == ["delivered"] * 3
+    assert [r["delivery"] for r in first] == ["delivered"] * 4 and first[3]["message_ids"] == "d1"
     assert sorted(m.id for _, m in v.asked) == sorted(f"watch-{i}" for i in ids)            # each asked once, and no more
     assert sorted(inbound[0] for _, inbound in s.chan.replies) == sorted(f"watch-{i}" for i in ids)
     assert v.rec.sent == v.ops.notified == []
