@@ -1853,6 +1853,18 @@ needs = "nothing; it runs in the daily doctor (units/yerk-doctor.timer) on the p
 free_path = "this is the free path"
 asked_as = ["docs moved", "re-pin", "repin", "pinned sentence", "lesson pins"]
 
+# need-2026-11-23-137: a lesson's words written by hand after its filing, past the gate, were out of the lesson shape, so the
+# doctor's daily run found them every day and filed the need, its line saying `yerk curate --rules` proposes the fix, which
+# proposed none: no proposal writes a lesson's words, and no word of the owner's is changed or added to.
+[abilities.lesson-keeps]
+state = "built"
+what = "Keeps the rule store in the Claude docs' lesson shape on the owner's word: each lesson the doctor's daily run finds out of the shape, its words written by hand past the gate or older than a check, gets a keep from `yerk curate --rules`, naming what it misses and the docs sentence that asks for it. `yerk curate --apply DAY N` writes one row to rules-kept.tsv with the hash of its words and changes none of them: the daily run then names it apart, kept as it stands, and files no need. Its words changed since, by hand again, its misses count again and a keep proposed before the change is refused; a filing with `remember` and its job, or a retire, takes it off. A keep holds only the checks it names, so a check added or tightened since counts again and gets its own keep; a front matter a room cannot read is never kept or proposed for a keep, and undo puts the file back."
+tier = "free"
+needs = "a converted rule store (`yerk curate --lessons`); nothing to set"
+free_path = "this is the free path"
+asked_as = ["lesson out of the shape", "lessons out of the shape", "keep a lesson as it stands", "lesson keeps", "rule out of the lesson shape"]
+command = "curate --rules"
+
 [abilities.web]
 state = "built"
 what = "Web reach for the rooms that attach it, as one plug-in outside the harness (plugins/web, an MCP server): web_fetch reads a page with a plain read from the machine first, then its own stealth browser and captcha solver when they are installed, then a paid cloud browser, names the wall when a page stays shut (a login, a captcha, a region) and remembers per site which step read it; web_search asks a paid engine first and keyless ones behind it; web_research runs one cited research job at a fixed price; web_image saves one picture from a post or a page (a jpeg, png, gif or webp, read plainly from the machine first and by the paid cloud fetch only when a site refuses that) into the room's work folder, where the room's Read shows it; every paid call is a spend row, and the morning diff says the day's total."

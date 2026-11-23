@@ -27,7 +27,7 @@ from itertools import combinations, groupby
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, doctor, lessons, memindex, memory, mentions, needs, retention, shape, taste, words
+from . import context, docs, doctor, lessons, memindex, memory, mentions, needs, retention, shape, taste, words
 from .accounts import account_env, load_accounts
 from .config import budgets, flag, load_toml, rooms, write_private
 from .engine import claude_bin
@@ -939,6 +939,14 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
             name[f] = memory.cite(s, s.root / les.cite)
             out.append({"kind": "gate", "label": short(les.line), "edits": [[f, les.front().count("\n") + 1, les.line, les.line]], "why": why,
                         "rows": k, "evidence": ev_, "saved": 0})
+    for at, bad in doctor.store_read(private, state, s)[0].get("to keep", []) if lessons.converted(s.root) else []:   # keeps: a
+        if not (c := lessons.CITE.search(at)) or (lsn := lessons.parse(f_ := s.root / lessons.DIR / f"{c[1]}.md")) is None:
+            continue           # lesson the daily run finds out of the shape, its words' misses kept as they stand on the owner's word
+        f, (k, ev_) = str(f_.resolve()), evidence(lsn.line, *ev)
+        name[f] = memory.cite(s, f_)
+        why = words.RULES_KEEP_WHY.format(checks=", ".join(words.LESSON_NAMES.get(x, x) for x in bad), sentence=shape.said(bad[0], docs.root(state)))
+        out.append({"kind": "keep", "label": short(lsn.line), "edits": [[f, lsn.front().count("\n") + 1, lsn.line, lsn.line]], "why": why,
+                    "rows": k, "evidence": ev_, "saved": 0, "hash": lessons.said_hash(f"{lsn.summary} {lsn.body}"), "checks": bad})
     out.sort(key=lambda q: (-q["saved"], -q["rows"]))
     for n, q in enumerate(out, 1):
         q["n"] = n
@@ -981,7 +989,7 @@ def page(day: str, props: list[dict[str, Any]], sizes: list[list[Any]], name: di
         f"\n## {q['n']}. {q['kind']}: {q['label']} ({-q['saved']:+,} chars)\n\nBEFORE\n"
         + "".join(f"{at(f, i)}: {was}\n" for f, i, was, _ in q["edits"] if i)
         + "\nAFTER\n" + "".join(f"{at(f, i)}: " + ("(blank)" if new == "" else "(marked superseded by the line appended)" if new is None else
-                                                   "(unchanged: a gate would hold it)" if new == was else new)
+                                                   (words.RULES_KEPT_AFTER if q["kind"] == "keep" else "(unchanged: a gate would hold it)") if new == was else new)
                                 + "\n" for f, i, was, new in q["edits"])
         + f"\nWHY: {q['why']}\n\nEVIDENCE: {q['evidence']}\n" for q in props)
 
@@ -1130,18 +1138,27 @@ def apply(private: Path, state: Path, day: str, which: str, now: float | None = 
         raise RuntimeError(f"no proposal {bad[0] if want and bad else which} of {day}")
     if gate := [n for n in want if props[n]["kind"] == "gate"]:
         raise RuntimeError(f"{gate[0]} is a gate: it names a check a reply would need, which curate never builds; nothing applied")
-    if mine := [(n, e[0], w) for n in want for e in props[n]["edits"] if (w := kept_off(s, str(e[0])))]:    # before any write
+    keep = [n for n in want if props[n]["kind"] == "keep"]   # the owner's word on a lesson out of the shape: a row of KEPT, its words as they are
+    if moved := [n for n in keep if (x := lessons.parse(Path(props[n]["edits"][0][0]))) is None or lessons.said_hash(f"{x.summary} {x.body}") != props[n].get("hash")]:
+        raise RuntimeError(f"{moved[0]}: {memory.cite(s, Path(props[moved[0]]['edits'][0][0]))} changed since it was proposed; nothing applied")
+    if mine := [(n, e[0], w) for n in want if n not in keep for e in props[n]["edits"] if (w := kept_off(s, str(e[0])))]:    # before any write
         raise RuntimeError(f"{mine[0][0]} would write {memory.cite(s, Path(mine[0][1]))}, {mine[0][2]}: a lesson changes only when "
                            "filed again with `remember` and its job, or retired; nothing applied")       # under apply_main's 200
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]           # a line it writes passes the check a filing does
-    if off := [(n, o) for n in want for e in props[n]["edits"] if isinstance(e[3], str) and e[3].startswith("- ") and (o := shape.filing(e[3], acronyms))]:
+    if off := [(n, o) for n in want if n not in keep for e in props[n]["edits"] if isinstance(e[3], str) and e[3].startswith("- ") and (o := shape.filing(e[3], acronyms))]:
         raise RuntimeError(f"{off[0][0]} would write a line with {' and '.join(shape.NAMES[k] for k in off[0][1])}, which a rule's filing "
                            "turns back, so file it again with `remember` and its job: nothing applied")
     files, rows, tier = rule_files(private, s), dict[str, list[str]](), (s.root / memory.TOPIC_RULES).resolve()
     with memory.daily_lock(s.daily):                     # the writers' lock: memory.rule files under it too
         if not tier.is_file() and any(e[0] == str(tier) for n in want for e in props[n]["edits"]):
             write_private(tier, "\n".join(memory.TOPIC_HEAD) + "\n")      # the first topic rule's file, its head only, backed up as such
-        edited(rows, [e for n in want for e in props[n]["edits"]], s)
+        edited(rows, [e for n in want if n not in keep for e in props[n]["edits"]], s)
+        if keep:                                         # each keep a row of KEPT appended, the first one's file made empty first
+            if not (held := (s.root / lessons.KEPT).resolve()).is_file():
+                write_private(held, "")
+            files[held], today = ("kept", 0), datetime.fromtimestamp(now, s.tz).date().isoformat()
+            edited(rows, [[str(held), 0, "", lessons.keep_row(s.root, Path(props[n]["edits"][0][0]).stem, today, props[n]["hash"], props[n]["checks"])]
+                          for n in keep], s)
         for f, r in rows.items():
             if (kind_cap := files.get(Path(f))) is None:
                 raise RuntimeError(f"{Path(f).name} is no rule file a room loads now: nothing applied")
@@ -1165,7 +1182,7 @@ def apply(private: Path, state: Path, day: str, which: str, now: float | None = 
         (state / RUN).unlink()
     return done + [f"{n}. {props[n]['kind']}: {props[n]['label']}, applied" for n in want] + [
         f"{shape.label(private, s, files[Path(f)][0], Path(f))}: {part(files[Path(f)][0], Path(f), news[f].decode()):,} characters"
-        + (f" of {files[Path(f)][1]:,}" if files[Path(f)][1] else "") for f in rows]
+        + (f" of {files[Path(f)][1]:,}" if files[Path(f)][1] else "") for f in rows if files[Path(f)][0] != "kept"]
 
 
 def rules_main(private: Path, state: Path, dry: bool = False) -> int:

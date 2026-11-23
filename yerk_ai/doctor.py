@@ -535,6 +535,18 @@ PIN_NEED = "the lesson checks re-pinned to the Claude docs' sentences that moved
 MODEL_NEED = "the prompting page of a model a room runs added to the pages yerk docs fetches"   # shape.unpaged
 
 
+def store_read(private: Path, state: Path, m: memory.Settings) -> tuple[dict[str, Any], dict[str, Any], dict[str, list[str]]]:
+    """The store against the lesson shape as the daily run reads it (shape.store on the pages of every model a room runs), with
+    yerkd.toml and the rooms by model it read by; `yerk curate --rules` reads the same, so it proposes a keep for each lesson found."""
+    from .config import models
+    try:
+        conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+        by = rule_shape.run_by(rooms(private), state, models(conf))
+    except (OSError, ValueError):      # rooms.toml or yerkd.toml unreadable: the pages every room reads; layout and fit say why
+        conf, by = {}, {}
+    return rule_shape.store(m, dict(budgets().get("shape") or {}), docs.root(state), rule_shape.pages(by)), conf, by
+
+
 def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: bool = False,
             post: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> list[str]:
     """The daily run of the Claude docs' lesson shape (2026-11-09: it should never regress or go out of date):
@@ -546,14 +558,8 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
     refresh` does not fetch is a line and a need naming the page to add. A moved sentence, a model with no page and the store's
     findings each file their own need; an uncapped install's index size is said as a line of its own and files none."""
     from . import needs
-    from .config import models
     limits, root = dict(budgets().get("shape") or {}), docs.root(state)
-    try:
-        conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
-        by = rule_shape.run_by(rooms(private), state, models(conf))
-    except (OSError, ValueError):      # rooms.toml or yerkd.toml unreadable: the pages every room reads; layout and fit say why
-        conf, by = {}, {}
-    r = rule_shape.store(m, limits, root, rule_shape.pages(by))
+    r, conf, by = store_read(private, state, m)
     out = rule_shape.unpaged_lines(rule_shape.unpaged(by, docs.pages(dict(conf.get("docs") or {})))) + \
         rule_shape.store_findings(r, limits, root, uncapped(budgets(conf)))
     if dry:
