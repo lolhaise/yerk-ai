@@ -1276,6 +1276,83 @@ def test_a_watch_wakes_its_room_wakes_times_an_hour_and_tells_the_rest_once_as_o
     assert len(s.chan.replies) == 3 and v.rec.sent == v.ops.notified == []
 
 
+def test_a_finding_that_comes_while_others_are_held_joins_their_turn_even_if_the_hour_has_opened(setup, tmp_path):
+    """Past its wakes a finding waits; one found while it waits joins it, even when the hour has opened and no release ran yet,
+    so the newest is told once for all of them and none jumps the queue."""
+    s = setup
+    v = watching(setup, tmp_path, watch("w", "echo finding $(date +%s%N)", "wakes = 1\n"))
+    t0 = time.time() - 600
+
+    async def go():
+        v.w.begin(asyncio.get_running_loop())
+        await ran(v, "w", now=t0)                                         # told
+        one = await settled(s.ledger, s.ledger.job_runs(job="w")[0]["id"])
+        await ran(v, "w", now=t0 + 1)                                     # past the bound: held
+        s.ledger.job_run_set(one["id"], told=one["told"] - jobs.HOUR - 1)  # the hour opens
+        await ran(v, "w", now=t0 + 2)                                     # found while one waits
+        rows = s.ledger.job_runs(job="w")[::-1]
+        await settled(s.ledger, rows[2]["id"])
+        return rows
+    rows = asyncio.run(go())
+    assert [m.id for _, m in v.asked] == [f"watch-{rows[0]['id']}", f"watch-{rows[2]['id']}"]
+    assert "2 more findings were held back" in v.asked[1][1].text
+    assert s.ledger.job_run_get(rows[1]["id"])["delivery"] == f"held: told with run {rows[2]['id']}"
+
+
+def test_findings_held_when_a_daemon_stopped_are_told_by_the_next_start_once_the_hour_allows(setup, tmp_path):
+    s = setup
+    v = watching(setup, tmp_path, watch("w", "echo finding $(date +%s%N)", "wakes = 1\n"))
+    t0 = time.time() - 600
+
+    async def go():
+        v.w.begin(asyncio.get_running_loop())
+        await ran(v, "w", now=t0)
+        one = await settled(s.ledger, s.ledger.job_runs(job="w")[0]["id"])
+        await ran(v, "w", now=t0 + 1)                                     # held by the daemon that then stops
+        two = s.ledger.job_runs(job="w")[0]["id"]
+        assert s.ledger.job_run_get(two)["delivery"] == jobs.HELD
+        s.ledger.job_run_set(one["id"], told=one["told"] - jobs.HOUR - 1)
+        await v.restart().reattach()                                      # the next start's own release, no run of it needed
+        return await settled(s.ledger, two)
+    row = asyncio.run(go())
+    assert (row["delivery"], row["note"]) == ("delivered", jobs.HELD_BACK)
+    assert "1 more finding was held back" in v.asked[-1][1].text
+
+
+def test_a_watch_that_timed_out_while_no_daemon_was_up_alerts_as_timed_out_and_tells_nothing(setup, tmp_path):
+    s = setup
+    v = watching(setup, tmp_path, watch("t", "echo half a finding"))
+
+    def down(payload):
+        raise OSError("connection refused")
+
+    async def go():
+        v.w.begin(asyncio.get_running_loop())
+        await ran(v, "t", handoff=down)
+        rid = s.ledger.job_runs(job="t")[0]["id"]
+        s.ledger.job_run_set(rid, exit="timed out")                        # the runner's own words when its cap ran out
+        await v.restart().reattach()
+    asyncio.run(go())
+    assert v.asked == [] and len(v.ops.notified) == 1 and "timed out" in v.ops.notified[0][1]
+
+
+def test_a_watchs_huge_output_is_read_in_a_slice_and_told_cut(setup, tmp_path, monkeypatch):
+    """A script that prints without end: the told turn reads a bounded slice of its stdout, never the whole file."""
+    s = setup
+    v = watching(setup, tmp_path, watch("big", "python3 -c \"print('y' * 9_000_000)\""))
+    reads = []
+    real = jobs.Path.read_text
+    monkeypatch.setattr(jobs.Path, "read_text", lambda self, *a, **k: reads.append(str(self)) or real(self, *a, **k))
+
+    async def go():
+        v.w.begin(asyncio.get_running_loop())
+        await ran(v, "big")
+        return await settled(s.ledger, s.ledger.job_runs(job="big")[0]["id"])
+    row = asyncio.run(go())
+    assert row["delivery"] == "delivered" and f"[cut at 4,000 characters; the whole output is in {row['folder']}/stdout]" in v.asked[0][1].text
+    assert len(v.asked[0][1].text) < 6_000 and reads.count(f"{row['folder']}/stdout") == 1     # the runner's own read, not the daemon's
+
+
 @pytest.mark.parametrize("wakes", [0, 61, "x", 2.5, True])
 def test_a_watchs_wakes_is_a_whole_number_from_1_to_60_and_only_a_watch_takes_one(wakes):
     raw = {"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "true", "deliver": "tell"}
@@ -1549,6 +1626,21 @@ def test_the_schedule_tool_sets_a_note_by_default_in_a_room_that_is_not_the_owne
                                                         "what": "Remind them to call the clinic."}))
         out = json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
         assert out["ok"] and (out["kind"], out["room"]) == (kind, room), out
+
+
+def test_the_schedule_tool_hands_a_watchs_wakes_through_the_server(tmp_path, monkeypatch):
+    """A room's own call: the tool's `wakes` reaches the jobs file (the server's request once left it out)."""
+    from test_room_scope import install
+
+    from yerk_ai import mcp_server
+    y = install(tmp_path, family=True)
+    y.jobs.units = FakeSystemd(tmp_path / "units")
+    server = mcp_server.build(y, y.port, y.hook)
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: "example-room")
+    got = asyncio.run(server.call_tool("schedule", {"action": "add", "name": "shop", "when": "*:0/15", "tz": "UTC", "kind": "script",
+                                                    "what": "echo new", "deliver": "tell", "wakes": 3}))
+    out = json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
+    assert out["ok"] and out["wakes"] == 3 and "wakes = 3" in y.jobs.path.read_text()
 
 
 def test_a_script_job_runs_this_installs_yerk_on_this_installs_folders_and_never_an_account(tmp_path, monkeypatch):
