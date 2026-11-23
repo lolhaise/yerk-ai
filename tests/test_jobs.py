@@ -1225,6 +1225,60 @@ def test_a_watchs_finding_a_restart_kept_from_its_room_is_told_once_at_the_next_
     assert v.rec.sent == v.ops.notified == []
 
 
+def test_a_watch_wakes_its_room_wakes_times_an_hour_and_tells_the_rest_once_as_one_turn_with_the_newest(setup, tmp_path):
+    """wakes = 2 and seven findings in an hour: two turns, the five past the bound held in their runs' folders, then one
+    turn once the hour allows, naming the five and carrying only the newest's output; none told twice, none lost. The
+    count is the ledger's told runs: a script that clears any file of its job's runs still wakes the room twice."""
+    s = setup
+    v = watching(setup, tmp_path, watch("w", "rm -f ../*/told; echo finding $(date +%s%N)", "wakes = 2\n"))
+    t0 = time.time() - 600
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        v.w.begin(loop)
+        for i in range(7):
+            await ran(v, "w", now=t0 + i)                       # a folder of its own each, by its fire time
+        rows = s.ledger.job_runs(job="w")[::-1]
+        told = [await settled(s.ledger, r["id"]) for r in rows[:2]]
+        held = [s.ledger.job_run_get(r["id"]) for r in rows[2:]]
+        due = v.j.releases["w"].when() - loop.time()            # the release waits on the hour
+        v.j.release("w")                                        # too soon: still held
+        early = [s.ledger.job_run_get(r["id"])["delivery"] for r in rows[2:]]
+        for r in told:                                          # the hour passes
+            s.ledger.job_run_set(r["id"], told=r["told"] - jobs.HOUR - 1)
+        v.j.release("w")
+        last = await settled(s.ledger, rows[-1]["id"])
+        v.j.release("w")
+        await v.restart().reattach()                            # nor at a start
+        await asyncio.sleep(0.2)
+        return rows, told, held, due, early, last
+    rows, told, held, due, early, last = asyncio.run(go())
+    outs = [(Path(r["folder"]) / "stdout").read_text().strip() for r in rows]
+    assert len(set(outs)) == 7 and all(o.startswith("finding ") for o in outs)
+    assert [t["delivery"] for t in told] == ["delivered"] * 2 and [h["delivery"] for h in held] == [jobs.HELD] * 5
+    assert all(h["told"] is None for h in held) and early == [jobs.HELD] * 5 and jobs.HOUR - 700 < due <= jobs.HOUR + 1
+    assert [m.id for _, m in v.asked] == [f"watch-{rows[0]['id']}", f"watch-{rows[1]['id']}", f"watch-{rows[6]['id']}"]
+    text = v.asked[2][1].text
+    assert "] 5 more findings were held back in the last hour; the newest is below. the watch found:\n" + outs[6] + "\n" in text
+    assert not any(o in text for o in outs[:6])                 # only the newest's output
+    after = {r["id"]: s.ledger.job_run_get(r["id"]) for r in rows}
+    assert (last["delivery"], last["note"]) == ("delivered", jobs.HELD_BACK)
+    assert [after[r["id"]]["delivery"] for r in rows[2:6]] == [f"held: told with run {rows[6]['id']}"] * 4
+    assert [after[r["id"]]["told"] is None for r in rows[2:6]] == [True] * 4
+    assert len(s.chan.replies) == 3 and v.rec.sent == v.ops.notified == []
+
+
+@pytest.mark.parametrize("wakes", [0, 61, "x", 2.5, True])
+def test_a_watchs_wakes_is_a_whole_number_from_1_to_60_and_only_a_watch_takes_one(wakes):
+    raw = {"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "true", "deliver": "tell"}
+    assert (make_job("w", raw).wakes, make_job("w", {**raw, "wakes": 60}).wakes, make_job("w", {**raw, "wakes": 1}).wakes) == (6, 60, 1)
+    with pytest.raises(JobError, match="whole number of turns in an hour, 1 to 60"):
+        make_job("w", {**raw, "wakes": wakes})
+    with pytest.raises(JobError, match='`wakes` is for a script job with deliver = "tell"'):
+        make_job("w", {**raw, "deliver": "announce", "wakes": 2})
+    assert "1 to 60 (default 6)" in jobs.KEYS["wakes"] and '"tell", script jobs only' in jobs.KEYS["deliver"]
+
+
 # the schedule tool
 def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     s = setup

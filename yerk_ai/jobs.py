@@ -72,6 +72,9 @@ DELIVER = ("announce", "silent", "tell")
 NO_REPLY = "NO_REPLY"
 WAITING = "undelivered: waiting for the room's turn"       # a told note's run until its turn ends (Jobs.tell)
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
+WAKES, WAKES_MOST, HOUR = 6, 60, 3600.0   # a watch's turns in any hour: its default and most (`wakes`)
+HELD, BATCHED = "held: past its wakes in the hour", "held: told with run "   # a watch's finding the bound kept (Jobs.release)
+HELD_BACK = "told for the findings held back before it"                     # the note of the run that told them
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
 KEPT, UNHEARD, RETRY_WITHIN = "job.json", "undelivered: the daemon is not running", 86400.0   # an agent run no daemon took (Jobs.retry)
@@ -112,6 +115,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
                'row happen, nothing is posted, a failure still alerts the ops room; "tell", script jobs only (a watch): '
                "output is told to the room's own session, which says it in its own voice as a due note is said, output "
                "cut at 4,000 characters with the path of the whole of it; no output tells nothing and costs no turn",
+    "wakes": f"script jobs with deliver = \"tell\": the most turns the watch wakes its room in any hour, 1 to {WAKES_MOST} "
+             f"(default {WAKES}); past it each finding waits in its run's folder, and once the hour allows the newest is told "
+             "as one turn naming how many were held back, so none is lost and none is told twice",
     "command": "script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the "
                "job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this "
                "install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts "
@@ -198,6 +204,7 @@ class Job:
     model: str = ""               # agent jobs: the worker's own model and thinking level; "" the room's
     effort: str = ""
     addons: tuple[str, ...] = ()  # agent jobs: the room's own add-on tools its worker gets too
+    wakes: int = WAKES            # a watch (deliver = "tell"): the most turns it wakes its room in any hour
 
     @property
     def unit(self) -> str:
@@ -261,6 +268,12 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if deliver == "tell" and kind != "script":
         raise JobError('`deliver = "tell"` is for a script job (a watch): ' + ("a note is told to its room already" if kind == "note"
                        else "an agent job's last message is told by its room already"))
+    if "wakes" in raw and deliver != "tell":
+        raise JobError('`wakes` is for a script job with deliver = "tell": how often its findings may wake the room')
+    if isinstance(wakes := raw.get("wakes", WAKES), str) and wakes.strip().isdigit():
+        wakes = int(wakes)
+    if isinstance(wakes, bool) or not isinstance(wakes, int) or not 1 <= wakes <= WAKES_MOST:
+        raise JobError(f"`wakes` must be a whole number of turns in an hour, 1 to {WAKES_MOST}")
     account, model = str(raw.get("account", "") or ""), str(raw.get("model", "") or "").strip()
     if not isinstance(addons := raw.get("addons", []), list) or not all(isinstance(a, str) and ADDON_NAME.match(a) for a in addons):
         raise JobError('`addons` must be a list of the room\'s add-on tools or servers, like addons = ["mcp__web__web_fetch"]')
@@ -298,7 +311,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             tz_name = "UTC"
         if at_epoch <= now:
             raise JobError(f"`at` {when_text(at_epoch, tz_name)} is in the past")
-    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort, tuple(addons))
+    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort, tuple(addons), wakes)
 
 
 def load(path: Path, now: float | None = None) -> tuple[dict[str, Job], dict[str, str]]:
@@ -951,6 +964,7 @@ class Jobs:
         self.ops_room = str(conf.get("ops_room", ""))
         self.started = time.time()                      # a note fired before this is the last process's (reattach)
         self.told: set[int] = set()                     # runs this process asked a told turn for: in hand (reattach)
+        self.releases: dict[str, asyncio.TimerHandle] = {}   # a watch whose findings the bound holds: its release
         self.added: dict[str, list[float]] = {}         # a room that is not the owner's: when it added its recent notes
         workers.hooks.append(self.worker_done)
 
@@ -1082,6 +1096,38 @@ class Jobs:
         log.info("%s %s: run %d asked a turn in %s", "note" if note else "watch", run["job"], rid, room)
         return {"ok": True, "run": rid, "inbound": mid}
 
+    def found(self, job: Job, run: dict[str, Any]) -> dict[str, Any]:
+        """A watch's run had output: told now when its room was told fewer than the job's `wakes` times in the last hour
+        (the told runs of job_runs, never a file its script could write) and none of its findings waits; else held, its
+        output in its run's folder, until the hour allows (release)."""
+        if not self.ledger.job_runs(job=job.name, delivery=HELD, limit=1) and \
+                len(self.ledger.job_told(job.name, time.time() - HOUR)) < job.wakes:
+            return self.tell(run, job.deliver)
+        self.ledger.job_run_set(int(run["id"]), delivery=HELD)
+        log.info("watch %s: run %s held, past its %d wakes in the hour", job.name, run["id"], job.wakes)
+        self.release(job.name)
+        return {"ok": True, "run": int(run["id"]), "held": True}
+
+    def release(self, name: str) -> None:
+        """A watch's held findings once its room may be woken again: the newest told as ONE turn naming how many were held
+        back (words.WATCH_HELD), the others marked told with it, so none is lost and none is told twice. Too soon: a timer
+        on the daemon's loop for when the hour allows (the next run of it, or the next start, releases them too)."""
+        if not (held := self.ledger.job_runs(job=name, delivery=HELD, limit=10**6)):
+            return
+        job, now = self.jobs().get(name), time.time()
+        wakes = job.wakes if job else WAKES
+        if len(told := self.ledger.job_told(name, now - HOUR)) >= wakes:
+            if (h := self.releases.pop(name, None)) is not None:
+                h.cancel()
+            with suppress(RuntimeError):                    # no loop runs (a direct call): the next run or start
+                self.releases[name] = asyncio.get_running_loop().call_later(told[-wakes] + HOUR - now + 0.5, self.release, name)
+            return
+        newest = held[0]
+        for r in held[1:]:
+            self.ledger.job_run_set(int(r["id"]), delivery=f"{BATCHED}{newest['id']}")
+        self.ledger.job_run_set(int(newest["id"]), note=HELD_BACK)
+        self.tell({**newest, "note": HELD_BACK}, job.deliver if job else "tell")
+
     def told_text(self, run: dict[str, Any]) -> str:
         """The told turn's text: words.NOTE_DUE with the note's message, or words.WATCH_FOUND with the script's output
         (capped, the cut naming the file the whole of it is in). OSError: the run's folder cannot be read."""
@@ -1089,8 +1135,13 @@ class Jobs:
         under = words.under(self.workers.conf.relay_reply)
         if run["kind"] == "note":
             return words.NOTE_DUE.format(name=run["job"], message=(folder / "message").read_text().strip(), at=at, under=under)
-        output = capped((folder / "stdout").read_text(errors="replace"), str(folder / "stdout"))
-        return words.WATCH_FOUND.format(name=run["job"], at=at, held="", output=output, under=under)
+        output, held = capped((folder / "stdout").read_text(errors="replace"), str(folder / "stdout")), ""
+        if run.get("note") == HELD_BACK:            # the newest of the findings the bound held back: how many, and since when
+            batch = [run, *self.ledger.job_runs(job=str(run["job"]), delivery=f"{BATCHED}{run['id']}", limit=10**6)]
+            oldest = min(float(r["fired"]) for r in batch)
+            held = words.WATCH_HELD.format(n=len(batch), findings="finding was" if len(batch) == 1 else "findings were",
+                                           since="in the last hour" if oldest >= time.time() - HOUR else f"since {words.clock(oldest)}")
+        return words.WATCH_FOUND.format(name=run["job"], at=at, held=held, output=output, under=under)
 
     async def result(self, req: dict[str, Any]) -> dict[str, Any]:
         """A script's end, delivered by the cron-wrap rule."""
@@ -1117,7 +1168,7 @@ class Jobs:
             if deliver == "silent":
                 delivery = "silent (deliver = silent)"
             elif deliver == "tell":                 # the room's own session is told it, as a due note is (W1)
-                if not (told := self.tell(run, deliver)).get("ok"):        # read again at the next start (reattach)
+                if not (told := self.found(job, run) if job else self.tell(run, deliver)).get("ok"):   # read again at the next start
                     self.ledger.job_run_set(run_id, delivery=f"undelivered: {told.get('error')}")
                 self.ledger.job_run_set(run_id, result=result)
                 delivery = str((self.ledger.job_run_get(run_id) or {}).get("delivery") or "")
@@ -1263,6 +1314,8 @@ class Jobs:
             text = f"(late: the daemon was not running when job {r['job']} ran at {when_text(r['fired'], job.tz if job else 'UTC')})\n{output[:OUTPUT_MAX]}"
             ids = await self.post(str(r["room"]), text, f"job-{r['id']}-late")
             self.ledger.job_run_set(int(r["id"]), delivery="delivered late" if ids else r["delivery"], message_ids=",".join(ids))
+        for name in dict.fromkeys(str(r["job"]) for r in self.ledger.job_runs(delivery=HELD, limit=10**6)):
+            self.release(name)                            # a watch's findings the bound held when the last process stopped
 
 
 def main(argv: list[str] | None = None) -> int:
