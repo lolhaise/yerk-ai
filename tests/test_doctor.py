@@ -425,7 +425,7 @@ def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_
     priv, state, *_ = tree
     (priv / "rooms.toml").write_text("[rooms\n")
     said = [x[2:].split(",")[0] for x in doctor.run(priv, state) if "not checked" in x]
-    assert said == ["layout: not checked", "rule shape: not checked", "fit: not checked", "moved in: not checked"], said
+    assert said == ["layout: not checked", "jobs: not checked", "rule shape: not checked", "fit: not checked", "moved in: not checked"], said
 
 
 def lesson_lines(priv, state) -> list[str]:

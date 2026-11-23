@@ -312,3 +312,77 @@ def test_an_agent_jobs_equal_ends_are_one_post_and_did_not_start_posts_as_today(
                          result="did not start", delivery="alert", message_ids="n9")
     end("died", 600)                                        # a did-not-start between: not the same failure, posted anew
     assert len(ops.notified) == 2
+
+
+# J3: the doctor's review of the jobs
+def review_tree(tmp_path, table):
+    from yerk_ai.ledger import Ledger
+    priv, state = tmp_path / "private", tmp_path / "state"
+    priv.mkdir()
+    state.mkdir()
+    (priv / "rooms.toml").write_text('[rooms.r]\nmodel = "m"\ntimezone = "UTC"\n')
+    (priv / "accounts.toml").write_text('[accounts]\none = { config_dir = "cfg1" }\n')
+    write_jobs(priv / "jobs.toml", table)
+    led = Ledger(state / "ledger.sqlite")
+    return priv, state, led
+
+
+def hashes(*folders):
+    return {p: hashlib.sha256(p.read_bytes()).hexdigest() for f in folders for p in sorted(f.rglob("*")) if p.is_file()}
+
+
+def test_the_doctors_review_names_each_finding_once_and_writes_nothing(tmp_path):
+    from yerk_ai import doctor
+    now = time.time()
+    priv, state, led = review_tree(tmp_path, SCRIPT.format(n="lost", key="schedule", when="*:00").replace('room = "r"', 'room = "gone"')
+                                   + '[jobs.who]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\naccount = "nobody"\nmessage = "x"\n'
+                                   + SCRIPT.format(n="late", key="at", when="2026-01-01 09:00")
+                                   + SCRIPT.format(n="going", key="at", when="2026-01-01 09:00")
+                                   + SCRIPT.format(n="flaky", key="schedule", when="*:00")
+                                   + SCRIPT.format(n="shop", key="schedule", when="*:00").replace('room = "r"', 'room = "r"\ndeliver = "tell"'))
+    sd = Units(tmp_path / "units")
+    sd.active.add("yerk-job-going.service")                # its own run takes it out
+    row = lambda job, ago, **k: led.job_run_add(job=job, kind="script", room="r", planned=now - ago, fired=now - ago,  # noqa: E731
+                                                ended=now - ago + 1, **k)
+    row("flaky", 7200, exit="not run", result="did not start", delivery="alert")
+    row("flaky", 5400, exit="cut", result="cut", delivery="alert")
+    last = row("flaky", 3600, exit="exited 0", result="output", delivery="undelivered: the daemon is not running (OSError)")
+    row("flaky", 1800, exit="stopped", result="stopped", delivery="none", note="stopped from the command line")
+    row("flaky", 2 * 86400, exit="not run", result="did not start", delivery="alert")          # older than the day
+    row("flaky", 60, exit="exited 0", result="output", delivery=jobs.WAITING)                  # told a minute ago, in hand
+    row("shop", 90000, exit="exited 0", result="output", delivery=jobs.HELD)
+    row("shop", 600, exit="exited 0", result="output", delivery=jobs.HELD)
+    led.close()
+    before = hashes(priv, state, tmp_path / "units")
+    said = doctor.job_review(priv, state, now, units=sd)
+    assert said == [
+        f"{W.NOT_DONE} job lost: room gone is not in rooms.toml; add it there or give the job a room that is",
+        f"{W.NOT_DONE} job who: account nobody is not in accounts.toml; add it there or fix the job's account",
+        f"{W.WORKING} job late: a one-shot whose time ({jobs.when_text(1767258000.0, 'UTC')}) has passed is still in the jobs file, not running; "
+        "`yerk schedule remove late`, or give it a time to come",
+        f"{W.WORKING} job flaky: 3 of its runs in the last day did not start, were cut or are not delivered, the last at "
+        f"{W.clock(now - 3600, now)}; `yerk status --full` and the runs' folders say why",
+        f"{W.WORKING} watch shop: 1 of its findings held more than a day, the oldest from {W.clock(now - 90000, now)}; a daemon start tells them"]
+    assert last and hashes(priv, state, tmp_path / "units") == before              # nothing written, no -wal left behind
+    assert sd.calls == [] and sd.active == {"yerk-job-going.service"}
+
+
+def test_a_clean_install_has_no_job_finding_and_an_unreadable_jobs_file_or_ledger_is_said(tmp_path):
+    from yerk_ai import doctor
+    now = time.time()
+    priv, state, led = review_tree(tmp_path, SCRIPT.format(n="flaky", key="schedule", when="*:00"))
+    led.job_run_add(job="flaky", kind="script", room="r", planned=now - 60, fired=now - 60, ended=now - 59, exit="exited 0",
+                    result="nothing", delivery="silent (no output)")
+    led.close()
+    sd = Units(tmp_path / "units")
+    assert doctor.job_review(priv, state, now, units=sd) == []
+    (state / "ledger.sqlite").write_text("not a ledger")
+    assert doctor.job_review(priv, state, now, units=sd) == [
+        f"{W.WORKING} jobs: the ledger cannot be read (file is not a database); no run was reviewed"]
+    (state / "ledger.sqlite").rename(state / "elsewhere")
+    assert doctor.job_review(priv, state, now, units=sd)[0].startswith(f"{W.WORKING} jobs: the ledger cannot be read (")
+    assert not (state / "ledger.sqlite").exists()                                  # never made
+    (priv / "jobs.toml").write_text("[jobs\n")
+    said = doctor.job_review(priv, state, now, units=sd)
+    assert len(said) == 1 and said[0].startswith(f"{W.NOT_DONE} jobs: the jobs file cannot be read (") and said[0].endswith(
+        "; no job was reviewed")
