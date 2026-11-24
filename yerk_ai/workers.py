@@ -106,16 +106,23 @@ CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgrou
 SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
 HOMES = ("open", "needs", "hidden")            # [workers] home: the owner's home as a worker's unit sees it (Systemd.sandbox)
 GIT_RW = ("objects", "refs", "logs", "FETCH_HEAD")   # all of .git a commit and a fetch write; the list of worktrees is the unit's own
-# outside the home, the doors a hidden home shuts with it (2026-11-24, each measured in a throwaway unit): the owner's runtime
-# folder, where the user bus, rootless Docker and the SSH agent answer, the unit's own empty one; Windows interop (/run/WSL)
-# and tailscaled's socket (the tailnet, as its owner) not there; /mnt (Windows' drives, and the whole disk again under WSLg)
-# empty and read-only; the journals (every other program's log, the owner's units') not there. Each only when it is there;
-# /tmp is the unit's own too (PrivateTmp)
-DOORS = ((Path(f"/run/user/{os.getuid()}"), "own"), (Path("/run/WSL"), "gone"), (Path("/run/tailscale"), "gone"), (Path("/mnt"), "empty"),
-         (Path("/var/log"), "gone"), (Path("/run/log"), "gone"))
-# the sockets a hidden worker may make: not the virtual machine's (AF_VSOCK, on which WSL's Windows side answers any process,
-# the drives' file server too, with no path and no bus involved), nor any other; io_uring would make one past this filter
+# outside the home, the doors a hidden home shuts with it (2026-11-24, each measured in a throwaway unit): /run empty and
+# read-only but for the unit's own runtime folder (the user bus, rootless Docker, the SSH agent, the system bus, every service's
+# socket, WSL's interop, tailscaled's: what nobody listed is shut too); /mnt empty (Windows' drives, and the whole disk again
+# under WSLg); /dev/shm the unit's own; the journals (every other program's log) not there. Each only when it is there; /tmp is
+# the unit's own too (PrivateTmp)
+DOORS = ((Path("/run"), "empty"), (Path(f"/run/user/{os.getuid()}"), "own"), (Path("/mnt"), "empty"), (Path("/dev/shm"), "own"),
+         (Path("/var/log"), "gone"))
+# what else a hidden unit may not do: sockets past FAMILIES (WSL's Windows side answers any process on the virtual machine's, the
+# drives' file server too, with no path and no bus involved), by the other ABI or by io_uring either; a namespace or a setuid of
+# its own; the owner's other processes (its list of them is its own, so none is seen, signalled or traced); devices, the
+# kernel's log, the cgroup tree; a write anywhere but its own folders. Not PrivateIPC: under a user manager the unit's stop step
+# cannot join its namespace ("Failed at step NAMESPACE"), so no exit.json is written and the worker never ends (seen 2026-11-24)
 FAMILIES, NO_CALLS = "AF_UNIX AF_INET AF_INET6 AF_NETLINK", "~io_uring_setup io_uring_enter io_uring_register"
+WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "PrivateDevices=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
+         "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes", "RestrictNamespaces=yes",
+         "LockPersonality=yes", f"RestrictAddressFamilies={FAMILIES}", "SystemCallArchitectures=native", f"SystemCallFilter={NO_CALLS}",
+         "SystemCallErrorNumber=ENOSYS")
 OWN_CONFIG = ".claude-home"     # a hidden worker's Claude config folder, in its own folder (Systemd.own)
 
 
@@ -177,6 +184,13 @@ def uv_cache() -> Path:
     """The uv cache hidden workers share, never the owner's: uv links what it installs to its cache, so the owner's holds the
     running daemon's own files (2026-11-24: 3,382 of its venv), and a worker that wrote there would write what runs outside."""
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "yerk" / "uv"
+
+
+def resolver(at: Path = Path("/etc/resolv.conf")) -> list[Path]:
+    """The file that says where DNS is, when it lives under one of the DOORS (systemd-resolved's in /run, WSL's in /mnt): bound
+    back read-only, or a hidden worker finds no host."""
+    real = at.resolve()
+    return [real] if real.is_file() and any(real.is_relative_to(p) for p, _ in DOORS) else []
 
 
 def memory_max(conf: dict[str, Any]) -> str:
@@ -371,7 +385,7 @@ class Systemd:
         """A hidden home's unit: the home an empty read-only filesystem (systemd.exec's TemporaryFileSystem), the state folder
         too where it lives outside it (_roots), with only what the worker's job reaches bound back (back); its own gate files
         read-only, and a hidden path outside both (a private secrets/ elsewhere), as an open unit has them; then the DOORS
-        that are there shut, a /tmp of its own, which the unit's end clears, and no socket past FAMILIES."""
+        that are there shut (the resolver's file back when it lives under one) and the WALLS."""
         roots, token = self._roots(), env.get("YERK_TOKEN_FILE", "")
         props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots)]
         for p, how in self.back(spec, folder, env):
@@ -392,8 +406,7 @@ class Systemd:
             mine = bool(token) and Path(token).is_relative_to(p)
             props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"] if mine else [f"InaccessiblePaths=-{p}"]
         shut = {"own": "TemporaryFileSystem={}:mode=0700", "gone": "InaccessiblePaths={}", "empty": "TemporaryFileSystem={}:ro"}
-        return [*props, *(shut[how].format(p) for p, how in DOORS if p.exists()), "PrivateTmp=yes", f"RestrictAddressFamilies={FAMILIES}",
-                f"SystemCallFilter={NO_CALLS}", "SystemCallErrorNumber=ENOSYS"]
+        return [*props, *(shut[how].format(p) for p, how in DOORS if p.exists()), *(f"BindReadOnlyPaths={p}" for p in resolver()), *WALLS]
 
     def back(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
         """What a hidden home binds back, as (path, "rw" | "ro" | "repo", "-" after one the daemon names that may be missing),

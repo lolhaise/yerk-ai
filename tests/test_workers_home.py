@@ -157,25 +157,39 @@ def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path
     # rootless Docker and the SSH agent answered in the owner's runtime folder, a Windows program in the worker's folder ran
     # as the owner's Windows user, /mnt/wslg/distro was the whole disk again, and tailscaled answered for the tailnet. Each is
     # shut here, the runtime folder the unit's own (the uid is the process's), each only when it is there
-    assert workers.DOORS == ((Path(f"/run/user/{__import__('os').getuid()}"), "own"), (Path("/run/WSL"), "gone"),
-                             (Path("/run/tailscale"), "gone"), (Path("/mnt"), "empty"), (Path("/var/log"), "gone"), (Path("/run/log"), "gone"))
+    assert workers.DOORS == ((Path("/run"), "empty"), (Path(f"/run/user/{__import__('os').getuid()}"), "own"), (Path("/mnt"), "empty"),
+                             (Path("/dev/shm"), "own"), (Path("/var/log"), "gone"))
     home, reach = _home(tmp_path, monkeypatch)
     state, keys, folder, hidden = _walled(home)
-    run, wsl, ts, mnt = tmp_path / "run" / "user" / "7", tmp_path / "run" / "WSL", tmp_path / "run" / "tailscale", tmp_path / "mnt"
-    for p in (run, wsl, ts, mnt):
+    run, own, mnt, log = tmp_path / "run", tmp_path / "run" / "user" / "7", tmp_path / "mnt", tmp_path / "log"
+    for p in (own, mnt, log):
         p.mkdir(parents=True)
-    monkeypatch.setattr(workers, "DOORS", ((run, "own"), (wsl, "gone"), (ts, "gone"), (mnt, "empty")))
+    monkeypatch.setattr(workers, "DOORS", ((run, "empty"), (own, "own"), (mnt, "empty"), (log, "gone")))
+    monkeypatch.setattr(workers, "resolver", lambda: [])
     s = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach)
     props = s.sandbox(folder, _env(home, keys))[1::2]
-    last = ["PrivateTmp=yes", "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
-            "SystemCallFilter=~io_uring_setup io_uring_enter io_uring_register", "SystemCallErrorNumber=ENOSYS"]
-    assert props[-8:] == [f"TemporaryFileSystem={run}:mode=0700", f"InaccessiblePaths={wsl}", f"InaccessiblePaths={ts}",
-                          f"TemporaryFileSystem={mnt}:ro", *last]
+    last = list(workers.WALLS)
+    assert props[-4 - len(last):] == [f"TemporaryFileSystem={run}:ro", f"TemporaryFileSystem={own}:mode=0700", f"TemporaryFileSystem={mnt}:ro",
+                                      f"InaccessiblePaths={log}", *last]
     assert not any(p.startswith(("BindPaths=", "BindReadOnlyPaths=")) and str(tmp_path / "run") in p for p in props)   # none comes back
-    for p in (wsl, ts, mnt):
+    for p in (mnt, log):
         p.rmdir()
     props = s.sandbox(folder, _env(home, keys))[1::2]
-    assert props[-5:] == [f"TemporaryFileSystem={run}:mode=0700", *last]                # a box without them: not named
+    assert props[-2 - len(last):] == [f"TemporaryFileSystem={run}:ro", f"TemporaryFileSystem={own}:mode=0700", *last]     # a box without them: not named
+    monkeypatch.undo()                                                                    # the resolver's file, only when a door would hide it
+    real, conf = tmp_path / "run" / "resolve" / "stub.conf", tmp_path / "resolv.conf"
+    real.parent.mkdir()
+    real.write_text("nameserver 127.0.0.53\n")
+    conf.symlink_to(real)
+    monkeypatch.setattr(workers, "DOORS", ((run, "empty"),))
+    assert workers.resolver(conf) == [real]
+    monkeypatch.setattr(workers, "resolver", lambda: [real])
+    assert f"BindReadOnlyPaths={real}" in workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", list).sandbox(folder, _env(home, keys))[1::2]
+    monkeypatch.undo()
+    plain = tmp_path / "plain.conf"
+    plain.write_text("nameserver 127.0.0.53\n")
+    real.unlink()
+    assert workers.resolver(plain) == [] and workers.resolver(conf) == [] and workers.resolver(tmp_path / "none") == []
     opened = workers.Systemd(state, hidden).sandbox(folder, _env(home, keys))[1::2]
     assert not set(last) & set(opened) and not any(str(run) in p for p in opened)       # open: as it was
 
@@ -269,12 +283,31 @@ def test_a_hidden_worker_has_a_config_folder_and_a_uv_cache_of_its_own_never_its
         s.own(folder, {"CLAUDE_CONFIG_DIR": str(home / ".claude-acct2")})
 
 
-def test_a_hidden_unit_makes_no_socket_past_the_families_it_needs_and_sees_no_journal():
+def test_a_hidden_unit_makes_no_socket_past_the_families_it_needs_and_is_walled_from_the_owners_other_processes():
     # 2026-11-24: WSL's Windows side answered any process on the virtual machine's sockets (AF_VSOCK 50001 is the drives' file
-    # server), with the home, the bus and /mnt hidden; and the journals gave every other program's log
+    # server), with the home, the bus and /mnt hidden; the journals gave every other program's log; an attacker run in the
+    # unit saw and could signal the owner's processes, wrote its own cgroup and read the kernel's log. The list, held whole:
+    # SystemCallArchitectures with the family filter, or the other ABI's socket call goes round it (systemd.exec)
     assert workers.FAMILIES.split() == ["AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK"]
     assert workers.NO_CALLS == "~io_uring_setup io_uring_enter io_uring_register"
-    assert {p for p, how in workers.DOORS if how == "gone"} >= {Path("/var/log"), Path("/run/log"), Path("/run/WSL"), Path("/run/tailscale")}
+    assert workers.WALLS == (
+        "PrivateTmp=yes", "PrivatePIDs=yes", "PrivateDevices=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
+        "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes", "RestrictNamespaces=yes",
+        "LockPersonality=yes", "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK", "SystemCallArchitectures=native",
+        "SystemCallFilter=~io_uring_setup io_uring_enter io_uring_register", "SystemCallErrorNumber=ENOSYS")
+
+
+def test_a_workers_memory_server_asks_the_daemon_without_seeing_its_process(tmp_path, monkeypatch):
+    # a hidden worker's list of processes is its own (PrivatePIDs): the daemon's pid is not in it, and the alive check would say
+    # none runs; the install's own callers keep the check
+    from yerk_ai import jobs
+    (tmp_path / "s").write_text("a-secret-" + "x" * 30)
+    (tmp_path / "yerkd.json").write_text(json.dumps({"pid": 2 ** 30, "port": 1, "secret_file": str(tmp_path / "s"), "worker_secret_file": str(tmp_path / "s")}))
+    with pytest.raises(ProcessLookupError):
+        jobs.post_control(tmp_path, {"recall": {}}, timeout=2)
+    with pytest.raises(OSError) as e:
+        jobs.post_control(tmp_path, {"recall": {}}, timeout=2, worker=True)
+    assert not isinstance(e.value, ProcessLookupError) and jobs.not_listening(e.value)      # it asked, and nothing listens there
 
 
 def test_git_runs_outside_only_on_a_worktree_its_repository_knows(tmp_path, monkeypatch):

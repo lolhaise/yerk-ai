@@ -26,12 +26,14 @@ version changes.
   (read-only, by the ids the need's record now keeps) and, with `yerk_tools`, the two files its memory server reads. The
   ledger, the memory index, the texts, the logs, the web cache, the trash and every other worker's transcript are not
   there.
-- The other doors are shut under a hidden home too: `/run/user/<uid>` is the unit's own empty folder (the user bus,
-  rootless Docker and the SSH agent no longer answer), `/run/WSL` and `/run/tailscale` are not there (Windows interop, the
-  tailnet), `/mnt` is empty (Windows' drives, and the whole disk again under WSLg), the journals are not there, `/tmp` is the
-  unit's own, and it makes no socket but Unix, IP and netlink ones (WSL's Windows side answers on the virtual machine's
-  sockets, its drives' file server too) and no io_uring. Each was measured open with only the home hidden and shut with
-  this list, in throwaway units.
+- The other doors are shut under a hidden home too: `/run` is empty but for the unit's own runtime folder (the user bus,
+  rootless Docker, the SSH agent, the system bus, every service's socket, WSL's interop and tailscaled's no longer answer),
+  `/mnt` is empty (Windows' drives, and the whole disk again under WSLg), the journals are not there, `/tmp` and `/dev/shm` are
+  the unit's own. It makes no socket but Unix, IP and netlink ones (WSL's Windows side answers on the virtual machine's
+  sockets, its drives' file server too), by either ABI or io_uring; it makes no namespace, gains nothing from a setuid program,
+  and sees, signals and traces none of the owner's other processes; devices, the kernel's log and the cgroup tree are closed, and
+  nothing is written outside its own folders. Each was measured open with only the home hidden and shut with this list, in
+  throwaway units. It needs systemd 257 (`PrivatePIDs=`).
 - Its list of git worktrees is the unit's own: in a unit that hides their folders every other worktree reads as gone, and one
   `git worktree prune` would have dropped their records. The daemon runs git on a worker's worktree only when that worktree's
   repository knows it, so a .git a worker wrote never has git outside run what a config of the worker's names.
