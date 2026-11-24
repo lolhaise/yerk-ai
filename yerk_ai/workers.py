@@ -106,6 +106,11 @@ CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgrou
 SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
 HOMES = ("open", "needs", "hidden")            # [workers] home: the owner's home as a worker's unit sees it (Systemd.sandbox)
 GIT_RW = ("objects", "refs", "logs", "worktrees", "FETCH_HEAD")   # all of .git a worktree add, a commit and a fetch write
+# outside the home, the doors a hidden home shuts with it (2026-11-24, each measured in a throwaway unit): the owner's runtime
+# folder, where the user bus, rootless Docker and the SSH agent answer, the unit's own empty one; Windows interop (/run/WSL)
+# and tailscaled's socket (the tailnet, as its owner) not there; /mnt (Windows' drives, and the whole disk again under WSLg)
+# empty and read-only. Each only when it is there; /tmp is the unit's own too (PrivateTmp)
+DOORS = ((Path(f"/run/user/{os.getuid()}"), "own"), (Path("/run/WSL"), "gone"), (Path("/run/tailscale"), "gone"), (Path("/mnt"), "empty"))
 
 
 @dataclass
@@ -334,7 +339,8 @@ class Systemd:
     def walled(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[str]:
         """A hidden home's unit: the home an empty read-only filesystem (systemd.exec's TemporaryFileSystem), the state folder
         too where it lives outside it (_roots), with only what the worker's job reaches bound back (back); its own gate files
-        read-only, and a hidden path outside both (a private secrets/ elsewhere), as an open unit has them."""
+        read-only, and a hidden path outside both (a private secrets/ elsewhere), as an open unit has them; then the DOORS
+        that are there shut, and a /tmp of its own, which the unit's end clears."""
         roots, token = self._roots(), env.get("YERK_TOKEN_FILE", "")
         props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots)]
         for p, how in self.back(spec, folder, env):
@@ -351,7 +357,8 @@ class Systemd:
         for p in (h for h in self.hidden if not any(h.is_relative_to(r) for r in roots)):
             mine = bool(token) and Path(token).is_relative_to(p)
             props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"] if mine else [f"InaccessiblePaths=-{p}"]
-        return props
+        shut = {"own": "TemporaryFileSystem={}:mode=0700", "gone": "InaccessiblePaths={}", "empty": "TemporaryFileSystem={}:ro"}
+        return [*props, *(shut[how].format(p) for p, how in DOORS if p.exists()), "PrivateTmp=yes"]
 
     def back(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
         """What a hidden home binds back, as (path, "rw" | "ro" | "repo", "-" after one the daemon names that may be missing),

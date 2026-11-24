@@ -132,3 +132,28 @@ def test_a_hidden_home_names_no_path_that_is_not_there_and_none_outside_it(tmp_p
     assert f"BindReadOnlyPaths={home / 'plug'}" in props               # the plug-in's tree is still there, read-only
     assert not any("claude-two.token" in p for p in props)             # no token in its env: none bound back
     assert workers.Systemd(None, hidden, workers.MEMORY_MAX, "hidden", reach).sandbox(folder, env) == []   # no state folder: none
+
+
+def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path, monkeypatch):
+    # D3, measured 2026-11-24 in throwaway units with the home hidden: the user bus started a unit outside that saw ~/.ssh,
+    # rootless Docker and the SSH agent answered in the owner's runtime folder, a Windows program in the worker's folder ran
+    # as the owner's Windows user, /mnt/wslg/distro was the whole disk again, and tailscaled answered for the tailnet. Each is
+    # shut here, the runtime folder the unit's own (the uid is the process's), each only when it is there
+    assert workers.DOORS[0] == (Path(f"/run/user/{__import__('os').getuid()}"), "own")
+    home, reach = _home(tmp_path, monkeypatch)
+    state, keys, folder, hidden = _walled(home)
+    run, wsl, ts, mnt = tmp_path / "run" / "user" / "7", tmp_path / "run" / "WSL", tmp_path / "run" / "tailscale", tmp_path / "mnt"
+    for p in (run, wsl, ts, mnt):
+        p.mkdir(parents=True)
+    monkeypatch.setattr(workers, "DOORS", ((run, "own"), (wsl, "gone"), (ts, "gone"), (mnt, "empty")))
+    s = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach)
+    props = s.sandbox(folder, _env(home, keys))[1::2]
+    assert props[-5:] == [f"TemporaryFileSystem={run}:mode=0700", f"InaccessiblePaths={wsl}", f"InaccessiblePaths={ts}",
+                          f"TemporaryFileSystem={mnt}:ro", "PrivateTmp=yes"]
+    assert not any(p.startswith(("BindPaths=", "BindReadOnlyPaths=")) and str(tmp_path / "run") in p for p in props)   # none comes back
+    for p in (wsl, ts, mnt):
+        p.rmdir()
+    props = s.sandbox(folder, _env(home, keys))[1::2]
+    assert props[-2:] == [f"TemporaryFileSystem={run}:mode=0700", "PrivateTmp=yes"]   # a box without them: not named
+    opened = workers.Systemd(state, hidden).sandbox(folder, _env(home, keys))[1::2]
+    assert "PrivateTmp=yes" not in opened and not any(str(run) in p for p in opened)    # open: as it was
