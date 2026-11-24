@@ -5,6 +5,7 @@ bound back; "needs" hidden for a need's builder, cold read and fix only."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -387,6 +388,132 @@ def test_git_runs_outside_only_on_a_worktree_its_repository_knows(tmp_path, monk
         shutil.rmtree(d)
     (wt / ".git").write_text(good)
     assert workers.linked(wt) and needs.tidy(folder) == [] and not wt.exists()              # the repository's own: tidied as before
+
+
+def _repo(tmp_path, monkeypatch):
+    """A home with a repository of one commit and a worker's folder under its state folder; git as a call."""
+    import subprocess
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))          # a folder with no repository of its own finds none above
+    for k in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(k, "a")
+    for k in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(k, "nobody")
+
+    def git(*a: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["git", *a], cwd=cwd, check=check, capture_output=True, text=True)
+    repo, folder = home / "repo", home / "state" / "workers" / "abc123"
+    repo.mkdir(parents=True)
+    folder.mkdir(parents=True)
+    git("init", "-q", "-b", "main", cwd=repo)
+    (repo / "a.txt").write_text("a")
+    git("add", "a.txt", cwd=repo)
+    git("commit", "-qm", "one", cwd=repo)
+    return home, repo, folder, git
+
+
+def test_a_link_in_a_workers_folder_to_another_worktree_is_never_tidied_as_the_workers(tmp_path, monkeypatch):
+    # the cold read of 2026-11-24: linked() compared the repository's record with the tree's real path, so one link in a
+    # worker's folder to a clean worktree anywhere passed, and the tidy at a need's end removed that worktree, record and files
+    from yerk_ai import needs
+    home, repo, folder, git = _repo(tmp_path, monkeypatch)
+    owners = home / "elsewhere" / "owners"
+    git("worktree", "add", "-q", str(owners), "-b", "owners", cwd=repo)
+    (folder / "wt").symlink_to(owners)
+    assert not workers.linked(folder / "wt")
+    assert "no record of it" in workers.branch(folder / "wt")["error"]
+    assert needs.tidy(folder) == [] and (owners / "a.txt").is_file() and (repo / ".git" / "worktrees" / "owners").is_dir()
+    assert git("status", "--porcelain", cwd=owners).stdout == ""                           # still the repository's, and clean
+    (folder / "wt").unlink()
+    (folder / "wt").mkdir()                                           # a folder of its own whose .git is a link to the other's
+    (folder / "wt" / ".git").symlink_to(owners / ".git")
+    assert not workers.linked(folder / "wt") and needs.tidy(folder) == [] and (owners / "a.txt").is_file()
+
+
+def test_a_worktree_git_wrote_with_relative_paths_is_the_repositorys_own(tmp_path, monkeypatch):
+    # git 2.48's `worktree add --relative-paths` (worktree.useRelativePaths): both files hold a relative path. Read as absolute
+    # only, the tree had no record, so the tidy kept it without a word and the report called it a hidden worker's
+    from yerk_ai import needs
+    home, repo, folder, git = _repo(tmp_path, monkeypatch)
+    wt = folder / "wt"
+    if git("worktree", "add", "-q", "--relative-paths", str(wt), "-b", "b", cwd=repo, check=False).returncode:
+        pytest.skip("this git has no worktree add --relative-paths")
+    assert (wt / ".git").read_text().startswith("gitdir: ../") and not (repo / ".git" / "worktrees" / "wt" / "gitdir").read_text().startswith("/")
+    assert workers.pointer(wt) == repo / ".git" / "worktrees" / "wt" and workers.linked(wt) and workers.branch(wt)["branch"] == "b"
+    (wt / ".git").write_text("gitdir: ../evil/.git/worktrees/wt\n")       # a relative path to a record of the worker's making: not taken
+    (folder / "evil" / ".git" / "worktrees" / "wt").mkdir(parents=True)
+    for f, text in (("commondir", "../..\n"), ("gitdir", "../../../../wt/.git\n"), ("HEAD", "ref: refs/heads/main\n")):
+        (folder / "evil" / ".git" / "worktrees" / "wt" / f).write_text(text)
+    assert workers.pointer(wt) == folder / "evil" / ".git" / "worktrees" / "wt" and not workers.linked(wt)
+    (wt / ".git").write_text("gitdir: ../../../../repo/.git/worktrees/wt\n")
+    assert workers.linked(wt) and needs.tidy(folder) == [] and not wt.exists()                 # tidied as any other
+
+
+def test_the_daemon_runs_no_git_in_a_folder_a_hidden_unit_wrote(tmp_path, monkeypatch):
+    # a hidden worker's folder is its own to write, a worktree's .git and whatever that names too, and its unit's list of
+    # worktrees began empty: out here its .git names `<repository>/.git/worktrees/wt`, which is another worktree's record
+    # whenever one of that name is there. So no path is asked whether it is safe: the worker's spec says its unit hid the home,
+    # and then the report reads no branch and the tidy runs no git, renaming each .git so that git in the leftover fails
+    from yerk_ai import needs
+    home, repo, folder, git = _repo(tmp_path, monkeypatch)
+    (folder / "worker.json").write_text(json.dumps({"room": "r", "need": {"day": "2026-11-24", "n": 1}, "hidden": True}))
+    assert workers.hid(folder) and not workers.hid(repo) and not workers.hid(folder / "wt")
+    another = home / "elsewhere" / "wt"                                   # the repository's worktree of that name, someone else's
+    git("worktree", "add", "-q", str(another), "-b", "another", cwd=repo)
+    wt = folder / "wt"
+    wt.mkdir()
+    (wt / "a.txt").write_text("the hidden worker's own edit")
+    (wt / ".git").write_text(f"gitdir: {repo / '.git' / 'worktrees' / 'wt'}\n")
+    assert git("status", "--porcelain", cwd=wt).stdout.strip() == "M a.txt"                 # git in it reads the other one's record
+    ran, program = tmp_path / "ran", tmp_path / "program"
+    program.write_text(f"#!/bin/sh\ntouch {ran}\nexit 1\n")
+    program.chmod(0o700)
+    work = home / "state" / "rooms" / "r" / "work" / "made"              # a repository of its making where a hidden room worker writes
+    git("init", "-q", "-b", "main", str(work), cwd=home)
+    with open(work / ".git" / "config", "a") as f:
+        f.write(f"[core]\n\tfsmonitor = {program}\n")
+    admin = work / ".git" / "worktrees" / "plug-wt"
+    admin.mkdir(parents=True)
+    for f, text in (("HEAD", "ref: refs/heads/main\n"), ("commondir", "../..\n"), ("gitdir", f"{folder / 'plug-wt' / '.git'}\n")):
+        (admin / f).write_text(text)
+    (folder / "plug-wt").mkdir()
+    (folder / "plug-wt" / ".git").write_text(f"gitdir: {admin}\n")
+    owners = home / "elsewhere" / "owners"                                # and a link to a clean worktree outside its walls
+    git("worktree", "add", "-q", str(owners), "-b", "owners", cwd=repo)
+    (folder / "link-wt").symlink_to(owners)
+    git("init", "-q", "-b", "main", str(folder / "own"), cwd=home)       # a whole repository of its making, in its own folder
+    with open(folder / "own" / ".git" / "config", "a") as f:
+        f.write(f"[core]\n\tfsmonitor = {program}\n")
+    (folder / "main").mkdir()                                             # and a folder whose .git is a link to the repository's own
+    (folder / "main" / ".git").symlink_to(repo / ".git")
+    (folder / "main" / workers.UNIT_GIT).mkdir()                          # with the new name taken first, by a folder that is not empty
+    (folder / "main" / workers.UNIT_GIT / "x").write_text("x")
+    stuck = work / ".git" / "worktrees" / "stuck-wt"                      # and one in a folder it left read-only, so nothing in it moves
+    stuck.mkdir()
+    for f, text in (("HEAD", "ref: refs/heads/main\n"), ("commondir", "../..\n"), ("gitdir", f"{folder / 'stuck-wt' / '.git'}\n")):
+        (stuck / f).write_text(text)
+    (folder / "stuck-wt").mkdir()
+    (folder / "stuck-wt" / ".git").write_text(f"gitdir: {stuck}\n")
+    (folder / "stuck-wt").chmod(0o500)
+    assert sorted(Path(t).name for t in workers.worktrees(folder)) == ["link-wt", "plug-wt", "stuck-wt", "wt"]
+    for name in ("wt", "plug-wt", "link-wt", "stuck-wt"):
+        assert "no record of it" in workers.branch(folder / name)["error"], name
+    assert needs.tidy(folder) == [] and not ran.exists()                                    # no git ran, on any of them
+    (folder / "stuck-wt").chmod(0o700)
+    assert (folder / "stuck-wt" / ".git").is_file()                                         # it would not move, and still no git ran
+    for name in ("wt", "plug-wt", "own", "main"):
+        assert not os.path.lexists(folder / name / ".git") and (folder / name / workers.UNIT_GIT).exists(), name
+        assert git("status", cwd=folder / name, check=False).returncode == 128, name       # git says it is no repository
+    assert len([x for x in (folder / "main").iterdir() if x.name.startswith(workers.UNIT_GIT)]) == 2   # moved beside the name taken
+    assert not ran.exists() and (repo / ".git" / "HEAD").is_file() and git("status", "--porcelain", cwd=repo).stdout == ""
+    assert (wt / "a.txt").read_text() == "the hidden worker's own edit"                     # its files stay, with its folder
+    for theirs in (owners, another):                                                        # the two outside: as they were
+        assert (theirs / ".git").is_file() and git("status", "--porcelain", cwd=theirs).stdout == "", theirs
+    assert workers.worktrees(folder) == [str(folder / "link-wt"), str(folder / "stuck-wt")]
+    (folder / "worker.json").write_text(json.dumps({"room": "r", "hidden": "yes"}))         # only the launch's own word counts
+    assert not workers.hid(folder)
 
 
 def test_a_state_folder_and_a_secrets_folder_outside_the_home_are_walled_like_the_home(tmp_path, monkeypatch):
