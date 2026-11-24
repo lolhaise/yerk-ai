@@ -157,3 +157,49 @@ def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path
     assert props[-2:] == [f"TemporaryFileSystem={run}:mode=0700", "PrivateTmp=yes"]   # a box without them: not named
     opened = workers.Systemd(state, hidden).sandbox(folder, _env(home, keys))[1::2]
     assert "PrivateTmp=yes" not in opened and not any(str(run) in p for p in opened)    # open: as it was
+
+
+def _state(state: Path, folder: Path) -> None:
+    """A fake state beside the worker's folder: a ledger, a memory index, texts, logs, the web cache, the trash, the daemon's
+    secrets, rooms, needs.json (need 7: its builder b11111 and this worker; need 8: c22222), a room's worker d33333."""
+    for d in ("docs", "texts", "logs", "web", ".trash", "workers/b11111", "workers/c22222", "workers/d33333", "secrets", "rooms/r/work",
+              "rooms/other/work", "accounts/two"):
+        (state / d).mkdir(parents=True, exist_ok=True)
+    for f in ("ledger.sqlite", "memory.sqlite", "doctor.json", "secrets/yerk-worker.secret", "secrets/yerk-http.secret"):
+        (state / f).write_text("x")
+    (state / "yerkd.json").write_text(json.dumps({"port": 1, "worker_secret_file": str(state / "secrets" / "yerk-worker.secret")}))
+    (state / "needs.json").write_text(json.dumps([{"day": "2026-11-24", "n": 7, "workers": ["b11111", folder.name, "..", "a/b"]},
+                                                  {"day": "2026-11-24", "n": 8, "workers": ["c22222"]}]))
+
+
+def test_a_hidden_home_gives_back_of_the_state_folder_only_docs_the_same_needs_workers_and_its_servers_two_files(tmp_path, monkeypatch):
+    # D4: the state folder is not bound whole. Its own folder, its room's work folder and its account (when it sits there),
+    # `docs` read-only, the same need's other workers read-only (the record's ids, never a scan), the worker secret only with
+    # the tools; never the ledger, the memory, the texts, the logs, the web cache, the trash, another need's or a room's worker
+    home, reach = _home(tmp_path, monkeypatch)
+    state, keys, folder, hidden = _walled(home)
+    _state(state, folder)
+    s, env = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach), _env(home, keys)
+
+    def of_state(spec: dict, env: dict[str, str] = env) -> list[str]:
+        (folder / "worker.json").write_text(json.dumps(spec))
+        return [p for p in s.sandbox(folder, env)[1::2] if str(state) in p]
+    mine = [f"BindPaths={folder}", f"BindPaths=-{state / 'rooms' / 'r' / 'work'}", f"BindReadOnlyPaths={state / 'docs'}"]
+    need = {"room": "r", "need": {"day": "2026-11-24", "n": 7, "role": "read"}}
+    assert of_state(need) == [*mine, f"BindReadOnlyPaths={state / 'workers' / 'b11111'}", f"ReadOnlyPaths={folder / 'worker.json'}"]
+    assert of_state({**need, "yerk_tools": ["recall"]}) == [*mine, f"BindReadOnlyPaths={state / 'workers' / 'b11111'}",
+                                                            f"BindReadOnlyPaths={state / 'yerkd.json'}",
+                                                            f"BindReadOnlyPaths={state / 'secrets' / 'yerk-worker.secret'}",
+                                                            f"ReadOnlyPaths={folder / 'worker.json'}"]
+    assert of_state({"room": "r"}) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]          # a room's worker: no kin
+    assert of_state({"room": "r", "need": {"day": "2026-11-24", "n": 9}}) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]
+    inside = {"CLAUDE_CONFIG_DIR": str(state / "accounts" / "two")}                                  # an account kept in the state
+    assert of_state({"room": "r"}, inside) == [mine[0], f"BindPaths={state / 'accounts' / 'two'}", *mine[1:], f"ReadOnlyPaths={folder / 'worker.json'}"]
+    props = s.sandbox(folder, env)[1::2]
+    named = " ".join(props)
+    for gone in ("ledger.sqlite", "memory.sqlite", "texts", "logs", "web", ".trash", "workers/c22222", "workers/d33333", "needs.json",
+                 "doctor.json", "secrets", "rooms/other"):
+        assert str(state / gone) not in named
+    assert not any(p.split("=", 1)[1].lstrip("-") == str(state) for p in props)                  # never the state folder whole
+    (state / "needs.json").write_text("not json")                                                 # a record that cannot be read: no kin
+    assert of_state(need) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]

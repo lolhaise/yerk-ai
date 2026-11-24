@@ -363,17 +363,43 @@ class Systemd:
     def back(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
         """What a hidden home binds back, as (path, "rw" | "ro" | "repo", "-" after one the daemon names that may be missing),
         each once and only when it is there and inside what is hidden (_roots): the worker's own folder and its account's
-        config folder read and write, its account's token read-only, its room's work folder as an open unit has it, and what
-        `reach` names. Never ~/.ssh, ~/.netrc, another account's folder, the private folder or a workspace of the owner's."""
-        room, token, roots = self._bound(spec), env.get("YERK_TOKEN_FILE", ""), self._roots()
-        work = [(self.state / "rooms" / room / "work", "rw-")] if self.state and room and "/" not in room and room not in (".", "..") else []
+        config folder read and write, its account's token read-only, its room's work folder as an open unit has it; of the
+        state folder only `docs` (the public docs mirror), the same need's other workers' folders (_kin) and, for a worker
+        with yerk_tools, the two files its memory server reads (_server), all read-only; and what `reach` names. Never
+        ~/.ssh, ~/.netrc, another account's folder, the private folder, a workspace of the owner's, or the state's ledger,
+        memory, texts, logs, web cache, trash, rooms or another need's or a room's worker."""
+        room, token, roots, state = self._bound(spec), env.get("YERK_TOKEN_FILE", ""), self._roots(), self.state or folder
+        work = [(state / "rooms" / room / "work", "rw-")] if room and "/" not in room and room not in (".", "..") else []
         want = [(folder, "rw"), (Path(env.get("CLAUDE_CONFIG_DIR") or folder), "rw"), *([(Path(token), "ro-")] if token else []),
-                *work, *self.reach()]
+                *work, (state / "docs", "ro"), *((folder.parent / w, "ro") for w in self._kin(spec) if w != folder.name),
+                *(self._server() if spec.get("yerk_tools") else ()), *self.reach()]
         out: list[tuple[Path, str]] = []
         for p, how in want:
             if all(p != q for q, _ in out) and any(p.is_relative_to(r) for r in roots) and (how.endswith("-") or p.exists()):
                 out.append((p, how))
         return out
+
+    def _kin(self, spec: dict[str, Any]) -> list[str]:
+        """The same need's workers (its builder, cold reads and fixes) by id, as the need's record keeps them (needs.update):
+        one file read at a start, never a scan of the workers' folders; none for a worker that is not a need's."""
+        from . import needs                            # late: needs is the pipeline's, and a room's worker never asks
+        need = spec.get("need")
+        if not isinstance(need, dict) or self.state is None:
+            return []
+        try:
+            row = needs.find(needs.load(self.state), str(need.get("day")), int(need.get("n") or 0)) or {}
+        except (OSError, ValueError, TypeError, needs.Unreadable):
+            return []
+        return [w for w in (str(x) for x in row.get("workers") or []) if w.isalnum()]
+
+    def _server(self) -> list[tuple[Path, str]]:
+        """What a worker's own memory server reads to reach the daemon (jobs.post_control): yerkd.json and the worker secret
+        it names, read-only; nothing when the daemon has not written it."""
+        try:
+            named = json.loads((self.state / "yerkd.json").read_text()).get("worker_secret_file") if self.state else ""
+        except (OSError, ValueError, AttributeError):
+            return []
+        return [(self.state / "yerkd.json", "ro"), (Path(named), "ro")] if self.state and named else []
 
     def _roots(self) -> list[Path]:
         """What a hidden home hides whole: the home, and the state folder where it lives outside it."""

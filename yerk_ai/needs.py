@@ -204,6 +204,8 @@ def update(s: Settings, state: Path, day: str, n: int, changes: dict[str, Any],
         if (r := find(rows, day, n)) is None or when is not None and not when(r):
             return None
         r.update(changes)
+        if (w := changes.get("worker")) and w not in (r.get("workers") or []):   # every worker it has had: a hidden one's kin
+            r["workers"] = [*(r.get("workers") or []), w]
         write_private(state / STORE, json.dumps(rows, indent=1, ensure_ascii=False))
         page(s, rows, day)
     return r

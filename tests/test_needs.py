@@ -282,3 +282,13 @@ def test_one_ability_said_twice_is_one_need_and_two_abilities_are_two():
     assert not needs.same("see a picture in a post", "upload a video") and not needs.same("read a scanned PDF", "send an email")
     assert not needs.same("", "see a picture")
     assert needs.same("read a PDF", "read a scanned PDF from an email") and not needs.same("see", "see a picture")   # inside, 2+ words
+
+
+def test_a_needs_record_keeps_each_worker_it_has_had_for_a_hidden_units_kin(tmp_path):
+    # [workers] home (2026-11-24): a hidden need worker sees the same need's other workers' folders, read-only, by the ids its
+    # record keeps (workers.Systemd._kin), one file read at a start, never a scan of every worker's folder
+    y, rec = ops(tmp_path)
+    day = need(y, "example-room", *ASK)["day"]
+    for w in ("b11111", "", "r22222", "b11111", "f33333"):
+        needs.update(y.memory, y.state, day, 1, {"worker": w})
+    assert needs.find(needs.load(y.state), day, 1)["workers"] == ["b11111", "r22222", "f33333"]
