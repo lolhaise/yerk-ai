@@ -187,6 +187,13 @@ def yerk_tools(conf: dict[str, Any]) -> list[str]:
     return [t for t in WORKER_TOOLS if t in want]
 
 
+def walled_trash(gate: dict[str, Any], folder: Path) -> dict[str, Any]:
+    """A hidden home's gate: the owner's Trash is not there and the state folder is not either, so trash-cli's `trash` puts a
+    worker's deletes in its own folder's .trash (in a throwaway unit of 2026-11-10: exit 74 without it, 0 with it)."""
+    t = list(gate.get("trash") or [])
+    return {**gate, "trash": [*t, "--trash-dir", str(folder / ".trash")]} if t and os.path.basename(t[0]) in ("trash", "trash-put") else gate
+
+
 def gate_settings(folder: Path) -> Path:
     """A worker's --settings: one PreToolUse hook on every tool call, the room's gates run as a local
     process (gates.py worker-hook: no daemon round trip, no secret) with the worker's folder as the root. A hook that
@@ -420,21 +427,36 @@ class Systemd:
                 out.append((p, p / room / "work" if room and "/" not in room and room not in (".", "..") else None))
         return out
 
-    def unseen(self, room: str, bind: str, token: str, paths: Sequence[str]) -> list[str]:
+    def walls(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, tuple[Path, ...]]]:
+        """A hidden home's fence, as _fence's for an open one: what is hidden whole (_roots) with all it binds back (back),
+        each of the DOORS that is there with nothing, and a hidden path outside both with its token. The one reading the
+        unit (walled) and the question (unseen) share for a hidden worker."""
+        roots, token = self._roots(), env.get("YERK_TOKEN_FILE", "")
+        backs = tuple(p for p, _ in self.back(spec, folder, env))
+        out = [(r, backs) for r in roots] + [(p, ()) for p, _ in DOORS if p.exists()]
+        return out + [(h, (Path(token),) if token and Path(token).is_relative_to(h) else ()) for h in self.hidden
+                      if not any(h.is_relative_to(r) for r in roots)]
+
+    def unseen(self, room: str, bind: str, token: str, paths: Sequence[str], spec: dict[str, Any] | None = None,
+               folder: Path | None = None, config: str = "") -> list[str]:
         """Of `paths`, those this unit hides from a worker of `room` (of `bind`, when the daemon's caller gave one; the calling
         room's own work folder is then hidden like any other room's) whose own token file is `token`: one of the hidden paths
         or under one, and not what comes back inside it (_fence). The rooms' root itself is hidden: a worker sees it holding
         one room. Each path as written and resolved, so a link into a hidden folder is hidden too, and a glob by the part
-        before its first wildcard; with no state folder there is no fence and nothing is hidden. Each once, in order."""
+        before its first wildcard; with no state folder there is no fence and nothing is hidden. Each once, in order. For a
+        worker the home is hidden from (hides: `spec`, the keys its worker.json will carry; `folder` and `config`, its folder
+        and its account's), the fence is that unit's (walls): a path is hidden when nothing binds it back."""
         if self.state is None:
             return []
-        fence, out = self._fence(self._bound({"room": room, "bind": bind}), token), []
-        for s in paths:
-            here = [Path(WILD.split(s, 1)[0])]                  # a glob: the part before its first wildcard
+        s, out = {**(spec or {}), "room": room, "bind": bind}, list[str]()
+        fence = (self.walls(s, folder, {"CLAUDE_CONFIG_DIR": config, "YERK_TOKEN_FILE": token}) if folder is not None and self.hides(s)
+                 else [(p, (b,) if b else ()) for p, b in self._fence(self._bound(s), token)])
+        for w in paths:
+            here = [Path(WILD.split(w, 1)[0])]                  # a glob: the part before its first wildcard
             with contextlib.suppress(OSError, RuntimeError):
                 here.append(here[0].resolve())
-            if s not in out and any(q.is_relative_to(p) and not (back and q.is_relative_to(back)) for q in here for p, back in fence):
-                out.append(s)
+            if w not in out and any(q.is_relative_to(p) and not any(q.is_relative_to(b) for b in backs) for q in here for p, backs in fence):
+                out.append(w)
         return out
 
     @staticmethod
@@ -862,13 +884,15 @@ class Workers:
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
         report, tasks_md = d / REPORT, d / TASKS
-        bind = str((more or {}).get("bind") or "")
-        if (unseen := self.launcher.unseen(room, bind, own_token(acct), named(brief))):   # told, never refused: a brief may
+        bind, yerk = str((more or {}).get("bind") or ""), [t for t in WORKER_TOOLS if t in self.conf.yerk_tools]   # one list: words, worker.json, server
+        hide = self.launcher.hides({**(more or {}), "room": room})            # [workers] home: as the unit will read it
+        if (unseen := self.launcher.unseen(room, bind, own_token(acct), named(brief), {**(more or {}), "yerk_tools": yerk}, d,
+                                           str(acct.config_dir))):   # told, never refused: a brief may
             log.info("worker %s: its brief names %d path(s) its unit hides", wid, len(unseen))   # quote what it never reads
         (d / "BRIEF.md").write_text(brief)
         if tasks:
             tasks_md.write_text("".join(f"- [ ] {t}\n" for t in tasks))
-        prompt, yerk = d / "PROMPT.md", [t for t in WORKER_TOOLS if t in self.conf.yerk_tools]   # one list: words, worker.json, server
+        prompt = d / "PROMPT.md"
         prompt.write_text(
             f"You are a Yerk AI worker: a headless Claude Code run with one brief, started from room {room}.\n"
             f"- Your folder is {d}. Write your files there unless the brief names another place.\n"
@@ -894,7 +918,8 @@ class Workers:
         spec = {"id": wid, "room": room, "account": acct.name, "model": model, "effort": effort, "session_id": sid,
                 "claude": shutil.which(claude_bin()) or claude_bin(), "tools": self.conf.tools,
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
-                "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
+                "tasks": str(tasks_md), "cap": cap, "gate": walled_trash(self.gate, d) if hide else self.gate,
+                "settings": str(gate_settings(d))}
         spec.update({k: v for k, v in (more or {}).items() if k not in spec})
         if yerk:
             spec["yerk_tools"] = yerk

@@ -1498,3 +1498,87 @@ def test_the_rooms_add_ons_and_the_ones_a_start_names_are_one_list_with_no_repea
         "mcp__abacus__sum", "mcp__abacus__chart", "mcp__slate__note"]
     assert list(json.loads((folder / "mcp.json").read_text())["mcpServers"]) == ["abacus", "slate"]
     assert "- You have the room's own mcp__abacus__sum, mcp__abacus__chart, mcp__slate__note too." in (folder / "PROMPT.md").read_text()
+
+
+def _hidden(s, monkeypatch, home="hidden"):
+    """A launcher with [workers] home = `home` on the setup's state folder, the setup's folder standing as the home; the
+    daemon's reach a checkout and the gate under it."""
+    monkeypatch.setenv("HOME", str(s.tmp))
+    (s.tmp / "yerk-ai" / ".git" / "objects").mkdir(parents=True, exist_ok=True)
+    (s.tmp / "tools").mkdir(exist_ok=True)
+    (s.tmp / "tools" / "pr-check").write_text("x")
+    unit = Record(s.tmp, fence_of(s.tmp))
+    unit.home, unit.reach = home, lambda: [(s.tmp / "yerk-ai", "repo"), (s.tmp / "tools" / "pr-check", "ro")]
+    return unit
+
+
+def test_a_hidden_units_question_and_its_properties_agree_on_every_path(setup, monkeypatch):
+    # D7: for a hidden worker the question (unseen) reads the unit's own fence (walls): a path is hidden exactly when it is
+    # under a TemporaryFileSystem or an InaccessiblePaths of the unit's and under no Bind line; outside the home only the
+    # doors (/mnt, /run/user/<uid>, /run/WSL, /run/tailscale) change anything
+    s = setup
+    unit, rooms, keys = _hidden(s, monkeypatch), s.tmp / "rooms", s.tmp / "secrets"
+    token, folder = keys / "claude-one.token", s.tmp / "workers" / "abc123"
+    (s.tmp / "docs").mkdir(exist_ok=True)
+    samples = [s.tmp, s.tmp / ".ssh" / "id_ed25519", s.tmp / "ledger.sqlite", s.tmp / "docs" / "GUIDE.md", folder, folder / "wt" / "x.py",
+               rooms / "r" / "work" / "a.md", rooms / "r" / "settings.json", rooms / "ops" / "work", keys, token, keys / "claude-two.token",
+               s.tmp / "yerk-ai" / "README.md", s.tmp / "yerk-ai" / ".git" / "config", s.tmp / "tools" / "pr-check", s.tmp / "tools" / "other",
+               s.tmp / "workers" / "b11111" / "REPORT.md", ROOT, Path("/usr/bin/git"), Path("/tmp/x.log"),
+               *(p / "x" for p, _ in workers.DOORS)]
+    folder.mkdir(parents=True)
+    for spec in ({"room": "r"}, {"room": "ops", "bind": "r"}, {"room": "r", "need": {"day": "2026-11-24", "n": 1}}):
+        (folder / "worker.json").write_text(json.dumps(spec))
+        env = {"YERK_TOKEN_FILE": str(token), "CLAUDE_CONFIG_DIR": str(s.tmp / "acct")}
+        props = unit.sandbox(folder, env)[1::2]
+        gone = [Path(re.sub(r"^\w+=-?|:ro$|:mode=0700$", "", p)) for p in props if p.startswith(("TemporaryFileSystem=", "InaccessiblePaths="))]
+        back = [Path(p.split("=", 1)[1].lstrip("-")) for p in props if p.startswith(("BindPaths=", "BindReadOnlyPaths="))]
+        by_props = [str(q) for q in samples if any(q.is_relative_to(g) for g in gone) and not any(q.is_relative_to(b) for b in back)]
+        asked = unit.unseen(spec["room"], spec.get("bind", ""), str(token), [str(q) for q in samples], spec, folder, env["CLAUDE_CONFIG_DIR"])
+        assert asked == by_props, spec
+        assert str(s.tmp / ".ssh" / "id_ed25519") in asked and str(s.tmp / "docs" / "GUIDE.md") not in asked
+        assert str(Path("/tmp/x.log")) not in asked and str(ROOT) not in asked or ROOT.is_relative_to(s.tmp)
+    assert unit.unseen("r", "", str(token), [str(s.tmp / ".ssh")]) == []          # no folder given: today's fence, which hides no home
+
+
+def test_a_need_brief_as_needs_writes_it_gets_no_note_in_a_hidden_unit_and_a_path_it_hides_does(setup, monkeypatch):
+    # D7: what the three need briefs name (the checkout, a plug-in's, the gate) is bound back, so a need's worker is told of
+    # nothing; a brief that names a hidden path gets today's note and today's answer
+    from yerk_ai import needs
+    s = setup
+    unit = _hidden(s, monkeypatch, "needs")
+    w = s.make({"r": Busy()}, launcher=unit)
+    repo, gate = s.tmp / "yerk-ai", str(s.tmp / "tools" / "pr-check")
+    r = {"day": "2026-11-24", "n": 7, "ability": "an ability", "pr": 5, "branch": "need-2026-11-24-7", "head": "abc1234",
+         "asks": [{"room": "r", "at": "2026-11-24 05:00", "mid": "m1", "asked": "a", "tried": "t", "needed": "n"}]}
+    for brief in (needs.brief(r, repo, gate), needs.read_brief(r, repo, gate), needs.fix_brief(r, repo, gate, "the suite fails")):
+        out, prompt = started(w, "r", brief, more={"need": {"day": "2026-11-24", "n": 7}})
+        assert out["ok"] and "unseen" not in out and "Not there for you" not in prompt, brief[:60]
+    out, prompt = started(w, "r", f"Read {s.tmp / '.ssh' / 'id_ed25519'} and {s.tmp / 'ledger.sqlite'}.", more={"need": {"day": "2026-11-24", "n": 7}})
+    hid = [str(s.tmp / ".ssh" / "id_ed25519"), str(s.tmp / "ledger.sqlite")]
+    assert out["unseen"] == hid and f"- Not there for you, since your unit hides them: {', '.join(hid)}. The brief names them" in prompt
+    out, prompt = started(w, "r", f"Read {s.tmp / '.ssh' / 'id_ed25519'}.")              # a room's worker under "needs": open
+    assert "unseen" not in out and "Not there for you" not in prompt
+
+
+def test_a_hidden_workers_deletes_go_to_its_own_trash_and_it_keeps_its_memory_tools(setup, monkeypatch):
+    # D6: the owner's Trash and the state folder are not there, so trash-cli's `trash x` exits 74 (a throwaway unit of
+    # 2026-11-10); with --trash-dir in the worker's own folder it exits 0. D5: the memory tools stay on, through the daemon
+    from yerk_ai.lifted import shellguard
+    s = setup
+    folder = s.tmp / "workers" / "abc123"
+    gate = {"trash": ["trash"], "private": "/p", "external": {}}
+    walled = workers.walled_trash(gate, folder)
+    assert walled == {**gate, "trash": ["trash", "--trash-dir", str(folder / ".trash")]} and gate["trash"] == ["trash"]
+    assert workers.walled_trash({"trash": ["gio", "trash"]}, folder) == {"trash": ["gio", "trash"]}   # not trash-cli: as it was
+    assert workers.walled_trash({}, folder) == {}
+    folder.mkdir(parents=True)
+    (folder / "notes.md").write_text("x")
+    new = shellguard.delete_rewrite("rm notes.md", str(folder), walled["trash"])
+    assert new and f"--trash-dir {folder / '.trash'}" in str(new)
+    for home, walled_ in (("hidden", True), ("open", False)):
+        w = s.make({"r": Busy()}, launcher=_hidden(s, monkeypatch, home), yerk_tools=["recall", "read_memory"])
+        w.gate = dict(gate)
+        out, _ = started(w, "r", "Do it.")
+        spec = json.loads((Path(out["staging"]) / "worker.json").read_text())
+        assert ("--trash-dir" in spec["gate"]["trash"]) is walled_ and spec["yerk_tools"] == ["recall", "read_memory"]
+        assert json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]["yerk"]["args"][-1] == "recall,read_memory"

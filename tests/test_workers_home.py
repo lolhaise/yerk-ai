@@ -203,3 +203,18 @@ def test_a_hidden_home_gives_back_of_the_state_folder_only_docs_the_same_needs_w
     assert not any(p.split("=", 1)[1].lstrip("-") == str(state) for p in props)                  # never the state folder whole
     (state / "needs.json").write_text("not json")                                                 # a record that cannot be read: no kin
     assert of_state(need) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]
+
+
+def test_needs_hides_the_home_from_a_needs_workers_and_leaves_a_room_started_one_open(tmp_path, monkeypatch):
+    # D1, P6: "needs" is the trial on the needs pipeline; a need's builder, cold read and fix carry the need in their spec
+    # (Workers.start), and every other worker keeps today's unit to the letter
+    home, reach = _home(tmp_path, monkeypatch)
+    state, keys, folder, hidden = _walled(home)
+    env = _env(home, keys)
+    opened = workers.Systemd(state, hidden).sandbox(folder, env)
+    needs = workers.Systemd(state, hidden, workers.MEMORY_MAX, "needs", reach)
+    assert needs.sandbox(folder, env) == opened                       # a room's worker: as it was
+    for role in ({}, {"role": "read"}, {"role": "fix"}):
+        (folder / "worker.json").write_text(json.dumps({"room": "r", "need": {"day": "2026-11-24", "n": 1, **role}}))
+        hid = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach).sandbox(folder, env)
+        assert needs.sandbox(folder, env) == hid and f"TemporaryFileSystem={home}:ro" in hid
