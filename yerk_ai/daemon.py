@@ -170,7 +170,7 @@ class Yerkd:
                                                                      self.budgets),
                                        self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs,
                                        state=state, hidden=(self.secret_file, state / "rooms", private / "secrets", sdir / "pages"),
-                                       models=self.models)
+                                       models=self.models, reach=self.worker_reach)
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
@@ -193,6 +193,12 @@ class Yerkd:
         self.link: Any = None                                         # the channel adapter: is it connected
         self.holds: tholds.Holds | None = None                         # texting's cards and the owner's word on them
         self.texting_to = ""                                           # the one room texting may show anything in (texting_room)
+
+    def worker_reach(self) -> list[tuple[Path, str]]:
+        """What a worker's unit gets back of a hidden home ([workers] home), read at each start: Yerk's own checkout and each
+        plug-in's repository (needs.plugins), the toolchains and the trash a delete becomes (workers.reach), the PR gate."""
+        repos = [REPO, *(Path(p["repo"]) for p in needs.plugins(self.room_confs, REPO).values())]
+        return workers.reach(repos, str(dict(self.conf.get("needs", {})).get("pr_check") or ""), list(self.gates.trash))
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:

@@ -62,6 +62,7 @@ import os
 import re
 import shlex
 import shutil
+import site
 import struct
 import subprocess
 import sys
@@ -103,6 +104,8 @@ YOUNG = 120.0                                  # seconds after its start a worke
 MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
 CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgroup v2: where a unit's memory.events is
 SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
+HOMES = ("open", "needs", "hidden")            # [workers] home: the owner's home as a worker's unit sees it (Systemd.sandbox)
+GIT_RW = ("objects", "refs", "logs", "worktrees", "FETCH_HEAD")   # all of .git a worktree add, a commit and a fetch write
 
 
 @dataclass
@@ -121,6 +124,7 @@ class Settings:
     relay_reply: int = 1500
     per_account: int = 1                # heavy workers at once on one account; the next waits in line
     yerk_tools: list[str] = field(default_factory=list)   # read-only Yerk AI tools (WORKER_TOOLS); none by default
+    home: str = "open"                  # one of HOMES; "hidden": the home empty but what a worker's job reaches; "needs": a need's workers only
 
 
 def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None = None) -> Settings:
@@ -131,7 +135,29 @@ def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None =
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
                     relay_message=0 if whole else int(relay.get("message", 1500)), relay_reply=0 if whole else int(relay.get("reply", 1500)),
-                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf), memory_max=memory_max(conf))
+                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf), memory_max=memory_max(conf),
+                    home=home(conf))
+
+
+def home(conf: dict[str, Any]) -> str:
+    """[workers] home, one of HOMES; any other value stops yerkd at its start, since a wall misspelt is no wall."""
+    if (v := str(conf.get("home", "open"))) not in HOMES:
+        raise SystemExit(f"yerkd.toml: [workers] home must be one of {', '.join(HOMES)}, not {v!r}")
+    return v
+
+
+def reach(repos: Sequence[Path], gate: str = "", trash: Sequence[str] = ()) -> list[tuple[Path, str]]:
+    """What a hidden home gives back of itself besides the worker's own folder and account (Systemd.sandbox), as (path, "ro" |
+    "rw" | "repo"), each measured over the need workers' folders (2026-11-10: 156; 2026-11-24: 262): every repository a need
+    is built in, a "repo" (its working tree read-only, of its .git only GIT_RW written: every need worker); uv and uvx, uv's
+    pythons and tools read-only and its cache written (the builders' and fixers' `uv run`, `uv sync`); python's user
+    site-packages, read-only (the trash a delete becomes runs from there); the browsers Playwright keeps, read-only (a page's
+    screenshot); and the pull request gate, read-only (every brief names it)."""
+    data, cache = (Path(os.environ.get(k) or Path.home() / d) for k, d in (("XDG_DATA_HOME", ".local/share"), ("XDG_CACHE_HOME", ".cache")))
+    out = [(Path(r), "repo") for r in repos] + [(Path(t), "ro") for x in ("uv", "uvx", *trash[:1]) if (t := shutil.which(x))]
+    out += [(Path(os.environ.get("UV_CACHE_DIR") or cache / "uv"), "rw"), (data / "uv", "ro"), (Path(site.getusersitepackages()), "ro"),
+            (Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or cache / "ms-playwright"), "ro")]
+    return out + ([(Path(gate).expanduser(), "ro")] if gate else [])
 
 
 def memory_max(conf: dict[str, Any]) -> str:
@@ -258,8 +284,15 @@ class Systemd:
     namespacing (`sandbox`), so no tool or shell shape gets around it. Every unit gets `memory_max`
     as its memory ceiling with no swap past it, and outlives a kill for memory (OOMPolicy=continue)."""
 
-    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = (), memory_max: str = MEMORY_MAX):
+    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = (), memory_max: str = MEMORY_MAX, home: str = "open",
+                 reach: Callable[[], Sequence[tuple[Path, str]]] | None = None):
         self.state, self.hidden, self.memory_max = state, tuple(hidden), memory_max
+        self.home, self.reach = home, reach or (lambda: ())
+
+    def hides(self, spec: dict[str, Any]) -> bool:
+        """[workers] home: "hidden" hides the home from every worker, "needs" from a need's builder, cold read and fix (their
+        spec carries the need: Workers.start), "open" from none."""
+        return self.home == "hidden" or (self.home == "needs" and bool(spec.get("need")))
 
     def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
         """The state folder read-only; the worker's own folder writable, and its account's config
@@ -269,9 +302,11 @@ class Systemd:
         worker's own token, bound back read-only for its first step) and every room's folder (its
         token, settings and override) not there at all. The worker secret stays readable: a worker's
         read-only memory tools reach the daemon with it. PrivateUsers is what lets a user manager set
-        up the mounts."""
+        up the mounts. A worker the home is hidden from (hides) gets `walled` instead."""
         if self.state is None:
             return []
+        if self.hides(spec := self._spec(folder)):
+            return [x for p in self.walled(spec, folder, env) for x in ("-p", p)]
         config = Path(env.get("CLAUDE_CONFIG_DIR") or folder)
         rw = [folder, *([config] if config != folder and config.is_relative_to(self.state) else [])]
         props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw)]
@@ -295,6 +330,48 @@ class Systemd:
             if back:
                 props.append(f"BindPaths=-{back}")
         return [x for p in props for x in ("-p", p)]
+
+    def walled(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[str]:
+        """A hidden home's unit: the home an empty read-only filesystem (systemd.exec's TemporaryFileSystem), the state folder
+        too where it lives outside it (_roots), with only what the worker's job reaches bound back (back); its own gate files
+        read-only, and a hidden path outside both (a private secrets/ elsewhere), as an open unit has them."""
+        roots, token = self._roots(), env.get("YERK_TOKEN_FILE", "")
+        props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots)]
+        for p, how in self.back(spec, folder, env):
+            if how != "repo":
+                props.append(f"{'BindReadOnlyPaths' if how.startswith('ro') else 'BindPaths'}={'-' if how.endswith('-') else ''}{p}")
+                continue
+            if (p / ".git").is_dir():         # git makes these two on first use, and .git is read-only in here
+                with contextlib.suppress(OSError):
+                    (p / ".git" / "worktrees").mkdir(exist_ok=True)
+                    if not (p / ".git" / "FETCH_HEAD").exists():
+                        (p / ".git" / "FETCH_HEAD").touch()
+            props += [f"BindReadOnlyPaths={p}", *(f"BindPaths={p / '.git' / n}" for n in GIT_RW if (p / ".git" / n).exists())]
+        props += [f"ReadOnlyPaths={folder / n}" for n in GATE_FILES if (folder / n).is_file()]
+        for p in (h for h in self.hidden if not any(h.is_relative_to(r) for r in roots)):
+            mine = bool(token) and Path(token).is_relative_to(p)
+            props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"] if mine else [f"InaccessiblePaths=-{p}"]
+        return props
+
+    def back(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
+        """What a hidden home binds back, as (path, "rw" | "ro" | "repo", "-" after one the daemon names that may be missing),
+        each once and only when it is there and inside what is hidden (_roots): the worker's own folder and its account's
+        config folder read and write, its account's token read-only, its room's work folder as an open unit has it, and what
+        `reach` names. Never ~/.ssh, ~/.netrc, another account's folder, the private folder or a workspace of the owner's."""
+        room, token, roots = self._bound(spec), env.get("YERK_TOKEN_FILE", ""), self._roots()
+        work = [(self.state / "rooms" / room / "work", "rw-")] if self.state and room and "/" not in room and room not in (".", "..") else []
+        want = [(folder, "rw"), (Path(env.get("CLAUDE_CONFIG_DIR") or folder), "rw"), *([(Path(token), "ro-")] if token else []),
+                *work, *self.reach()]
+        out: list[tuple[Path, str]] = []
+        for p, how in want:
+            if all(p != q for q, _ in out) and any(p.is_relative_to(r) for r in roots) and (how.endswith("-") or p.exists()):
+                out.append((p, how))
+        return out
+
+    def _roots(self) -> list[Path]:
+        """What a hidden home hides whole: the home, and the state folder where it lives outside it."""
+        home = Path.home()
+        return [home, *([self.state] if self.state and not self.state.is_relative_to(home) else [])]
 
     def _fence(self, room: str, token: str) -> list[tuple[Path, Path | None]]:
         """Each hidden path with what comes back inside it, for a worker of `room` (_room's) whose own token file is `token`:
@@ -336,10 +413,16 @@ class Systemd:
     def _room(cls, folder: Path) -> str:
         """The room whose work folder the worker gets, from the spec Workers.start wrote before the launch: its own, or the
         `bind` the daemon gave it (a pictures backfill: its card in the machine room, the pictures in the owner room's inbox)."""
+        return cls._bound(cls._spec(folder))
+
+    @staticmethod
+    def _spec(folder: Path) -> dict[str, Any]:
+        """The spec Workers.start wrote before the launch; {} when there is none or it is not one."""
         try:
-            return cls._bound(json.loads((folder / "worker.json").read_text()))
+            spec = json.loads((folder / "worker.json").read_text())
         except (OSError, ValueError):
-            return ""
+            return {}
+        return spec if isinstance(spec, dict) else {}
 
     def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path, cap: float, post: list[str]) -> None:
         cmd = ["systemd-run", "--user", "--unit", unit, "--collect", "--quiet", "--working-directory", str(cwd),
@@ -632,14 +715,16 @@ class Workers:
 
     def __init__(self, ledger: Ledger, conf: Settings, accounts: list[Account], cooldowns: Cooldowns,
                  rooms: dict[str, Any], channels: dict[str, Any], room_confs: dict[str, dict[str, Any]],
-                 launcher: Systemd | None = None, state: Path | None = None, hidden: Sequence[Path] = (), models: dict[str, str] | None = None):
+                 launcher: Systemd | None = None, state: Path | None = None, hidden: Sequence[Path] = (), models: dict[str, str] | None = None,
+                 reach: Callable[[], Sequence[tuple[Path, str]]] | None = None):
         self.ledger, self.conf, self.accounts, self.cooldowns = ledger, conf, accounts, cooldowns
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs, self.models = rooms, channels, room_confs, models or {}
         # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
         # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox;
-        # and every unit gets [workers] memory_max as its memory ceiling
-        self.launcher: Systemd = launcher or Systemd(self.state, hidden, conf.memory_max)
+        # and every unit gets [workers] memory_max as its memory ceiling; with [workers] home hidden, the home is not there
+        # but what `reach` names (the daemon's: its repositories, the toolchains, the gate)
+        self.launcher: Systemd = launcher or Systemd(self.state, hidden, conf.memory_max, conf.home, reach)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
