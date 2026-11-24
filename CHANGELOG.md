@@ -8,28 +8,42 @@ version changes.
 
 ## 2026-11-24
 
-### workers-home-2026-11-24 (its pull request to come)
+### workers-home-2026-11-24 (#131)
 
 - `[workers] home` hides the owner's home from a worker's unit. `open`, the default, leaves every unit exactly as it was (a
   test holds its whole property list). `needs` hides it from a need's builder, cold read and fix only. `hidden` hides it
   from every worker. Any other value stops yerkd at its start with one line.
 - A hidden unit's home is an empty read-only filesystem with only what the job reaches bound back: its own folder, its
-  account's config folder and token, its room's work folder, Yerk's checkout and each plug-in's (the working tree
-  read-only; of .git only objects, refs, logs, worktrees and FETCH_HEAD writable, so .git/config and hooks stay read-only),
-  uv and its cache, each python's user site-packages, Playwright's browsers and the PR gate. Each one is a step the 106
-  need workers since 2026-11-10 used.
+  account's token, Yerk's checkout and each plug-in's (the working tree read-only; of .git only objects, refs, logs and
+  FETCH_HEAD writable, so .git/config and hooks stay read-only), uv and a uv cache only hidden workers use, each python's
+  user site-packages, Playwright's browsers and the PR gate. Each one is a step the 106 need workers since 2026-11-10 used.
+  A worker that is not a need's gets its room's work folder too.
+- Its account's own config folder is not there (it holds every room's transcripts on that account, and the settings other
+  programs run): a hidden worker has a Claude config folder in its own folder and logs in with its account's token file, so
+  an account without one starts no hidden worker and says so. The owner's uv cache is not there either: uv hard-links, so its
+  files are the running daemon's.
 - Of the state folder a hidden unit sees only its own folder, `docs` (read-only), the same need's other workers' folders
   (read-only, by the ids the need's record now keeps) and, with `yerk_tools`, the two files its memory server reads. The
   ledger, the memory index, the texts, the logs, the web cache, the trash and every other worker's transcript are not
   there.
 - The other doors are shut under a hidden home too: `/run/user/<uid>` is the unit's own empty folder (the user bus,
   rootless Docker and the SSH agent no longer answer), `/run/WSL` and `/run/tailscale` are not there (Windows interop, the
-  tailnet), `/mnt` is empty (Windows' drives, and the whole disk again under WSLg), and `/tmp` is the unit's own. Each was
-  measured open with only the home hidden and shut with this list, in throwaway units.
+  tailnet), `/mnt` is empty (Windows' drives, and the whole disk again under WSLg), the journals are not there, `/tmp` is the
+  unit's own, and it makes no socket but Unix, IP and netlink ones (WSL's Windows side answers on the virtual machine's
+  sockets, its drives' file server too) and no io_uring. Each was measured open with only the home hidden and shut with
+  this list, in throwaway units.
+- Its list of git worktrees is the unit's own: in a unit that hides their folders every other worktree reads as gone, and one
+  `git worktree prune` would have dropped their records. The daemon runs git on a worker's worktree only when that worktree's
+  repository knows it, so a .git a worker wrote never has git outside run what a config of the worker's names.
 - A hidden worker keeps its memory tools. Its deletes go to a `.trash` in its own folder. The note about paths its unit
   hides reads the unit's own fence, so the three need briefs get none.
+- The worker secret reads memory and nothing else again: a call with `recall` or `read_memory` beside another key
+  (`worker`, `job`, `needs`) was let through and the other key served, since Layer 5. Each now answers alone in its call.
+- yerk-index's meaning search asks for its run's token, which index.json (0600) names beside the port: any local process
+  could search the owner's memory on that port with no login. An older daemon or index keeps answering the other's newer
+  half for the minute a deploy restarts them one after the other.
 - **Upgrading**: nothing changes until yerkd.toml has `home = "needs"` or `home = "hidden"` under `[workers]`, read at
-  yerkd's start.
+  yerkd's start. Each account a hidden worker may run on needs its token file (accounts.toml, `token`).
 
 ## 2026-11-23
 
