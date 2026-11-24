@@ -468,6 +468,21 @@ def test_a_job_runs_folder_goes_after_its_days_once_ended_and_delivered_and_neve
     assert r["kinds"]["jobs"] == [2, 6] and "error" not in r
 
 
+def test_a_watchs_held_finding_keeps_its_folder_past_its_days_and_a_batched_or_delivered_one_goes(tmp_path):
+    """J4: a held finding's output is what its room is told when the hour allows, so its folder stays whatever its age; one
+    told with a newer run (batched) and a delivered one go after their days, as any run's."""
+    from yerk_ai.jobs import BATCHED, HELD
+    priv, state, projects, led = layer(tmp_path)
+    runs = {}
+    for stamp, delivery in (("20261001-040000", HELD), ("20261002-040000", f"{BATCHED}9"), ("20261003-040000", "delivered")):
+        runs[stamp] = put(state / "jobs" / "shop" / stamp / "stdout", "found", days=30).parent
+        led.job_run_add(job="shop", kind="script", room="room-a", fired=NOW - 30 * DAY, ended=NOW - 30 * DAY, delivery=delivery,
+                        folder=str(runs[stamp]))
+    r = retention.run(priv, state, now=NOW)
+    assert runs["20261001-040000"].exists() and (runs["20261001-040000"] / "stdout").read_text() == "found"
+    assert not runs["20261002-040000"].exists() and not runs["20261003-040000"].exists() and r["kinds"]["jobs"][0] == 2
+
+
 def test_a_dry_run_moves_nothing_and_counts_what_the_run_then_moves(tmp_path):
     priv, state, projects, led = layer(tmp_path, "[retention]\ntranscripts = 1\n")
     put(state / "logs" / "room-a.jsonl", '{"t": 1}\n', days=1)

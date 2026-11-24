@@ -150,11 +150,12 @@ fix ID PATH:LINE NOTE: a call (as the morning diff numbers it) that stood on a w
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
-### yerk jobs ACTION
+### yerk jobs ACTION [NAME]
 
-scheduled jobs from the private jobs.toml: sync (one systemd user timer and service per job, the diff, then every next fire time read back) or list (the read-back)
+scheduled jobs from the private jobs.toml: sync (one systemd user timer and service per job, the diff, then every next fire time read back), list (the read-back) or stop NAME (its run in progress ends; the timer and the next fire stay)
 
-- `ACTION`: one of sync, list
+- `ACTION`: one of sync, list, stop
+- `[NAME]`: stop: the job's name
 - `--json`
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)

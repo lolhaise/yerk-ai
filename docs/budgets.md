@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 134562`
+- `total = 134612`
 
 ## [session_start.claude_code]
 
@@ -142,9 +142,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-23, watch-jobs-2026-11-23: the `schedule` tool's `deliver` "tell" (a watch: a script whose output, when there is any, the room is told) and its `wakes` (at most that many turns an hour), since a polling check ran a model turn on every fire, a check that found nothing too (the owner's ask, Mon Nov 23): schedule 2,694 to 2,875 as this tree builds it, all 25 from 26,941 to 27,122 (181 more, measured on main f49c652 and on this tree the same way, each entry's compact JSON), on the about 29,388 the rooms send, so about 29,569, 169 over the line; so 29,600, no part could pay, the total rose by the 200 (to 134,562 on main's 134,362). The hands plug-in's tool entries do not change.
 
+2026-11-23, jobs-care-2026-11-23: the `schedule` tool's `stop` (a job's run in progress ended, its timer left), since a running job could only be ended by hand with systemctl (the owner's ask, Mon Nov 23): schedule's description 58 characters longer as this tree builds it (1,903 to 1,961, its compact JSON, measured on main d5a6b59 and on this tree the same way), on the about 29,569 the rooms send, so about 29,627, 27 over the line; so 29,650, no part could pay, the total rose by the 50 (to 134,612 on main's 134,562). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 29600`
+- `yerk_tools = 29650`
 - `deferred_tool_names = 3781`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -871,7 +873,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-23: compact-focus-2026-11-23 raised it by 10, the words a compaction is sent with and the room key over them (the owner's ask, Mon Nov 23), not folded to fit (words.py 6, daemon.py 2, config.py 1, room.py 1). 35,678: 35,668 plus 10.
 
-- `lines = 35678`
+2026-11-23: jobs-care-2026-11-23 raised it by 210, the four decisions of jobs care (the owner's ask, Mon Nov 23), not folded to fit (jobs.py 159: Systemd.stop, stop_script, stop_now, idle, next_fire and Jobs.stop, a stop's row closed as stopped; failure, streak, edit, hhmm, failed and recovered, one alert per unchanged failure edited in place and its ok-again edit; doctor.py 36: job_review, read only; cli.py 7: `yerk jobs stop NAME`; words.py 6; retention.py 1: a held finding's folder kept; mcp_server.py 1). 35,888: 35,678 plus 210, recounted after main d5a6b59 was merged in (jobs.py 3 more: the judge's fixes, a stop names the run it found and clears the unit's failed state).
+
+- `lines = 35888`
 
 ## Uncapped
 

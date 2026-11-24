@@ -8,14 +8,34 @@ version changes.
 
 ## 2026-11-23
 
+### jobs-care-2026-11-23 (#130)
+
+- Jobs: `yerk jobs stop NAME`, and the schedule tool's `stop` in an owner room, end a job's run in progress. A script's
+  unit is stopped and its run closed as stopped; an agent job's worker is stopped; the machine room gets one stopped
+  line, never the failure alert. The timer is left, so the next fire stays; a one-shot leaves the jobs file. A
+  script's run is stopped with the daemon down too, the command saying the machine room was not told. A stop reads as
+  a failure nowhere, and a stop with nothing running says when the job last ran and its next fire.
+- Jobs: a recurring job that keeps failing the same way edits its one alert in the machine room ("3 times since
+  02:10, last 02:30") instead of posting a red line per run, and its first good run edits it once more to say it is
+  ok again. A different failure, a good run between or a post that cannot be edited posts anew; one-shots and the
+  other lines in the machine room post as before.
+- Doctor: `yerk doctor` reviews the jobs: a job whose room or account is not on file, a one-shot past its time still
+  in the jobs file, runs of the last day that did not start, were cut or are undelivered, and a watch's findings held
+  more than a day, one line each with what to do. It changes nothing, and a jobs file or ledger it cannot read is said.
+- Retention: the folder of a watch's held finding is kept whatever its age.
+
+**Upgrading**: nothing to do. budgets.toml's `[code] lines` and `yerk_tools` rise with the change.
+
 ### compact-focus-2026-11-23 (#129)
 
 - Compaction: every compaction Yerk AI starts (the copy's, the held one, the one before an overflow's rerun and
   `yerk room compact`) now tells Claude Code what its summary keeps besides its own: the person's standing orders in
   their words, everything still owed to them as it was said, and `UNVERIFIED:` in front of anything no tool result
-  confirmed. Measured on copies of three real sessions, three summaries with the words and three without, scored blind
-  against items listed off the conversation: more of what is owed and more of the guesses came back, the guesses marked
-  as guesses; orders, facts and failures held. Claude Code's own compaction inside a turn is unchanged.
+  confirmed. Measured on copies of real sessions, summaries with the words and without, scored blind against items listed
+  off the conversation: at Claude Code's default effort more of what is owed came back and more of the guesses were
+  marked as guesses; at the rooms' own effort (max) what is owed, orders, facts and failures were equal and the guesses
+  written as facts fell from 2.0 to 1.0 of 6 on Fable 5.2 (2.0 to 1.5 on Opus 5.5), a compaction taking 20 to 30% longer, on
+  a copy with the room free. Claude Code's own compaction inside a turn is unchanged.
 - rooms.toml: a room's `compact_focus` is its own text for that; empty or false sends `/compact` alone, as before.
 
 ### watch-jobs-2026-11-23 (#128)

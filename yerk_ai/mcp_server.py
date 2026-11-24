@@ -245,7 +245,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
         rooms set one. `deliver` "announce" (default), "silent" (run and ledger, never post) or, for a script, "tell" (a watch:
         this room is told its output when there is any, at most `wakes` turns an hour, default 6). Returns the
-        next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.
+        next fire time read back from systemd. "remove": by `name`. "stop": by `name`, its run going now; the timer stays.
+        "list": the jobs this room may see.
         <example>"remind me Saturday at 10 to call the clinic": action "add", kind "note", name
         "call-clinic", when "2026-10-24 10:00", what "Remind them to call the clinic now."</example>"""
         req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz, "deliver": deliver,

@@ -234,7 +234,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `assembled`: days the rooms' assembled.jsonl keep (default 14)
 - `transcripts`: days Claude Code's transcripts keep (default 30)
 - `ledger`: days of the ledger's timing rows (default 90)
-- `jobs`: days a job run's folder keeps after the run ended, and a run still undelivered keeps it (default 14)
+- `jobs`: days a job run's folder keeps after the run ended; a run still undelivered, or a watch's finding held, keeps it (default 14)
 - `workers`: days a finished worker's folder keeps (default 30)
 - `pytest`: days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days (default 1)
 - `built`: days what a finished worker's run built keeps in its folder: each virtual environment (a folder holding pyvenv.cfg) and each folder named __pycache__, .mypy_cache, .ruff_cache, .pytest_cache or node_modules; the rest of its folder keeps `workers` days (default 1)

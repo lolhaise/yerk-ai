@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import stat
 import time
-from contextlib import suppress
+from contextlib import closing, suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -270,6 +271,41 @@ def drift(name: str, own: dict[str, Any], base: dict[str, Any]) -> str:
     return f"{words.NOT_DONE if missing else words.WORKING} room {name}: {'; '.join(said)}; in rooms.toml, {', and '.join(fix)}" if said else ""
 
 
+def job_review(private: Path, state: Path, now: float, units: jobs.Systemd | None = None) -> list[str]:
+    """The jobs as they stand, read only (it starts, stops, edits or removes nothing): a job whose room or account is not on
+    file, a one-shot past its time still in the jobs file and not running, a job's runs of the last day that did not start,
+    were cut or are not delivered, and a watch's findings held more than a day. A file that cannot be read is said."""
+    table, errors = jobs.load(path := private / jobs.FILE, now=0)
+    if "(file)" in errors:
+        return [f"{RED} jobs: the jobs file cannot be read ({words.no_paths(errors['(file)'])[:80]}); no job was reviewed"]
+    out, rs, accounts = list[str](), rooms(private), {a.name for a in load_accounts(private / "accounts.toml")}
+    for n, j in table.items():
+        out += [f"{RED} job {n}: room {j.room} is not in rooms.toml; add it there or give the job a room that is"] * (j.room not in rs)
+        out += [f"{RED} job {n}: account {j.account} is not in accounts.toml; add it there or fix the job's account"] * bool(
+            j.account and j.account not in accounts)
+    if past := {n for n, j in table.items() if j.when == "at" and j.at_epoch <= now}:      # running: its own run takes it out
+        out += [f"{ORANGE} job {n}: a one-shot whose time ({jobs.when_text(table[n].at_epoch, table[n].tz)}) has passed is still in the jobs file, not running; "
+                f"`yerk schedule remove {n}`, or give it a time to come" for n in sorted(past - set(jobs.running_one_shots(
+                    path, units or jobs.Systemd(), jobs.load(path, now)[1])))]
+    try:
+        with closing(sqlite3.connect((state / "ledger.sqlite").resolve().as_uri() + "?mode=rw", uri=True)) as db:   # never made
+            runs = db.execute("SELECT job, fired, result, delivery FROM job_runs WHERE fired >= ? OR delivery = ? ORDER BY fired",
+                              (now - DAY, jobs.HELD)).fetchall()       # a SELECT alone: its -wal and -shm go as it closes
+    except sqlite3.Error as e:
+        return out + [f"{ORANGE} jobs: the ledger cannot be read ({e}); no run was reviewed"]
+    bad, held = dict[str, list[float]](), dict[str, list[float]]()
+    for job, fired, result, delivery in runs:          # a stop is a person's: neither did not start nor cut
+        if fired >= now - DAY and (result in ("did not start", "cut") or str(delivery).startswith("undelivered")
+                                   and not (delivery == jobs.WAITING and fired > now - 3600)):
+            bad.setdefault(job, []).append(fired)
+        if delivery == jobs.HELD and fired < now - DAY:
+            held.setdefault(job, []).append(fired)
+    out += [f"{ORANGE} job {n}: {len(t)} of its runs in the last day did not start, were cut or are not delivered, the last at "
+            f"{words.clock(t[-1], now)}; `yerk status --full` and the runs' folders say why" for n, t in bad.items()]
+    return out + [f"{ORANGE} watch {n}: {len(t)} of its findings held more than a day, the oldest from {words.clock(t[0], now)}; "
+                  "a daemon start tells them" for n, t in held.items()]
+
+
 def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings, now: float, last: dict[str, Any],
            found: list[str], dry: bool = False) -> dict[str, Any]:
     """Every check but the crash repair, each finding a line in `found`; returns the sizes and rule shape totals to keep."""
@@ -516,7 +552,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     def from_line() -> None:        # each email under the bare address, no name on its From line (need 102, 2026-11-16)
         found.extend([f"{ORANGE} {words.EMAIL_NAME_MISSING}"] if emails.nameless(dict(conf.get("gmail") or {})) else [])
 
-    for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
+    for what, check in (("layout", layout), ("jobs", lambda: found.extend(job_review(private, state, now))), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
                         ("cites", cites), ("code", code), ("rule shape", ruleshape), ("lesson shape", lesson_shape), ("fit", fits),
                         ("moved in", moved), ("backup", backed), ("email name", from_line),

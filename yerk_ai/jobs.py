@@ -75,7 +75,7 @@ OUTPUT_MAX = 4000                 # characters of a script's output posted; the 
 WAKES, WAKES_MOST, HOUR = 6, 60, 3600.0   # a watch's turns in any hour: its default and most (`wakes`)
 HELD, BATCHED = "held: past its wakes in the hour", "held: told with run "   # a watch's finding the bound kept (Jobs.release)
 HELD_BACK = "told for the findings held back before it"                     # the note of the run that told them
-ALERT_MAX = 300
+ALERT_MAX, STOP_WAIT = 300, 150      # STOP_WAIT: seconds `systemctl stop` may take (systemd's 90 s stop wait, then SIGKILL)
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
 KEPT, UNHEARD, RETRY_WITHIN = "job.json", "undelivered: the daemon is not running", 86400.0   # an agent run no daemon took (Jobs.retry)
 RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # an agent job's hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
@@ -548,8 +548,8 @@ class Systemd:
     def reload(self) -> None:
         systemctl("daemon-reload", check="daemon-reload")
 
-    def _unit_cmd(self, *args: str) -> str:
-        p = systemctl(*args)
+    def _unit_cmd(self, *args: str, timeout: float = 60) -> str:
+        p = systemctl(*args, timeout=timeout)
         return "" if p.returncode == 0 else f"systemctl --user {' '.join(args)} exited {p.returncode}: {p.stderr.strip()[:200]}"
 
     def enable_now(self, timer: str) -> str:
@@ -560,6 +560,11 @@ class Systemd:
 
     def disable_now(self, timer: str) -> str:
         return self._unit_cmd("disable", "--now", timer)
+
+    def stop(self, unit: str) -> str:                         # back once it is down: systemd's stop wait, then its kill
+        why = self._unit_cmd("stop", unit, timeout=STOP_WAIT)
+        self._unit_cmd("reset-failed", unit)                  # a oneshot killed reads failed (Result=signal): a stop is no failure
+        return why
 
     def running(self, unit: str) -> bool:                     # a one-shot service is activating while its run goes
         return systemctl("is-active", unit).stdout.strip() in ("active", "activating")
@@ -941,8 +946,76 @@ def schedule_remove(path: Path, units: Systemd, env: Env, name: str) -> dict[str
     except (OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": f"the sync failed: {e}"}
     if not had and name not in p.removed:
-        return {"ok": False, "error": f"no job {name!r} in the jobs file; jobs: {', '.join(p.jobs) or 'none'}"}
+        return {"ok": False, "error": no_job(name, p.jobs)}
     return {"ok": True, "name": name, "removed": True, "diff": diff_lines(p)}
+
+
+def failure(r: dict[str, Any]) -> bool:
+    """A run J2 counts as failed: a script's error exit or time out, an agent job's end that is not done, did not start or
+    stopped (a person's stop is neither a failure nor a good run)."""
+    if r["kind"] == "script":
+        return r["result"] == "timed out" or str(r["result"]).startswith("exit ")
+    return r["kind"] == "agent" and r["result"] not in ("done", "no_reply", "did not start", "stopped", None)
+
+
+def no_job(name: str, jobs: Collection[str]) -> str:
+    return f"no job {name!r} in the jobs file; jobs: {', '.join(jobs) or 'none'}"
+
+
+def next_fire(job: Job, units: Systemd) -> str:
+    """The job's next fire as systemd has it, in its zone; a timer list that cannot be read is said so."""
+    try:
+        r = readback({job.name: job}, units).get(job.name) or {}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return "not read (the timer list could not be read)"
+    return f"{when_text(r['next'], job.tz)} ({in_text(r['next'], time.time())})" if r.get("next") else "none"
+
+
+def idle(job: Job, units: Systemd, ledger: Ledger) -> dict[str, Any]:
+    """A stop with nothing of the job running (J1): when it last ran and its next fire, read back."""
+    last = ledger.job_runs(job=job.name, limit=1)
+    return {"ok": False, "error": words.JOB_IDLE.format(name=job.name, next=next_fire(job, units),
+                                                        last=when_text(float(last[0]["fired"]), job.tz) if last else "never")}
+
+
+def stop_script(path: Path, units: Systemd, env: Env, ledger: Ledger, job: Job, who: str) -> dict[str, Any]:
+    """A script job's run in progress stopped (J1): its service stopped and read back as down, then every unended run row of
+    the job closed as stopped, never as a failure; a row the runner ended first is left as it is. A one-shot then leaves the
+    file and its units go, as at the end of any run; a recurring job's timer is never touched."""
+    if not units.running(service := f"{job.unit}.service"):
+        return idle(job, units, ledger)
+    found = ledger.job_runs(job=job.name, unended=True, limit=10**6)      # the run going now, as the stop found it
+    if (why := units.stop(service)) or units.running(service):
+        return {"ok": False, "error": f"{job.name} was not stopped: {why or service + ' still runs'}"}
+    now, closed = time.time(), ledger.job_runs(job=job.name, unended=True, limit=10**6)
+    for r in closed:
+        ledger.job_run_set(int(r["id"]), ended=now, exit="stopped", result="stopped", delivery="none", note=f"stopped from {who}")
+    if job.when == "at":
+        remove(path, job.name)
+        sync(path, units, env)
+    run = (closed or found or [{"id": 0, "fired": now}])[0]      # none on file yet: stopped as the runner started
+    return {"ok": True, "name": job.name, "run": int(run["id"]), "closed": [int(r["id"]) for r in closed], "line": words.JOB_STOP.format(
+        name=job.name, what=f"script run {run['id']}" if run["id"] else "script, its run not on record yet", ran=words.span(now - float(run["fired"])),
+        next="none: a one-shot, out of the jobs file, its units gone" if job.when == "at" else next_fire(job, units))}
+
+
+def stop_now(private: Path, state: Path, units: Systemd, name: str) -> dict[str, Any]:
+    """`yerk jobs stop NAME`: the daemon's stop when one answers; with none, a script's run is stopped and closed here (the
+    machine room's line said as not posted) and an agent job's worker, the daemon's, is left: nothing is stopped."""
+    try:
+        return post_control(state, {"job": {"action": "stop", "name": name}}, timeout=STOP_WAIT + 60)
+    except (OSError, ValueError) as e:
+        if not not_listening(e):
+            return {"ok": False, "error": f"the daemon did not answer: {e}"}
+    jobs = load(private / FILE, now=0)[0]
+    if (job := jobs.get(name := name.strip().lower())) is None:
+        return {"ok": False, "error": no_job(name, jobs)}
+    if job.kind == "agent":
+        return {"ok": False, "error": words.JOB_STOP_DOWN.format(name=name)}
+    ledger = Ledger(state / "ledger.sqlite")
+    out = stop_script(private / FILE, units, env_for(private, state), ledger, job, "the command line") if job.kind == "script" \
+        else idle(job, units, ledger)
+    return {**out, "line": f"{out['line']}; {words.JOB_STOP_UNTOLD}"} if out["ok"] else out
 
 
 def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> dict[str, Any]:
@@ -1005,7 +1078,9 @@ class Jobs:
             return await self.fire(str(req.get("name", "")), int(req.get("run") or 0))
         if action == "result":
             return await self.result(req)
-        return {"ok": False, "error": f"no action {action!r}; actions: add, remove, list, sync"}
+        if action == "stop":
+            return await self.stop(str(req.get("name", "")), f"room {caller}" if caller else "the command line")
+        return {"ok": False, "error": f"no action {action!r}; actions: add, remove, list, sync, stop"}
 
     async def notes(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The schedule tool in a room that is not the owner's. A note runs nothing as the owner (its room is told
@@ -1058,6 +1133,27 @@ class Jobs:
         if out["ok"]:
             log.info("job %s: removed", name)
         return out
+
+    async def stop(self, name: str, who: str) -> dict[str, Any]:
+        """A job's run in progress stopped (J1): a script's by stop_script, the machine room then told the stopped worker's
+        line, never the failure alert; an agent job's running worker by Workers.stop, its end ("stopped") saying itself."""
+        if (job := self.jobs().get(name := name.strip().lower())) is None:
+            return {"ok": False, "error": no_job(name, self.jobs())}
+        if job.kind == "script":
+            if (out := await asyncio.to_thread(stop_script, self.path, self.units, self.env(), self.ledger, job, who)).get("closed"):
+                await self.alert(job, words.job_line(name, "stopped"), out["closed"][0])     # a run the runner ended says itself
+            return out
+        rows = [r for r in self.ledger.workers(running=True) if r.get("job") == name] if job.kind == "agent" else []
+        if not rows:
+            return await asyncio.to_thread(idle, job, self.units, self.ledger)
+        for row in rows:                         # an older run's still going counts; the newest is the one named
+            if not (out := await self.workers.stop(str(row["id"])))["ok"]:
+                return out
+            log.info("job %s: worker %s stopped from %s", name, row["id"], who)
+        return {"ok": True, "name": name, "run": int((self.ledger.job_run_for_worker(str(row["id"])) or {}).get("id") or 0),
+                "worker": row["id"], "line": words.JOB_STOP.format(
+            name=name, what=f"worker {row['id']}", ran=words.span(time.time() - float(row["started"])),
+            next=await asyncio.to_thread(next_fire, job, self.units))}
 
     def sync_now(self) -> dict[str, Any]:
         try:
@@ -1175,13 +1271,13 @@ class Jobs:
         if timed_out:                      # the exit code and the stderr tail: the run's note and status --full
             result, delivery = "timed out", "alert"
             self.ledger.job_run_set(run_id, note=f"timed out after {job.cap:g} min" if job else "timed out")
-            ids = await self.alert(job, words.job_line(name, "timed out", job.cap * 60 if job else 0.0), run_id, room)
+            ids = await self.failed(job, words.job_line(name, "timed out", job.cap * 60 if job else 0.0), run_id, room, result)
         elif code != 0:
             result, delivery = f"exit {code}", "alert"
             self.ledger.job_run_set(run_id, note=f"exit {code}" + (f": {tail}" if tail else ""))
-            ids = await self.alert(job, words.job_line(name, "failed", result="signal" if isinstance(code, int) and
-                                                       (code < 0 or code > 128) else "exit-code"), run_id, room)
-        elif output.strip():
+            ids = await self.failed(job, words.job_line(name, "failed", result="signal" if isinstance(code, int) and
+                                                        (code < 0 or code > 128) else "exit-code"), run_id, room, result)
+        elif not await self.recovered(job, run_id) and output.strip():
             result = "output"
             if deliver == "silent":
                 delivery = "silent (deliver = silent)"
@@ -1211,10 +1307,71 @@ class Jobs:
             log.exception("jobs: posting to %s failed", room)
             return []
 
+    def alert_room(self, job: Job | None, room: str = "") -> str:
+        machine = [n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels]
+        return (machine or [self.ops_room if self.ops_room in self.channels else (job.room if job else room)])[0]
+
+    def streak(self, name: str, run_id: int, result: str) -> list[dict[str, Any]]:
+        """The job's failed runs just before run `run_id` with `result`, alerted by one post, newest first (J2): its ended
+        runs read back, a stopped one skipped, until one differs. Rows are the only state, so it holds across a restart."""
+        out: list[dict[str, Any]] = []
+        for r in self.ledger.job_runs(job=name, limit=500):
+            if int(r["id"]) >= run_id or not r["ended"] or r["result"] == "stopped":
+                continue
+            if not (r["result"] == result and r["delivery"] == "alert" and r["message_ids"] and failure(r)) or \
+                    out and r["message_ids"] != out[0]["message_ids"]:
+                break
+            out.append(r)
+        return out
+
+    async def edit(self, job: Job, rows: list[dict[str, Any]], text: str, room: str = "") -> bool:
+        """The alert post of `rows` edited in the machine room; False when it cannot be (no edit_post, deleted, refused)."""
+        target = self.alert_room(job, room)
+        if (edit := getattr(self.channels.get(target), "edit_post", None)) is None:
+            return False
+        try:
+            await edit(target, str(rows[0]["message_ids"]).split(",")[0], text)
+        except Exception as e:
+            log.warning("jobs: the alert post of %s could not be edited (%s); posted anew", job.name, e)
+            return False
+        return True
+
+    def hhmm(self, t: float, job: Job, room: str = "") -> str:      # a time in the machine room's clock
+        with suppress(JobError):
+            return datetime.fromtimestamp(t, zone(default_tz(self.room_confs, self.alert_room(job, room), self.daemon_conf) or "UTC")).strftime("%H:%M")
+        return datetime.fromtimestamp(t).strftime("%H:%M")
+
+    async def failed(self, job: Job | None, line: str, run_id: int, room: str, result: str) -> list[str]:
+        """A recurring job's failed run (J2): when its previous ended run (a stop skipped) failed with the same result and its
+        alert post is known, that post is edited to the line and how many times since when, and this run takes its ids;
+        anything else, and an edit that fails, posts anew. A one-shot posts as today."""
+        if job is not None and job.when != "at" and (rows := self.streak(job.name, run_id, result)):
+            at = lambda r: float(r["ended"] or r["fired"])  # noqa: E731
+            now = at(self.ledger.job_run_get(run_id) or {"ended": time.time()})
+            text = f"{line[:ALERT_MAX]}\n" + words.JOB_AGAIN.format(n=len(rows) + 1, since=self.hhmm(at(rows[-1]), job, room),
+                                                                   last=self.hhmm(now, job, room))
+            if await self.edit(job, rows, text, room):
+                self.ledger.job_run_set(run_id, message_ids=str(rows[0]["message_ids"]))
+                return str(rows[0]["message_ids"]).split(",")
+        return await self.alert(job, line, run_id, room)
+
+    async def recovered(self, job: Job | None, run_id: int) -> bool:
+        """A recurring job's good run after alerted failures (J2): their post edited once to say it is ok again and when;
+        the next failure posts anew. False always: the run's own delivery goes on."""
+        if job is None or job.when == "at":
+            return False
+        prev = next((r for r in self.ledger.job_runs(job=job.name, limit=500) if int(r["id"]) < run_id and r["ended"]
+                     and r["result"] != "stopped"), None)
+        if prev is not None and (rows := self.streak(job.name, run_id, str(prev["result"]))):
+            t = [self.hhmm(float(x), job) for x in (float((self.ledger.job_run_get(run_id) or {}).get("ended") or time.time()),
+                                                   rows[-1]["ended"], rows[0]["ended"])]
+            failed = f"at {t[1]}" if len(rows) == 1 else words.JOB_AGAIN.format(n=len(rows), since=t[1], last=t[2])
+            await self.edit(job, rows, f"{DONE} " + words.JOB_OK_AGAIN.format(name=job.name, at=t[0], failed=failed))
+        return False
+
     async def alert(self, job: Job | None, line: str, run_id: int, room: str = "") -> list[str]:
         """One line to the machine room (rooms.toml role = "machine"), else [jobs] ops_room, else the job's room."""
-        machine = [n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels]
-        target = (machine or [self.ops_room if self.ops_room in self.channels else (job.room if job else room)])[0]
+        target = self.alert_room(job, room)
         if (ch := self.channels.get(target)) is None:
             log.warning("jobs: no room to alert (%r); %s", target, line)
             return []
@@ -1238,13 +1395,15 @@ class Jobs:
         text = last_message(Path(row["staging"])) or str(end.get("result") or "")
         self.ledger.job_run_set(run_id, ended=float(end["finished"]), exit=str(end["exit"]), chars=len(text))
         note = oom_note(end)                             # a process of its lost to memory, said as its card says it
-        if end["exit"] != "done":
-            self.ledger.job_run_set(run_id, result=str(end["exit"]), delivery="alert",
+        if end["exit"] != "done":                       # a stop is a person's, never read as a failure (J1)
+            self.ledger.job_run_set(run_id, result=str(end["exit"]), delivery="none" if end["exit"] == "stopped" else "alert",
                                     note=f"worker {row['id']}: {end.get('detail') or 'no exit record'}")
-            await self.alert(job, words.job_line(name, str(end["exit"]), float(row.get("cap") or 0),
-                                                 "oom-kill" if for_memory(end) else str(end.get("result_code") or ""))
-                             + f"\n{note}" * bool(note), run_id, str(row["room"]))
+            line = words.job_line(name, str(end["exit"]), float(row.get("cap") or 0),
+                                  "oom-kill" if for_memory(end) else str(end.get("result_code") or "")) + f"\n{note}" * bool(note)
+            await (self.alert(job, line, run_id, str(row["room"])) if end["exit"] == "stopped" else
+                   self.failed(job, line, run_id, str(row["room"]), str(end["exit"])))
             return True
+        await self.recovered(job, run_id)
         if text.strip() == NO_REPLY:
             self.ledger.job_run_set(run_id, result="no_reply", delivery="silent (NO_REPLY)")
             self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="the job answered NO_REPLY")
