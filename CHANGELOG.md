@@ -30,9 +30,9 @@ version changes.
   rootless Docker, the SSH agent, the system bus, every service's socket, WSL's interop and tailscaled's no longer answer),
   `/mnt` is empty (Windows' drives, and the whole disk again under WSLg), the journals are not there, `/tmp` and `/dev/shm` are
   the unit's own. It makes no socket but Unix, IP and netlink ones (WSL's Windows side answers on the virtual machine's
-  sockets, its drives' file server too), by either ABI or io_uring; it makes no namespace, gains nothing from a setuid program,
-  and sees, signals and traces none of the owner's other processes; devices, the kernel's log and the cgroup tree are closed, and
-  nothing is written outside its own folders. Each was measured open with only the home hidden and shut with this list, in
+  sockets, its drives' file server too), by either ABI or io_uring; it gains nothing from a setuid program, and sees, signals and
+  traces none of the owner's other processes; the kernel's log and the cgroup tree are closed, and nothing is written outside its
+  own folders. Each was measured open with only the home hidden and shut with this list, in
   throwaway units. It needs systemd 257 (`PrivatePIDs=`).
 - Its list of git worktrees is the unit's own: in a unit that hides their folders every other worktree reads as gone, and one
   `git worktree prune` would have dropped their records. The daemon runs git on a worker's worktree only when that worktree's

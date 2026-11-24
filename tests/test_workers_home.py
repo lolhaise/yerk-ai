@@ -158,7 +158,8 @@ def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path
     # as the owner's Windows user, /mnt/wslg/distro was the whole disk again, and tailscaled answered for the tailnet. Each is
     # shut here, the runtime folder the unit's own (the uid is the process's), each only when it is there
     assert workers.DOORS == ((Path("/run"), "empty"), (Path(f"/run/user/{__import__('os').getuid()}"), "own"), (Path("/mnt"), "empty"),
-                             (Path("/dev/shm"), "own"), (Path("/var/log"), "gone"))
+                             (Path("/dev/shm"), "own"), (Path("/var/log"), "gone"), (Path("/dev/vsock"), "gone"), (Path("/dev/fuse"), "gone"),
+                             (Path("/dev/dxg"), "gone"))
     home, reach = _home(tmp_path, monkeypatch)
     state, keys, folder, hidden = _walled(home)
     run, own, mnt, log = tmp_path / "run", tmp_path / "run" / "user" / "7", tmp_path / "mnt", tmp_path / "log"
@@ -291,8 +292,8 @@ def test_a_hidden_unit_makes_no_socket_past_the_families_it_needs_and_is_walled_
     assert workers.FAMILIES.split() == ["AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK"]
     assert workers.NO_CALLS == "~io_uring_setup io_uring_enter io_uring_register"
     assert workers.WALLS == (
-        "PrivateTmp=yes", "PrivatePIDs=yes", "PrivateDevices=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
-        "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes", "RestrictNamespaces=yes",
+        "PrivateTmp=yes", "PrivatePIDs=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
+        "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes",
         "LockPersonality=yes", "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK", "SystemCallArchitectures=native",
         "SystemCallFilter=~io_uring_setup io_uring_enter io_uring_register", "SystemCallErrorNumber=ENOSYS")
 
@@ -321,7 +322,7 @@ def test_git_runs_outside_only_on_a_worktree_its_repository_knows(tmp_path, monk
     for k in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
         monkeypatch.setenv(k, "a")
     for k in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
-        monkeypatch.setenv(k, "a@example.invalid")
+        monkeypatch.setenv(k, "nobody")
 
     def git(*a: str, cwd: Path) -> None:
         subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True)

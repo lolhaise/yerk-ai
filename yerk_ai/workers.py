@@ -112,15 +112,16 @@ GIT_RW = ("objects", "refs", "logs", "FETCH_HEAD")   # all of .git a commit and 
 # under WSLg); /dev/shm the unit's own; the journals (every other program's log) not there. Each only when it is there; /tmp is
 # the unit's own too (PrivateTmp)
 DOORS = ((Path("/run"), "empty"), (Path(f"/run/user/{os.getuid()}"), "own"), (Path("/mnt"), "empty"), (Path("/dev/shm"), "own"),
-         (Path("/var/log"), "gone"))
+         (Path("/var/log"), "gone"), (Path("/dev/vsock"), "gone"), (Path("/dev/fuse"), "gone"), (Path("/dev/dxg"), "gone"))
 # what else a hidden unit may not do: sockets past FAMILIES (WSL's Windows side answers any process on the virtual machine's, the
-# drives' file server too, with no path and no bus involved), by the other ABI or by io_uring either; a namespace or a setuid of
-# its own; the owner's other processes (its list of them is its own, so none is seen, signalled or traced); devices, the
-# kernel's log, the cgroup tree; a write anywhere but its own folders. Not PrivateIPC: under a user manager the unit's stop step
+# drives' file server too, with no path and no bus involved), by the other ABI or by io_uring either; a setuid program's rights;
+# the owner's other processes (its list of them is its own, so none is seen, signalled or traced); the kernel's log, the cgroup
+# tree; a write anywhere but its own folders. Not PrivateDevices (it leaves no pseudo-terminal, and a suite opens them), nor
+# RestrictNamespaces (a run in bubblewrap makes them; what it inherits stays locked). Not PrivateIPC: under a user manager the unit's stop step
 # cannot join its namespace ("Failed at step NAMESPACE"), so no exit.json is written and the worker never ends (seen 2026-11-24)
 FAMILIES, NO_CALLS = "AF_UNIX AF_INET AF_INET6 AF_NETLINK", "~io_uring_setup io_uring_enter io_uring_register"
-WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "PrivateDevices=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
-         "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes", "RestrictNamespaces=yes",
+WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
+         "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes",
          "LockPersonality=yes", f"RestrictAddressFamilies={FAMILIES}", "SystemCallArchitectures=native", f"SystemCallFilter={NO_CALLS}",
          "SystemCallErrorNumber=ENOSYS")
 OWN_CONFIG = ".claude-home"     # a hidden worker's Claude config folder, in its own folder (Systemd.own)
