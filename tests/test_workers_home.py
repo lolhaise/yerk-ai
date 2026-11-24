@@ -153,7 +153,8 @@ def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path
     # rootless Docker and the SSH agent answered in the owner's runtime folder, a Windows program in the worker's folder ran
     # as the owner's Windows user, /mnt/wslg/distro was the whole disk again, and tailscaled answered for the tailnet. Each is
     # shut here, the runtime folder the unit's own (the uid is the process's), each only when it is there
-    assert workers.DOORS[0] == (Path(f"/run/user/{__import__('os').getuid()}"), "own")
+    assert workers.DOORS == ((Path(f"/run/user/{__import__('os').getuid()}"), "own"), (Path("/run/WSL"), "gone"),
+                             (Path("/run/tailscale"), "gone"), (Path("/mnt"), "empty"))
     home, reach = _home(tmp_path, monkeypatch)
     state, keys, folder, hidden = _walled(home)
     run, wsl, ts, mnt = tmp_path / "run" / "user" / "7", tmp_path / "run" / "WSL", tmp_path / "run" / "tailscale", tmp_path / "mnt"

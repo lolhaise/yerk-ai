@@ -6,6 +6,31 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-24
+
+### workers-home-2026-11-24 (its pull request to come)
+
+- `[workers] home` hides the owner's home from a worker's unit. `open`, the default, leaves every unit exactly as it was (a
+  test holds its whole property list). `needs` hides it from a need's builder, cold read and fix only. `hidden` hides it
+  from every worker. Any other value stops yerkd at its start with one line.
+- A hidden unit's home is an empty read-only filesystem with only what the job reaches bound back: its own folder, its
+  account's config folder and token, its room's work folder, Yerk's checkout and each plug-in's (the working tree
+  read-only; of .git only objects, refs, logs, worktrees and FETCH_HEAD writable, so .git/config and hooks stay read-only),
+  uv and its cache, each python's user site-packages, Playwright's browsers and the PR gate. Each one is a step the 106
+  need workers since 2026-11-10 used.
+- Of the state folder a hidden unit sees only its own folder, `docs` (read-only), the same need's other workers' folders
+  (read-only, by the ids the need's record now keeps) and, with `yerk_tools`, the two files its memory server reads. The
+  ledger, the memory index, the texts, the logs, the web cache, the trash and every other worker's transcript are not
+  there.
+- The other doors are shut under a hidden home too: `/run/user/<uid>` is the unit's own empty folder (the user bus,
+  rootless Docker and the SSH agent no longer answer), `/run/WSL` and `/run/tailscale` are not there (Windows interop, the
+  tailnet), `/mnt` is empty (Windows' drives, and the whole disk again under WSLg), and `/tmp` is the unit's own. Each was
+  measured open with only the home hidden and shut with this list, in throwaway units.
+- A hidden worker keeps its memory tools. Its deletes go to a `.trash` in its own folder. The note about paths its unit
+  hides reads the unit's own fence, so the three need briefs get none.
+- **Upgrading**: nothing changes until yerkd.toml has `home = "needs"` or `home = "hidden"` under `[workers]`, read at
+  yerkd's start.
+
 ## 2026-11-23
 
 ### jobs-care-2026-11-23 (#130)

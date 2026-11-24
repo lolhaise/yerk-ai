@@ -126,6 +126,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `idle_seconds`: seconds a room goes without a human message before a worker's end is told there (default 60)
 - `per_account`: workers at once on one account (default 1)
 - `yerk_tools`: Yerk AI tools a worker gets on its own server: recall and read_memory only (default none)
+- `home`: the owner's home as a worker's unit sees it: open (all of it but the hidden secrets), hidden (empty but its own folder, its account, Yerk's checkout and each plug-in's, the toolchains and the PR gate) or needs (hidden for a need's builder, cold read and fix, open for the rest; default open)
 
 ### [gates]
 
