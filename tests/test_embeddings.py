@@ -27,6 +27,7 @@ from yerk_ai import abilities, cli, embeddings, memindex, memory
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import NO_KEY_LINE, Yerkd
 from fake_channel import ConsoleChannel
+from conftest import state_read_only
 
 CONCEPTS = ["kettle", "colour", "lunch", "weather", "book"]
 WORDS = {"kettle": "kettle", "teapot": "kettle", "pot": "kettle", "boil": "kettle", "teal": "colour", "painted": "colour",
@@ -322,6 +323,7 @@ def test_a_blind_run_exits_its_own_code_and_fails_the_weekly_unit(tmp_path, caps
 
 
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
+@state_read_only
 def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_path, capsys):
     ab = abilities.manifest()
     e = ab["embeddings"]
