@@ -40,6 +40,7 @@ def _home(tmp_path, monkeypatch):
     for k in ("XDG_DATA_HOME", "XDG_CACHE_HOME", "UV_CACHE_DIR", "PLAYWRIGHT_BROWSERS_PATH"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(workers.site, "getusersitepackages", lambda: str(home / ".local" / "lib" / "py" / "site-packages"))
+    monkeypatch.setattr(workers.site, "getuserbase", lambda: str(home / ".local"))
 
     def reach() -> list[tuple[Path, str]]:
         return workers.reach([home / "yerk-ai", home / "plug"], str(home / "ws" / "tools" / "pr-check"), ["trash"])
@@ -113,6 +114,19 @@ def test_a_hidden_home_binds_back_only_what_a_workers_job_reaches(tmp_path, monk
     named = " ".join(props)
     for gone in (".ssh", ".netrc", ".claude-acct3", "memory", "yerk-http.secret", "pages", str(state / "ledger")):
         assert gone not in named                                    # never named, so the empty home leaves it out
+
+
+def test_a_hidden_home_binds_each_pythons_user_site_packages_since_the_trash_runs_on_the_systems(tmp_path, monkeypatch):
+    # 2026-11-24, P3: the daemon on one python, the trash-cli a delete becomes on the system's python3.14 with its user
+    # site-packages; binding only the daemon's left the trash without its module
+    home, reach = _home(tmp_path, monkeypatch)
+    (home / ".local" / "lib" / "python3.14" / "site-packages").mkdir(parents=True)
+    got = [p for p, how in reach() if "site-packages" in str(p)]
+    assert got == [home / ".local" / "lib" / "py" / "site-packages", home / ".local" / "lib" / "python3.14" / "site-packages"]
+    shutil.rmtree(home / ".local" / "lib" / "py")
+    state, keys, folder, hidden = _walled(home)
+    props = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach).sandbox(folder, _env(home, keys))[1::2]
+    assert [p for p in props if "site-packages" in p] == [f"BindReadOnlyPaths={home / '.local' / 'lib' / 'python3.14' / 'site-packages'}"]
 
 
 def test_a_hidden_home_names_no_path_that_is_not_there_and_none_outside_it(tmp_path, monkeypatch):

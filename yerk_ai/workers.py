@@ -155,12 +155,14 @@ def reach(repos: Sequence[Path], gate: str = "", trash: Sequence[str] = ()) -> l
     """What a hidden home gives back of itself besides the worker's own folder and account (Systemd.sandbox), as (path, "ro" |
     "rw" | "repo"), each measured over the need workers' folders (2026-11-10: 156; 2026-11-24: 262): every repository a need
     is built in, a "repo" (its working tree read-only, of its .git only GIT_RW written: every need worker); uv and uvx, uv's
-    pythons and tools read-only and its cache written (the builders' and fixers' `uv run`, `uv sync`); python's user
-    site-packages, read-only (the trash a delete becomes runs from there); the browsers Playwright keeps, read-only (a page's
+    pythons and tools read-only and its cache written (the builders' and fixers' `uv run`, `uv sync`); each python's user
+    site-packages, read-only (the trash a delete becomes runs from the system python's, whatever python the daemon runs
+    on); the browsers Playwright keeps, read-only (a page's
     screenshot); and the pull request gate, read-only (every brief names it)."""
     data, cache = (Path(os.environ.get(k) or Path.home() / d) for k, d in (("XDG_DATA_HOME", ".local/share"), ("XDG_CACHE_HOME", ".cache")))
     out = [(Path(r), "repo") for r in repos] + [(Path(t), "ro") for x in ("uv", "uvx", *trash[:1]) if (t := shutil.which(x))]
-    out += [(Path(os.environ.get("UV_CACHE_DIR") or cache / "uv"), "rw"), (data / "uv", "ro"), (Path(site.getusersitepackages()), "ro"),
+    sites = sorted({Path(site.getusersitepackages()), *(Path(site.getuserbase()) / "lib").glob("python3*/site-packages")})   # each python's
+    out += [(Path(os.environ.get("UV_CACHE_DIR") or cache / "uv"), "rw"), (data / "uv", "ro"), *((p, "ro") for p in sites),
             (Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or cache / "ms-playwright"), "ro")]
     return out + ([(Path(gate).expanduser(), "ro")] if gate else [])
 
