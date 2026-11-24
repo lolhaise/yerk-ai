@@ -189,7 +189,9 @@ def _state(state: Path, folder: Path) -> None:
     for f in ("ledger.sqlite", "memory.sqlite", "doctor.json", "secrets/yerk-worker.secret", "secrets/yerk-http.secret"):
         (state / f).write_text("x")
     (state / "yerkd.json").write_text(json.dumps({"port": 1, "worker_secret_file": str(state / "secrets" / "yerk-worker.secret")}))
-    (state / "needs.json").write_text(json.dumps([{"day": "2026-11-24", "n": 7, "workers": ["b11111", folder.name, "..", "a/b"]},
+    (state / "workers" / "e55555").mkdir()
+    (state / "needs.json").write_text(json.dumps([{"day": "2026-11-20", "n": 7, "workers": ["e55555"]},           # another day's 7
+                                                  {"day": "2026-11-24", "n": 7, "workers": ["b11111", folder.name, "..", "a/b"]},
                                                   {"day": "2026-11-24", "n": 8, "workers": ["c22222"]}]))
 
 
@@ -215,6 +217,8 @@ def test_a_hidden_home_gives_back_of_the_state_folder_only_docs_the_same_needs_w
                                                             f"ReadOnlyPaths={folder / 'worker.json'}"]
     assert of_state({"room": "r"}) == [*room, f"ReadOnlyPaths={folder / 'worker.json'}"]          # a room's worker: no kin
     assert of_state({"room": "r", "need": {"day": "2026-11-24", "n": 9}}) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]
+    for climbs in ("..", ".", "", "../other", "r/../other", "/"):                                 # a room's name never a path of its own
+        assert of_state({"room": climbs}) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"], climbs
     inside = {"CLAUDE_CONFIG_DIR": str(state / "accounts" / "two")}                                  # an account kept in the state: not bound
     assert of_state({"room": "r"}, inside) == [*room, f"ReadOnlyPaths={folder / 'worker.json'}"]
     props = s.sandbox(folder, env)[1::2]
@@ -328,7 +332,13 @@ def test_git_runs_outside_only_on_a_worktree_its_repository_knows(tmp_path, monk
     moved = repo / ".git" / "worktrees" / "moved"                                   # one whose common folder is another's
     shutil.copytree(repo / ".git" / "worktrees" / "wt", moved)
     (moved / "commondir").write_text(f"{made[0].parents[1]}\n")
-    for admin in (*made, link / "wt", other, moved, repo / ".git" / "worktrees" / "gone", Path("../evil/.git/worktrees/wt")):
+    aside = repo / ".git" / "logs" / "worktrees" / "wt"                              # a record in a part of .git a hidden worker writes
+    aside.mkdir(parents=True)
+    for f, text in (("HEAD", "ref: refs/heads/main\n"), ("commondir", "../..\n"), ("gitdir", f"{wt / '.git'}\n")):
+        (aside / f).write_text(text)
+    way = home / "way"                                                                # the repository's own record, by a link
+    way.symlink_to(repo / ".git")
+    for admin in (*made, link / "wt", other, moved, aside, way / "worktrees" / "wt", repo / ".git" / "worktrees" / "gone", Path("../evil/.git/worktrees/wt")):
         (wt / ".git").write_text(f"gitdir: {admin}\n")
         assert not workers.linked(wt), admin
         assert "no record of it" in workers.branch(wt)["error"] and needs.tidy(folder) == [] and wt.is_dir(), admin
@@ -343,3 +353,54 @@ def test_git_runs_outside_only_on_a_worktree_its_repository_knows(tmp_path, monk
         shutil.rmtree(d)
     (wt / ".git").write_text(good)
     assert workers.linked(wt) and needs.tidy(folder) == [] and not wt.exists()              # the repository's own: tidied as before
+
+
+def test_a_state_folder_and_a_secrets_folder_outside_the_home_are_walled_like_the_home(tmp_path, monkeypatch):
+    # an install with its state folder or its private folder elsewhere: the state folder is hidden whole and only the same few
+    # parts come back; a hidden path outside both is hidden as an open unit has it, with the worker's own token alone in it
+    home, reach = _home(tmp_path, monkeypatch)
+    state, keys, folder = tmp_path / "st", tmp_path / "priv" / "secrets", tmp_path / "st" / "workers" / "abc123"
+    for d in (folder, keys, state / "docs", state / "rooms" / "r" / "work"):
+        d.mkdir(parents=True)
+    for f in ("claude-two.token", "other.key"):
+        (keys / f).write_text("x")
+    (folder / "worker.json").write_text(json.dumps({"room": "r", "need": {"day": "2026-11-24", "n": 1}}))
+    hidden = (state / "secrets" / "yerk-http.secret", state / "rooms", keys, state / "secrets" / "pages")
+    s = workers.Systemd(state, hidden, workers.MEMORY_MAX, "needs", reach)
+    props = s.sandbox(folder, _env(home, keys))[1::2]
+    assert props[:3] == ["PrivateUsers=yes", f"TemporaryFileSystem={home}:ro", f"TemporaryFileSystem={state}:ro"]
+    assert f"BindPaths={folder}" in props and f"BindReadOnlyPaths={state / 'docs'}" in props
+    i = props.index(f"TemporaryFileSystem={keys}:ro")
+    assert props[i + 1] == f"BindReadOnlyPaths=-{keys / 'claude-two.token'}" and f"InaccessiblePaths=-{keys}" not in props
+    assert not any(str(state / "rooms") in p or str(state / "secrets") in p for p in props)        # hidden with the state folder
+    far = s.sandbox(folder, {"YERK_TOKEN_FILE": str(home / "elsewhere.token")})[1::2]              # its token not in there: nothing back
+    assert f"InaccessiblePaths=-{keys}" in far and not any(p.startswith(("Bind", "Temp")) and str(keys) in p for p in far)
+    asked = s.unseen("r", "", str(keys / "claude-two.token"), [str(keys / "other.key"), str(keys / "claude-two.token"), str(state / "ledger.sqlite"),
+                                                                 str(folder / "x")], {"need": {"day": "2026-11-24", "n": 1}}, folder)
+    assert asked == [str(keys / "other.key"), str(state / "ledger.sqlite")]
+
+
+def test_the_daemon_gives_its_launcher_the_setting_and_everything_a_job_reaches(tmp_path, monkeypatch):
+    # the wall is off when the launcher is never told: yerkd.toml's word has to arrive, with the checkout, each plug-in's
+    # repository, the toolchains, the trash and the gate
+    from yerk_ai import needs
+    from yerk_ai.config import EXAMPLE_PRIVATE, REPO
+    from yerk_ai.daemon import Yerkd
+    home, _ = _home(tmp_path, monkeypatch)
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    conf = (private / "yerkd.toml").read_text() if (private / "yerkd.toml").is_file() else ""
+    assert "[workers]" not in conf and "[needs]" not in conf
+    (private / "yerkd.toml").write_text(conf + f'\n[workers]\nhome = "needs"\nmemory_max = "3G"\n\n[needs]\npr_check = "{home / "ws" / "tools" / "pr-check"}"\n')
+    (tmp_path / "state").mkdir()
+    y = Yerkd(private, tmp_path / "state")
+    unit = y.workers.launcher
+    assert unit.home == "needs" and unit.memory_max == "3G" and unit.reach == y.worker_reach
+    assert unit.hides({"need": {"day": "2026-11-24", "n": 1}}) and not unit.hides({"room": "example-room"})
+    monkeypatch.setattr(needs, "plugins", lambda confs, own: {"p": {"repo": str(home / "plug"), "base": "main"}} if own == REPO else {})
+    y.gates.trash = ("trash",) if isinstance(y.gates.trash, tuple) else ["trash"]
+    got = y.worker_reach()
+    for want in ((REPO, "repo"), (home / "plug", "repo"), (home / ".local" / "bin" / "uv", "ro"), (home / ".local" / "bin" / "trash", "ro"),
+                 (home / ".cache" / "yerk" / "uv", "rw"), (home / "ws" / "tools" / "pr-check", "ro")):
+        assert want in got, want
+    assert [how for _, how in got].count("rw") == 1                                  # one written path in the reach: the workers' uv cache
