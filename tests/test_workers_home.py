@@ -28,7 +28,7 @@ def _home(tmp_path, monkeypatch):
     """A home with what the box has: Yerk's checkout and a plug-in's, uv and the trash on PATH, uv's cache and data, python's
     user site-packages, Playwright's browsers, the gate, two accounts' folders, a key and a netrc."""
     home = tmp_path / "home"
-    for d in (".local/bin", ".cache/uv", ".cache/ms-playwright", ".local/share/uv", ".local/lib/py/site-packages", ".claude-acct2",
+    for d in (".local/bin", ".cache/uv", ".cache/yerk/uv", ".cache/ms-playwright", ".local/share/uv", ".local/lib/py/site-packages", ".claude-acct2",
               ".claude-acct3", ".ssh", "yerk-ai/.git/objects", "yerk-ai/.git/refs", "yerk-ai/.git/logs", "plug/.git/objects",
               "plug/.git/refs", "plug/.git/logs", "plug/.git/worktrees", "ws/tools", "ws/memory"):
         (home / d).mkdir(parents=True)
@@ -92,8 +92,8 @@ def test_the_home_setting_reads_and_a_misspelt_one_stops_yerkd(tmp_path):
 
 def test_a_hidden_home_binds_back_only_what_a_workers_job_reaches(tmp_path, monkeypatch):
     # D2: the home an empty read-only filesystem; each bind back is one a need worker's own step uses (workers.reach's counts):
-    # its folder, its account and token, its room's work folder, the checkouts with only the parts of .git a worktree add, a
-    # commit and a fetch write, uv and its cache, python's user site-packages, Playwright's browsers, the gate
+    # its folder, its account's token, its room's work folder, the checkouts with only the parts of .git a worktree add, a
+    # commit and a fetch write, uv and the workers' own cache, python's user site-packages, Playwright's browsers, the gate
     home, reach = _home(tmp_path, monkeypatch)
     state, keys, folder, hidden = _walled(home)
     repo, plug = home / "yerk-ai", home / "plug"
@@ -101,18 +101,22 @@ def test_a_hidden_home_binds_back_only_what_a_workers_job_reaches(tmp_path, monk
     assert props[:2] == ["PrivateUsers=yes", f"TemporaryFileSystem={home}:ro"]
     binds = [p for p in props if p.startswith("Bind")]
     assert binds == [
-        f"BindPaths={folder}", f"BindPaths={home / '.claude-acct2'}", f"BindReadOnlyPaths=-{keys / 'claude-two.token'}",
+        f"BindPaths={folder}", f"BindReadOnlyPaths=-{keys / 'claude-two.token'}",
         f"BindPaths=-{state / 'rooms' / 'r' / 'work'}",
         f"BindReadOnlyPaths={repo}", *(f"BindPaths={repo / '.git' / n}" for n in workers.GIT_RW),
         f"BindReadOnlyPaths={plug}", *(f"BindPaths={plug / '.git' / n}" for n in workers.GIT_RW),
-        *(f"BindReadOnlyPaths={home / '.local' / 'bin' / n}" for n in ("uv", "uvx", "trash")), f"BindPaths={home / '.cache' / 'uv'}",
+        *(f"BindReadOnlyPaths={home / '.local' / 'bin' / n}" for n in ("uv", "uvx", "trash")), f"BindPaths={home / '.cache' / 'yerk' / 'uv'}",
         f"BindReadOnlyPaths={home / '.local' / 'share' / 'uv'}", f"BindReadOnlyPaths={home / '.local' / 'lib' / 'py' / 'site-packages'}",
         f"BindReadOnlyPaths={home / '.cache' / 'ms-playwright'}", f"BindReadOnlyPaths={home / 'ws' / 'tools' / 'pr-check'}"]
     assert f"ReadOnlyPaths={folder / 'worker.json'}" in props                   # its own gate stays as the daemon wrote it
     assert f"BindPaths={repo / '.git'}" not in props and not any("hooks" in p or "/config" in p for p in props)   # .git/config read-only
     assert (repo / ".git" / "worktrees").is_dir() and (repo / ".git" / "FETCH_HEAD").is_file()   # made as git would, then bound
+    for r in (repo, plug):                                          # its list of worktrees is the unit's own, empty and written
+        assert f"TemporaryFileSystem={r / '.git' / 'worktrees'}:mode=0700" in props and f"BindPaths={r / '.git' / 'worktrees'}" not in props
+        assert props.index(f"BindReadOnlyPaths={r}") < props.index(f"TemporaryFileSystem={r / '.git' / 'worktrees'}:mode=0700")
     named = " ".join(props)
-    for gone in (".ssh", ".netrc", ".claude-acct3", "memory", "yerk-http.secret", "pages", str(state / "ledger")):
+    for gone in (".ssh", ".netrc", ".claude-acct2", ".claude-acct3", str(home / ".cache" / "uv"), "memory", "yerk-http.secret", "pages",
+                 str(state / "ledger")):
         assert gone not in named                                    # never named, so the empty home leaves it out
 
 
@@ -137,7 +141,7 @@ def test_a_hidden_home_names_no_path_that_is_not_there_and_none_outside_it(tmp_p
         shutil.rmtree(p) if p.is_dir() else p.unlink()
     far = tmp_path / "srv" / "repo"                                  # a checkout outside the home: nothing hides it, nothing binds it
     (far / ".git" / "objects").mkdir(parents=True)
-    env = {"CLAUDE_CONFIG_DIR": str(home / ".claude-acct9")}         # an account folder that is not there: not named either
+    env = {"CLAUDE_CONFIG_DIR": str(home / ".claude-acct9")}         # an account's folder is never named, there or not
     s = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", lambda: [*reach(), (far, "repo"), (home / "nowhere", "ro")])
     props = s.sandbox(folder, env)[1::2]
     named = " ".join(props)
@@ -154,7 +158,7 @@ def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path
     # as the owner's Windows user, /mnt/wslg/distro was the whole disk again, and tailscaled answered for the tailnet. Each is
     # shut here, the runtime folder the unit's own (the uid is the process's), each only when it is there
     assert workers.DOORS == ((Path(f"/run/user/{__import__('os').getuid()}"), "own"), (Path("/run/WSL"), "gone"),
-                             (Path("/run/tailscale"), "gone"), (Path("/mnt"), "empty"))
+                             (Path("/run/tailscale"), "gone"), (Path("/mnt"), "empty"), (Path("/var/log"), "gone"), (Path("/run/log"), "gone"))
     home, reach = _home(tmp_path, monkeypatch)
     state, keys, folder, hidden = _walled(home)
     run, wsl, ts, mnt = tmp_path / "run" / "user" / "7", tmp_path / "run" / "WSL", tmp_path / "run" / "tailscale", tmp_path / "mnt"
@@ -163,15 +167,17 @@ def test_a_hidden_home_shuts_the_other_doors_each_only_when_it_is_there(tmp_path
     monkeypatch.setattr(workers, "DOORS", ((run, "own"), (wsl, "gone"), (ts, "gone"), (mnt, "empty")))
     s = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach)
     props = s.sandbox(folder, _env(home, keys))[1::2]
-    assert props[-5:] == [f"TemporaryFileSystem={run}:mode=0700", f"InaccessiblePaths={wsl}", f"InaccessiblePaths={ts}",
-                          f"TemporaryFileSystem={mnt}:ro", "PrivateTmp=yes"]
+    last = ["PrivateTmp=yes", "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
+            "SystemCallFilter=~io_uring_setup io_uring_enter io_uring_register", "SystemCallErrorNumber=ENOSYS"]
+    assert props[-8:] == [f"TemporaryFileSystem={run}:mode=0700", f"InaccessiblePaths={wsl}", f"InaccessiblePaths={ts}",
+                          f"TemporaryFileSystem={mnt}:ro", *last]
     assert not any(p.startswith(("BindPaths=", "BindReadOnlyPaths=")) and str(tmp_path / "run") in p for p in props)   # none comes back
     for p in (wsl, ts, mnt):
         p.rmdir()
     props = s.sandbox(folder, _env(home, keys))[1::2]
-    assert props[-2:] == [f"TemporaryFileSystem={run}:mode=0700", "PrivateTmp=yes"]   # a box without them: not named
+    assert props[-5:] == [f"TemporaryFileSystem={run}:mode=0700", *last]                # a box without them: not named
     opened = workers.Systemd(state, hidden).sandbox(folder, _env(home, keys))[1::2]
-    assert "PrivateTmp=yes" not in opened and not any(str(run) in p for p in opened)    # open: as it was
+    assert not set(last) & set(opened) and not any(str(run) in p for p in opened)       # open: as it was
 
 
 def _state(state: Path, folder: Path) -> None:
@@ -199,17 +205,18 @@ def test_a_hidden_home_gives_back_of_the_state_folder_only_docs_the_same_needs_w
     def of_state(spec: dict, env: dict[str, str] = env) -> list[str]:
         (folder / "worker.json").write_text(json.dumps(spec))
         return [p for p in s.sandbox(folder, env)[1::2] if str(state) in p]
-    mine = [f"BindPaths={folder}", f"BindPaths=-{state / 'rooms' / 'r' / 'work'}", f"BindReadOnlyPaths={state / 'docs'}"]
+    mine = [f"BindPaths={folder}", f"BindReadOnlyPaths={state / 'docs'}"]                       # a need's: never a room's work folder
+    room = [mine[0], f"BindPaths=-{state / 'rooms' / 'r' / 'work'}", mine[1]]                    # a room's: its own, as an open unit's
     need = {"room": "r", "need": {"day": "2026-11-24", "n": 7, "role": "read"}}
     assert of_state(need) == [*mine, f"BindReadOnlyPaths={state / 'workers' / 'b11111'}", f"ReadOnlyPaths={folder / 'worker.json'}"]
     assert of_state({**need, "yerk_tools": ["recall"]}) == [*mine, f"BindReadOnlyPaths={state / 'workers' / 'b11111'}",
                                                             f"BindReadOnlyPaths={state / 'yerkd.json'}",
                                                             f"BindReadOnlyPaths={state / 'secrets' / 'yerk-worker.secret'}",
                                                             f"ReadOnlyPaths={folder / 'worker.json'}"]
-    assert of_state({"room": "r"}) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]          # a room's worker: no kin
+    assert of_state({"room": "r"}) == [*room, f"ReadOnlyPaths={folder / 'worker.json'}"]          # a room's worker: no kin
     assert of_state({"room": "r", "need": {"day": "2026-11-24", "n": 9}}) == [*mine, f"ReadOnlyPaths={folder / 'worker.json'}"]
-    inside = {"CLAUDE_CONFIG_DIR": str(state / "accounts" / "two")}                                  # an account kept in the state
-    assert of_state({"room": "r"}, inside) == [mine[0], f"BindPaths={state / 'accounts' / 'two'}", *mine[1:], f"ReadOnlyPaths={folder / 'worker.json'}"]
+    inside = {"CLAUDE_CONFIG_DIR": str(state / "accounts" / "two")}                                  # an account kept in the state: not bound
+    assert of_state({"room": "r"}, inside) == [*room, f"ReadOnlyPaths={folder / 'worker.json'}"]
     props = s.sandbox(folder, env)[1::2]
     named = " ".join(props)
     for gone in ("ledger.sqlite", "memory.sqlite", "texts", "logs", "web", ".trash", "workers/c22222", "workers/d33333", "needs.json",
@@ -233,3 +240,106 @@ def test_needs_hides_the_home_from_a_needs_workers_and_leaves_a_room_started_one
         (folder / "worker.json").write_text(json.dumps({"room": "r", "need": {"day": "2026-11-24", "n": 1, **role}}))
         hid = workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach).sandbox(folder, env)
         assert needs.sandbox(folder, env) == hid and f"TemporaryFileSystem={home}:ro" in hid
+
+
+def test_a_hidden_worker_has_a_config_folder_and_a_uv_cache_of_its_own_never_its_accounts_or_the_owners(tmp_path, monkeypatch):
+    # 2026-11-24, the deeper check: the account's config folder held 1,276 transcripts of other rooms, the settings and the
+    # wrapper other programs run; the owner's uv cache held 3,382 of the running daemon's own files (uv hard-links). Neither
+    # is there for a hidden worker: it writes a config folder in its own folder and a cache only hidden workers use
+    home, reach = _home(tmp_path, monkeypatch)
+    state, keys, folder, hidden = _walled(home)
+    env, s = _env(home, keys), workers.Systemd(state, hidden, workers.MEMORY_MAX, "hidden", reach)
+    mine = s.own(folder, env)
+    assert mine == {**env, "CLAUDE_CONFIG_DIR": str(folder / workers.OWN_CONFIG), "UV_CACHE_DIR": str(home / ".cache" / "yerk" / "uv")}
+    for d in (folder / workers.OWN_CONFIG, home / ".cache" / "yerk" / "uv"):
+        assert d.is_dir() and oct(d.stat().st_mode & 0o777) in ("0o700", "0o775", "0o755") and not d.is_symlink()
+    assert oct((folder / workers.OWN_CONFIG).stat().st_mode & 0o777) == "0o700" and s.own(folder, env) == mine      # made once, kept
+    monkeypatch.setenv("UV_CACHE_DIR", str(home / ".cache" / "uv"))                # whatever the daemon's own says
+    assert workers.uv_cache() == home / ".cache" / "yerk" / "uv" and not any(p == home / ".cache" / "uv" for p, _ in reach())
+    props = s.sandbox(folder, mine)[1::2]
+    named = [p.split("=", 1)[1].lstrip("-") for p in props]
+    assert str(home / ".claude-acct2") not in named and str(home / ".cache" / "uv") not in named and str(home / ".cache") not in named
+    assert f"BindPaths={home / '.cache' / 'yerk' / 'uv'}" in props and f"BindPaths={folder}" in props
+    assert "UV_CACHE_DIR" in workers.ENV_KEEP                                       # claude's shell gets it
+    with pytest.raises(OSError, match="no token file"):                               # its only login: without it nothing starts
+        s.own(folder, {"CLAUDE_CONFIG_DIR": str(home / ".claude-acct2")})
+
+
+def test_a_hidden_unit_makes_no_socket_past_the_families_it_needs_and_sees_no_journal():
+    # 2026-11-24: WSL's Windows side answered any process on the virtual machine's sockets (AF_VSOCK 50001 is the drives' file
+    # server), with the home, the bus and /mnt hidden; and the journals gave every other program's log
+    assert workers.FAMILIES.split() == ["AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK"]
+    assert workers.NO_CALLS == "~io_uring_setup io_uring_enter io_uring_register"
+    assert {p for p, how in workers.DOORS if how == "gone"} >= {Path("/var/log"), Path("/run/log"), Path("/run/WSL"), Path("/run/tailscale")}
+
+
+def test_git_runs_outside_only_on_a_worktree_its_repository_knows(tmp_path, monkeypatch):
+    # 2026-11-24: the daemon runs git in a worker's worktrees (the report's branch, the tidy at a need's end). A hidden worker's
+    # is in no repository's list, and its .git is a file it may write: one that named a repository of its own making would
+    # have git out here run what that repository's config names (core.fsmonitor, a clean filter)
+    import subprocess
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    for k in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(k, "a")
+    for k in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(k, "a@example.invalid")
+
+    def git(*a: str, cwd: Path) -> None:
+        subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True)
+    repo, folder = home / "repo", home / "state" / "workers" / "abc123"
+    repo.mkdir(parents=True)
+    folder.mkdir(parents=True)
+    git("init", "-q", "-b", "main", cwd=repo)
+    (repo / "a.txt").write_text("a")
+    git("add", "a.txt", cwd=repo)
+    git("commit", "-qm", "one", cwd=repo)
+    wt = folder / "wt"
+    git("worktree", "add", "-q", str(wt), "-b", "b", cwd=repo)
+    assert workers.linked(wt) and workers.branch(wt)["branch"] == "b"
+    ran, program = tmp_path / "ran", tmp_path / "program"
+    program.write_text(f"#!/bin/sh\ntouch {ran}\nexit 1\n")
+    program.chmod(0o700)
+
+    def evil(at: Path) -> Path:
+        """A repository of a worker's making at `at`, whose config runs a program on any status."""
+        git("init", "-q", "-b", "main", *([] if at.name == ".git" else ["--bare"]), str(at.parent if at.name == ".git" else at), cwd=home)
+        with open(at / "config", "a") as f:
+            f.write(f"[core]\n\tfsmonitor = {program}\n")
+        admin = at / "worktrees" / "wt"
+        admin.mkdir(parents=True)
+        (admin / "HEAD").write_text("ref: refs/heads/main\n")
+        (admin / "commondir").write_text("../..\n")
+        (admin / "gitdir").write_text(f"{wt / '.git'}\n")
+        return admin
+    from yerk_ai import needs
+    good = (wt / ".git").read_text()
+    made = [evil(folder / "evil" / ".git"), evil(home / ".cache" / "yerk" / "uv" / "evil" / ".git"), evil(repo / ".git" / "objects" / "evil" / ".git"),
+            evil(folder / "bare.git")]
+    subprocess.run(["git", "-C", str(wt), f"--git-dir={made[0]}", "status", "--porcelain"], capture_output=True)
+    assert ran.exists()                                                             # git by itself does run it
+    ran.unlink()
+    link = home / "link"
+    link.symlink_to(made[0].parent)
+    other = repo / ".git" / "worktrees" / "other"                                   # a record of the repository's that names another folder
+    shutil.copytree(repo / ".git" / "worktrees" / "wt", other)
+    (other / "gitdir").write_text(f"{home / 'elsewhere' / '.git'}\n")
+    moved = repo / ".git" / "worktrees" / "moved"                                   # one whose common folder is another's
+    shutil.copytree(repo / ".git" / "worktrees" / "wt", moved)
+    (moved / "commondir").write_text(f"{made[0].parents[1]}\n")
+    for admin in (*made, link / "wt", other, moved, repo / ".git" / "worktrees" / "gone", Path("../evil/.git/worktrees/wt")):
+        (wt / ".git").write_text(f"gitdir: {admin}\n")
+        assert not workers.linked(wt), admin
+        assert "no record of it" in workers.branch(wt)["error"] and needs.tidy(folder) == [] and wt.is_dir(), admin
+    (wt / ".git").write_text(f"gitdir: {home / 'nowhere' / '.git' / 'worktrees' / 'wt'}\n")    # nothing there to run: git's own words, as before
+    assert workers.branch(wt)["error"].startswith("git could not read it: fatal: not a git repository")
+    (wt / ".git").write_text("not a pointer")
+    assert not workers.linked(wt) and not workers.linked(folder) and not ran.exists()      # never run, on any of them
+    for spelt in (good.rstrip("\n") + " \n", good.rstrip("\n") + "\n\n", " " + good, good.replace("gitdir: ", "gitdir:"), good + "x\n"):
+        (wt / ".git").write_text(spelt)                                                        # not one path as git reads it: not taken
+        assert not workers.linked(wt) and "no record of it" in workers.branch(wt)["error"], spelt
+    for d in (other, moved):
+        shutil.rmtree(d)
+    (wt / ".git").write_text(good)
+    assert workers.linked(wt) and needs.tidy(folder) == [] and not wt.exists()              # the repository's own: tidied as before

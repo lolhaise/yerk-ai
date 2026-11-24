@@ -1523,17 +1523,17 @@ def test_a_hidden_units_question_and_its_properties_agree_on_every_path(setup, m
     samples = [s.tmp, s.tmp / ".ssh" / "id_ed25519", s.tmp / "ledger.sqlite", s.tmp / "docs" / "GUIDE.md", folder, folder / "wt" / "x.py",
                rooms / "r" / "work" / "a.md", rooms / "r" / "settings.json", rooms / "ops" / "work", keys, token, keys / "claude-two.token",
                s.tmp / "yerk-ai" / "README.md", s.tmp / "yerk-ai" / ".git" / "config", s.tmp / "tools" / "pr-check", s.tmp / "tools" / "other",
-               s.tmp / "workers" / "b11111" / "REPORT.md", ROOT, Path("/usr/bin/git"), Path("/tmp/x.log"),
+               s.tmp / "workers" / "b11111" / "REPORT.md", s.tmp / "acct" / "projects", ROOT, Path("/usr/bin/git"), Path("/tmp/x.log"),
                *(p / "x" for p, _ in workers.DOORS)]
     folder.mkdir(parents=True)
     for spec in ({"room": "r"}, {"room": "ops", "bind": "r"}, {"room": "r", "need": {"day": "2026-11-24", "n": 1}}):
         (folder / "worker.json").write_text(json.dumps(spec))
-        env = {"YERK_TOKEN_FILE": str(token), "CLAUDE_CONFIG_DIR": str(s.tmp / "acct")}
+        env = {"YERK_TOKEN_FILE": str(token)}
         props = unit.sandbox(folder, env)[1::2]
         gone = [Path(re.sub(r"^\w+=-?|:ro$|:mode=0700$", "", p)) for p in props if p.startswith(("TemporaryFileSystem=", "InaccessiblePaths="))]
         back = [Path(p.split("=", 1)[1].lstrip("-")) for p in props if p.startswith(("BindPaths=", "BindReadOnlyPaths="))]
         by_props = [str(q) for q in samples if any(q.is_relative_to(g) for g in gone) and not any(q.is_relative_to(b) for b in back)]
-        asked = unit.unseen(spec["room"], spec.get("bind", ""), str(token), [str(q) for q in samples], spec, folder, env["CLAUDE_CONFIG_DIR"])
+        asked = unit.unseen(spec["room"], spec.get("bind", ""), str(token), [str(q) for q in samples], spec, folder)
         assert asked == by_props, spec
         assert str(s.tmp / ".ssh" / "id_ed25519") in asked and str(s.tmp / "docs" / "GUIDE.md") not in asked
         assert str(Path("/tmp/x.log")) not in asked and str(ROOT) not in asked or ROOT.is_relative_to(s.tmp)
@@ -1558,6 +1558,38 @@ def test_a_need_brief_as_needs_writes_it_gets_no_note_in_a_hidden_unit_and_a_pat
     assert out["unseen"] == hid and f"- Not there for you, since your unit hides them: {', '.join(hid)}. The brief names them" in prompt
     out, prompt = started(w, "r", f"Read {s.tmp / '.ssh' / 'id_ed25519'}.")              # a room's worker under "needs": open
     assert "unseen" not in out and "Not there for you" not in prompt
+
+
+class Envs(Record):
+    """A launcher that records each start's environment."""
+
+    def start(self, unit, argv, env, cwd, out, err, cap, post):
+        self.calls.append({"unit": unit, "cwd": cwd, "env": dict(env)})
+
+
+def test_a_hidden_worker_starts_on_its_own_folders_and_its_accounts_token_and_one_without_a_token_does_not_start(setup, monkeypatch):
+    # 2026-11-24: its environment, as the launch hands it to the unit: never its account's config folder (every room's
+    # transcripts, the settings and the wrapper other programs run), never the owner's uv cache
+    s = setup
+    for home, more, walled_ in (("needs", {"need": {"day": "2026-11-24", "n": 1}}, True), ("needs", None, False), ("hidden", None, True), ("open", None, False)):
+        unit = Envs(s.tmp, fence_of(s.tmp))
+        unit.home = home
+        monkeypatch.setenv("HOME", str(s.tmp))
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        out, _ = started(s.make({"r": Busy()}, launcher=unit), "r", "Do it.", more=more)
+        folder, env = Path(out["staging"]), unit.calls[0]["env"]
+        assert env["YERK_TOKEN_FILE"] == str(s.accounts[0].token_file)
+        if walled_:
+            assert env["CLAUDE_CONFIG_DIR"] == str(folder / workers.OWN_CONFIG) and (folder / workers.OWN_CONFIG).is_dir()
+            assert env["UV_CACHE_DIR"] == str(s.tmp / ".cache" / "yerk" / "uv")
+        else:
+            assert env["CLAUDE_CONFIG_DIR"] == str(s.accounts[0].config_dir) and "UV_CACHE_DIR" not in env
+            assert not (folder / workers.OWN_CONFIG).exists()
+    s.accounts[0].token_file.unlink()
+    unit = Envs(s.tmp, fence_of(s.tmp))
+    unit.home = "hidden"
+    out = asyncio.run(s.make({"r": Busy()}, launcher=unit).start("r", "Do it.", account="one"))
+    assert not out["ok"] and "no token file" in out["error"] and unit.calls == [] and s.ledger.workers()[0]["finished"]
 
 
 def test_a_hidden_workers_deletes_go_to_its_own_trash_and_it_keeps_its_memory_tools(setup, monkeypatch):

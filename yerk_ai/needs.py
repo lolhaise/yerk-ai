@@ -254,9 +254,11 @@ def git(repo: str | Path, *args: str) -> subprocess.CompletedProcess[str]:
 def tidy(folder: Path) -> list[str]:
     """A need's worker ended: each git worktree it left under its folder (a linked one's .git is a file) removed when clean,
     by `git worktree remove`, never forced, its branch kept (2026-11-10: 207 left, none ever removed); one line for each
-    that stays, for the worker's note."""
+    that stays, for the worker's note. One its repository has no record of (a hidden worker's) is not git's to remove, and git
+    is never run on it (workers.linked): it goes with the worker's folder."""
+    from . import workers                              # late: workers' own import of needs is
     kept = []
-    for wt in sorted(p.parent for p in folder.glob("*/.git") if p.is_file()):
+    for wt in sorted(p.parent for p in folder.glob("*/.git") if p.is_file() and workers.linked(p.parent)):
         st = git(wt, "status", "--porcelain")
         if st.returncode == 0 and not st.stdout.strip() and git(wt, "worktree", "remove", str(wt)).returncode == 0:
             continue
