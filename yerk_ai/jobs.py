@@ -798,7 +798,8 @@ def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, wor
     from .config import read_secret
     from .mcp_server import HEADER
     st = json.loads((state / "yerkd.json").read_text())
-    os.kill(int(st["pid"]), 0)
+    if not worker:                   # a hidden worker's own list of processes holds no other: the connection says whether one runs
+        os.kill(int(st["pid"]), 0)
     secret = read_secret(Path(str(st.get("worker_secret_file" if worker else "secret_file") or "/nonexistent")))
     req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/{path}", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json", HEADER: secret})

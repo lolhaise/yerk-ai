@@ -25,7 +25,7 @@ from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
 
 from . import lessons, memindex, mentions, words
-from .config import REPO, flag, load_toml, room_id, write_private
+from .config import INDEX_HEADER, REPO, flag, load_toml, room_id, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
 READ_MAX = 400                                       # read_memory: lines per call
@@ -1020,12 +1020,13 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     import urllib.request
     if (state := meaning_state(s)) != "ok":
         return state, []
-    port = int(index_status(s)["port"])
+    st = index_status(s)
+    port, token = int(st["port"]), str(st.get("token") or "")     # none: an older yerk-index, which asks for none
     # `near` asks for the line each hit's vector matched; yerk-index adds it only when asked, so an older daemon,
     # whose room filter knows nothing of it, never receives it
     req = urllib.request.Request(f"http://127.0.0.1:{port}/search",
                                  data=json.dumps({"query": query, "pool": pool, "near": True}).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", **({INDEX_HEADER: token} if token else {})})
     try:
         with urllib.request.urlopen(req, timeout=deadline_s) as r:
             out = json.loads(r.read())

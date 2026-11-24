@@ -27,6 +27,7 @@ from test_discord import HOOK, Attachment, Chan, Msg, Room
 from test_files import pdf_bytes
 from test_observe import Timers, busy_room
 from test_slash import It, wait
+from conftest import state_read_only
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 ROOM, OWN, WATCHED, OWNER, BOT = "example-room", 11, 33, 7, 99
@@ -813,6 +814,7 @@ def test_a_watch_on_a_rooms_own_channel_or_another_rooms_watch_is_refused(tmp_pa
         assert str(e.value) == f"rooms.toml: {line}"
 
 
+@state_read_only
 def test_map_and_status_say_which_channel_a_room_watches(tmp_path, capsys):
     assert cli.main(["map", ROOM, "--private", str(layer(tmp_path))]) == 0
     assert (f"Watches discord:{WATCHED}: read as its own channel, never written to; it answers in discord:{OWN}."

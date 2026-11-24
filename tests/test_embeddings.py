@@ -24,9 +24,10 @@ import numpy as np
 import pytest
 
 from yerk_ai import abilities, cli, embeddings, memindex, memory
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.config import EXAMPLE_PRIVATE, INDEX_HEADER
 from yerk_ai.daemon import NO_KEY_LINE, Yerkd
 from fake_channel import ConsoleChannel
+from conftest import state_read_only
 
 CONCEPTS = ["kettle", "colour", "lunch", "weather", "book"]
 WORDS = {"kettle": "kettle", "teapot": "kettle", "pot": "kettle", "boil": "kettle", "teal": "colour", "painted": "colour",
@@ -322,6 +323,7 @@ def test_a_blind_run_exits_its_own_code_and_fails_the_weekly_unit(tmp_path, caps
 
 
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
+@state_read_only
 def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_path, capsys):
     ab = abilities.manifest()
     e = ab["embeddings"]
@@ -508,6 +510,48 @@ def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
     assert store.n >= 60 and len(stub.calls) >= 15
     assert not any("stall" in r.getMessage() for r in caplog.records)
     server.stop()
+    idx.close()
+
+
+# 14. the search answers the daemon, not every local process: a worker's unit hides index.json with the state folder, and the
+# port is one `ss -l` away (2026-11-24: any process on the box asked it for any line of the owner's memory, with no login)
+def test_a_search_without_its_runs_token_is_refused_and_the_daemon_finds_the_token_in_index_json(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, plain, back, status = serve(s, stub)
+    while back.step():
+        pass
+    status()
+    server = embeddings.Server(store, stub, s.index_db, memindex.live, "run-token")
+    port = server.start()
+
+    def ask(path: str, headers: dict, data: bytes | None) -> int:
+        try:
+            with urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, headers=headers), timeout=10) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            assert json.loads(e.read()) == {"ok": False, "status": "refused", "error": "no token"}
+            return e.code
+    q = json.dumps({"query": "the meal", "pool": 10}).encode()
+    asked = server.queries
+    for bad in ({}, {INDEX_HEADER: ""}, {INDEX_HEADER: "run-toke"}, {INDEX_HEADER: "run-token-"}, {"x-yerk-secret": "run-token"}):
+        assert ask("/search", bad, q) == 401 and ask("/status", bad, None) == 401
+    assert server.queries == asked                                              # nothing was searched
+    assert ask("/search", {INDEX_HEADER: "run-token"}, q) == 200 and ask("/status", {INDEX_HEADER: "run-token"}, None) == 200
+    st = json.loads(s.index_status.read_text())
+    embeddings.write_status(s.index_status, port=port, chunks=0, embeddings=st["embeddings"])            # a server with a token, a file without it
+    assert memory.meaning(s, "the meal")[0] == "no-index"                                                     # keywords only, as when none runs
+    embeddings.write_status(s.index_status, port=port, token="run-token", chunks=0, embeddings=st["embeddings"])
+    assert memory.meaning(s, "the meal")[0] == "ok" and oct(s.index_status.stat().st_mode & 0o777) == "0o600"
+    embeddings.write_status(s.index_status, port=plain.port, chunks=0, embeddings=st["embeddings"])      # an older yerk-index: no token asked
+    assert memory.meaning(s, "the meal")[0] == "ok"
+    from yerk_ai import status as card
+    from yerk_ai.ledger import Ledger
+    embeddings.write_status(s.index_status, port=port, token="run-token", chunks=3, embeddings=st["embeddings"])
+    doc = card.document(tmp_path / "private", tmp_path / "state", {}, Ledger(tmp_path / "l.sqlite"))
+    assert doc["index"]["chunks"] == 3 and "run-token" not in json.dumps(doc)     # never in `yerk status --json`
+    server.stop()
+    plain.stop()
     idx.close()
 
 

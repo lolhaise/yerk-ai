@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from yerk_ai.config import budgets
+from conftest import state_read_only
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,12 +21,14 @@ def test_help_lists_the_commands():
     assert r.returncode == 0 and "map" in r.stdout and "retention" in r.stdout and "probe" not in r.stdout   # tests/contract/
 
 
+@state_read_only
 def test_map_example_room_is_within_budget():
     r = yerk("map", "example-room")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "total" in r.stdout and "OVER" not in r.stdout
 
 
+@state_read_only
 def test_map_fails_on_the_planted_file():
     r = yerk("map", "planted-room", "--private", "tests/fixtures/over-budget")
     assert r.returncode == 1 and "OVER BUDGET: persona" in r.stdout

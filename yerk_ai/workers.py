@@ -62,6 +62,7 @@ import os
 import re
 import shlex
 import shutil
+import site
 import struct
 import subprocess
 import sys
@@ -90,7 +91,7 @@ WORKTREES = ("wt", "*-wt")
 COMMITS = 10                                   # the newest commits the report reads on a worktree's branch (branch)
 TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"]
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
-            "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
+            "XDG_RUNTIME_DIR", "UV_CACHE_DIR")  # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
 WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
 ADDON = re.compile(r"^mcp__([A-Za-z0-9_-]+?)(?:__([A-Za-z0-9_-]+))?$")   # a room's add-on tool, or all of its server's
@@ -103,6 +104,27 @@ YOUNG = 120.0                                  # seconds after its start a worke
 MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
 CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgroup v2: where a unit's memory.events is
 SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
+HOMES = ("open", "needs", "hidden")            # [workers] home: the owner's home as a worker's unit sees it (Systemd.sandbox)
+GIT_RW = ("objects", "refs", "logs", "FETCH_HEAD")   # all of .git a commit and a fetch write; the list of worktrees is the unit's own
+# outside the home, the doors a hidden home shuts with it (2026-11-24, each measured in a throwaway unit): /run empty and
+# read-only but for the unit's own runtime folder (the user bus, rootless Docker, the SSH agent, the system bus, every service's
+# socket, WSL's interop, tailscaled's: what nobody listed is shut too); /mnt empty (Windows' drives, and the whole disk again
+# under WSLg); /dev/shm the unit's own; the journals (every other program's log) not there. Each only when it is there; /tmp is
+# the unit's own too (PrivateTmp)
+DOORS = ((Path("/run"), "empty"), (Path(f"/run/user/{os.getuid()}"), "own"), (Path("/mnt"), "empty"), (Path("/dev/shm"), "own"),
+         (Path("/var/log"), "gone"), (Path("/dev/vsock"), "gone"), (Path("/dev/fuse"), "gone"), (Path("/dev/dxg"), "gone"))
+# what else a hidden unit may not do: sockets past FAMILIES (WSL's Windows side answers any process on the virtual machine's, the
+# drives' file server too, with no path and no bus involved), by the other ABI or by io_uring either; a setuid program's rights;
+# the owner's other processes (its list of them is its own, so none is seen, signalled or traced); the kernel's log, the cgroup
+# tree; a write anywhere but its own folders. Not PrivateDevices (it leaves no pseudo-terminal, and a suite opens them), nor
+# RestrictNamespaces (a run in bubblewrap makes them; what it inherits stays locked). Not PrivateIPC: under a user manager the unit's stop step
+# cannot join its namespace ("Failed at step NAMESPACE"), so no exit.json is written and the worker never ends (seen 2026-11-24)
+FAMILIES, NO_CALLS = "AF_UNIX AF_INET AF_INET6 AF_NETLINK", "~io_uring_setup io_uring_enter io_uring_register"
+WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "ProtectSystem=strict", "ProtectControlGroups=yes",
+         "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes",
+         "LockPersonality=yes", f"RestrictAddressFamilies={FAMILIES}", "SystemCallArchitectures=native", f"SystemCallFilter={NO_CALLS}",
+         "SystemCallErrorNumber=ENOSYS")
+OWN_CONFIG = ".claude-home"     # a hidden worker's Claude config folder, in its own folder (Systemd.own)
 
 
 @dataclass
@@ -121,6 +143,7 @@ class Settings:
     relay_reply: int = 1500
     per_account: int = 1                # heavy workers at once on one account; the next waits in line
     yerk_tools: list[str] = field(default_factory=list)   # read-only Yerk AI tools (WORKER_TOOLS); none by default
+    home: str = "open"                  # one of HOMES; "hidden": the home empty but what a worker's job reaches; "needs": a need's workers only
 
 
 def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None = None) -> Settings:
@@ -131,7 +154,44 @@ def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None =
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
                     relay_message=0 if whole else int(relay.get("message", 1500)), relay_reply=0 if whole else int(relay.get("reply", 1500)),
-                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf), memory_max=memory_max(conf))
+                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf), memory_max=memory_max(conf),
+                    home=home(conf))
+
+
+def home(conf: dict[str, Any]) -> str:
+    """[workers] home, one of HOMES; any other value stops yerkd at its start, since a wall misspelt is no wall."""
+    if (v := str(conf.get("home", "open"))) not in HOMES:
+        raise SystemExit(f"yerkd.toml: [workers] home must be one of {', '.join(HOMES)}, not {v!r}")
+    return v
+
+
+def reach(repos: Sequence[Path], gate: str = "", trash: Sequence[str] = ()) -> list[tuple[Path, str]]:
+    """What a hidden home gives back of itself besides the worker's own folder and account (Systemd.sandbox), as (path, "ro" |
+    "rw" | "repo"), each measured over the need workers' folders (2026-11-10: 156; 2026-11-24: 262): every repository a need
+    is built in, a "repo" (its working tree read-only, of its .git only GIT_RW written: every need worker); uv and uvx, uv's
+    pythons and tools read-only and a cache of the workers' own written (the builders' and fixers' `uv run`, `uv sync`; uv_cache); each python's user
+    site-packages, read-only (the trash a delete becomes runs from the system python's, whatever python the daemon runs
+    on); the browsers Playwright keeps, read-only (a page's
+    screenshot); and the pull request gate, read-only (every brief names it)."""
+    data, cache = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share"), uv_cache().parents[1]
+    out = [(Path(r), "repo") for r in repos] + [(Path(t), "ro") for x in ("uv", "uvx", *trash[:1]) if (t := shutil.which(x))]
+    sites = sorted({Path(site.getusersitepackages()), *(Path(site.getuserbase()) / "lib").glob("python3*/site-packages")})   # each python's
+    out += [(uv_cache(), "rw"), (data / "uv", "ro"), *((p, "ro") for p in sites),
+            (Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or cache / "ms-playwright"), "ro")]
+    return out + ([(Path(gate).expanduser(), "ro")] if gate else [])
+
+
+def uv_cache() -> Path:
+    """The uv cache hidden workers share, never the owner's: uv links what it installs to its cache, so the owner's holds the
+    running daemon's own files (2026-11-24: 3,382 of its venv), and a worker that wrote there would write what runs outside."""
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "yerk" / "uv"
+
+
+def resolver(at: Path = Path("/etc/resolv.conf")) -> list[Path]:
+    """The file that says where DNS is, when it lives under one of the DOORS (systemd-resolved's in /run, WSL's in /mnt): bound
+    back read-only, or a hidden worker finds no host."""
+    real = at.resolve()
+    return [real] if real.is_file() and any(real.is_relative_to(p) for p, _ in DOORS) else []
 
 
 def memory_max(conf: dict[str, Any]) -> str:
@@ -154,6 +214,13 @@ def yerk_tools(conf: dict[str, Any]) -> list[str]:
         if t not in WORKER_TOOLS:
             log.warning("workers: yerk_tools %r is not given to a worker; only %s are", t, ", ".join(WORKER_TOOLS))
     return [t for t in WORKER_TOOLS if t in want]
+
+
+def walled_trash(gate: dict[str, Any], folder: Path) -> dict[str, Any]:
+    """A hidden home's gate: the owner's Trash is not there and the state folder is not either, so trash-cli's `trash` puts a
+    worker's deletes in its own folder's .trash (in a throwaway unit of 2026-11-10: exit 74 without it, 0 with it)."""
+    t = list(gate.get("trash") or [])
+    return {**gate, "trash": [*t, "--trash-dir", str(folder / ".trash")]} if t and os.path.basename(t[0]) in ("trash", "trash-put") else gate
 
 
 def gate_settings(folder: Path) -> Path:
@@ -258,8 +325,25 @@ class Systemd:
     namespacing (`sandbox`), so no tool or shell shape gets around it. Every unit gets `memory_max`
     as its memory ceiling with no swap past it, and outlives a kill for memory (OOMPolicy=continue)."""
 
-    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = (), memory_max: str = MEMORY_MAX):
+    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = (), memory_max: str = MEMORY_MAX, home: str = "open",
+                 reach: Callable[[], Sequence[tuple[Path, str]]] | None = None):
         self.state, self.hidden, self.memory_max = state, tuple(hidden), memory_max
+        self.home, self.reach = home, reach or (lambda: ())
+
+    def hides(self, spec: dict[str, Any]) -> bool:
+        """[workers] home: "hidden" hides the home from every worker, "needs" from a need's builder, cold read and fix (their
+        spec carries the need: Workers.start), "open" from none."""
+        return self.home == "hidden" or (self.home == "needs" and bool(spec.get("need")))
+
+    def own(self, folder: Path, env: dict[str, str]) -> dict[str, str]:
+        """A hidden worker's environment, its two folders made: a Claude config folder of its own and the workers' uv cache. Its
+        account's config folder is not there for it: that one holds every room's transcripts on the account, and the settings and
+        wrapper other programs run. Its login is its account's token file alone, so without one it does not start (OSError)."""
+        if not env.get("YERK_TOKEN_FILE"):
+            raise OSError("its account has no token file (accounts.toml, token), and a worker whose home is hidden has no other login")
+        (folder / OWN_CONFIG).mkdir(mode=0o700, exist_ok=True)
+        uv_cache().mkdir(mode=0o700, parents=True, exist_ok=True)
+        return {**env, "CLAUDE_CONFIG_DIR": str(folder / OWN_CONFIG), "UV_CACHE_DIR": str(uv_cache())}
 
     def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
         """The state folder read-only; the worker's own folder writable, and its account's config
@@ -269,9 +353,11 @@ class Systemd:
         worker's own token, bound back read-only for its first step) and every room's folder (its
         token, settings and override) not there at all. The worker secret stays readable: a worker's
         read-only memory tools reach the daemon with it. PrivateUsers is what lets a user manager set
-        up the mounts."""
+        up the mounts. A worker the home is hidden from (hides) gets `walled` instead."""
         if self.state is None:
             return []
+        if self.hides(spec := self._spec(folder)):
+            return [x for p in self.walled(spec, folder, env) for x in ("-p", p)]
         config = Path(env.get("CLAUDE_CONFIG_DIR") or folder)
         rw = [folder, *([config] if config != folder and config.is_relative_to(self.state) else [])]
         props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw)]
@@ -296,6 +382,80 @@ class Systemd:
                 props.append(f"BindPaths=-{back}")
         return [x for p in props for x in ("-p", p)]
 
+    def walled(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[str]:
+        """A hidden home's unit: the home an empty read-only filesystem (systemd.exec's TemporaryFileSystem), the state folder
+        too where it lives outside it (_roots), with only what the worker's job reaches bound back (back); its own gate files
+        read-only, and a hidden path outside both (a private secrets/ elsewhere), as an open unit has them; then the DOORS
+        that are there shut (the resolver's file back when it lives under one) and the WALLS."""
+        roots, token = self._roots(), env.get("YERK_TOKEN_FILE", "")
+        props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots)]
+        for p, how in self.back(spec, folder, env):
+            if how != "repo":
+                props.append(f"{'BindReadOnlyPaths' if how.startswith('ro') else 'BindPaths'}={'-' if how.endswith('-') else ''}{p}")
+                continue
+            if (p / ".git").is_dir():         # git makes these two on first use, and .git is read-only in here
+                with contextlib.suppress(OSError):
+                    (p / ".git" / "worktrees").mkdir(exist_ok=True)
+                    if not (p / ".git" / "FETCH_HEAD").exists():
+                        (p / ".git" / "FETCH_HEAD").touch()
+            # its list of worktrees is the unit's own: a worktree whose folder the unit hides reads as gone, so a `git worktree
+            # prune` in here (a probe's model ran one by itself, 2026-11-24) would have dropped every other one's record
+            props += [f"BindReadOnlyPaths={p}", *(f"BindPaths={p / '.git' / n}" for n in GIT_RW if (p / ".git" / n).exists()),
+                      *([f"TemporaryFileSystem={p / '.git' / 'worktrees'}:mode=0700"] if (p / ".git" / "worktrees").is_dir() else [])]
+        props += [f"ReadOnlyPaths={folder / n}" for n in GATE_FILES if (folder / n).is_file()]
+        for p in (h for h in self.hidden if not any(h.is_relative_to(r) for r in roots)):
+            mine = bool(token) and Path(token).is_relative_to(p)
+            props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"] if mine else [f"InaccessiblePaths=-{p}"]
+        shut = {"own": "TemporaryFileSystem={}:mode=0700", "gone": "InaccessiblePaths={}", "empty": "TemporaryFileSystem={}:ro"}
+        return [*props, *(shut[how].format(p) for p, how in DOORS if p.exists()), *(f"BindReadOnlyPaths={p}" for p in resolver()), *WALLS]
+
+    def back(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
+        """What a hidden home binds back, as (path, "rw" | "ro" | "repo", "-" after one the daemon names that may be missing),
+        each once and only when it is there and inside what is hidden (_roots): the worker's own folder read and write (its
+        Claude config folder in it: own), its account's token read-only, and for a worker that is not a need's its room's work
+        folder as an open unit has it; of the state folder only `docs` (the public docs mirror), the same need's other workers'
+        folders (_kin) and, for a worker with yerk_tools, the two files its memory server reads (_server), all read-only; and
+        what `reach` names. Never ~/.ssh, ~/.netrc, an account's folder (its own too), the owner's uv cache, the private folder,
+        a workspace of the owner's, or the state's ledger, memory, texts, logs, web cache, trash, rooms or another need's or a
+        room's worker."""
+        room, token, roots, state = self._bound(spec), env.get("YERK_TOKEN_FILE", ""), self._roots(), self.state or folder
+        work = [(state / "rooms" / room / "work", "rw-")] if room and "/" not in room and room not in (".", "..") and not spec.get("need") else []
+        want = [(folder, "rw"), *([(Path(token), "ro-")] if token else []),
+                *work, (state / "docs", "ro"), *((folder.parent / w, "ro") for w in self._kin(spec) if w != folder.name),
+                *(self._server() if spec.get("yerk_tools") else ()), *self.reach()]
+        out: list[tuple[Path, str]] = []
+        for p, how in want:
+            if all(p != q for q, _ in out) and any(p.is_relative_to(r) for r in roots) and (how.endswith("-") or p.exists()):
+                out.append((p, how))
+        return out
+
+    def _kin(self, spec: dict[str, Any]) -> list[str]:
+        """The same need's workers (its builder, cold reads and fixes) by id, as the need's record keeps them (needs.update):
+        one file read at a start, never a scan of the workers' folders; none for a worker that is not a need's."""
+        from . import needs                            # late: needs is the pipeline's, and a room's worker never asks
+        need = spec.get("need")
+        if not isinstance(need, dict) or self.state is None:
+            return []
+        try:
+            row = needs.find(needs.load(self.state), str(need.get("day")), int(need.get("n") or 0)) or {}
+        except (OSError, ValueError, TypeError, needs.Unreadable):
+            return []
+        return [w for w in (str(x) for x in row.get("workers") or []) if w.isalnum()]
+
+    def _server(self) -> list[tuple[Path, str]]:
+        """What a worker's own memory server reads to reach the daemon (jobs.post_control): yerkd.json and the worker secret
+        it names, read-only; nothing when the daemon has not written it."""
+        try:
+            named = json.loads((self.state / "yerkd.json").read_text()).get("worker_secret_file") if self.state else ""
+        except (OSError, ValueError, AttributeError):
+            return []
+        return [(self.state / "yerkd.json", "ro"), (Path(named), "ro")] if self.state and named else []
+
+    def _roots(self) -> list[Path]:
+        """What a hidden home hides whole: the home, and the state folder where it lives outside it."""
+        home = Path.home()
+        return [home, *([self.state] if self.state and not self.state.is_relative_to(home) else [])]
+
     def _fence(self, room: str, token: str) -> list[tuple[Path, Path | None]]:
         """Each hidden path with what comes back inside it, for a worker of `room` (_room's) whose own token file is `token`:
         rooms/ its room's work folder, a secrets folder holding the token that file, any other nothing. The one reading of
@@ -310,21 +470,36 @@ class Systemd:
                 out.append((p, p / room / "work" if room and "/" not in room and room not in (".", "..") else None))
         return out
 
-    def unseen(self, room: str, bind: str, token: str, paths: Sequence[str]) -> list[str]:
+    def walls(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, tuple[Path, ...]]]:
+        """A hidden home's fence, as _fence's for an open one: what is hidden whole (_roots) with all it binds back (back),
+        each of the DOORS that is there with nothing, and a hidden path outside both with its token. The one reading the
+        unit (walled) and the question (unseen) share for a hidden worker."""
+        roots, token = self._roots(), env.get("YERK_TOKEN_FILE", "")
+        backs = tuple(p for p, _ in self.back(spec, folder, env))
+        out = [(r, backs) for r in roots] + [(p, ()) for p, _ in DOORS if p.exists()]
+        return out + [(h, (Path(token),) if token and Path(token).is_relative_to(h) else ()) for h in self.hidden
+                      if not any(h.is_relative_to(r) for r in roots)]
+
+    def unseen(self, room: str, bind: str, token: str, paths: Sequence[str], spec: dict[str, Any] | None = None,
+               folder: Path | None = None) -> list[str]:
         """Of `paths`, those this unit hides from a worker of `room` (of `bind`, when the daemon's caller gave one; the calling
         room's own work folder is then hidden like any other room's) whose own token file is `token`: one of the hidden paths
         or under one, and not what comes back inside it (_fence). The rooms' root itself is hidden: a worker sees it holding
         one room. Each path as written and resolved, so a link into a hidden folder is hidden too, and a glob by the part
-        before its first wildcard; with no state folder there is no fence and nothing is hidden. Each once, in order."""
+        before its first wildcard; with no state folder there is no fence and nothing is hidden. Each once, in order. For a
+        worker the home is hidden from (hides: `spec`, the keys its worker.json will carry; `folder`, its folder), the fence is
+        that unit's (walls): a path is hidden when nothing binds it back."""
         if self.state is None:
             return []
-        fence, out = self._fence(self._bound({"room": room, "bind": bind}), token), []
-        for s in paths:
-            here = [Path(WILD.split(s, 1)[0])]                  # a glob: the part before its first wildcard
+        s, out = {**(spec or {}), "room": room, "bind": bind}, list[str]()
+        fence = (self.walls(s, folder, {"YERK_TOKEN_FILE": token}) if folder is not None and self.hides(s)
+                 else [(p, (b,) if b else ()) for p, b in self._fence(self._bound(s), token)])
+        for w in paths:
+            here = [Path(WILD.split(w, 1)[0])]                  # a glob: the part before its first wildcard
             with contextlib.suppress(OSError, RuntimeError):
                 here.append(here[0].resolve())
-            if s not in out and any(q.is_relative_to(p) and not (back and q.is_relative_to(back)) for q in here for p, back in fence):
-                out.append(s)
+            if w not in out and any(q.is_relative_to(p) and not any(q.is_relative_to(b) for b in backs) for q in here for p, backs in fence):
+                out.append(w)
         return out
 
     @staticmethod
@@ -336,10 +511,16 @@ class Systemd:
     def _room(cls, folder: Path) -> str:
         """The room whose work folder the worker gets, from the spec Workers.start wrote before the launch: its own, or the
         `bind` the daemon gave it (a pictures backfill: its card in the machine room, the pictures in the owner room's inbox)."""
+        return cls._bound(cls._spec(folder))
+
+    @staticmethod
+    def _spec(folder: Path) -> dict[str, Any]:
+        """The spec Workers.start wrote before the launch; {} when there is none or it is not one."""
         try:
-            return cls._bound(json.loads((folder / "worker.json").read_text()))
+            spec = json.loads((folder / "worker.json").read_text())
         except (OSError, ValueError):
-            return ""
+            return {}
+        return spec if isinstance(spec, dict) else {}
 
     def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path, cap: float, post: list[str]) -> None:
         cmd = ["systemd-run", "--user", "--unit", unit, "--collect", "--quiet", "--working-directory", str(cwd),
@@ -632,14 +813,16 @@ class Workers:
 
     def __init__(self, ledger: Ledger, conf: Settings, accounts: list[Account], cooldowns: Cooldowns,
                  rooms: dict[str, Any], channels: dict[str, Any], room_confs: dict[str, dict[str, Any]],
-                 launcher: Systemd | None = None, state: Path | None = None, hidden: Sequence[Path] = (), models: dict[str, str] | None = None):
+                 launcher: Systemd | None = None, state: Path | None = None, hidden: Sequence[Path] = (), models: dict[str, str] | None = None,
+                 reach: Callable[[], Sequence[tuple[Path, str]]] | None = None):
         self.ledger, self.conf, self.accounts, self.cooldowns = ledger, conf, accounts, cooldowns
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs, self.models = rooms, channels, room_confs, models or {}
         # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
         # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox;
-        # and every unit gets [workers] memory_max as its memory ceiling
-        self.launcher: Systemd = launcher or Systemd(self.state, hidden, conf.memory_max)
+        # and every unit gets [workers] memory_max as its memory ceiling; with [workers] home hidden, the home is not there
+        # but what `reach` names (the daemon's: its repositories, the toolchains, the gate)
+        self.launcher: Systemd = launcher or Systemd(self.state, hidden, conf.memory_max, conf.home, reach)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
@@ -744,13 +927,14 @@ class Workers:
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
         report, tasks_md = d / REPORT, d / TASKS
-        bind = str((more or {}).get("bind") or "")
-        if (unseen := self.launcher.unseen(room, bind, own_token(acct), named(brief))):   # told, never refused: a brief may
-            log.info("worker %s: its brief names %d path(s) its unit hides", wid, len(unseen))   # quote what it never reads
+        bind, yerk = str((more or {}).get("bind") or ""), [t for t in WORKER_TOOLS if t in self.conf.yerk_tools]   # one list: words, worker.json, server
+        hide = self.launcher.hides({**(more or {}), "room": room})            # [workers] home: as the unit will read it
+        if (unseen := self.launcher.unseen(room, bind, own_token(acct), named(brief), {**(more or {}), "yerk_tools": yerk}, d)):   # told,
+            log.info("worker %s: its brief names %d path(s) its unit hides", wid, len(unseen))   # never refused: a brief may quote what it never reads
         (d / "BRIEF.md").write_text(brief)
         if tasks:
             tasks_md.write_text("".join(f"- [ ] {t}\n" for t in tasks))
-        prompt, yerk = d / "PROMPT.md", [t for t in WORKER_TOOLS if t in self.conf.yerk_tools]   # one list: words, worker.json, server
+        prompt = d / "PROMPT.md"
         prompt.write_text(
             f"You are a Yerk AI worker: a headless Claude Code run with one brief, started from room {room}.\n"
             f"- Your folder is {d}. Write your files there unless the brief names another place.\n"
@@ -776,7 +960,8 @@ class Workers:
         spec = {"id": wid, "room": room, "account": acct.name, "model": model, "effort": effort, "session_id": sid,
                 "claude": shutil.which(claude_bin()) or claude_bin(), "tools": self.conf.tools,
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
-                "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
+                "tasks": str(tasks_md), "cap": cap, "gate": walled_trash(self.gate, d) if hide else self.gate,
+                "settings": str(gate_settings(d))}
         spec.update({k: v for k, v in (more or {}).items() if k not in spec})
         if yerk:
             spec["yerk_tools"] = yerk
@@ -838,6 +1023,8 @@ class Workers:
             env["YERK_TOKEN_FILE"] = token
         me = [sys.executable, "-P", "-m", "yerk_ai.workers"]    # -P: nothing in the folder can shadow an import
         try:
+            if self.launcher.hides(self.launcher._spec(d)):
+                env = self.launcher.own(d, env)
             await asyncio.to_thread(self.launcher.start, row["unit"], [*me, "run", str(d / "worker.json")], env, d,
                                     d / "stdout.jsonl", d / "stderr.log", cap, [*me, "post", str(d)])
         except (OSError, subprocess.SubprocessError) as e:
@@ -1096,6 +1283,31 @@ def worktrees(folder: Path) -> list[str]:
     return [str(p.parent) for p in sorted(folder.glob("*/.git")) if p.is_file() and any(fnmatch(p.parent.name, w) for w in WORKTREES)]
 
 
+def pointer(tree: Path) -> Path | None:
+    """Where a worktree's .git file points, read as git reads it; None for anything but one absolute path."""
+    try:
+        m = re.fullmatch(r"gitdir: (/(?:[^\n]*\S)?)\n?", (tree / ".git").read_text())
+    except (OSError, ValueError):
+        return None
+    return Path(m[1]) if m else None
+
+
+def linked(tree: Path) -> bool:
+    """Is this a worktree its repository knows: its .git names a folder of that repository's .git/worktrees, which names it back
+    and no other common folder? Git runs out here only on one that is. A hidden worker's never is (its unit's list of worktrees
+    is its own), and a .git it wrote to name a repository of its making (in the workers' folders, the workers' uv cache or inside
+    a .git) would have git out here run what that repository's config names."""
+    if (admin := pointer(tree)) is None:
+        return False
+    try:
+        real = admin.resolve()
+        return (real == admin and real.parts.count(".git") == 1 and real.parts[-3:-1] == (".git", "worktrees")
+                and not any(real.is_relative_to(d.resolve()) for d in (tree.parent.parent, uv_cache()))
+                and Path((admin / "gitdir").read_text().strip()) == tree.resolve() / ".git" and (admin / "commondir").read_text().strip() == "../..")
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def branch(tree: Path, now: float | None = None) -> dict[str, Any]:
     """A worktree's branch as git has it, so a room checks a worker's claim on its commits (need 134 of 2026-11-21: a plug-in
     worktree's .git is a pointer into the plug-in's own .git, which no room reads, and a commit there is compressed, so a
@@ -1112,6 +1324,8 @@ def branch(tree: Path, now: float | None = None) -> dict[str, Any]:
                                    "-C", str(tree), *a], capture_output=True, text=True, timeout=20)
         except (OSError, subprocess.SubprocessError) as e:
             return subprocess.CompletedProcess([], 127, "", str(e))
+    if not linked(tree) and ((at := pointer(tree)) is None or at.parent.exists()):     # a pointer to nowhere: git says so itself
+        return {"worktree": str(tree), "error": words.BRANCH_UNREAD.format(why=words.BRANCH_UNKNOWN)}
     if (h := git("rev-parse", "--verify", "HEAD^{commit}")).returncode:
         return {"worktree": str(tree), "error": words.BRANCH_UNREAD.format(why=(h.stderr.strip().splitlines() or ["?"])[0][:160])}
     head, first = h.stdout.strip(), git("worktree", "list", "--porcelain").stdout.split("\n\n", 1)[0].splitlines()

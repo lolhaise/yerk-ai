@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import select
 import signal
 import sqlite3
@@ -757,7 +758,7 @@ def main(argv: list[str] | None = None) -> int:
     back = embeddings.Backfill(m.index_db, live, store, embedder, units=m.embeddings_units)
     idx = Index(m.index_db, m.scope, on_insert=back.note)
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
-    server = embeddings.Server(store, embedder, m.index_db, live)
+    server = embeddings.Server(store, embedder, m.index_db, live, secrets.token_urlsafe(24))   # this run's own; index.json names it
     pin = Pin(m.index_db)
     if not a.once:
         embeddings.write_status(m.index_status, commit=(commit := head(REPO)))     # the code that runs, before the load (deploy, doctor)
@@ -790,7 +791,7 @@ def main(argv: list[str] | None = None) -> int:
             for gone in sweep(m.index_db):
                 log.info("swept the old generation file %s", gone)
             if not a.once:
-                embeddings.write_status(m.index_status, port=server.port, chunks=chunks, commit=commit, embeddings={
+                embeddings.write_status(m.index_status, port=server.port, token=server.token, chunks=chunks, commit=commit, embeddings={
                     "key": embedder.available(), "model": m.embeddings_model, "dim": m.embeddings_dim, "vectors": store.n,
                     "units": m.embeddings_units, "width": store.width, **back.status(), "requests": embedder.requests,
                     "tokens": embedder.tokens, "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()},

@@ -9,10 +9,12 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from yerk_ai import memindex, memory, mentions
-from yerk_ai.config import REPO
+from yerk_ai.config import INDEX_HEADER, REPO
 
 
 def tree(tmp_path: Path) -> memory.Settings:
@@ -83,6 +85,36 @@ def test_an_idle_index_makes_no_pass_and_a_change_is_searchable_inside_one_inter
         t0 = time.monotonic()
         rc = p.wait(timeout=15)
     assert rc == 0 and time.monotonic() - t0 < 3                # the watch never holds up a stop
+
+
+def test_a_running_index_names_a_token_of_its_own_in_index_json_and_answers_no_search_without_it(tmp_path):
+    # the real program: each run makes its token, names it beside its port (0600) and refuses whoever does not send it
+    s, seen = tree(tmp_path), []
+    env = {k: v for k, v in os.environ.items() if k not in ("YERK_PRIVATE", "YERK_STATE")}
+    for _ in range(2):
+        s.index_status.unlink(missing_ok=True)
+        p = subprocess.Popen([sys.executable, "-m", "yerk_ai.memindex", "--private", str(s.root.parent), "--state", str(tmp_path / "state"),
+                              "--interval", "1"], cwd=REPO, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            end, st = time.monotonic() + 30, {}
+            while not st.get("port") and time.monotonic() < end:
+                time.sleep(0.05)
+                st = memory.index_status(s)
+            assert len(st["token"]) >= 24 and oct(s.index_status.stat().st_mode & 0o777) == "0o600"
+
+            def ask(headers: dict) -> int:
+                req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/search", data=b'{"query": "tea", "pool": 5}', headers=headers)
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        return r.status
+                except urllib.error.HTTPError as e:
+                    return e.code
+            assert ask({}) == 401 and ask({INDEX_HEADER: "x" * len(st["token"])}) == 401 and ask({INDEX_HEADER: st["token"]}) == 200
+            seen.append(st["token"])
+        finally:
+            p.send_signal(signal.SIGTERM)
+            p.wait(timeout=15)
+    assert seen[0] != seen[1]                                   # a run's own
 
 
 def test_the_watch_wakes_for_markdown_folders_and_a_root_file_by_name_only(tmp_path):
