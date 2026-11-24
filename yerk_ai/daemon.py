@@ -2083,9 +2083,10 @@ class Yerkd:
         """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays.
         `yerk room compact ROOM`: the overflow path's /compact, asked for, when no turn runs.
         `yerk worker ...`: start, list, stop, report. `{"job": ...}`: the job runner's fire and result.
-        Under the worker secret only `recall` and `read_memory` answer: a worker starts nothing."""
-        if auth and auth.get("kind") == "worker" and not (isinstance(payload.get("recall"), dict)
-                                                          or isinstance(payload.get("read_memory"), dict)):
+        Under the worker secret only `recall` and `read_memory` answer, each alone in its call: a worker starts nothing, and
+        another key beside one of the two would be served before it (2026-11-24: `worker` beside an empty `recall` was)."""
+        if auth and auth.get("kind") == "worker" and not (len(payload) == 1 and (isinstance(payload.get("recall"), dict)
+                                                                                 or isinstance(payload.get("read_memory"), dict))):
             log.warning("control: a worker-secret call asked for %s; refused", ", ".join(sorted(payload)) or "nothing")
             return {"ok": False, "error": "the worker secret reads memory only (recall, read_memory)"}
         if isinstance(payload.get("worker"), dict):

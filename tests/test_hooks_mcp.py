@@ -241,6 +241,21 @@ def test_every_endpoint_refuses_a_caller_without_the_secret_and_knows_a_room_by_
         assert start.status_code == 200 and not start.json()["ok"] and "reads memory only" in start.json()["error"]
         job = c.post("/control", json={"job": {"action": "list", "room": "example-room"}}, headers={"x-yerk-secret": y.worker_secret})
         assert not job.json()["ok"]
+        # 2026-11-24: a second key beside one of the two was let through and served before it (`worker` beside an empty `recall`
+        # started a worker); each of the two answers alone in its call, and nothing else is reached
+        reached: list[str] = []
+        y.workers.handle = y.jobs.handle = lambda caller, req: reached.append("handle")
+        y.need_build = y.pictures = lambda req: reached.append("build")
+        for ask in ({"worker": {"action": "start", "room": "example-room", "brief": "x"}, "recall": {}},
+                    {"job": {"action": "add", "room": "example-room"}, "read_memory": {}}, {"needs": {"day": "2026-01-01", "n": 1}, "recall": {}},
+                    {"pictures": {"room": "example-room"}, "recall": {}}, {"machine": {"room": "example-room", "text": "x"}, "recall": {}},
+                    {"compact": "example-room", "recall": {}}, {"close": "example-room", "read_memory": {}},
+                    {"recall": {"room": "example-room", "query": "kettle"}, "read_memory": {}}, {"recall": "kettle"}, {}):
+            out = c.post("/control", json=ask, headers={"x-yerk-secret": y.worker_secret}).json()
+            assert not out["ok"] and "reads memory only" in out["error"], ask
+        assert reached == []
+        rm = c.post("/control", json={"read_memory": {"room": "example-room", "path": "memory/pinned.md"}}, headers={"x-yerk-secret": y.worker_secret})
+        assert "reads memory only" not in str(rm.json())
         assert c.post("/hook", json={"hook_event_name": "Stop"}, headers={"x-yerk-secret": y.worker_secret}).status_code == 401
     assert oct(y.secret_file.stat().st_mode & 0o777) == "0o600" and y.secret != y.worker_secret and len(y.secret) >= 32
     assert y.secret_file.is_relative_to(tmp_path)              # the example layer in the repo is never written
