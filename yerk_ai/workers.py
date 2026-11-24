@@ -125,6 +125,7 @@ WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "ProtectSystem=strict", "ProtectCo
          "LockPersonality=yes", f"RestrictAddressFamilies={FAMILIES}", "SystemCallArchitectures=native", f"SystemCallFilter={NO_CALLS}",
          "SystemCallErrorNumber=ENOSYS")
 OWN_CONFIG = ".claude-home"     # a hidden worker's Claude config folder, in its own folder (Systemd.own)
+UNIT_GIT = ".git-unit"          # a hidden worker's worktree's .git from its end on (needs.tidy): out here it names another's record
 
 
 @dataclass
@@ -1023,8 +1024,11 @@ class Workers:
             env["YERK_TOKEN_FILE"] = token
         me = [sys.executable, "-P", "-m", "yerk_ai.workers"]    # -P: nothing in the folder can shadow an import
         try:
-            if self.launcher.hides(self.launcher._spec(d)):
+            if self.launcher.hides(spec := self.launcher._spec(d)):
                 env = self.launcher.own(d, env)
+                # said in its spec, here and never at the start: a worker in line launches under the setting of this moment, and
+                # the daemon runs no git in a folder a hidden unit wrote (hid)
+                (d / "worker.json").write_text(json.dumps({**spec, "hidden": True}, indent=1))
             await asyncio.to_thread(self.launcher.start, row["unit"], [*me, "run", str(d / "worker.json")], env, d,
                                     d / "stdout.jsonl", d / "stderr.log", cap, [*me, "post", str(d)])
         except (OSError, subprocess.SubprocessError) as e:
@@ -1284,12 +1288,20 @@ def worktrees(folder: Path) -> list[str]:
 
 
 def pointer(tree: Path) -> Path | None:
-    """Where a worktree's .git file points, read as git reads it; None for anything but one absolute path."""
+    """Where a worktree's .git file points, read as git reads it: one path, absolute, or relative to the worktree (git's
+    `worktree add --relative-paths`); None for anything else."""
     try:
-        m = re.fullmatch(r"gitdir: (/(?:[^\n]*\S)?)\n?", (tree / ".git").read_text())
-    except (OSError, ValueError):
+        m = re.fullmatch(r"gitdir: (\S(?:[^\n]*\S)?)\n?", (tree / ".git").read_text())
+        return (Path(m[1]) if m[1].startswith("/") else Path(os.path.normpath(tree.resolve() / m[1]))) if m else None
+    except (OSError, ValueError, RuntimeError):
         return None
-    return Path(m[1]) if m else None
+
+
+def hid(folder: Path) -> bool:
+    """Did this worker's unit hide the home? Its worker.json says so from the launch (Workers._launch), and that file the worker
+    cannot write. All else in such a folder is its own to write, a worktree's .git and whatever that names too, and nothing in
+    it is in any repository's list (the unit's began empty), so the daemon runs no git there (branch, needs.tidy)."""
+    return Systemd._spec(folder).get("hidden") is True
 
 
 def linked(tree: Path) -> bool:
@@ -1297,13 +1309,14 @@ def linked(tree: Path) -> bool:
     and no other common folder? Git runs out here only on one that is. A hidden worker's never is (its unit's list of worktrees
     is its own), and a .git it wrote to name a repository of its making (in the workers' folders, the workers' uv cache or inside
     a .git) would have git out here run what that repository's config names."""
-    if (admin := pointer(tree)) is None:
+    if tree.is_symlink() or (admin := pointer(tree)) is None:      # a link to another's worktree is that one's, never this worker's
         return False
     try:
-        real = admin.resolve()
+        real, back = admin.resolve(), (admin / "gitdir").read_text().strip()
         return (real == admin and real.parts.count(".git") == 1 and real.parts[-3:-1] == (".git", "worktrees")
                 and not any(real.is_relative_to(d.resolve()) for d in (tree.parent.parent, uv_cache()))
-                and Path((admin / "gitdir").read_text().strip()) == tree.resolve() / ".git" and (admin / "commondir").read_text().strip() == "../..")
+                and (Path(back) if back.startswith("/") else Path(os.path.normpath(admin / back))) == tree.resolve() / ".git"
+                and (admin / "commondir").read_text().strip() == "../..")
     except (OSError, ValueError, RuntimeError):
         return False
 
@@ -1324,7 +1337,7 @@ def branch(tree: Path, now: float | None = None) -> dict[str, Any]:
                                    "-C", str(tree), *a], capture_output=True, text=True, timeout=20)
         except (OSError, subprocess.SubprocessError) as e:
             return subprocess.CompletedProcess([], 127, "", str(e))
-    if not linked(tree) and ((at := pointer(tree)) is None or at.parent.exists()):     # a pointer to nowhere: git says so itself
+    if hid(tree.parent) or not linked(tree) and ((at := pointer(tree)) is None or at.parent.exists()):   # a pointer to nowhere: git says so itself
         return {"worktree": str(tree), "error": words.BRANCH_UNREAD.format(why=words.BRANCH_UNKNOWN)}
     if (h := git("rev-parse", "--verify", "HEAD^{commit}")).returncode:
         return {"worktree": str(tree), "error": words.BRANCH_UNREAD.format(why=(h.stderr.strip().splitlines() or ["?"])[0][:160])}

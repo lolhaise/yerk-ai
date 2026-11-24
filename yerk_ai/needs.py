@@ -22,7 +22,9 @@ for every room, so every room shares the same one best way of doing each thing.
 """
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import subprocess
 import time
@@ -254,9 +256,17 @@ def git(repo: str | Path, *args: str) -> subprocess.CompletedProcess[str]:
 def tidy(folder: Path) -> list[str]:
     """A need's worker ended: each git worktree it left under its folder (a linked one's .git is a file) removed when clean,
     by `git worktree remove`, never forced, its branch kept (2026-11-10: 207 left, none ever removed); one line for each
-    that stays, for the worker's note. One its repository has no record of (a hidden worker's) is not git's to remove, and git
-    is never run on it (workers.linked): it goes with the worker's folder."""
+    that stays, for the worker's note. One its repository has no record of is not git's to remove, and git is never run on it
+    (workers.linked). In a hidden worker's folder git is never run at all (workers.hid): each worktree's .git is renamed
+    (workers.UNIT_GIT) and its files go with the worker's folder, its commits being in the repository."""
     from . import workers                              # late: workers' own import of needs is
+    if workers.hid(folder):         # its unit's list of worktrees began empty, so a .git in here names a record that is another
+        for p in folder.glob("*/.git"):                # worktree's out here, or a repository of its own making: each renamed, a file,
+            if not p.parent.is_symlink():              # a link or a folder, so git in it fails; through a linked folder it is another's own
+                to = p.with_name(workers.UNIT_GIT)     # a name the worker left there first does not keep its .git in place
+                with contextlib.suppress(OSError):
+                    p.rename(to.with_name(f"{to.name}.{time.time_ns()}") if os.path.lexists(to) else to)
+        return []                                      # one that would not move (a folder it left read-only) is still never git's
     kept = []
     for wt in sorted(p.parent for p in folder.glob("*/.git") if p.is_file() and workers.linked(p.parent)):
         st = git(wt, "status", "--porcelain")

@@ -1585,6 +1585,17 @@ def test_a_hidden_worker_starts_on_its_own_folders_and_its_accounts_token_and_on
         else:
             assert env["CLAUDE_CONFIG_DIR"] == str(s.accounts[0].config_dir) and "UV_CACHE_DIR" not in env
             assert not (folder / workers.OWN_CONFIG).exists()
+        assert (json.loads((folder / "worker.json").read_text()).get("hidden") is True) == walled_ == workers.hid(folder)
+    # its spec says so from the launch, never from the start: one that waited in line launches under that moment's setting, and
+    # a unit that ran open is tidied as an open one (its worktree is in the repository's list, and the next worker needs the branch)
+    unit = Envs(s.tmp, fence_of(s.tmp))
+    unit.home = "needs"
+    w, need = s.make({"r": Busy()}, launcher=unit, per_account=1), {"need": {"day": "2026-11-24", "n": 1}}
+    first, second = asyncio.run(w.start("r", "Do it.", more=need)), asyncio.run(w.start("r", "Do it.", more=need))
+    assert second["waiting"] and "hidden" not in json.loads((Path(second["staging"]) / "worker.json").read_text())
+    unit.home = "open"
+    assert asyncio.run(w._launch(w.live[second["id"]])) == ""
+    assert workers.hid(Path(first["staging"])) and not workers.hid(Path(second["staging"]))
     s.accounts[0].token_file.unlink()
     unit = Envs(s.tmp, fence_of(s.tmp))
     unit.home = "hidden"

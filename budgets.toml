@@ -2015,4 +2015,6 @@ secs = 60
 # (workers.py: own, uv_cache, WALLS, FAMILIES and NO_CALLS, /run and /dev/shm and the journals among the DOORS, the resolver's file,
 # the unit's own list of worktrees, pointer and linked; embeddings.py, memindex.py, memory.py, config.py: the meaning search's
 # token; needs.py, daemon.py, jobs.py and words.py: the tidy, the worker secret, the memory server's call and one line).
-lines = 36132
+# 36,155: plus 23, that change's cold read the same day (workers.py 13: hid, the launch's word in the spec, a relative
+# pointer, a link never taken; needs.py 10: no git in a hidden worker's folder, its .git renamed).
+lines = 36155

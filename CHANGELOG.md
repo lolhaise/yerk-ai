@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-24
 
+### workers-home-deputy-2026-11-24 (#132)
+
+- The daemon runs no git in a folder a hidden worker wrote. A hidden worker's spec says its unit hid the home, from the launch
+  on (`hidden`, in the worker.json it cannot write), and then its report reads no branch from a worktree in its folder and the
+  tidy at a need's end runs no git there. Before, the daemon asked each worktree's path whether its repository knew it, and
+  one link in a worker's folder to a clean worktree anywhere passed: the tidy removed that worktree, record and files (in a
+  throwaway unit that could not see the worktree at all). Under `hidden`, a repository a room's worker made in its work
+  folder passed too, and the report ran what that repository's config named.
+- At a hidden need worker's end each `.git` in its folder is renamed `.git-unit`. Its unit's list of worktrees began empty, so
+  out here that `.git` names `<repository>/.git/worktrees/wt`, another worktree's record whenever one of that name is there:
+  git run in the leftover read that other worktree's HEAD and index, and a commit there would have moved them. The leftover's
+  files stay with the worker's folder, and its commits are on its branch in the repository.
+- A link in an open worker's folder to another worktree is no worktree of that worker's either. A worktree git wrote with
+  relative paths (`worktree add --relative-paths`, git 2.48) is the repository's own again: it had been kept at a need's end
+  without a word and reported as a hidden worker's.
+- The suite's open-files count is skipped where there is no /proc.
+
 ### workers-home-2026-11-24 (#131)
 
 - `[workers] home` hides the owner's home from a worker's unit. `open`, the default, leaves every unit exactly as it was (a
@@ -36,14 +53,14 @@ version changes.
   throwaway units. It needs systemd 257 (`PrivatePIDs=`).
 - Its list of git worktrees is the unit's own: in a unit that hides their folders every other worktree reads as gone, and one
   `git worktree prune` would have dropped their records. The daemon runs git on a worker's worktree only when that worktree's
-  repository knows it, so a .git a worker wrote never has git outside run what a config of the worker's names.
+  repository knows it (not enough by itself: #132).
 - A hidden worker keeps its memory tools. Its deletes go to a `.trash` in its own folder. The note about paths its unit
   hides reads the unit's own fence, so the three need briefs get none.
 - The worker secret reads memory and nothing else again: a call with `recall` or `read_memory` beside another key
   (`worker`, `job`, `needs`) was let through and the other key served, since Layer 5. Each now answers alone in its call.
 - yerk-index's meaning search asks for its run's token, which index.json (0600) names beside the port: any local process
-  could search the owner's memory on that port with no login. An older daemon or index keeps answering the other's newer
-  half for the minute a deploy restarts them one after the other.
+  could search the owner's memory on that port with no login. A newer daemon reads an older index, which asks for no token;
+  an older daemon is refused by a newer index and answers by keywords until it restarts, so a deploy restarts the daemon first.
 - **Upgrading**: nothing changes until yerkd.toml has `home = "needs"` or `home = "hidden"` under `[workers]`, read at
   yerkd's start. Each account a hidden worker may run on needs its token file (accounts.toml, `token`).
 

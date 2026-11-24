@@ -30,7 +30,11 @@ def descriptors():
     2026-11-24 the suite peaked at 981 open files on main under the 1,024 a unit has (the box's CI, the pull request gate, a
     worker's own), and a few more tests anywhere failed whichever ones came next. Past half of that, it is run."""
     yield
-    if len(os.listdir("/proc/self/fd")) > 500:
+    try:
+        many = len(os.listdir("/proc/self/fd")) > 500
+    except OSError:                                      # no /proc (not Linux): nothing to count, and the limit is a Linux unit's
+        many = False
+    if many:
         gc.collect()
 
 
