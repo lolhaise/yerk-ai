@@ -18,6 +18,7 @@ PACKAGE = Path(__file__).resolve().parent
 REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
+INDEX_HEADER = "x-yerk-index"       # the header a meaning search carries yerk-index's token in (embeddings.Server, memory.meaning)
 _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
 _EXAMPLE_SAID = False                                    # private_dir has said the example layer on stderr
 # <state>/rooms/<room>/starts/, beside assembled.jsonl: each session's start file as it began (<id>.md) and the texts news tells
@@ -236,7 +237,7 @@ YERKD_WORDS = {
                 "per_account": "workers at once on one account (default 1)",
                 "yerk_tools": "Yerk AI tools a worker gets on its own server: recall and read_memory only (default none)",
                 "home": "the owner's home as a worker's unit sees it: open (all of it but the hidden secrets), hidden (empty but "
-                        "its own folder, its account, Yerk's checkout and each plug-in's, the toolchains and the PR gate) or "
+                        "its own folder, its account's token, Yerk's checkout and each plug-in's, the toolchains and the PR gate) or "
                         "needs (hidden for a need's builder, cold read and fix, open for the rest; default open)"},
     "gates": {"approvers": "the senders whose word releases a held action (default owner)", "word": "the word that does (default approve)",
               "approve_minutes": "a word older than this releases nothing (default 30)",

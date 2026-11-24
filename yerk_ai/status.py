@@ -218,7 +218,7 @@ def document(private: Path, state: Path, s: dict[str, Any], ledger: Ledger, now:
            "dead_messages": len(ledger.dead_turns(now - 86400.0, now - BLOCKED))}
     try:
         index = memory.index_status(memory.settings(private, state, dict(conf.get("memory", {}))))
-        out["index"] = {**index, "age": round(now - float(index.get("at") or 0), 1)} if index else None
+        out["index"] = {**{k: v for k, v in index.items() if k != "token"}, "age": round(now - float(index.get("at") or 0), 1)} if index else None
     except (OSError, ValueError, KeyError):
         out["index"] = None
     newest = backup.newest(private, state)

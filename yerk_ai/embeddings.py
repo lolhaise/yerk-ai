@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hmac
 import itertools
 import json
 import logging
@@ -33,7 +34,7 @@ from typing import Any
 
 import numpy as np
 
-from .config import write_private
+from .config import INDEX_HEADER, write_private
 
 log = logging.getLogger("yerk.embeddings")
 
@@ -238,10 +239,11 @@ class Server:
     `near: true` the matched line as `near`, which a daemon that does not ask never receives), or
     `ok: false` with a status told apart by kind: no-key, provider-timeout, provider-error, empty.
     GET /status answers the counts. Each request runs on its own thread with its own read-only
-    connection, so a scan never waits on the writer."""
+    connection, so a scan never waits on the writer. With a `token` a request without it in INDEX_HEADER is refused (401, nothing
+    searched): index.json, 0600, names it beside the port, so whoever may read that file may ask, and no other local process."""
 
-    def __init__(self, store: Vectors, embedder: Embedder, db: Path, live: Any):
-        self.store, self.embedder, self.db, self.live = store, embedder, db, live
+    def __init__(self, store: Vectors, embedder: Embedder, db: Path, live: Any, token: str = ""):
+        self.store, self.embedder, self.db, self.live, self.token = store, embedder, db, live, token
         self.port = 0
         self.httpd: ThreadingHTTPServer | None = None
         self.queries = 0
@@ -299,10 +301,19 @@ class Server:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _refused(self) -> bool:
+                if not srv.token or hmac.compare_digest(str(self.headers.get(INDEX_HEADER, "")).encode(), srv.token.encode()):
+                    return False
+                self._send({"ok": False, "status": "refused", "error": "no token"}, 401)
+                return True
+
             def do_GET(self) -> None:
-                self._send(srv.status() if self.path == "/status" else {"ok": False, "error": "no such path"}, 200)
+                if not self._refused():
+                    self._send(srv.status() if self.path == "/status" else {"ok": False, "error": "no such path"}, 200)
 
             def do_POST(self) -> None:
+                if self._refused():
+                    return
                 if self.path != "/search":
                     self._send({"ok": False, "status": "failure", "error": "no such path"}, 404)
                     return
