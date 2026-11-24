@@ -4,6 +4,7 @@ own fake). Every test's box is on no tailnet: the page's default address is neve
 own). Every test's box is no Windows PC: no page is placed on the owner's real screen by Windows' own PowerShell (a test of the placing
 gives its own stand-in). Every test's meter reading finds no bwrap: the example layer's first account is Claude Code's default folder,
 and the box's own bwrap never runs over them (a test of the hiding gives its own stand-in)."""
+import gc
 import os
 import subprocess
 from pathlib import Path
@@ -21,6 +22,16 @@ STATE_DEFAULT = Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expandu
 state_read_only = pytest.mark.skipif(not os.environ.get("YERK_STATE") and STATE_DEFAULT.is_dir() and bool(STATE_DEFAULT.stat().st_mode & 0o077)
                                      and not os.access(STATE_DEFAULT, os.W_OK),
                                      reason="the default state folder is read-only and not 0700 here (a worker's hidden home)")
+
+
+@pytest.fixture(autouse=True)
+def descriptors():
+    """A test that leaves its ledgers to the garbage collector holds their files until it runs, and Python 3.14's runs late:
+    2026-11-24 the suite peaked at 981 open files on main under the 1,024 a unit has (the box's CI, the pull request gate, a
+    worker's own), and a few more tests anywhere failed whichever ones came next. Past half of that, it is run."""
+    yield
+    if len(os.listdir("/proc/self/fd")) > 500:
+        gc.collect()
 
 
 @pytest.fixture(autouse=True)
