@@ -405,6 +405,15 @@ def test_a_superseded_due_line_keeps_both_marks_parses_and_reads_as_blank_where_
     assert not y.recall_for("example-room", "send the example form back by noon")[1]     # and to the topic hit
 
 
+def test_a_dated_fact_is_read_back_whatever_its_rooms_name_is(tmp_path):
+    s = memory.settings(tmp_path / "private", tmp_path / "state", {"root": "memory", "timezone": "UTC"})
+    for n, (room, rid) in enumerate((("example ops", "discord:1"), ("example&co", "example&co"), ("example-room", "console:a/b"), ("ex.room_1", ""))):
+        log = memory.DailyLog(s.daily, s.tz, {room: (rid, "private")})
+        r = memory.remember(s, log, room, "m-1", f"Example boiler {n}: the yearly check.", "example boiler", due="2026-12-02T09:30")
+        got = memory.due_of((s.root / "facts" / "example-boiler.md").read_text().splitlines()[-1])
+        assert r["ok"] and got and (got["date"], got["time"], got["text"]) == ("2026-12-02", "09:30", f"Example boiler {n}: the yearly check."), room
+
+
 def test_a_dated_line_is_open_until_it_is_marked_superseded_or_its_date_is_more_than_fourteen_days_past():
     src, today = "(example-room, 2026-11-01 09:00:00+00:00)", date(2026, 11, 25)
     line = "- Example form: send it back " + src + " [due {}]{} [m:m-1]"

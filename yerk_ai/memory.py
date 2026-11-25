@@ -416,8 +416,9 @@ FILE_MARK = "[text of a file sent to the room, as extracted]"    # every line of
 # (DATED: `.d`, where an undated note's is `.n`), since nothing else stands between a note's own words and its class
 DUE = r" \[due ([0-9]{4}-[0-9]{2}-[0-9]{2})(?:T([0-9]{2}:[0-9]{2}))?(?: owes ([^\[\]]+))?\]"
 DATED = re.compile(r"\.d[0-9a-f]{8}$")
-FILED = re.compile(r"^- (.+) \([\w.-]+(?:#\S+)?, (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d)\)(?:" + DUE + r")? \[m:[^\]\s]+\]$")
-TAGGED = re.compile(r"\)( \[due [^\[\]]+\]) \[m:[^\]\s]+\]$")           # a fact file's dated line, its mark as filed
+FACT = re.compile(r"^- (.+) \([^()]*, (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d)\)" + DUE + r" \[m:[^\]\s]+\]$")     # a fact file's dated line
+TAGGED = re.compile(r"\)( \[due [^\[\]]+\]) \[m:[^\]\s]+\]$")           # its mark as filed
+FILED = re.compile(r"^- .+ \([\w.-]+(?:#\S+)?, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d\)(?: \[due [^\[\]]+\])? \[m:[^\]\s]+\]$")   # a fact file's filed note
 GONE = re.compile(r" \[superseded[^\]]*\](?=(?: \[m:[^\]\s]+\])?$)")      # a superseded mark at its place, after a dated line's own
 SUPERSEDES = re.compile(r" \(supersedes [^()]*\)$")          # what a filing with `replaces` says after its words
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
@@ -629,7 +630,7 @@ def due_of(raw: str, day: str = "") -> dict[str, str] | None:
             return None
         said, when, at, owes = m.groups()
         role, filed = ln.role, f"{day}T{ln.time}{ln.offset}"
-    elif (m := FILED.match(GONE.sub("", raw))) and m[3]:
+    elif m := FACT.match(GONE.sub("", raw)):
         said, filed, when, at, owes = m.groups()
         role, filed = NOTE, filed.replace(" ", "T", 1)
     else:

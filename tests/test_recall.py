@@ -530,6 +530,9 @@ def test_a_file_or_a_later_map_that_cannot_be_read_is_unknown_never_empty_and_a_
     for bad in ("{", "[]", '{"items": 3}', '{"x": []}'):
         s.due.write_text(bad)
         assert idx.load() == [], bad
+    whole = {k: "x" for k in due.FIELDS}
+    s.due.write_text(json.dumps({"items": [whole, {k: "x" for k in due.FIELDS - {"raw"}}, "x", 3, None]}))   # other code's entries
+    assert idx.load() == [whole]
     s.due.unlink()
     assert idx.load() == [] == due.Index(tmp_path / "none" / "due.json").load()
 
