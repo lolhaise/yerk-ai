@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 135610`
+- `total = 135895`
 
 ## [session_start.claude_code]
 
@@ -150,9 +150,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-25, twelve-hits-2026-11-25 (the owner's order, Wed Nov 25): the `recall` tool's twelve hits (`k` 12 by default, and one sentence: the first six as before, six more one line each, read_memory to read on), since a call showed six and the search's own top six held answers below them: recall 997 to 1,137 as this tree builds it, all 25 from 28,061 to 28,201 (140 more, measured on main 1252abca and on this tree the same way, each entry's compact JSON), on the about 30,508 the rooms send, so about 30,648; the line is that count, no part could pay, the total rose by the 140 (to 135,610 on main's 135,470). The hands plug-in's tool entries do not change.
 
+2026-11-25, end-date-2026-11-25 (the owner's order, Wed Nov 25): the `remember` tool's `until` (its parameter and two sentences: a state that ends by a day, never a history, and after the day no longer handed over as current): remember 3,401 to 3,686 as this tree builds it, all 25 from 27,926 to 28,211 (285 more, measured on main d2dc9819 and on this tree the same way, each entry's name, description and input schema as compact JSON; the entries' full dump moves by the same 285), so about 30,933 on the 30,648 above; the line is that count, no part could pay, the total rose by the 285 (to 135,895 on main's 135,610).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 30648`
+- `yerk_tools = 30933`
 - `deferred_tool_names = 3781`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -897,7 +899,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-25: twelve-hits-2026-11-25 raised it by 38, a recall that names no number gives twelve hits, the first six the call of six's own and six more one line each (the owner's order, Wed Nov 25), not folded to fit (memory.py 34: the default, the tail, the six held at six, a replacement read off its whole line, the bench's twelve; daemon.py 2: the two searches say their own k; mcp_server.py 1: the default and the sentence; cli.py 1: the bench's line). 36,594: 36,556 plus 38.
 
-- `lines = 36594`
+2026-11-25: end-date-2026-11-25 raised it by 60, a room files the last day a state holds with `remember`'s `until` and the line is left out where a line is read per message from the day after (the owner's order, Wed Nov 25), not folded to fit (memory.py 50: the one rule for ended and the mark's one pattern, the refusals, the mark in the note, the three readers and the day they read; words.py 5: the refusals; mcp_server.py 4: the parameter, its two sentences and its refusal; mentions.py 1: the index's lag said; curate.py 0: the sweep asks the rule; daemon.py 0). 36,654: 36,594 plus 60.
+
+- `lines = 36654`
 
 ## Uncapped
 
