@@ -34,14 +34,15 @@ message, or from a job you schedule to check it.
 Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords
 and, where the install has a provider key, by meaning too, so a paraphrase finds the line.
 Each hit is the lines that carry the match and a `cite` (file:line). Cite every fact you use
-by its `cite`; read_memory(cite) reads on from it. A "timeout" status means busy, not down.
+by its `cite`; read_memory(cite) reads on from it. A call gives twelve hits (k, 1 through 20): the first six as before and six more
+as one line each, read_memory(cite) to read on from one. A "timeout" status means busy, not down.
 `since` and `until` (each YYYY-MM-DD, either alone) keep the search to files named for a day in that range, both ends in it.
 Work them out from the clock line when the question names a day, a week, a month or a phrase like "last Sunday", and leave
 them out when it names no time.
 ```
 
 - `query`: string, required
-- `k`: integer, default 6
+- `k`: integer, default 12
 - `since`: string, default ""
 - `until`: string, default ""
 
