@@ -46,19 +46,29 @@ def quote(text: str) -> str:
     return "> " + (one if len(one) <= CUT else one[:CUT - 3] + "...")
 
 
-def card(first: str, at: str, quotes: list[str], row: dict[str, Any], why: str, dry_run: bool) -> str:
-    """Who, when and held; their texts, one line each; the exact draft, a text a line (or the tapback); why; the words."""
+def card(first: str, at: str, quotes: list[str], row: dict[str, Any], dry_run: bool) -> str:
+    """Who, when and held; their texts, one line each; the exact draft, a text a line (or the tapback); the words. Why it waits is
+    not on the card: the row's reason and verdict keep it, and the texting tool's `why` reads it back when asked."""
     draft = ([words.TEXTING_CARD_TAPBACK.format(react=row["react"])] if row.get("decision") == "react"
              else [words.TEXTING_CARD_DRAFT, *json.loads(row.get("parts") or "[]")] if sendable(row) else [])    # no draft: it only asks
     return "\n".join([words.TEXTING_CARD.format(mark=words.TEXTING_CARD_MARK["dry" if dry_run else "live"], first=first, at=at,
                                                 state=words.TEXTING_SHOWS["held"]),
-                      *quotes, *draft, words.TEXTING_CARD_WHY.format(why=why), words.TEXTING_CARD_WORDS if draft else words.TEXTING_CARD_ASKS])
+                      *quotes, *draft, words.TEXTING_CARD_WORDS if draft else words.TEXTING_CARD_ASKS])
 
 
-def restate(shown: str, state: str) -> str:
-    """A card once answered: `state` in its first line in place of held, and the words line gone."""
-    head, _, rest = shown.partition("\n")
-    return "\n".join([f"{head.rsplit(' · ', 1)[0]} · {state}", *(x for x in rest.split("\n") if x not in (words.TEXTING_CARD_WORDS, words.TEXTING_CARD_ASKS))])
+WENT = ("queued", "would-send", "sent", "unseen")      # the states of a row whose texts went, are going or may have gone
+
+
+def went(row: dict[str, Any]) -> list[str]:
+    """The texts a row sends, a line each, or its tapback: what stays on its card once it is answered by a send."""
+    return ([words.TEXTING_CARD_TAPPED.format(react=row["react"])] if row.get("decision") == "react" else
+            [str(x) for x in json.loads(row.get("parts") or "[]")]) if row.get("state") in WENT else []
+
+
+def restate(shown: str, state: str, sent: list[str] | None = None) -> str:
+    """A card once answered: its first line with `state` in place of held, then `sent`, the texts that went for it, and nothing
+    else. Their texts, a draft that did not go and the words line are gone from it: the thread and the ledger keep them."""
+    return "\n".join([f"{shown.partition(chr(10))[0].rsplit(' · ', 1)[0]} · {state}", *(sent or [])])
 
 
 def gs_of(row: dict[str, Any]) -> list[str]:
@@ -102,7 +112,7 @@ class Holds:
             rid, said = self.edits.pop(0)
             r = self.ledger.texting_get(rid)
             if r and r["card"] and r["shown"] and (self.ledger.texting_card(r["card"]) or {}).get("id") == rid:
-                text = restate(r["shown"], said)
+                text = restate(r["shown"], said, went(r))
                 if await self.show(self.to, text, r["card"]):
                     self.ledger.texting_set(rid, shown=text)
 
@@ -133,8 +143,7 @@ class Holds:
         if r["state"] == "release-ready" and p.release and not shown and (self.mode == "dry" or self.out):
             self.standing(p, r)
         elif self.to:
-            why = str(r["reason"] or "") if r["decision"] == "held" else words.TEXTING_CARD_OFF.format(first=p.first)
-            await self.hold(p, r, shown[-1] if shown else None, why=why or words.TEXTING_NO_CLEAN)
+            await self.hold(p, r, shown[-1] if shown else None)
 
     def standing(self, p: Person, r: dict[str, Any]) -> None:
         """Standing release: live, the `standing` gates row first, then queued; dry, would send, and the dry file says standing."""
@@ -148,7 +157,7 @@ class Holds:
         if self.mode == "dry":
             dry(self.state, datetime.fromtimestamp(now).astimezone(), {"t": now, "id": rid, "person": p.key, "state": state, "standing": True})
 
-    async def hold(self, p: Person, r: dict[str, Any], old: dict[str, Any] | None, why: str, quotes: list[str] | None = None) -> None:
+    async def hold(self, p: Person, r: dict[str, Any], old: dict[str, Any] | None, quotes: list[str] | None = None) -> None:
         """One card and its hold. With a card open for them (`old`), that card is edited to cover both and the old decision is
         superseded; nothing new is posted."""
         rid, was = int(r["id"]), r["state"]
@@ -164,7 +173,7 @@ class Holds:
         if r.get("state") != was or self.answered(gs_of(r)):     # moved while the thread was read
             return
         inbound = ",".join(dict.fromkeys([*(gs_of(old) if old else []), *gs_of(r)]))
-        text = card(p.first, self.at(inbound.split(",")), quotes, r, why, self.mode == "dry")
+        text = card(p.first, self.at(inbound.split(",")), quotes, r, self.mode == "dry")
         if old is not None:
             self.ledger.texting_set(int(old["id"]), state="superseded", reason=words.TEXTING_NEWER)
         gate_id = self.ledger.gate(room=self.to, gate="approval", decision="hold", tool=texts.TOOL, rule=RULE, detail=f"{p.key}, texting row {rid}")
@@ -253,12 +262,13 @@ class Holds:
         return ""
 
     async def edit(self, who: People, p: Person, r: dict[str, Any], text: str) -> str:
-        """His own words as a new draft: a new card and a new hold, the code's pre-check shown and never enforced; nothing sent."""
+        """The owner's own words as a new draft: a new card and a new hold, the code's pre-check kept in the row's verdict and never enforced;
+        nothing sent."""
         found = precheck([text], who.sheets[p.key].open, self.names)
         rid = self.ledger.texting_add(person=p.key, handle=r["handle"], inbound=r["inbound"], decision="reply", parts=json.dumps([text]),
                                       react="", reply_to="", statements="[]", verdict=json.dumps({"by": "owner", "precheck": found}),
                                       state="decided", reason="", mode=self.mode)
         self.close(r, "superseded")
         quotes = [x for x in str(r["shown"] or "").split("\n") if x.startswith("> ")]
-        await self.hold(p, self.ledger.texting_get(rid) or {}, None, words.TEXTING_CARD_EDIT.format(found=found or words.TEXTING_CARD_CLEAN), quotes)
+        await self.hold(p, self.ledger.texting_get(rid) or {}, None, quotes)
         return ""

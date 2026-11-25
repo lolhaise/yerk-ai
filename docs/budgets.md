@@ -887,7 +887,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-25: due-view-2026-11-25 raised it by 303, a filed commitment carries its date and what is due is in front of the room at a session start (the owner's order, Wed Nov 25), not folded to fit (due.py 170: what is open, the list yerk-index writes, what a room may read of it, its line and the recall pack's part; memory.py 68: the mark, its refusals, its reader and the retry rule, reader_of and recalled for what both callers asked apart; cli.py 38: `yerk due`; daemon.py 8; mcp_server.py 7; context.py 5; words.py 4: the refusals; memindex.py 2; curate.py 1: an open line left to its mark). 36,458: 36,155 plus 303. 36,467: plus 9, the judge's read the same day (due.py: the part, which is shown unasked, holds no other room's own line and no line marked do-not-surface; the asked list, `yerk due` and recall, still holds both).
 
-- `lines = 36467`
+2026-11-25: texting-card-2026-11-25 raised it by 11, a texting card shows no line saying why it waits and is one line once it is answered, the texts that went under it (the owner's word, Wed Nov 25: the cards filled their screen), not folded to fit (texting/holds.py 10: the texts a row sends and the states that send, the card restated from its row; words.py 1: the why wordings out, the tapback's own line and the card's own comment in). 36,478: 36,467 plus 11.
+
+- `lines = 36478`
 
 ## Uncapped
 

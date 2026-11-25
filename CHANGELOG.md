@@ -8,6 +8,17 @@ version changes.
 
 ## 2026-11-25
 
+### texting-card-2026-11-25 (#135)
+
+- A texting card no longer says why it waits. It shows who, their texts, the draft and the words to answer it with. The
+  writer's reasoning, the check's reason and what the check finds in an edit are kept where they were, in the row's reason
+  and verdict, and the `texting` tool's `why` still reads the newest decision's back when asked.
+- A card once answered is one line: its first, with the state. Under it only the texts that went, are going or may have
+  gone (a send, by a word or standing), or the tapback. Their texts, a draft that did not go and the words line are off it.
+- A card posted before this change is cut the same way the next time it is answered.
+
+**Upgrading:** nothing to do. An open card keeps what it shows until it is answered or their next text edits it.
+
 ### due-view-2026-11-25 (#133)
 
 - A thing with a date is filed with it. `remember` takes `due` (`YYYY-MM-DD`, or `YYYY-MM-DDTHH:MM` in the install's zone) and

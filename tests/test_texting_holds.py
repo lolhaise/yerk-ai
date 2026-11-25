@@ -130,18 +130,42 @@ def test_a_card_line_or_notice_goes_only_to_an_owner_room_without_people_and_a_p
 
 def test_the_card_reads_in_one_look_on_a_phone() -> None:
     r = {"decision": "reply", "parts": json.dumps(["yes, last week", "come by"]), "react": ""}
-    text = holds.card("Alex", "09:17", [holds.quote("x" * 400), holds.quote("two\nlines")], r, "dating, your call", False)
+    text = holds.card("Alex", "09:17", [holds.quote("x" * 400), holds.quote("two\nlines")], r, False)
     assert text.split("\n") == ["📱 Alex · 09:17 · held", "> " + "x" * 297 + "...", "> two lines", "draft:", "yes, last week", "come by",
-                                "why: dating, your call", "reply: send · edit <text> · skip"]
-    tap = holds.card("Alex", "09:17", ["> ok"], {"decision": "react", "react": "love", "parts": "[]"}, "it passed the check", True)
+                                "reply: send · edit <text> · skip"]                 # no line saying why it waits: the ledger keeps that
+    tap = holds.card("Alex", "09:17", ["> ok"], {"decision": "react", "react": "love", "parts": "[]"}, True)
     assert tap.split("\n")[0] == "DRY Alex · 09:17 · held" and "draft: a love tapback" in tap
     for line in (text.split("\n")[0], tap.split("\n")[0], words.TEXTING_CARD_WORDS, words.TEXTING_CARD_DRAFT,
-                 words.TEXTING_CARD_TAPBACK.format(react="love"), words.TEXTING_CARD_WHY.format(why=words.TEXTING_CARD_OFF.format(first="Alex")),
-                 words.TEXTING_CARD_WHY.format(why=words.TEXTING_CARD_EDIT.format(found=words.TEXTING_CARD_CLEAN)),
+                 words.TEXTING_CARD_TAPBACK.format(react="love"), words.TEXTING_CARD_TAPPED.format(react="love"),
                  *(words.TEXTING_CARD.format(mark=m, first="Alex", at="09:17", state=s.format(at="09:23"))
                    for s in words.TEXTING_SHOWS.values() for m in words.TEXTING_CARD_MARK.values())):
         assert words.width(line) <= words.PHONE, line
-    assert holds.restate(text, "skipped").split("\n")[0] == "📱 Alex · 09:17 · skipped" and words.TEXTING_CARD_WORDS not in holds.restate(text, "x")
+    assert holds.restate(text, "skipped") == "📱 Alex · 09:17 · skipped" and words.TEXTING_CARD_WORDS not in holds.restate(text, "x")
+    assert holds.restate(text, "sent 09:20", ["yes, last week", "come by"]).split("\n") == ["📱 Alex · 09:17 · sent 09:20", "yes, last week", "come by"]
+
+
+def test_a_card_once_answered_is_one_line_and_only_a_send_keeps_the_texts_that_went(tmp_path: Path) -> None:
+    """A card that is answered no longer needs reading: its first line with the state, and under it only the texts that went,
+    are going or may have gone. Their texts, a draft that did not go and any line a card stored before this change (one saying
+    why it waited) are off it; the thread and the ledger keep them."""
+    row_ = {"decision": "reply", "parts": json.dumps(["yes, last week", "come by"]), "react": ""}
+    for state in ("queued", "would-send", "sent", "unseen"):
+        assert holds.went({**row_, "state": state}) == ["yes, last week", "come by"], state
+    for state in ("held", "skipped", "withdrawn", "expired", "superseded", "cancelled", "dropped", "deciding", "decided"):
+        assert holds.went({**row_, "state": state}) == [], state
+    assert holds.went({"decision": "react", "react": "love", "parts": "[]", "state": "sent"}) == ["a love tapback"]
+    old = "📱 Alex · 09:17 · held\n> wait you moved??\ndraft:\nyes, last week\nwhy: dating, your call\nreply: send · edit <text> · skip"
+    assert holds.restate(old, "answered by you 09:18") == "📱 Alex · 09:17 · answered by you 09:18"
+    assert holds.restate(old, "sent 09:20", ["yes, last week"]) == "📱 Alex · 09:17 · sent 09:20\nyes, last week"
+    h, led, card = setup(tmp_path)
+    a, b = decided(led), decided(led, "beta", "g-b", parts=("not tonight",))
+    asyncio.run(h.tick())
+    assert all("why" not in text for _, _, text in card.posts)
+    assert asyncio.run(h.word("owner-room", "owner", "skip", "100")) is True
+    assert card.edits[-1][1:] == ("100", card.posts[0][2].split("\n")[0].replace(" · held", " · skipped")) and row(led, a)["state"] == "skipped"
+    assert asyncio.run(h.word("owner-room", "owner", "send", "101")) is True
+    assert card.edits[-1][1:] == ("101", card.posts[1][2].split("\n")[0].replace(" · held", " · sending") + "\nnot tonight")
+    assert row(led, b)["shown"] == card.edits[-1][2]
 
 
 def test_a_held_decision_and_a_release_ready_one_with_release_off_get_one_card_and_hold_and_a_none_gets_nothing(tmp_path: Path) -> None:
@@ -152,9 +176,9 @@ def test_a_held_decision_and_a_release_ready_one_with_release_off_get_one_card_a
     asyncio.run(h.tick())
     asyncio.run(h.tick())                                                     # a second pass posts nothing more
     assert [(room, mid) for room, mid, _ in card.posts] == [("owner-room", "100"), ("owner-room", "101")] and card.edits == []
-    assert card.posts[0][2].split("\n")[1:] == ["> wait you moved??", "draft:", "yes, last week",
-                                                "why: dating, your call", "reply: send · edit <text> · skip"]
-    assert "why: checked; release is off for Beta" in card.posts[1][2]
+    assert card.posts[0][2].split("\n")[1:] == ["> wait you moved??", "draft:", "yes, last week", "reply: send · edit <text> · skip"]
+    assert card.posts[1][2].split("\n")[-1] == words.TEXTING_CARD_WORDS and all("why" not in text for _, _, text in card.posts)
+    assert row(led, a)["reason"] == "dating, your call"                     # why it waits is kept, and off the card
     holds_ = led._select("SELECT * FROM approvals ORDER BY id", ())
     assert [(x["room"], x["rule"], x["what"], x["call"]) for x in holds_] == [
         ("owner-room", "text-thread", "a text to Alex", gates.call_key(texts.TOOL, {"to": A1, "parts": ["yes, last week"]})),
@@ -169,7 +193,7 @@ def test_a_reply_send_releases_exactly_that_cards_text_once_and_approve_reads_as
     assert asyncio.run(h.word("owner-room", "owner", "send", "101")) is True          # Beta's card, by reply
     assert (row(led, a)["state"], row(led, b)["state"]) == ("held", "queued")
     assert gates_rows(led)[-2:] == [("approval", "approved"), ("text", "queued")]
-    assert card.edits == [("owner-room", "101", card.posts[1][2].replace(" · held", " · sending").replace("\nreply: send · edit <text> · skip", ""))]
+    assert card.edits == [("owner-room", "101", card.posts[1][2].split("\n")[0].replace(" · held", " · sending") + "\nnot tonight")]
     hold = led.approval(int(row(led, b)["approval_id"])) or {}
     assert hold["approved_by"] == "owner" and hold["released"] and hold["call"] == holds.key(row(led, b))
     assert asyncio.run(h.word("owner-room", "owner", "send", "101")) is True          # again: said once, nothing more
@@ -251,7 +275,8 @@ def test_a_card_with_no_draft_only_asks_and_his_send_on_it_sends_nothing(tmp_pat
     a = decided(led, parts=(), reason="dinner friday or saturday?")
     asyncio.run(h.tick())
     mid, lines = card.posts[0][1], card.posts[0][2].split("\n")
-    assert lines[0].endswith(" · held") and "draft:" not in lines and lines[-2:] == ["why: dinner friday or saturday?", "reply: edit <text> · skip"]
+    assert lines[0].endswith(" · held") and "draft:" not in lines and lines[1:] == ["> wait you moved??", "reply: edit <text> · skip"]
+    assert row(led, a)["reason"] == "dinner friday or saturday?"            # the question stays in the ledger, off the card
     assert words.width(words.TEXTING_CARD_ASKS) <= words.PHONE and words.TEXTING_CARD_ASKS not in holds.restate(card.posts[0][2], "skipped")
     for ref in (mid, None):
         assert asyncio.run(h.word("owner-room", "owner", "send", ref)) is True and card.posts[-1][2] == words.TEXTING_NO_DRAFT
@@ -272,7 +297,7 @@ def test_edit_makes_a_new_card_and_hold_from_his_words_shows_the_code_check_and_
     new = led.texting_last("alex") or {}
     assert row(led, a)["state"] == "superseded" and new["state"] == "held" and json.loads(new["parts"]) == ["yes, and her name is Beta, they are dating"]
     assert card.posts[-1][1] == new["card"] != "100" and card.posts[-1][2].split("\n")[1:4] == ["> wait you moved??", "draft:", json.loads(new["parts"])[0]]
-    assert "why: your words; dating, your call" in card.posts[-1][2]
+    assert "why" not in card.posts[-1][2] and json.loads(new["verdict"])["precheck"] == "dating, your call"     # kept, off the card
     assert card.edits[-1][1] == "100" and card.edits[-1][2].split("\n")[0].endswith(" · replaced by your edit")
     assert [x["state"] for x in led._select("SELECT state FROM texting", ())].count("queued") == 0 and json.loads(new["verdict"])["by"] == "owner"
     assert asyncio.run(h.word("owner-room", "owner", "send", "100")) is True          # the old card: says so, sends nothing
@@ -282,7 +307,7 @@ def test_edit_makes_a_new_card_and_hold_from_his_words_shows_the_code_check_and_
     c = decided(led, guid="g-9")
     asyncio.run(h.tick())
     assert asyncio.run(h.word("owner-room", "owner", "edit see you then", row(led, c)["card"])) is True     # words the code finds nothing in
-    assert card.posts[-1][2].split("\n")[-2] == "why: your words; the code finds nothing"
+    assert card.posts[-1][2].split("\n")[-2:] == ["see you then", words.TEXTING_CARD_WORDS]
 
 
 def test_his_own_text_withdraws_the_card_edits_it_and_posts_nothing_new(tmp_path: Path) -> None:
@@ -295,7 +320,7 @@ def test_his_own_text_withdraws_the_card_edits_it_and_posts_nothing_new(tmp_path
     took.take(p, {"guid": "g-own", "is_from_me": True, "text": "yes, moved", "created_at": stamp(0)})
     asyncio.run(h.tick())
     assert row(led, a)["state"] == "withdrawn" and len(card.posts) == 1
-    assert card.edits[-1][2].split("\n")[0].startswith("📱 Alex · ") and " · answered by you " in card.edits[-1][2].split("\n")[0]
+    assert card.edits[-1][2].startswith("📱 Alex · ") and " · answered by you " in card.edits[-1][2] and "\n" not in card.edits[-1][2]
     assert asyncio.run(h.word("owner-room", "owner", "send", "100")) is True and row(led, a)["state"] == "withdrawn"
     assert card.posts[-1][2].startswith("nothing sent: that card is answered by you ")
     b = decided(led, guid="g-2")                                             # their next text: decided afresh, a new card

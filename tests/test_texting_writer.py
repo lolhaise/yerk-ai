@@ -165,9 +165,9 @@ def test_a_reply_and_a_none_keep_the_writers_why_as_their_reason_and_as_why():
         assert (d["decision"], d["reason"], d["why"]) == (decision, "a closer, nothing asked", "a closer, nothing asked")
 
 
-def test_a_card_the_writer_held_reads_in_six_lines_and_its_whole_reason_is_kept_through_every_close(tmp_path, monkeypatch):
-    """The card's why is the code's few words; the row's `why`, written once at the decision, is the same after a newer burst
-    takes its card, a send, a skip and an expiry (each writes its own words over `reason`)."""
+def test_a_card_the_writer_held_reads_in_five_lines_with_no_why_and_its_whole_reason_is_kept_through_every_close(tmp_path, monkeypatch):
+    """The card says nothing of why it waits; the row's `reason` is the code's few words and its `why`, written once at the
+    decision, is the same after a newer burst takes its card, a send, a skip and an expiry (each writes its own words over `reason`)."""
     monkeypatch.setenv("FAKE_CLAUDE_JSON", answer(decision="reply", parts=["yeah for a bit now"], classes=["dating"], question="say yes?"))
     w, led = setup(tmp_path, monkeypatch)
     at, said = datetime.now().replace(hour=9, minute=17, second=0, microsecond=0).timestamp(), {"g-1": "are you seeing anyone", "g-2": "?"}
@@ -186,7 +186,7 @@ def test_a_card_the_writer_held_reads_in_six_lines_and_its_whole_reason_is_kept_
         return rid
     a = held("g-1")
     assert card.posts[0][2].split("\n") == ["📱 Alex · 09:17 · held", "> are you seeing anyone", "draft:", "yeah for a bit now",
-                                            "why: dating, your call", "reply: send · edit <text> · skip"]
+                                            "reply: send · edit <text> · skip"]
     whole = "say yes?; dating, your call; it fits"
     assert ((r := led.texting_get(a) or {})["reason"], r["why"]) == ("dating, your call", whole)
     b = held("g-2")                                                         # a newer burst takes its card
