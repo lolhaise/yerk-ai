@@ -191,7 +191,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", triggers: list[str] | None = None,
-                       said: str = "", source: str = "", older: list[str] | None = None, retire: str = "", due: str = "", owes: str = "",
+                       said: str = "", source: str = "", older: list[str] | None = None, retire: str = "", due: str = "", owes: str = "", until: str = "",
                        *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
@@ -214,9 +214,11 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line."""
         if (due or owes) and (job or retire):
             return json.dumps({"ok": False, "error": words.DUE_JOB})
+        if until and (job or retire):
+            return json.dumps({"ok": False, "error": words.UNTIL_JOB})
         return json.dumps(await (daemon.tool_retire(caller_room(ctx), retire, text) if retire else
                                  daemon.tool_rule(caller_room(ctx), text, job, triggers, older) if job else
-                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source, due, owes)))
+                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source, due, owes, until)))
     mcp.tool(description=inspect.cleandoc(remember.__doc__ or "").replace("LESSON_SHAPE", LESSON_SHAPE))(remember)
 
     @mcp.tool()

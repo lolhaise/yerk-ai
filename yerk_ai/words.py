@@ -185,6 +185,11 @@ RECALL_WIDENED = "Nothing was found in that range ({days}), so these hits are fr
 DUE_OWES = "owes needs due: a wait needs the day to look at it again"
 DUE_NAME = "owes is a name on one line with no bracket, not \"{owes}\""
 DUE_JOB = "due and owes date a fact, a decision or a person's words, never a rule (job) or its retiring (retire)"
+UNTIL_SHAPE = "until is YYYY-MM-DD, the last day the fact holds in this install's zone, one real day, not \"{until}\""     # remember's end
+UNTIL_PAST = "until {until} is before today ({today}): a fact that has stopped holding is filed as what holds now, or as history in its words"
+UNTIL_TWICE = "until is given and text holds an [until ...] mark too: give the day once, in until"
+UNTIL_SAID = "until ends the room's own note, never a person's words (said): file what ends as your note, their words without it"
+UNTIL_JOB = "until ends a fact or a decision, never a rule (job) or its retiring (retire)"
 RULE_CLAUSE = FILED_AT_MOST + " (every room now does {job} this way)"
 INDEX_NEAR = ("rules.md, the index every session start loads, is at {said}: shorten it by merging lessons that say one thing "
               "and retiring stale ones, since {sentence}")      # a filing near code-memory's limits: filed, and told so

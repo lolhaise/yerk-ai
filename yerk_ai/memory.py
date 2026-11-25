@@ -639,9 +639,39 @@ def due_of(raw: str, day: str = "") -> dict[str, str] | None:
     return {"date": when, "time": at or "", "owes": owes or "", "text": SUPERSEDES.sub("", said), "role": role, "filed": filed}
 
 
+def local_day(s: Settings, now: datetime | None = None) -> date:
+    """Today, or `now`'s day, in the install's zone (the day logs' days, and the day curate's run sweeps on)."""
+    return (now or datetime.now(timezone.utc)).astimezone(s.tz).date()
+
+
+def until_day(day: str) -> date | None:
+    """`day` as one real day (YYYY-MM-DD in ASCII digits), else None."""
+    try:
+        return date.fromisoformat(day) if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", day) else None
+    except ValueError:
+        return None
+
+
+def until_mark(until: str, text: str, today: date, said: bool = False) -> tuple[str, str]:
+    """(the mark a filing with `until` carries, "" with none; why it is refused, else ""): `until` the last day it holds, one real
+    day not before `today`, never beside a mark `text` holds, never on a person's words (`said`, filed word for word, no mark
+    read in them); a mark typed in a note's `text` is held to the same rule."""
+    if said:
+        return "", words.UNTIL_SAID if until else ""
+    typed = re.findall(r"\[until (\d[^\]]*)\]", text)         # a mark typed in the words, any digits, any shape after them
+    if until and typed:
+        return "", words.UNTIL_TWICE
+    for d in [until] if until else typed:
+        if not until_day(d):
+            return "", words.UNTIL_SHAPE.format(until=one_line(d)[:40])
+        if d < today.isoformat():
+            return "", words.UNTIL_PAST.format(until=d, today=today.isoformat())
+    return f" [until {until}]" if until else "", ""
+
+
 def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: str = "",
              old: tuple[str, ...] = (), reader: Reader | None = None, who: str = "", source: str = "",
-             due: str = "", owes: str = "") -> dict[str, Any]:
+             due: str = "", owes: str = "", until: str = "") -> dict[str, Any]:
     """A fact, decision or correction into the install's own tree, with its room, message and time. An owner
     room's fact goes to facts/<about>.md, named by a key mention recall keys (private); anything else, or a fact
     with no such key or no folder inside the tree, to the room's day log as a `note` line of its class. Each line in
@@ -649,13 +679,18 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     room's own line in this tree (any, for an owner room) is marked superseded, by the new cite where all its readers
     may read it, else in LATER as a line it may only read is; a heading or a blank is refused. With `who` (the tool's `said`)
     and `source` (where their words are), `text` is their words: a `said` line in the day log, word for word, never a fact file's note.
-    With `due` (and `owes`) the line carries its date as a mark (due_mark); the same words with another date are another line."""
+    With `due` (and `owes`) the line carries its date as a mark (due_mark); the same words with another date are another line.
+    With `until`, the last day it holds, its words end with UNTIL's mark (until_mark), before any supersedes clause and due mark:
+    from the day after, the readers of a line per message leave it out (ended), and the sweep blanks a card's."""
     body, about, who, source = one_line(text), about.strip(), one_line(who), one_line(source)
     if not body:
         return {"ok": False, "error": "nothing to remember: give the fact, decision or correction as text"}
     if who and not source:
         return {"ok": False, "error": "said needs source: the message id, file path or transcript line holding those words"}
     tag, why = due_mark(due, owes)
+    if why:
+        return {"ok": False, "error": why}
+    end, why = until_mark(until, body, local_day(s), bool(who))
     if why:
         return {"ok": False, "error": why}
     rid, cls = log.rooms.get(room, (room, "private"))
@@ -676,7 +711,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
             continue
         olds[p.is_relative_to(s.root) and (owner or (ln is not None and (ln.cls, ln.rid) == (cls, rid)))].append((p, k))
     edit, named = ([f"{cite(s, p)}:{k}" for p, k in olds[b]] for b in (True, False))
-    note = body + (f" (supersedes {', '.join(edit + named)})" if edit or named else "")
+    note = body + end + (f" (supersedes {', '.join(edit + named)})" if edit or named else "")
     at = datetime.now(timezone.utc).astimezone(s.tz)
     words = [w for w in "-".join(mentions.tokens(about)).split("-") if w][:mentions.KEY_WORDS]
     while len("-".join(words)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
@@ -718,7 +753,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     if pairs:
         with daily_lock(s.daily), os.fdopen(os.open(s.root / LATER, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
             f.write("".join(f"{a}\t{b}\n" for a, b in pairs))
-    return {"ok": True, "cite": new, **({"due": due} if tag else {}), **({"owes": owes.strip()} if tag and owes.strip() else {}),
+    return {"ok": True, "cite": new, **({"due": due} if tag else {}), **({"owes": owes.strip()} if tag and owes.strip() else {}), **({"until": until} if end else {}),
             "superseded": [c for c in edit if c not in taken], "refused": refused, "not_edited":
             [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
 
