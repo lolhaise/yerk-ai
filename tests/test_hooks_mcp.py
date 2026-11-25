@@ -110,7 +110,13 @@ def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
     assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source", "older", "retire"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source", "older", "retire",
+                                                               "due", "owes"]
+    said = " ".join(str(tools["remember"].description).split())   # a filed commitment's date (2026-11-25), in three sentences
+    assert said.endswith("never as their words. `due`: the day `text` is due (YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone), in front of you at a "
+                         "session start from a week before; `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when "
+                         "the words give one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome with "
+                         "`replaces` naming its line.")
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()

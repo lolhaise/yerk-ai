@@ -372,6 +372,27 @@ def test_the_sweep_never_blanks_a_standing_line_and_never_moves_a_cite_onto_a_ca
     assert "found: ada.md:10 quotes \"we meet at the north gate at noon\", on 0 lines of the files it cites" in out
 
 
+def test_the_past_date_sweep_never_removes_an_open_dated_line_and_takes_one_that_closed_as_it_takes_any_line(layer):
+    """2026-11-25: a filed commitment carries its date as a mark ([due ...]). The mark is no `until`, so a date past blanks nothing
+    by itself; an open line whose own words read as an expiry or as superseded stays, unsaid, until its mark closes it (superseded,
+    or more than 14 days past), and a line said twice still goes once."""
+    priv, state, s, log = layer
+    card, src = s.root / "facts" / "ada.md", "(owner-room#discord:100, 2026-10-19 09:00:00+00:00)"
+    rows = ["# Ada", f"- Ada's form: send it back {src} [due 2026-10-08] [m:a]",                        # 13 days past: open, kept
+            f"- Trip: book the train [until 2026-10-01] {src} [due 2026-10-25] [m:b]",                  # its words an expiry, its date to come
+            f"- Plan: SUPERSEDED last week, ask again {src} [due 2026-10-25 owes Bea] [m:c]",
+            f"- SUPERSEDED plan: ask again {src} [due 2026-10-25] [m:d]",
+            f"- Lease: hers until 2026-09-30, ask then {src} [due 2026-10-25] [m:e]",
+            f"- Ada's form: send it back {src} [due 2026-10-08] [m:a]",                                 # said twice
+            f"- Trip: book the bus [until 2026-10-01] {src} [due 2026-10-06] [m:f]",                    # 15 days past: closed
+            f"- Bus: book it {src} [due 2026-10-25] [superseded by memory/facts/ada.md:3] [m:g]",
+            f"- SUPERSEDED plan: the words alone, [due 2026-10-25] in them {src} [m:h]", ""]
+    card.write_text("\n".join(rows))
+    changed, found = curate.sweep(s, priv, [], priv / "backups" / "b", False, datetime(2026, 10, 21).date())
+    assert card.read_text().split("\n") == [*rows[:6], "", "", "", "", ""] and changed == ["ada.md: blanked lines 7, 8, 9, 10"]
+    assert found == []                                                # an open line is never proposed as an expiry either
+
+
 def test_since_reads_each_day_to_yesterday_and_the_morning_carries_one_curate_line(layer):
     priv, state, s, log = layer
     accounts, cool, led = load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json"), Ledger(state / "ledger.sqlite")

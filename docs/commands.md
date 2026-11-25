@@ -193,6 +193,17 @@ the fixed question set against the memory index: top six and top one hit rates (
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
+### yerk due
+
+what is due: the open items filed with a date that a room may recall (no room: an owner room's view), overdue first, then within --days, each with its cite; read-only (exit 2 with no such room or no list)
+
+- `--room ROOM`: what this room may read (default: an owner room's view)
+- `--days DAYS`: how many days ahead (default 7)
+- `--all`: every open one, whatever its date
+- `--json`
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
 ### yerk bench WHAT
 
 latency: the first visible line, the turn, the hooks, Yerk's tools and the cache hit rate per room, from the ledger (read only) and the logs; the table, and <state>/bench/latency-<day>.json to diff

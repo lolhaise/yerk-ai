@@ -1,8 +1,10 @@
 """Checks recall, what a room is handed from memory before it writes its first word. Covered: mention recall (notes
 on whatever a message names), the room-topic hit, the recall pack and its re-add after compaction, the evidence
 atomically. Every value here is a placeholder."""
+import asyncio
 import json
 import shutil
+import signal
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -10,10 +12,11 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from yerk_ai import evidence, hooks, mcp_server, memindex, memory, mentions, words
+from yerk_ai import due, evidence, hooks, mcp_server, memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
+from test_remember import daemon as daemon_of
 from yerk_ai.engine import SessionTable
 
 UTC = timezone.utc
@@ -377,3 +380,171 @@ def test_the_on_hit_budget_bends_one_name_takes_the_part_several_share_it_and_a_
     assert [ln.split(" line ")[0][2:] for ln in many.splitlines()[1:]] == ["k1", "k2", "k3", "k4"]     # in the order named, whole
     gone = hooks.render_recall(card("ada", 8), [], 1500, None, ["Zorblaxia"])
     assert gone.splitlines()[0] == "[named, nothing on file: Zorblaxia]" and len(gone) <= 1500     # the absence line first, never cut
+
+
+# what is due: the list yerk-index writes beside the mention index, with no model (due.py)
+FILED_IN = "(example-room#rid, 2026-01-02 09:00:00+00:00)"
+
+
+def fact(s: memory.Settings, name: str, *lines: str) -> Path:
+    (f := s.root / "facts" / f"{name}.md").write_text(f"# {name}\n\n" + "\n".join(lines) + "\n")
+    return f
+
+
+def note(i: int, body: str, cls: str = "private", rid: str = "rid", role: str = "note") -> str:
+    return f"- 09:00:{i:02d}+00:00 example-room#{rid} {role}: {body} [c:{cls}] [m:m-{i}.d{i:08x}]"
+
+
+def listing(s: memory.Settings, b: due.Builder | None = None, now: datetime = NOW) -> list[dict]:
+    (b or due.Builder(s)).refresh(s.scope.files(), now)
+    return json.loads(s.due.read_text())["items"]
+
+
+def test_the_due_list_holds_each_open_dated_line_with_its_date_words_cite_class_room_and_when_it_was_filed(tmp_path):
+    s = tree(tmp_path)
+    fact(s, "boiler", f"- Example boiler: the yearly check. (supersedes memory/facts/boiler.md:9) {FILED_IN} [due 2026-01-25] [m:m-1]",
+         f"- Example boiler: in the cellar. {FILED_IN} [m:m-2]")
+    (s.root / "facts" / "club.md").write_text(f"---\nclass: room\nroom: her-id\n---\n- Example club: pay the fee {FILED_IN} [due 2026-01-30T18:00 owes Dana] [m:m-3]\n")
+    day(s, 3, [note(1, "Send the example form back [due 2026-01-19]"), "- 09:00:02+00:00 example-room#rid owner: hello [c:private] [m:1001]",
+               note(3, 'Dana: "I will bring the key" (from m-9) [due 2026-01-22 owes Dana]', "room", "her-id", "said")])
+    got = {x["cite"]: x for x in listing(s)}
+    assert oct(s.due.stat().st_mode & 0o777) == "0o600" and s.due.parent == s.mentions.parent
+    assert list(got) == ["memory/daily/2026-01-17.md:3", "memory/daily/2026-01-17.md:5", "memory/facts/boiler.md:3", "memory/facts/club.md:5"]
+    keys = ("date", "time", "owes", "text", "role", "class", "room", "filed")
+    assert [tuple(x[k] for k in keys) for x in got.values()] == [
+        ("2026-01-19", "", "", "Send the example form back", "note", "private", "rid", "2026-01-17T09:00:01+00:00"),
+        ("2026-01-22", "", "Dana", 'Dana: "I will bring the key" (from m-9)', "said", "room", "her-id", "2026-01-17T09:00:03+00:00"),
+        ("2026-01-25", "", "", "Example boiler: the yearly check.", "note", "private", "", "2026-01-02T09:00:00+00:00"),
+        ("2026-01-30", "18:00", "Dana", "Example club: pay the fee", "note", "room", "her-id", "2026-01-02T09:00:00+00:00")]
+    for x in got.values():                                          # each cite opens on its own line
+        assert memory.read(s, x["cite"], lines=1)["text"].replace("[the room's note, not their words] ", "").replace("[their words] ", "") == x["raw"]
+
+
+def test_a_correction_takes_a_dated_line_off_the_list_by_its_mark_or_by_the_later_map(tmp_path):
+    y = daemon_of(tmp_path, "example-room", "family-room")
+    y.daily.rooms["example-room"] = ("discord:CHANNEL_ID", "shared")                  # its lines every room's, its own to mark
+    s, b = y.memory, due.Builder(y.memory)
+
+    def open_() -> list[str]:
+        return [x["cite"] for x in listing(s, b, datetime.now(UTC))]
+    when = (datetime.now(UTC).astimezone(s.tz) + timedelta(days=2)).date().isoformat()
+    fact_, mine, shared = (asyncio.run(y.tool_remember("example-room", t, about, [], due=when)) for t, about in (
+        ("Example boiler: the yearly check.", "example boiler"), ("Send the example form back.", ""), ("Bring the example ladder back.", "")))
+    hers = asyncio.run(y.tool_remember("family-room", "Pay the example fee.", "", [], due=when))
+    assert sorted(open_()) == sorted([fact_["cite"], mine["cite"], shared["cite"], hers["cite"]])
+    asyncio.run(y.tool_remember("example-room", "Example boiler: checked.", "example boiler", [fact_["cite"], mine["cite"]]))
+    assert sorted(open_()) == sorted([shared["cite"], hers["cite"]])                  # marked superseded where they stand
+    asyncio.run(y.tool_remember("example-room", "The fee is paid, from the surprise fund.", "surprise fund", [hers["cite"]]))
+    assert open_() == [shared["cite"]]                                                # a bare [superseded], its replacement in LATER
+    named = asyncio.run(y.tool_remember("family-room", "The example ladder is back.", "", [shared["cite"]]))
+    assert named["superseded"] == [] and memory.later(s)[shared["cite"]] == named["cite"]
+    assert memory.mentions.OLD not in memory.read(s, shared["cite"], lines=1)["text"]           # named, never marked: not her line
+    assert open_() == []
+
+
+def test_a_dated_line_stays_fourteen_days_past_its_date_and_leaves_the_day_after_in_the_list_and_as_it_is_read(tmp_path):
+    s = tree(tmp_path)
+    at = {n: (NOW - timedelta(days=n)).date().isoformat() for n in (13, 14, 15)}
+    fact(s, "boiler", *(f"- Example check {n}. {FILED_IN} [due {d}] [m:m-{n}]" for n, d in at.items()))
+    assert [x["date"] for x in listing(s)] == [at[13], at[14]]
+    items = due.Index(s.due).load()
+    assert [x["date"] for x in due.listed(s, items, now=NOW)] == [at[14], at[13]]               # overdue, the oldest on top
+    assert [x["date"] for x in due.listed(s, items, now=NOW + timedelta(days=1))] == [at[13]]   # with no rebuild between
+    assert due.listed(s, items, now=NOW + timedelta(days=2)) == []
+
+
+def test_the_characters_of_a_mark_in_a_lines_own_words_put_nothing_on_the_list(tmp_path):
+    s = tree(tmp_path)
+    mark = "[due 2026-01-25]"
+    fact(s, "boiler", f"- Example boiler: {mark} is its mark. {FILED_IN} [m:m-1]", f"- Example boiler, ends in {mark} {FILED_IN} [m:m-2]",
+         f"- Example boiler, by hand {mark}", f"- Example boiler, copied {FILED_IN} {mark} [m:m-3] {FILED_IN} [m:m-4]")
+    day(s, 1, [f"- 09:00:01+00:00 example-room#rid owner: do it {mark} [c:private] [m:1001]", note(2, f"a note with {mark} in it"),
+               f"- 09:00:03+00:00 example-room#rid note: ends in {mark} [c:private] [m:m-3.n0000000a]",
+               f"- 09:00:04+00:00 example-room#rid yerk: ends in {mark} [c:private] [m:m-4.d0000000a]", f"a hand edit {mark}"])
+    assert listing(s) == []
+
+
+def test_the_list_is_yerks_own_fact_files_and_day_logs_never_another_folder_or_root(tmp_path):
+    (other := tmp_path / "other" / "memory").mkdir(parents=True)
+    (other / "facts").mkdir()
+    line = f"- Example boiler: the yearly check. {FILED_IN} [due 2026-01-25] [m:m-1]"
+    (other / "facts" / "boiler.md").write_text(line + "\n")
+    (other / "2026-01-17.md").write_text(note(1, "Send it [due 2026-01-25]") + "\n")
+    s0 = tree(tmp_path)
+    s = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC", "also": [str(other)]})
+    for sub in ("facts/old", "topics", "daily/old"):
+        (s0.root / sub).mkdir(parents=True)
+        (s0.root / sub / "2026-01-17.md").write_text(line + "\n" + note(1, "Send it [due 2026-01-25]") + "\n")
+    (s0.daily / "notes.md").write_text(note(1, "Send it [due 2026-01-25]") + "\n")
+    fact(s, "boiler", line)
+    assert [x["cite"] for x in listing(s)] == ["memory/facts/boiler.md:3"]               # its copy in a read-only root lists nothing
+
+
+def test_a_rebuild_after_one_file_changed_reads_that_file_alone_and_writes_only_a_list_that_changed(tmp_path, monkeypatch):
+    s = tree(tmp_path)
+    for n in range(1, 8):
+        day(s, n, [note(n, f"Example thing {n} [due 2026-01-2{n}]")])
+    fact(s, "boiler", f"- Example boiler: the yearly check. {FILED_IN} [due 2026-01-25] [m:m-1]")
+    reads: list[str] = []
+    real = Path.read_text
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: (reads.append(self.name) if self.suffix == ".md" else None, real(self, *a, **k))[1])
+    b = due.Builder(s)
+    assert b.refresh(s.scope.files(), NOW) == 8 and len(reads) == b.read == 11            # the first: every day log and fact file
+    reads.clear()
+    assert b.refresh(s.scope.files(), NOW) is None and reads == []                        # nothing moved
+    written = s.due.stat().st_mtime_ns
+    today = s.daily / "2026-01-19.md"
+    today.write_text(real(today) + "- 09:01:00+00:00 example-room#rid owner: hello [c:private] [m:1001]\n")
+    assert b.refresh(s.scope.files(), NOW) == 8 and reads == ["2026-01-19.md"] and b.read == 1
+    assert s.due.stat().st_mtime_ns == written                                            # the same list: not written again
+    reads.clear()
+    today.write_text(real(today) + note(9, "Example thing 9 [due 2026-01-29]") + "\n")
+    assert b.refresh(s.scope.files(), NOW) == 9 and reads == ["2026-01-19.md"]
+    assert len(json.loads(real(s.due))["items"]) == 9
+    reads.clear()
+    (s.daily / "2026-01-18.md").unlink()                                                  # a file gone takes its lines with it
+    assert b.refresh(s.scope.files(), NOW) == 8 and reads == []
+    (s.root / memory.LATER).write_text("memory/facts/boiler.md:3\tmemory/facts/boiler.md:4\n")    # LATER alone moved: no file read
+    assert b.refresh(s.scope.files(), NOW) == 7 and reads == []
+
+
+def test_a_file_or_a_later_map_that_cannot_be_read_is_unknown_never_empty_and_a_broken_list_stops_nothing(tmp_path, monkeypatch, caplog):
+    s = tree(tmp_path)
+    f = fact(s, "boiler", f"- Example boiler: the yearly check. {FILED_IN} [due 2026-01-25] [m:m-1]")
+    day(s, 1, [note(1, "Send the example form back [due 2026-01-25]")])
+    b, real, down = due.Builder(s), due.items_of, {f}
+
+    def items_of(path: Path, name: str, day: str = "") -> list[dict[str, str]]:
+        if path in down:
+            raise OSError("busy")
+        return real(path, name, day)
+    monkeypatch.setattr(due, "items_of", items_of)
+    assert b.refresh(s.scope.files(), NOW) == 1
+    down.clear()
+    assert b.refresh(s.scope.files(), NOW) == 2                                           # tried again though no file moved
+    (s.root / memory.LATER).write_bytes(b"memory/facts/boiler.md:3\t\xff\xfe\n")
+    assert b.refresh(s.scope.files(), NOW) is None and len(json.loads(s.due.read_text())["items"]) == 2 and memory.LATER in caplog.text
+    assert b.refresh({}, NOW) is None and len(json.loads(s.due.read_text())["items"]) == 2          # a pass that saw no disk
+    idx = due.Index(s.due)
+    assert len(idx.load()) == 2
+    for bad in ("{", "[]", '{"items": 3}', '{"x": []}'):
+        s.due.write_text(bad)
+        assert idx.load() == [], bad
+    whole = {k: "x" for k in due.FIELDS}
+    s.due.write_text(json.dumps({"items": [whole, {k: "x" for k in due.FIELDS - {"raw"}}, "x", 3, None]}))   # other code's entries
+    assert idx.load() == [whole]
+    s.due.unlink()
+    assert idx.load() == [] == due.Index(tmp_path / "none" / "due.json").load()
+
+
+def test_yerk_index_writes_the_list_at_a_pass_and_wakes_on_the_later_map(tmp_path, monkeypatch):
+    s = tree(tmp_path)
+    (s.root.parent / "yerkd.toml").write_text('[memory]\nroot = "memory"\ntimezone = "UTC"\n')
+    when = datetime.now(UTC).date().isoformat()
+    fact(s, "boiler", f"- Example boiler: the yearly check. {FILED_IN} [due {when}] [m:m-1]")
+    woken: list[tuple[str, ...]] = []
+    real = memindex.Wake
+    monkeypatch.setattr(memindex, "Wake", lambda names=(): (woken.append(names), real(names))[1])
+    monkeypatch.setattr(signal, "signal", lambda *a: None)              # this process's own, left as they are
+    assert memindex.main(["--once", "--private", str(s.root.parent), "--state", str(tmp_path / "state")]) == 0
+    assert [x["cite"] for x in json.loads(s.due.read_text())["items"]] == ["memory/facts/boiler.md:3"] and memory.LATER in woken[0]

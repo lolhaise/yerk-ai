@@ -27,7 +27,7 @@ from itertools import combinations, groupby
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, docs, doctor, lessons, memindex, memory, mentions, needs, retention, shape, taste, words
+from . import context, docs, doctor, due, lessons, memindex, memory, mentions, needs, retention, shape, taste, words
 from .accounts import account_env, load_accounts
 from .config import budgets, flag, load_toml, rooms, write_private
 from .engine import claude_bin
@@ -138,12 +138,13 @@ def sweep(s: memory.Settings, private: Path, logs: list[Path], backup: Path, dry
             t = x.decode(errors="replace").strip()
             if not t.startswith("- "):
                 return None
-            old = t in seen or bool(STRUCK.search(t)) or any(d < today.isoformat() for d in UNTIL.findall(t))
+            past = bool(STRUCK.search(t)) or any(d < today.isoformat() for d in UNTIL.findall(t))
+            old = t in seen or past and not due.is_open(t, today)     # an open commitment goes by its own mark, never by its words
             seen.add(t)
             return b"\n" if old else None
         moves: dict[str, str] = {}
         for i, x in enumerate(card.read_text(errors="replace").splitlines(), 1):
-            if not UNTIL.search(x) and any(d < today.isoformat() for d in SAYS_UNTIL.findall(x)):
+            if not UNTIL.search(x) and not due.is_open(x, today) and any(d < today.isoformat() for d in SAYS_UNTIL.findall(x)):
                 found.append(f"{card.name}:{i} says until a date now past, in its words: an expiry or a history")
             if not (m := LINE.match(x)) or STRUCK.search(x):
                 continue

@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 134612
+total = 135075
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -347,10 +347,15 @@ total = 134612
 # characters longer as this tree builds it (1,903 to 1,961, its compact JSON, measured on main d5a6b59 and on this tree
 # the same way), on the about 29,569 the rooms send, so about 29,627, 27 over the line; so 29,650, no part could pay, the
 # total rose by the 50 (to 134,612 on main's 134,562). The hands plug-in's tool entries do not change.
+# 2026-11-25, due-view-2026-11-25 (the owner's order, Wed Nov 25): the `remember` tool's `due` and `owes` (the day a
+# thing is due and who owes it, so it can be listed), since nothing could list a filed line by its date: remember 2,926 to
+# 3,412 as this tree builds it, all 25 from 27,180 to 27,666 (486 more, measured on main bc6d586 and on this tree the same
+# way, each entry's compact JSON), on the about 29,627 the rooms send, so about 30,113; the line is that count, no part could
+# pay, the total rose by the 463 (to 135,075 on main's 134,612). The hands plug-in's tool entries do not change.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 29650
+yerk_tools = 30113
 deferred_tool_names = 3781
 mcp__hands__ = 10970
 mcp__web-ladder__web_image = 913
@@ -475,6 +480,14 @@ room_voice = 5500
 pinned_memory = 4000
 rules = 16000
 recall_pack = 6000
+
+# Inside the recall pack's own 6,000, so no part and no total moves: `due`, what is due in the room (due.part), the first lines of
+# the pack. 2026-11-25, due-view-2026-11-25 (the owner's order, Wed Nov 25): at most 12 lines, their head and the line
+# counting what is left out among them, so 2,400 is 12 lines of 200 characters, the most the part takes of the pack (the room's
+# filed items have what it and the open commitments file leave); it is nothing when nothing is due, and a room whose open
+# commitments file leaves less has fewer lines.
+[session_start.recall_pack]
+due = 2400
 
 # What the UserPromptSubmit hook adds to each message: `typical` caps the parts every message carries (the next table),
 # `cap` the most one message's hook output may carry with the parts paid only on a hit.
@@ -2017,4 +2030,12 @@ secs = 60
 # token; needs.py, daemon.py, jobs.py and words.py: the tidy, the worker secret, the memory server's call and one line).
 # 36,155: plus 23, that change's cold read the same day (workers.py 13: hid, the launch's word in the spec, a relative
 # pointer, a link never taken; needs.py 10: no git in a hidden worker's folder, its .git renamed).
-lines = 36155
+# 2026-11-25: due-view-2026-11-25 raised it by 303, a filed commitment carries its date and what is due is in front of the
+# room at a session start (the owner's order, Wed Nov 25), not folded to fit (due.py 170: what is open, the list
+# yerk-index writes, what a room may read of it, its line and the recall pack's part; memory.py 68: the mark, its refusals,
+# its reader and the retry rule, reader_of and recalled for what both callers asked apart; cli.py 38: `yerk due`; daemon.py
+# 8; mcp_server.py 7; context.py 5; words.py 4: the refusals; memindex.py 2; curate.py 1: an open line left to its mark).
+# 36,458: 36,155 plus 303.
+# 36,467: plus 9, the judge's read the same day (due.py: the part, which is shown unasked, holds no other room's own line and
+# no line marked do-not-surface; the asked list, `yerk due` and recall, still holds both).
+lines = 36467

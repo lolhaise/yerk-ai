@@ -741,9 +741,9 @@ def main(argv: list[str] | None = None) -> int:
     # 5 s wait, 0.6 s on one thread (2026-10-30). Here, not at import: yerkd imports this module and its rooms inherit its environment.
     for k in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ.setdefault(k, "1")
-    from . import mentions
+    from . import due, mentions
     from .config import REPO, head, private_dir, state_dir
-    from .memory import settings
+    from .memory import LATER, settings
     a = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     m = settings(private_dir(a.private), state_dir(a.state))
@@ -757,7 +757,7 @@ def main(argv: list[str] | None = None) -> int:
     store = embeddings.Vectors(m.embeddings_dim, m.embeddings_width)
     back = embeddings.Backfill(m.index_db, live, store, embedder, units=m.embeddings_units)
     idx = Index(m.index_db, m.scope, on_insert=back.note)
-    names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
+    names, owed = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude), due.Builder(m)
     server = embeddings.Server(store, embedder, m.index_db, live, secrets.token_urlsafe(24))   # this run's own; index.json names it
     pin = Pin(m.index_db)
     if not a.once:
@@ -773,8 +773,8 @@ def main(argv: list[str] | None = None) -> int:
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda n, _: stop.append(n))
     interval = a.interval or m.interval
-    wake = Wake(tuple(r.name for r in m.scope.roots if r.is_file()))
-    first, chunks = True, 0
+    wake = Wake((LATER, *(r.name for r in m.scope.roots if r.is_file())))     # LATER closes a dated line no Markdown file's change does
+    first, chunks, open_ = True, 0, 0
     while not stop:
         t0 = time.monotonic()
         try:
@@ -788,6 +788,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if (built := names.refresh(idx.disk)) is not None:
                 log.info("mention index: %d keys, %d entries, %d dropped as ask-only", *built)
+            if (n := owed.refresh(idx.disk)) is not None and n != open_:
+                log.info("due: %d open", open_ := n)
             for gone in sweep(m.index_db):
                 log.info("swept the old generation file %s", gone)
             if not a.once:

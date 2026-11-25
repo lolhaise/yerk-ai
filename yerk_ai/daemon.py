@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, logins, mcp_server, memory,
+from . import (beat, context, curate, deletes, deploy, doctor, due, emails, evidence, gates, github, hooks, inbox, jobs, location, logins, mcp_server, memory,
                mentions, needs, pictures, pipeline, render, shape, status, taste, texts, transcribe, usage, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
@@ -152,6 +152,7 @@ class Yerkd:
         self.worker_secret = read_secret(self.worker_secret_file, create=True)
         self.sessions = SessionTable(state / "sessions.json")
         self.names = mentions.Index(self.memory.mentions)      # yerk-index writes it; reloaded when it changes
+        self.owed = due.Index(self.memory.due)                 # and the list of what is due, the same way
         self.idle_seconds, self.log_dir = idle_minutes * 60, log_dir
         self.rooms: dict[str, Room] = {}
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
@@ -207,7 +208,8 @@ class Yerkd:
         (work := rdir / "work").mkdir(parents=True, exist_ok=True)
         layer = context.layer_dir(self.private, conf)
         self.rules_news(name)          # first, the look a new session starts with: a rule filed meanwhile is told twice, never lost
-        parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES, name)
+        parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES, name,
+                                      lambda left: self.due_pack(name, left))
         self.cut_said(name, parts)
         ctx = write_private(rdir / "context.md", context.appended_file(parts))      # the owner's lines: 0600, as every private file
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
@@ -405,10 +407,7 @@ class Yerkd:
         return location.part(self.location, conf, now) if (conf := self.room_confs.get(room)) is not None else ""
 
     def reader(self, room: str) -> memory.Reader:
-        """Who a memory read is for: an owner room reads everything, any other room its own lines and
-        shared files, a caller that is no room at all shared files only (R2), and a sealed room its own lines in Yerk's tree."""
-        return memory.Reader(room, room_id(room, self.room_confs[room]) if room in self.room_confs else "",
-                             self.owner(room), flag(self.room_confs.get(room, {}).get("sealed")))
+        return memory.reader_of(room, self.room_confs.get(room))
 
     def check(self) -> mcp_server.Check:
         return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token, self.page.room_of)
@@ -1403,15 +1402,16 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.scoped.get(room, self.memory), path, start, lines, self.reader(room))
 
-    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]:
-        """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
-        the ids of the messages its turn answers, or with `said` and `source` a person's words; a filed one ends with `next`."""
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "",
+                            due: str = "", owes: str = "") -> dict[str, Any]:
+        """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with the ids of the messages its turn
+        answers, or with `said` and `source` a person's words, its date with `due`; a filed one ends with `next`."""
         if room not in self.rooms:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
-                                    tuple(replaces), self.reader(room), said, source)
+                                    tuple(replaces), self.reader(room), said, source, due, owes)
         return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
@@ -1637,16 +1637,24 @@ class Yerkd:
                                    rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room), retired=self.gates.retired)
         return text, str(self.memory.daily)
 
+    def due_pack(self, room: str, left: int = 6000) -> str:
+        """The recall pack's due part (due.part): the open dated items this room's reader may recall, in `left` characters and its own
+        key at most (the key lifted on an uncapped install, its lines never)."""
+        key = context.NONE if uncapped(self.budgets) else int(self.budgets["session_start"]["recall_pack"]["due"])
+        return due.part(self.scoped.get(room, self.memory), self.owed.load(), self.reader(room), min(left, key), retired=self.gates.retired)
+
     def compact_pack(self, room: str, sid: str = "") -> str:
         """The recall pack as session start builds and fits it, for the re-add after a compaction; an uncapped install's whole,
         then the topic rules its session start did not carry (context.topics), under Claude Code's hook ceiling (context.ceiling)."""
         conf = self.room_confs[room]
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
         if uncapped(self.budgets):
-            text = context.recall_pack(context.layer_dir(self.private, conf), conf, context.NONE, lambda left: self.room_pack(room, left))[0]
+            text = context.recall_pack(context.layer_dir(self.private, conf), conf, context.NONE, lambda left: self.room_pack(room, left),
+                                       lambda left: self.due_pack(room, left))[0]
             text = "\n\n".join(x for x in (text, self.rules_topic(room, sid, None, context.NONE)[0]) if x)
             return context.ceiling(text, int(self.budgets["hook"]["output_cap"]), self.state / "rooms" / room / "work" / "compact-whole.md")
-        text, src = context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))
+        text, src = context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left),
+                                        lambda left: self.due_pack(room, left))
         return context.fit("recall_pack", text, limit, src)[0]
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:

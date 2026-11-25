@@ -6,6 +6,31 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-25
+
+### due-view-2026-11-25 (#133)
+
+- A thing with a date is filed with it. `remember` takes `due` (`YYYY-MM-DD`, or `YYYY-MM-DDTHH:MM` in the install's zone) and
+  `owes` (who owes it to the owner; empty means the owner does), on a fact, a note or a person's words. The line carries the
+  date as a mark, `[due 2026-12-02]` or `[due 2026-12-02 owes <name>]`, after its words and source and before its class and id,
+  and only there is it a mark. Any other shape, `owes` with no `due`, a bracket in the name, and either with `job` or `retire`
+  are refused in one line each. The same words with another date are another line, and a retried call is still one line.
+- A dated line is open until it is superseded (the correction path is how a thing is said done: its outcome filed with
+  `replaces` naming the line) or its date is more than 14 days past. `yerk curate`'s sweep blanks no open one, whatever its
+  words say, and reports none as an expiry.
+- yerk-index writes the open ones as `due.json` beside the mention index, with no model and no new database. A pass reads a
+  fact file or a day log again only when it moved.
+- What is overdue, oldest first, then what is due in the next 7 days opens the recall pack at a session start and after a
+  compaction: at most 12 lines, each with its cite, the last saying how many more are open. Its size is `due` in budgets.toml
+  (`[session_start.recall_pack]`, 2,400 of the pack's own 6,000). A room reads of it what `recall` may return there, less another room's own
+  lines and any line marked do-not-surface (⛔, ask-only), which only the asked list shows; a room's
+  `open_loops` file keeps its room, and a room with nothing near gets the pack it had, byte for byte.
+- `yerk due [--room NAME] [--days N] [--all] [--json]` lists them on the command line, read-only.
+- A fact filed with a date is still shown as the room's note, and the `open-loops` ability is built.
+
+**Upgrading:** nothing to do. `yerk_tools` and the session start's total rose (the two parameters' words, in every room), and
+yerk-index writes `due.json` at its first pass on this code. No line filed before carries a date until it is filed again.
+
 ## 2026-11-24
 
 ### workers-home-deputy-2026-11-24 (#132)
