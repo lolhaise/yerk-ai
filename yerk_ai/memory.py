@@ -36,6 +36,7 @@ READ_LINES = 12          # read_memory's default window: a whole hit chunk from 
 SNIPPET = 750
 RECALL_CHARS = 4500      # recall: the first six hits' snippets together ([memory] recall_chars), six hits of SNIPPET
 RECALL_HITS = 6          # recall_chars is six hits' worth: a call of more cuts its first six as a call of six does
+RECALL_K = 12            # recall: the hits a call gives when it names no number: the first six as a call of six gives them, the rest one line each
 EXTRA = 160              # recall: each hit past the sixth, its best line cut around the match, on top of recall_chars
 
 
@@ -951,8 +952,13 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
     holds a line in LATER, gets the live end of that line's replacements (lessons.HOPS at most, a cite met twice ends it) read
     in right above it, as the reader may see it, unless a hit above already shows it. On a converted store a cite into the store
     (a lesson's, an old rules.md:N or rules-topics.md:N, one a mark or LATER names) ends at the live lesson it leads to, through
-    the tombstones (lessons.live_slug), so a history line in the day log reaches the lesson its rule is now."""
+    the tombstones (lessons.live_slug), so a history line in the day log reaches the lesson its rule is now.
+    The first RECALL_HITS stay exactly as a call of six gives them, so a hit past them rises among its own alone; there its mark
+    and its `supersedes` are read off its whole line (its text is one line cut to EXTRA), what is read in is one such line, and
+    a hit already shown word for word above is not shown again."""
     hits, kept, whole = list(r.get("hits") or []), later(s), lessons.converted(s.root)
+    lone = {j: read(s, hits[j]["cite"], lines=1, reader=reader) for j in range(RECALL_HITS, len(hits))}    # a hit past the six: its line
+    said = [h["text"] + (f'\n{got["text"]}' if (got := lone.get(j)) and got["ok"] else "") for j, h in enumerate(hits)]
 
     def walk(c: str) -> tuple[str, str]:
         line, at, been = "", "", set[str]()
@@ -969,19 +975,22 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
         return at, line
 
     def above(j: int) -> int:
-        names = {c.strip().rpartition(":")[0] for m in re.findall(r"\(supersedes ([^)]+)\)", hits[j]["text"]) for c in m.split(",")}
-        return next((i for i in range(j) if hits[i]["cite"].rpartition(":")[0] in names), j)
+        names = {c.strip().rpartition(":")[0] for m in re.findall(r"\(supersedes ([^)]+)\)", said[j]) for c in m.split(",")}
+        return next((i for i in range(RECALL_HITS if j >= RECALL_HITS else 0, j) if hits[i]["cite"].rpartition(":")[0] in names), j)
     out: list[dict[str, Any]] = []
-    for h in [hits[j] for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j))]:
+    for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j)):
+        h, past = hits[j], j >= RECALL_HITS
         f, _, at = h["cite"].rpartition(":")         # a read-only root's pair names its real file: two copies share a cite (A1)
-        mine = (f, read(s, h["cite"], lines=1).get("path") if kept else f)
+        mine = (f, (lone[j] if past else read(s, h["cite"], lines=1)).get("path") if kept else f)
         store = [m[0] for m in (*lessons.CITE.finditer(h["text"]), *lessons.OLD_CITE.finditer(h["text"]))] if whole else []
-        for c in dict.fromkeys(BY.findall(h["text"]) + store + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
+        for c in dict.fromkeys(BY.findall(said[j]) + store + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
                                                                 and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]):
             to, line = walk(c)
-            if line and not (to.rpartition(":")[0] == f and lessons.CITE.search(f)) and not any(line in x["text"] for x in [*out, h]):
-                out.append({"cite": to, "text": line})
-        out.append(h)
+            if line and not (to.rpartition(":")[0] == f and lessons.CITE.search(f)) and not any(
+                    line in x["text"] or past and x["cite"] == to for x in [*out, h]):
+                out.append({"cite": to, "text": line if not past or len(line) <= EXTRA else _cut(line, {}, EXTRA - 2)})
+        if not (past and any(x["cite"] == h["cite"] and h["text"].strip("…") in x["text"] for x in out)):      # not twice: a line read in above
+            out.append(h)
     return {**r, "hits": out} if r.get("ok") else r
 
 
@@ -1167,6 +1176,15 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
     return out
 
 
+def tail(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], shown: list[dict[str, Any]], most: int,
+         weight: Callable[[dict[str, Any]], float] | None = None) -> list[dict[str, Any]]:
+    """The `most` hits a longer recall adds below the first six (`shown`, the call of six's own), none of them twice: first the
+    keyword half's own top six not shown yet, in its order, since fusion may put one below twelve others, then the fused order's."""
+    fused = {h["id"]: h for h in fuse(keywords, vectors, len(keywords) + len(vectors), weight=weight)}
+    had = {h["id"] for h in shown}
+    return [fused[i] for i in dict.fromkeys([*(h["id"] for h in keywords[:RECALL_HITS]), *fused]) if i not in had][:most]
+
+
 def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]], float]:
     """A hit's weight in the fusion: RECORD for a stored message, a line under <private>/imports or a day of the install's
     own log older than the room window (an import puts every day of the old chats there), else 1, a note: on the same
@@ -1195,6 +1213,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114).
+    With `k` past RECALL_HITS the first six are the call of six's own, in its order, and the rest is `tail`'s, the docs last in each.
     With `since` or `until` only a file whose own name holds a day in the range is a candidate, in both halves, the reader's
     rule still over it: in SQL before the keyword pool is cut, and from MEANING_MOST of yerk-index's rows, which it cannot filter."""
     if no := no_range(since, until):
@@ -1228,9 +1247,11 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         vectors = [h for h in vectors if only(h["path"])]
     if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
         vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
-    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
-    # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
-    hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
+    weight = record(s) if weigh else None
+    def is_doc(h: dict[str, Any]) -> bool:          # the owner's notes above the docs: they say how this install's things are,
+        return s.docs is not None and Path(h["path"]).is_relative_to(s.docs)     # the docs how Claude runs anywhere, in the same words
+    hits = sorted(fuse(keywords, vectors, min(k, RECALL_HITS), weight=weight), key=is_doc)
+    hits += sorted(tail(keywords, vectors, hits, k - len(hits), weight), key=is_doc) if k > RECALL_HITS else []
     for h in hits:
         h.pop("id", None)
         h["cite"] = f"{cite(s, Path(h['path']))}:{h['line']}"
@@ -1636,9 +1657,12 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6, days: bool = F
     and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
     whose snippet, as recall hands it to the room, still holds every answer token. The file is the recall kind; each other
     kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart. With
-    `days` (the weekly run) the dated questions are then run with their day too (`dated`), which no number here is made from."""
+    `days` (the weekly run) the dated questions are then run with their day too (`dated`) and the twelve beside the six (`k12`: the
+    scored questions' hits in the first RECALL_K and those kept in the snippet), neither of which any number here is made from. The
+    weekly run is of six, so its one search is of twelve, whose first six are the call of six's own; any other k asks twice."""
     qfile, rows = questions or s.bench, []
     asked: list[tuple[dict[str, Any], int | None, re.Pattern[str]]] = []
+    both, k12 = days and k == RECALL_HITS, {"top_k": 0, "kept": 0} if days else {}
     for kind, f in ((x, qfile if x == "recall" else qfile.with_name(f"{x}-questions.json")) for x in KINDS):
         if kind != "recall" and not f.is_file():
             continue
@@ -1646,21 +1670,31 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6, days: bool = F
         stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
         for q in data["questions"]:
             weights: dict[str, float] = {}
-            r = ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
+            r = ranked(s, str(q["q"]), RECALL_K if both else k, deadline_s=30.0, weights=weights)
             if not r["ok"]:
                 return {"ok": False, "status": r["status"], "error": r["error"]}
-            rank = rank_of(r["hits"], q, stale)
-            cut = snippets(r["hits"], weights, s.recall_chars) if rank else []
+            hits = r["hits"][:k]
+            rank = rank_of(hits, q, stale)
+            cut = snippets(hits, weights, s.recall_chars) if rank else []
             rows.append({"id": q["id"], "kind": kind, "control": bool(q.get("control")), "rank": rank,
                          "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
-                         "top": r["hits"][0]["path"] if r["hits"] else None})
+                         "top": hits[0]["path"] if hits else None})
             asked += [] if q.get("control") else [(q, rank, stale)]
+            if days and not q.get("control") and "status" not in k12:
+                if not both:                           # any other k: its own search, beside the plain one
+                    weights.clear()
+                    r = ranked(s, str(q["q"]), RECALL_K, deadline_s=30.0, weights=weights)
+                if not r["ok"]:                        # a search that did not finish is no miss (L54): `k12` then says only that
+                    k12 = {"status": r["status"]}
+                elif at := rank_of(r["hits"][:RECALL_K], q, stale):
+                    k12["top_k"] += 1
+                    k12["kept"] += has_all(snippets(r["hits"][:RECALL_K], weights, s.recall_chars)[at - 1]["text"], list(q["answer_tokens"]))
     scored = [r for r in rows if not r["control"]]
     return {"ok": True, **score(rows), "controls": len(rows) - len(scored), "k": k,
             "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
             "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile),
-            **({"dated": dated(s, asked, k)} if days else {})}
+            **({"dated": dated(s, asked, k), "k12": k12} if days else {})}
 
 
 def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:

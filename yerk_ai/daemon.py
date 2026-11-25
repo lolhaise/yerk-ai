@@ -59,7 +59,8 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
 # A trusted room's (shell = "trusted"): no command retried outside it, no start without it (Claude Code would run unsandboxed)
 WALL = {**SANDBOX, "allowUnsandboxedCommands": False, "failIfUnavailable": True}
-PAST_HITS = 6          # a question about the past: the recall tool's own six hits (its default), cut to the prompt hook's part
+PAST_HITS = 6          # a question about the past: the recall tool's own first six hits, cut to the prompt hook's part
+PACK_HITS = 6          # the text writer's pack: those six, whatever the recall tool's own default is
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
 
@@ -997,7 +998,7 @@ class Yerkd:
         tool's search. Off the loop."""
         names, topics, past, absent = self.recall_for(room, text)
         cap = context.NONE if context.uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["recall"])
-        hits = self.search(room, text, docs=False).get("hits") or []
+        hits = self.search(room, text, k=PACK_HITS, docs=False).get("hits") or []
         return "\n".join([hooks.render_recall(names, topics, cap, past, absent), *(f"{h['cite']} {h['text']}" for h in hits)])
 
     async def texting_post(self, room: str, line: str) -> None:
@@ -1383,10 +1384,11 @@ class Yerkd:
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
 
-    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0,
+    def search(self, room: str, query: str, k: int, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0,
                docs: bool = True, since: str = "", until: str = "") -> dict[str, Any]:
         """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own
-        scope; the hook's without the docs root (`docs`), which a room reaches by its own recall and read_memory, and never with a range."""
+        scope; the hook's without the docs root (`docs`), which a room reaches by its own recall and read_memory, and never with a range.
+        `k` has no default: every caller says its own, so the tool's (memory.RECALL_K) never reaches what a message or the text pack is handed."""
         rd, s = self.reader(room), self.scoped.get(room, self.memory)
         return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait, docs, since, until), rd)
 
@@ -2110,7 +2112,7 @@ class Yerkd:
             return await self.need_build(dict(payload["needs"]))
         if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
             req = dict(payload["recall"])
-            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6),
+            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or memory.RECALL_K),
                                           str(req.get("since") or ""), str(req.get("until") or ""))
         if isinstance(payload.get("read_memory"), dict):
             req = dict(payload["read_memory"])

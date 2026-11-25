@@ -270,8 +270,8 @@ def test_the_bench_shape_holds_the_three_kinds_and_the_example_set_has_the_room_
     assert [re.fullmatch(rf"{x}: top 6 \d+/{len(ids[x])} \(\d+\.\d%\)   top one \d+/{len(ids[x])} \(\d+\.\d%\)", line) is not None
             for x, line in zip(memory.KINDS, out[2:])] == [True] * 3, out[2:]
     row = json.loads((tmp_path / "state" / "memory" / "recall-bench.jsonl").read_text().splitlines()[-1])
-    assert sorted(row) == ["at", "blind", "controls", "dated", "k", "kept", "kinds", "lost", "misses", "questions", "top_1", "top_1_rate",
-                           "top_k", "top_k_rate"] and list(row["kinds"]) == list(memory.KINDS)
+    assert sorted(row) == ["at", "blind", "controls", "dated", "k", "k12", "kept", "kinds", "lost", "misses", "questions", "top_1",
+                           "top_1_rate", "top_k", "top_k_rate"] and list(row["kinds"]) == list(memory.KINDS)
 
 
 # 6b. the bench is a ratchet: a planted drop exits 4 and says so; a dated note in budgets.toml naming it lets the run pass

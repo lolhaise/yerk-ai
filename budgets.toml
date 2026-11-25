@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 135470
+total = 135610
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -357,10 +357,16 @@ total = 135470
 # recall 602 to 997 as this tree builds it, all 25 from 27,666 to 28,061 (395 more, measured on main 66377a2 and on this tree
 # the same way, each entry's compact JSON), on the about 30,113 the rooms send, so about 30,508; the line is that count, no part
 # could pay, the total rose by the 395 (to 135,470 on main's 135,075). The hands plug-in's tool entries do not change.
+# 2026-11-25, twelve-hits-2026-11-25 (the owner's order, Wed Nov 25): the `recall` tool's twelve hits (`k` 12 by
+# default, and one sentence: the first six as before, six more one line each, read_memory to read on), since a call showed six and
+# the search's own top six held answers below them: recall 997 to 1,137 as this tree builds it, all 25 from 28,061 to 28,201 (140 more,
+# measured on main 1252abca and on this tree the same way, each entry's compact JSON), on the about 30,508 the rooms send, so about
+# 30,648; the line is that count, no part could pay, the total rose by the 140 (to 135,610 on main's 135,470). The hands plug-in's
+# tool entries do not change.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 30508
+yerk_tools = 30648
 deferred_tool_names = 3781
 mcp__hands__ = 10970
 mcp__web-ladder__web_image = 913
@@ -2052,4 +2058,8 @@ secs = 60
 # file's name, the refusals, the range in both halves, the widened search and the bench's dated object; memindex.py 5: the
 # filter in SQL; mcp_server.py 3: the two parameters and their words; words.py 3: the refusals and the widened line;
 # daemon.py 2: handing them on; cli.py 1: the bench's line). 36,556: 36,478 plus 78.
-lines = 36556
+# 2026-11-25: twelve-hits-2026-11-25 raised it by 38, a recall that names no number gives twelve hits, the first six the call of six's
+# own and six more one line each (the owner's order, Wed Nov 25), not folded to fit (memory.py 34: the default, the tail, the
+# six held at six, a replacement read off its whole line, the bench's twelve; daemon.py 2: the two searches say their own k; mcp_server.py
+# 1: the default and the sentence; cli.py 1: the bench's line). 36,594: 36,556 plus 38.
+lines = 36594

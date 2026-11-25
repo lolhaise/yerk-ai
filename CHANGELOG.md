@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-25
 
+### twelve-hits-2026-11-25 (#137)
+
+- `recall` gives twelve hits when a call names no number (a room's tool and a worker's, `k` still 1 through 20). The first six are
+  exactly the call of six's own, its hits, order, cites and text; the six after them are one line each (at most 160 characters,
+  with a cite `read_memory` reads on from): first the keyword search's own top six that the fusion put past them, in its order,
+  then the fused order's next. No hit is shown twice, and a replacement still comes above the line it replaces in the tail, whose
+  own marks are read off the whole line. What a room may read, and a range, hold for the tail as for the six.
+- What a message is handed, and the text writer's pack, stay at six hits, each search saying its own number.
+- `yerk recall-bench` measures the twelve beside the six: its row gains one object, `k12` (`top_k` and `kept`), after `dated`, and
+  a line. The plain numbers and the ratchet are as they were. The weekly run asks one search a question at twelve, whose first six
+  are the six's own, so it is no slower for it.
+
+**Upgrading:** nothing to do. `yerk_tools` rose by the description's one sentence, in every room, and a recall's answer by up to
+about 1,000 characters.
+
 ### recall-by-day-2026-11-25 (#136)
 
 - `recall` takes `since` and `until`, each `YYYY-MM-DD` and either alone, and the room works them out from the clock line when a
