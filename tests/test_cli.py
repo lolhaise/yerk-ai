@@ -86,7 +86,7 @@ def due_layer(tmp_path):
     from yerk_ai.room import Inbound
     y = install(tmp_path, sealed=True, family=True)
     today = datetime.now(y.memory.tz).date()
-    for room, text, days, owes in (("example-room", "Owner item ten days out.", 10, ""), ("example-room", "Owner item overdue.", -3, ""),
+    for room, text, days, owes in (("example-room", "Owner item eight days out.", 8, ""), ("example-room", "Owner item overdue.", -3, ""),
                                    ("example-room", "Owner item soon.", 2, "Dana"), ("frozen-room", "Sealed item soon.", 3, ""),
                                    ("family-room", "Her item soon.", 4, "Riley"), ("family-room", "Her item fifteen days late.", -15, "")):
         if room not in y.rooms:
@@ -105,7 +105,7 @@ def due_said(capsys, *args):
 
 def test_due_lists_an_owner_rooms_view_overdue_first_then_within_the_days_and_every_open_one_with_all(tmp_path, capsys):
     y, today, where = due_layer(tmp_path)
-    day = {n: (today + timedelta(days=n)).isoformat() for n in (-3, 2, 3, 4, 10)}
+    day = {n: (today + timedelta(days=n)).isoformat() for n in (-3, 2, 3, 4, 8)}
     code, out, err = due_said(capsys, *where)
     rows = [re.sub(r"\(memory/daily/\d{4}-\d\d-\d\d\.md:\d+\)$", "(cite)", x) for x in out.splitlines()]
     assert code == 0 and rows == ["overdue:", f"- {day[-3]}: Owner item overdue. (cite)", "due in the next 7 days:",
@@ -113,8 +113,10 @@ def test_due_lists_an_owner_rooms_view_overdue_first_then_within_the_days_and_ev
                                   f"- {day[4]}, waiting on Riley: Her item soon. (cite)", "(1 more open: yerk due --all)"]
     assert due_said(capsys, "--room", "example-room", *where)[1] == out                      # an owner room's view
     whole = due_said(capsys, "--all", *where)[1].splitlines()
-    assert whole[:6] == out.splitlines()[:6] and whole[6] == "later:" and "Owner item ten days out." in whole[7] and len(whole) == 8
-    assert "fifteen" not in "\n".join(whole) and "due in the next 10 days:" in due_said(capsys, "--days", "10", *where)[1]
+    assert whole[:6] == out.splitlines()[:6] and whole[6] == "later:" and "Owner item eight days out." in whole[7] and len(whole) == 8
+    assert "fifteen" not in "\n".join(whole) and "Owner item eight days out." not in out
+    wider = due_said(capsys, "--days", "8", *where)[1]
+    assert "due in the next 8 days:" in wider and "Owner item eight days out." in wider and "more open" not in wider
     few = due_said(capsys, "--days", "2", *where)[1]
     assert "Owner item soon." in few and "Sealed item soon." not in few and "(3 more open: yerk due --all)" in few
     got = json.loads(due_said(capsys, "--json", *where)[1])
