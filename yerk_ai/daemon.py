@@ -1372,22 +1372,22 @@ class Yerkd:
                 log.warning("%s: a spend row was not written (%s, US$%.4f): %s", tool, engine, usd, e)
         return book
 
-    async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
+    async def tool_recall(self, room: str, query: str, k: int, since: str = "", until: str = "") -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
         recall in a room while yerk-index runs without a provider key tells the room so, once. A superseded
-        line never comes above its replacement (memory.live_first)."""
-        r = await asyncio.to_thread(self.search, room, query, k)
+        line never comes above its replacement (memory.live_first). `since` and `until`: a range of days (memory.recall)."""
+        r = await asyncio.to_thread(self.search, room, query, k, since=since, until=until)
         log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
 
     def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0,
-               docs: bool = True) -> dict[str, Any]:
+               docs: bool = True, since: str = "", until: str = "") -> dict[str, Any]:
         """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own
-        scope; the hook's without the docs root (`docs`), which a room reaches by its own recall and read_memory."""
+        scope; the hook's without the docs root (`docs`), which a room reaches by its own recall and read_memory, and never with a range."""
         rd, s = self.reader(room), self.scoped.get(room, self.memory)
-        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait, docs), rd)
+        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait, docs, since, until), rd)
 
     async def tell_once(self, room: str, what: str, text: str) -> bool:
         """One plain line to the room about `what`, the first time only (a marker file remembers it)."""
@@ -2109,7 +2109,8 @@ class Yerkd:
             return await self.need_build(dict(payload["needs"]))
         if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
             req = dict(payload["recall"])
-            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6))
+            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6),
+                                          str(req.get("since") or ""), str(req.get("until") or ""))
         if isinstance(payload.get("read_memory"), dict):
             req = dict(payload["read_memory"])
             return await self.tool_read_memory(str(req.get("room", "")), str(req.get("path", "")),

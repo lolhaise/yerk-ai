@@ -19,7 +19,7 @@ import threading
 import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
@@ -1051,6 +1051,25 @@ def is_daylog(path: str) -> bool:
     return bool(DAYLOG.search(str(path)))
 
 
+DAY = re.compile(r"(?<![0-9])[0-9]{4}-[0-9]{2}-[0-9]{2}(?![0-9])")     # a day as recall's range and a file's name write it
+
+
+def real_day(text: str) -> bool:
+    """`text` is YYYY-MM-DD, a day of the calendar, and nothing else."""
+    try:
+        return bool(DAY.fullmatch(text) and date.fromisoformat(text))
+    except ValueError:
+        return False
+
+
+def no_range(since: str, until: str) -> str:
+    """Why recall takes no such range, in one line; "" for one it takes, no range among them."""
+    for name, given in (("since", since), ("until", until)):
+        if given and not real_day(given):
+            return words.RECALL_DAY.format(name=name, given=words.line(one_line(given), 40))
+    return words.RECALL_ORDER.format(since=since, until=until) if since and until and since > until else ""
+
+
 def index_status(s: Settings) -> dict[str, Any]:
     """What yerk-index wrote about itself (index.json), or {} when nothing is serving."""
     try:
@@ -1157,13 +1176,17 @@ def recalled(s: Settings, reader: Reader | None, path: Path, text: str) -> bool:
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
-           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True) -> dict[str, Any]:
+           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True,
+           since: str = "", until: str = "") -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
     yerk-index serves one and `wide`, waiting `wait` for it at most (the bench's rank reads these; the recall tool cuts them). A timeout and a
     failure of the index read differently (L54); a provider timeout or error reads differently from
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
-    `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
+    `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114).
+    `since` and `until`, a range of days, are refused in one line when they are not one."""
+    if no := no_range(since, until):
+        return {"ok": False, "status": "refused", "error": no}
     k = max(1, min(int(k), 20))
     def mine(path: str, text: str) -> bool:
         return recalled(s, reader, Path(path), text)
@@ -1200,13 +1223,13 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
 
 
 def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None, chars: int = 0,
-           wait: float = MEANING_WAIT, docs: bool = True) -> dict[str, Any]:
+           wait: float = MEANING_WAIT, docs: bool = True, since: str = "", until: str = "") -> dict[str, Any]:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
     together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
-    adds its best line, at most EXTRA."""
+    adds its best line, at most EXTRA. `since` and `until` keep it to files named for a day in that range (`ranked`)."""
     weights: dict[str, float] = {}
-    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs)
+    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs, since=since, until=until)
     return {**r, "hits": snippets(r["hits"], weights, chars or s.recall_chars)} if r["ok"] else r
 
 

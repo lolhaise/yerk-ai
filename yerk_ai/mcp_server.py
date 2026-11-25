@@ -48,7 +48,10 @@ Auth = dict[str, str]                      # {"kind": install | room | worker, "
 RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords\n"
           "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
           "Each hit is the lines that carry the match and a `cite` (file:line). Cite every fact you use\n"
-          "by its `cite`; read_memory(cite) reads on from it. A \"timeout\" status means busy, not down.")
+          "by its `cite`; read_memory(cite) reads on from it. A \"timeout\" status means busy, not down.\n"
+          "`since` and `until` (each YYYY-MM-DD, either alone) keep the search to files named for a day in that range, both ends in it.\n"
+          "Work them out from the clock line when the question names a day, a week, a month or a phrase like \"last Sunday\", and leave\n"
+          "them out when it names no time.")
 # the rule shape `remember` says, in the Claude docs' own words: the pinned sentences, checked daily against the fetched page
 # and, 2026-11-09, Claude Fable 5.2: in place of the 40-word sentence cap the gate no longer asks (its page: a hard limit makes
 # prose choppy), the line of its "Communicating clearly" block on how a sentence reads
@@ -62,7 +65,7 @@ READ_MEMORY = (f"Exact lines of a memory file, `lines` of them (default {READ_LI
 class Daemon(Protocol):
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]: ...
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]: ...
-    async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
+    async def tool_recall(self, room: str, query: str, k: int, since: str = "", until: str = "") -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "",
                             due: str = "", owes: str = "") -> dict[str, Any]: ...
@@ -179,8 +182,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))
 
     @mcp.tool(description=RECALL)
-    async def recall(query: str, k: int = 6, *, ctx: Context) -> str:
-        return json.dumps(await daemon.tool_recall(caller_room(ctx), query, k))
+    async def recall(query: str, k: int = 6, since: str = "", until: str = "", *, ctx: Context) -> str:
+        return json.dumps(await daemon.tool_recall(caller_room(ctx), query, k, since, until))
 
     @mcp.tool(description=READ_MEMORY)
     async def read_memory(path: str, from_line: int = 1, lines: int = READ_LINES, *, ctx: Context) -> str:
@@ -536,8 +539,8 @@ def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
             return json.dumps({"ok": False, "error": f"the daemon did not answer: {e}"})
 
     if "recall" in allowed:
-        async def recall(query: str, k: int = 6) -> str:
-            return await call({"recall": {"room": room, "query": query, "k": k}})
+        async def recall(query: str, k: int = 6, since: str = "", until: str = "") -> str:
+            return await call({"recall": {"room": room, "query": query, "k": k, "since": since, "until": until}})
         mcp.tool(description=RECALL)(recall)
     if "read_memory" in allowed:
         async def read_memory(path: str, from_line: int = 1, lines: int = READ_LINES) -> str:

@@ -179,6 +179,8 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
               "filing is {clause}.")
 FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
 DUE_SHAPE = "due is YYYY-MM-DD or YYYY-MM-DDTHH:MM, a day or a day and time in this install's zone, not \"{due}\""     # remember's dates
+RECALL_DAY = "{name} is YYYY-MM-DD, one real day, not \"{given}\""          # recall's range (memory.no_range)
+RECALL_ORDER = "since {since} is after until {until}: each is YYYY-MM-DD, since on or before until"
 DUE_OWES = "owes needs due: a wait needs the day to look at it again"
 DUE_NAME = "owes is a name on one line with no bracket, not \"{owes}\""
 DUE_JOB = "due and owes date a fact, a decision or a person's words, never a rule (job) or its retiring (retire)"
