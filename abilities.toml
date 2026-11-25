@@ -1617,7 +1617,7 @@ layer = 4
 
 [abilities.recall]
 state = "built"
-what = "The recall tool: ranked hits of the owner's memory, each the lines that carry the match (at most [memory] recall_chars for a call's first six hits, the best line for each hit past them) with a cite (file:line) read_memory reads on from, in every room; with the embeddings ability on, the keyword rank is fused with the meaning rank."
+what = "The recall tool: ranked hits of the owner's memory, each the lines that carry the match (at most [memory] recall_chars for a call's first six hits, the best line for each hit past them) with a cite (file:line) read_memory reads on from, in every room; with the embeddings ability on, the keyword rank is fused with the meaning rank. `since` and `until` (each YYYY-MM-DD, either alone) keep a search to files named for a day in that range, before it ranks, so a question about a day competes with that day's files alone; a range that finds nothing is searched once more without it, and the answer says so."
 tier = "free"
 needs = "a running yerk-index"
 free_path = "keywords (FTS5) alone; the embeddings ability (key tier) adds meaning search behind them and keywords stay the fallback"
@@ -1671,7 +1671,7 @@ layer = 4
 
 [abilities.recall-bench]
 state = "built"
-what = "yerk recall-bench: a fixed question set against the index, top six and top one hit rates, one line per run kept as the weekly series."
+what = "yerk recall-bench: a fixed question set against the index, top six and top one hit rates, one line per run kept as the weekly series; the questions whose answer sits in a date-named file are run with that day as recall's range too, counted beside the plain numbers."
 tier = "free"
 needs = "a question file in the private folder (evals/recall-questions.json), a running yerk-index; the weekly timer in units/"
 free_path = "this is the free path"
