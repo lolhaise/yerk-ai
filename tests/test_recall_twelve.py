@@ -175,6 +175,13 @@ def lanes(y: Yerkd, room: str, n: int, word: str, owner: str) -> None:
     sync(y)
 
 
+def readable(y: Yerkd, room: str, hits: list[dict]) -> bool:
+    """Whether each hit is a line its room may read: the reader's own rule, as read_memory asks it."""
+    rd, s = y.reader(room), y.scoped.get(room, y.memory)
+    got = [memory.read(s, h["cite"], lines=1, reader=rd) for h in hits]
+    return bool(hits) and all(g["ok"] and "another room" not in g["text"] for g in got)
+
+
 def test_a_people_rooms_tail_holds_only_what_it_may_read(tmp_path, monkeypatch):
     y = install(tmp_path, family=True)
     lanes(y, "family-room", 12, "mother's", "vermilion")
@@ -185,7 +192,9 @@ def test_a_people_rooms_tail_holds_only_what_it_may_read(tmp_path, monkeypatch):
         return asyncio.run(y.tool_recall(room, "mother's kettle line", k))["hits"]
     hits = ask("family-room")
     assert len(hits) == 12 and not any("vermilion" in h["text"] or "private" in h["text"] for h in hits) and "mother's" in str(hits[6:])
-    assert not any("tangerine" in h["text"] for h in ask("family-room", 20)) and len(ask("family-room", 20)) > 6
+    for k in (12, 20):
+        assert readable(y, "family-room", ask("family-room", k)) and len(ask("family-room", k)) > 6
+    assert not any("vermilion" in h["text"] for h in ask("family-room", 20)) and not readable(y, "family-room", ask("example-room", 20))
     assert "vermilion" in str(ask("example-room", 20))                       # the owner's rooms read both
 
 
@@ -203,7 +212,8 @@ def test_a_sealed_rooms_tail_holds_only_what_it_may_read(tmp_path, monkeypatch):
         return asyncio.run(y.tool_recall("frozen-room", "the frozen kettle line on the shelf", k))["hits"]
     hits = ask()
     assert len(hits) == 12 and not any("saffron" in h["text"] for h in hits) and "frozen" in str(hits[6:])
-    assert not any("saffron" in h["text"] or "tangerine" in h["text"] for h in ask(20))
+    for k in (12, 20):
+        assert readable(y, "frozen-room", ask(k)) and not any("saffron" in h["text"] or "vermilion" in h["text"] for h in ask(k))
     del frozen
 
 
