@@ -1168,6 +1168,15 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
     return out
 
 
+def tail(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], shown: list[dict[str, Any]], most: int,
+         weight: Callable[[dict[str, Any]], float] | None = None) -> list[dict[str, Any]]:
+    """The `most` hits a longer recall adds below the first six (`shown`, the call of six's own), none of them twice: first the
+    keyword half's own top six not shown yet, in its order, since fusion may put one below twelve others, then the fused order's."""
+    fused = {h["id"]: h for h in fuse(keywords, vectors, len(keywords) + len(vectors), weight=weight)}
+    had = {h["id"] for h in shown}
+    return [fused[i] for i in dict.fromkeys([*(h["id"] for h in keywords[:RECALL_HITS]), *fused]) if i not in had][:most]
+
+
 def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]], float]:
     """A hit's weight in the fusion: RECORD for a stored message, a line under <private>/imports or a day of the install's
     own log older than the room window (an import puts every day of the old chats there), else 1, a note: on the same
@@ -1196,6 +1205,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114).
+    With `k` past RECALL_HITS the first six are the call of six's own, in its order, and the rest is `tail`'s, the docs last in each.
     With `since` or `until` only a file whose own name holds a day in the range is a candidate, in both halves, the reader's
     rule still over it: in SQL before the keyword pool is cut, and from MEANING_MOST of yerk-index's rows, which it cannot filter."""
     if no := no_range(since, until):
@@ -1229,9 +1239,11 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         vectors = [h for h in vectors if only(h["path"])]
     if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
         vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
-    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
-    # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
-    hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
+    weight = record(s) if weigh else None
+    def is_doc(h: dict[str, Any]) -> bool:          # the owner's notes above the docs: they say how this install's things are,
+        return s.docs is not None and Path(h["path"]).is_relative_to(s.docs)     # the docs how Claude runs anywhere, in the same words
+    hits = sorted(fuse(keywords, vectors, min(k, RECALL_HITS), weight=weight), key=is_doc)
+    hits += sorted(tail(keywords, vectors, hits, k - len(hits), weight), key=is_doc) if k > RECALL_HITS else []
     for h in hits:
         h.pop("id", None)
         h["cite"] = f"{cite(s, Path(h['path']))}:{h['line']}"
