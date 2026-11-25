@@ -270,6 +270,8 @@ def test_a_tree_with_no_mark_reads_the_same_on_any_day(tmp_path):
 
 def test_recall_and_read_memory_give_an_ended_line_as_filed_in_its_place_on_any_day(tmp_path, monkeypatch):
     s = readers_tree(tmp_path)
+    (s.root / "facts" / "example-shed.md").write_text("# Example shed\n\n- Example shed: holds a ladder, never lent.\n")     # no mark: below them
+    memindex.Index(s.index_db, s.scope).sync()
     seen = []
     for at in DAYS.values():
         clock(monkeypatch, at)
@@ -278,6 +280,7 @@ def test_recall_and_read_memory_give_an_ended_line_as_filed_in_its_place_on_any_
                      memory.read(s, "memory/daily/2026-11-25.md:3", lines=1)["text"]))
     assert seen[0] == seen[1] == seen[2]
     hits, card, day = seen[2]
+    assert len(hits) == 3 and hits[-1][0] == "memory/facts/example-shed.md:1"        # an ended line's hit keeps its place above it
     assert any("lent to the neighbour [until 2026-11-30] (" in t for _, t in hits) and "lent to the neighbour [until 2026-11-30]" in day
     assert f"- {memory.MARKS[memory.NOTE]} Example ladder: lent to the neighbour [until 2026-11-30] (owner-room, " in card
 
