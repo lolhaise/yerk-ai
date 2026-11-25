@@ -190,6 +190,25 @@ def test_the_sweep_blanks_a_line_remember_filed_the_day_after_its_day_never_on_i
     assert len(card.read_text().split("\n")) == len(before.split("\n"))
 
 
+def test_the_sweep_and_every_reader_ask_the_one_rule(tmp_path, monkeypatch):
+    """memory.ended swapped for a probe: a line it calls ended goes from the card and from each reader, so none keeps a rule of its own."""
+    s, log = install(tmp_path)
+    (s.root / "facts" / "example-ladder.md").write_text("# Example ladder\n- Example ladder: PROBE lent (owner-room, 2026-11-25 10:00:00-05:00) [m:a]\n"
+                                                        "- Example ladder: kept (owner-room, 2026-11-25 10:00:00-05:00) [m:b]\n")
+    (s.daily / "2026-11-25.md").write_text("# 2026-11-25\n\n" + note("10:00", "Example ladder PROBE decided lent", "m-1.n12345678") + "\n"
+                                           + note("10:01", "Example ladder decided kept", "m-2.n12345678") + "\n")
+    memindex.Index(s.index_db, s.scope).sync()
+    monkeypatch.setattr(memory, "ended", lambda raw, today, day="": "PROBE" in raw)
+    now = datetime(2026, 11, 25, 15, 0, tzinfo=TZ)
+    deep = [x["cite"] for x in memory.lines_on(s, "example ladder", now=now)]
+    topics = [x["cite"] for x in memory.topic_hits(s, ROOM, "the example ladder decided?", now=now)]
+    items = [x["cite"] for x in memory.room_items(s, ROOM, now)]
+    assert sorted(deep) == ["memory/daily/2026-11-25.md:4", "memory/facts/example-ladder.md:1", "memory/facts/example-ladder.md:3"], deep
+    assert topics == ["daily/2026-11-25.md:4"] and items == ["daily/2026-11-25.md:4"], (topics, items)
+    curate.sweep(s, s.root.parent, [], tmp_path / "b", False, date(2026, 11, 25))
+    assert (s.root / "facts" / "example-ladder.md").read_text().split("\n")[1:3] == ["", "- Example ladder: kept (owner-room, 2026-11-25 10:00:00-05:00) [m:b]"]
+
+
 # U3: left out on the day, where a line is read per message
 
 LINES = [note("09:00", "Example ladder decided: lent to the neighbour [until 2026-11-30]", "m-1.n00000001"),          # 3: ends
@@ -214,3 +233,49 @@ def readers_tree(tmp_path: Path) -> memory.Settings:
 
 DAYS = {"the day before": datetime(2026, 11, 29, 12, 0, tzinfo=TZ), "the day itself": datetime(2026, 11, 30, 23, 30, tzinfo=TZ),
         "the day after": datetime(2026, 12, 1, 0, 10, tzinfo=TZ)}        # 23:30 there is 04:30 the next day in UTC
+
+
+@pytest.mark.parametrize("when", list(DAYS))
+def test_deep_recall_leaves_out_an_ended_bullet_and_note_from_the_day_after_and_hands_over_the_rest(tmp_path, when):
+    s = readers_tree(tmp_path)
+    got = {x["cite"] for x in memory.lines_on(s, "example ladder", None, 8, None, 20, now=DAYS[when])}
+    after = when == "the day after"
+    day_lines = {f"memory/daily/2026-11-25.md:{n}" for n in (3, 4, 5, 6, 9)} - ({"memory/daily/2026-11-25.md:3"} if after else set())
+    facts = {f"memory/facts/example-ladder.md:{n}" for n in (1, 3, 4, 5)} - ({"memory/facts/example-ladder.md:3"} if after else set())
+    assert got == day_lines | facts, sorted(got)          # 7 closed past its until, 8 superseded: out on every day, as before
+
+
+@pytest.mark.parametrize("when", list(DAYS))
+def test_the_rooms_topic_lines_and_the_pack_leave_out_an_ended_note_from_the_day_after(tmp_path, when):
+    s = readers_tree(tmp_path)
+    want = [f"daily/2026-11-25.md:{n}" for n in (9, 6, 5, 4) + (() if when == "the day after" else (3,))]
+    topics = [x["cite"] for x in memory.topic_hits(s, ROOM, "what was decided on the example ladder?", now=DAYS[when], limit=20)]
+    items = [x["cite"] for x in memory.room_items(s, ROOM, DAYS[when])]
+    assert sorted(topics) == sorted(want) and items == want, (topics, items)
+    pack = memory.room_pack(s, ROOM, 6000, DAYS[when])[0]
+    assert ("lent to the neighbour [until 2026-11-30]" in pack) == (when != "the day after") and "painted green" in pack
+
+
+def test_a_tree_with_no_mark_reads_the_same_on_any_day(tmp_path):
+    s = readers_tree(tmp_path)
+    (s.daily / "2026-11-25.md").write_text("# 2026-11-25\n\n" + "\n".join(re.sub(r" \[until [^\]]*\]", "", x) for x in LINES) + "\n")
+    (s.root / "facts" / "example-ladder.md").write_text("# Example ladder\n\n" + "\n".join(re.sub(r" \[until [^\]]*\]", "", x) for x in FACTS) + "\n")
+    memindex.Index(s.index_db, s.scope).sync()
+    got = [(memory.room_pack(s, ROOM, 6000, t), memory.topic_hits(s, ROOM, "the example ladder decided?", now=t),
+            memory.lines_on(s, "example ladder", now=t)) for t in DAYS.values()]
+    assert got[0] == got[1] == got[2] and got[0][0][1] == 6
+
+
+def test_at_half_past_eleven_on_the_last_day_the_line_still_holds_and_remember_takes_that_day(tmp_path, monkeypatch):
+    s, log = install(tmp_path)
+    late, next_day = datetime(2026, 11, 30, 23, 30, tzinfo=TZ), datetime(2026, 12, 1, 0, 10, tzinfo=TZ)
+    assert late.astimezone(ZoneInfo("UTC")).date() == date(2026, 12, 1) and memory.local_day(s, late) == date(2026, 11, 30)
+    clock(monkeypatch, late)
+    r = file(s, log, "Example ladder decided: lent to the neighbour.", until="2026-11-30")
+    assert r["ok"] and r["cite"].startswith("memory/daily/2026-11-30.md:")
+    assert [x["cite"] for x in memory.room_items(s, ROOM, late)] == [r["cite"].removeprefix("memory/")]
+    assert [x["cite"] for x in memory.room_items(s, ROOM, late + timedelta(minutes=29))] == [r["cite"].removeprefix("memory/")]      # 23:59
+    assert memory.room_items(s, ROOM, next_day) == [] and memory.topic_hits(s, ROOM, "example ladder lent?", now=next_day) == []
+    clock(monkeypatch, next_day)
+    assert file(s, log, "Example ladder decided: lent again.", until="2026-11-30")["error"] == words.UNTIL_PAST.format(
+        until="2026-11-30", today="2026-12-01")

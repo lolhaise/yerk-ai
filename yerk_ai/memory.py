@@ -1324,24 +1324,24 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
 
 
 def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, exclude: set[str] | None = None,
-             best: int = 6) -> list[dict[str, Any]]:
+             best: int = 6, now: datetime | None = None) -> list[dict[str, Any]]:
     """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope less the docs root, in the order
     of the k chunks the keyword rank gives, unweighed (a name is its words: no meaning search), each holding every word of it; then a standing file's
-    lines first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
-    that asks about it (words.ASKED): an ask is not on file. A keyword read that did not finish raises LookupError: it proves no absence."""
-    want = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}
+    lines first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, one
+    that asks about it (words.ASKED): an ask is not on file, or a fact file's bullet or a day log's note past its until on `now`'s day
+    (ended). A keyword read that did not finish raises LookupError: it proves no absence."""
+    want, today = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}, local_day(s, now)
     out: list[dict[str, Any]] = []
     r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False, weigh=False) if want else {"ok": True}
     if not r["ok"]:
         raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
     for h in r.get("hits", []):
-        day = Path(h["path"]).stem if is_daylog(h["path"]) else ""
+        day, fact = Path(h["path"]).stem if is_daylog(h["path"]) else "", Path(h["path"]).parent.name == "facts"
         for i, raw in enumerate(str(h["text"]).splitlines()):
             ln = parse_line(raw)
             if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
-                    ln and ln.mid.split(".e")[0] in (exclude or set())):
+                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day):
                 continue
-            fact = Path(h["path"]).parent.name == "facts"
             text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else
                                                      marked(raw.strip(), fact, mark_of(h["path"])).removeprefix("- "))
             out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{h['line'] + i}", "at": f"{h['path']}:{h['line'] + i}", "day": day, "n": h["line"] + i,
@@ -1454,7 +1454,7 @@ ITEM_CHARS = 280
 
 def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) -> list[str]:
     """The last `days` day names in the install's time zone, newest first."""
-    today = (now or datetime.now(timezone.utc)).astimezone(s.tz).date()
+    today = local_day(s, now)
     return [(today - timedelta(days=n)).isoformat() for n in range(days)]
 
 
@@ -1509,14 +1509,14 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
                owner: bool = True) -> list[dict[str, Any]]:
     """The message's key terms against this room's own lines of the last 14 days, best first:
     ranked by how many of the terms a line holds, newer first on a tie. The message itself
-    (filed before the turn) and lines sharing too few terms never come back."""
+    (filed before the turn), lines sharing too few terms and a note past its until (ended) never come back."""
     if not (want := memindex.stems(text)):                                # a term's stem: its first five letters
         return []
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
-    body = one_line(text)
+    body, today = one_line(text), local_day(s, now)
     hits = []
-    for day, n, ln, _ in room_lines(s, room, now, rid, owner):
-        if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body or mentions.OLD in ln.body:
+    for day, n, ln, lines in room_lines(s, room, now, rid, owner):
+        if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body or mentions.OLD in ln.body or ended(lines[n], today, day):
             continue
         cover = len(want & memindex.stems(ln.body, True))
         if cover >= need:
@@ -1529,8 +1529,8 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
                exclude: set[str] | None = None, rid: str | None = None, owner: bool = True) -> list[dict[str, Any]]:
     """The room's filed items of the last 14 days, newest first: every message its people sent (the owner,
     a listed person; its attachments with it) and every line that reads as a decision or a draft. The messages
-    the turn is answering (`exclude`) are the prompt itself and stay out."""
-    items: list[dict[str, Any]] = []
+    the turn is answering (`exclude`) are the prompt itself and stay out, and so does a note past its until (ended)."""
+    items, today = list[dict[str, Any]](), local_day(s, now)
     found: list[dict[str, Any]] = []
     last_day = None
     for day, n, ln, lines in room_lines(s, room, now, rid, owner):
@@ -1539,7 +1539,8 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
             found, last_day = [], day
         if ln.mid.split(".e")[0] in (exclude or set()):
             continue
-        if ln.role == ASSISTANT or (ln.role not in (*PEOPLE_ROLES, *MARKS) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body:
+        if ln.role == ASSISTANT or (ln.role not in (*PEOPLE_ROLES, *MARKS) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body or (
+                ended(lines[n], today, day)):
             continue
         files = []
         for nxt in lines[n + 1:]:
