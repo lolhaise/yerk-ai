@@ -1045,7 +1045,7 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
 def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader: Reader | None = None) -> dict[str, Any]:
     """An exact excerpt of a file in the memory tree. A relative path is taken from the tree's root, else
     as a cite names it (a root's name, then its cite name, then the path under it); a recall `cite` (file:line) starts at its
-    line unless `start` is past 1. Anything that resolves outside the scope (a `..`, an absolute path
+    line unless `start` is past 1, a line past its until (ended) as filed. Anything that resolves outside the scope (a `..`, an absolute path
     elsewhere, a link out) is refused.
     `reader` (the asking room) sees only what its class allows: a private file is refused outright, a
     day log keeps its own room's lines and blanks the others, so the line numbers still cite."""
@@ -1312,7 +1312,8 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
     together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
     adds its best line, at most EXTRA. `since` and `until` keep it to files named for a day in that range (`ranked`); a range with no
-    hit is searched once more without it, for the same reader, and the answer says so: `widened`, and a `line` for the room."""
+    hit is searched once more without it, for the same reader, and the answer says so: `widened`, and a `line` for the room. A line
+    past its until (ended) comes back as filed, its mark on it, in its place: a date never takes a line out of a search."""
     weights: dict[str, float] = {}
     r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs, since=since, until=until)
     if r["ok"] and not r["hits"] and (since or until):

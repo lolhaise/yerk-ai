@@ -70,7 +70,8 @@ def key_of(text: str) -> str | None:
 
 def entries_of(path: Path, cite: str, curated: bool, cls: str = "private", room: str = "") -> tuple[list[dict[str, Any]], int]:
     """(entries, dropped) for one file: headings always; for a fact file also its name and bullets; each with the file's class
-    and room (memory.file_class), which the daemon keeps a room that is not an owner room to. The front matter is no entry."""
+    and room (memory.file_class), which the daemon keeps a room that is not an owner room to. The front matter is no entry. A bullet
+    past its until (memory.ended) stays one until the sweep blanks it: the index is built when a file changes, not when a day passes."""
     lines = ["" if OLD in x else x for x in path.read_text(errors="replace").splitlines()]
     if lines[:1] == ["---"] and "---" in lines[1:]:
         lines = [""] * (end := lines.index("---", 1) + 1) + lines[end:]

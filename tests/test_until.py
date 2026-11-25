@@ -266,6 +266,22 @@ def test_a_tree_with_no_mark_reads_the_same_on_any_day(tmp_path):
     assert got[0] == got[1] == got[2] and got[0][0][1] == 6
 
 
+# U4: recall and read_memory give an ended line as filed
+
+def test_recall_and_read_memory_give_an_ended_line_as_filed_in_its_place_on_any_day(tmp_path, monkeypatch):
+    s = readers_tree(tmp_path)
+    seen = []
+    for at in DAYS.values():
+        clock(monkeypatch, at)
+        r = memory.recall(s, "example ladder lent neighbour", 12)
+        seen.append(([(h["cite"], h["text"]) for h in r["hits"]], memory.read(s, "memory/facts/example-ladder.md")["text"],
+                     memory.read(s, "memory/daily/2026-11-25.md:3", lines=1)["text"]))
+    assert seen[0] == seen[1] == seen[2]
+    hits, card, day = seen[2]
+    assert any("lent to the neighbour [until 2026-11-30] (" in t for _, t in hits) and "lent to the neighbour [until 2026-11-30]" in day
+    assert f"- {memory.MARKS[memory.NOTE]} Example ladder: lent to the neighbour [until 2026-11-30] (owner-room, " in card
+
+
 def test_at_half_past_eleven_on_the_last_day_the_line_still_holds_and_remember_takes_that_day(tmp_path, monkeypatch):
     s, log = install(tmp_path)
     late, next_day = datetime(2026, 11, 30, 23, 30, tzinfo=TZ), datetime(2026, 12, 1, 0, 10, tzinfo=TZ)
