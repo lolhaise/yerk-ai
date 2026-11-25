@@ -117,7 +117,7 @@ def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
                          "session start from a week before; `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when "
                          "the words give one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome with "
                          "`replaces` naming its line. `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history "
-                         "(\"worked there until ...\"); from the day after, the line is no longer handed to you as current, and recall still finds it as filed.")
+                         "(\"worked there until ...\"); from the day after, the line is no longer handed to you as current, then a fact file's line is removed.")
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()

@@ -80,7 +80,7 @@ your words) is your note, and is shown as your note, never as their words. `due`
 with it: who owes it to the owner, empty when the owner does. Give a date only when the words give one or the clock
 line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
 `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history ("worked there until ...");
-from the day after, the line is no longer handed to you as current, and recall still finds it as filed.
+from the day after, the line is no longer handed to you as current, then a fact file's line is removed.
 ```
 
 - `text`: string, required
