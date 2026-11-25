@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 134612`
+- `total = 135075`
 
 ## [session_start.claude_code]
 
@@ -144,9 +144,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-23, jobs-care-2026-11-23: the `schedule` tool's `stop` (a job's run in progress ended, its timer left), since a running job could only be ended by hand with systemctl (the owner's ask, Mon Nov 23): schedule's description 58 characters longer as this tree builds it (1,903 to 1,961, its compact JSON, measured on main d5a6b59 and on this tree the same way), on the about 29,569 the rooms send, so about 29,627, 27 over the line; so 29,650, no part could pay, the total rose by the 50 (to 134,612 on main's 134,562). The hands plug-in's tool entries do not change.
 
+2026-11-25, due-view-2026-11-25 (the owner's order, Wed Nov 25): the `remember` tool's `due` and `owes` (the day a thing is due and who owes it, so it can be listed), since nothing could list a filed line by its date: remember 2,926 to 3,412 as this tree builds it, all 25 from 27,180 to 27,666 (486 more, measured on main bc6d586 and on this tree the same way, each entry's compact JSON), on the about 29,627 the rooms send, so about 30,113; the line is that count, no part could pay, the total rose by the 463 (to 135,075 on main's 134,612). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 29650`
+- `yerk_tools = 30113`
 - `deferred_tool_names = 3781`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -883,7 +885,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-24: workers-home-2026-11-24 raised it by 156, `[workers] home`: a worker's unit with the owner's home an empty read-only filesystem and only what its job reaches bound back, the state folder narrowed to its own folder, docs and the same need's workers, and the other doors shut (the runtime folder, /run/WSL, /run/tailscale, /mnt, /tmp), since the walls audit of 2026-11-09 (G9) found an SSH key, a netrc, every account's login and the owner's workspaces readable by a process that also reads web pages; not folded to fit: workers.py 145 (HOMES, GIT_RW, DOORS, home, reach, walled_trash, hides, walled, back, _kin, _server, _roots, walls, _spec, unseen's hidden fence), daemon.py 6 (worker_reach), config.py 3 (its line), needs.py 2 (a need's record keeps its workers). 36,044: 35,888 plus 156. 36,132: plus 88, the deeper check's closures (workers.py: own, uv_cache, WALLS, FAMILIES and NO_CALLS, /run and /dev/shm and the journals among the DOORS, the resolver's file, the unit's own list of worktrees, pointer and linked; embeddings.py, memindex.py, memory.py, config.py: the meaning search's token; needs.py, daemon.py, jobs.py and words.py: the tidy, the worker secret, the memory server's call and one line). 36,155: plus 23, that change's cold read the same day (workers.py 13: hid, the launch's word in the spec, a relative pointer, a link never taken; needs.py 10: no git in a hidden worker's folder, its .git renamed).
 
-- `lines = 36155`
+2026-11-25: due-view-2026-11-25 raised it by 303, a filed commitment carries its date and what is due is in front of the room at a session start (the owner's order of 12:34, Wed Nov 25), not folded to fit (due.py 170: what is open, the list yerk-index writes, what a room may read of it, its line and the recall pack's part; memory.py 68: the mark, its refusals, its reader and the retry rule, reader_of and recalled for what both callers asked apart; cli.py 38: `yerk due`; daemon.py 8; mcp_server.py 7; context.py 5; words.py 4: the refusals; memindex.py 2; curate.py 1: an open line left to its mark). 36,458: 36,155 plus 303.
+
+- `lines = 36458`
 
 ## Uncapped
 
