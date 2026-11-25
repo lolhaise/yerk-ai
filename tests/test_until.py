@@ -185,7 +185,7 @@ def test_the_sweep_blanks_a_line_remember_filed_the_day_after_its_day_never_on_i
         curate.sweep(s, s.root.parent, [], tmp_path / "backups" / str(n), False, today)
         rows = card.read_text().split("\n")
         assert (rows[2] == line_at(s, away["cite"]) == "") == (today > date(2026, 11, 30)), today
-        assert (rows[3] == "") == (today > date(2026, 12, 12)), today                   # open by its due mark to 14 days past
+        assert (rows[3] == line_at(s, owed["cite"]) == "") == (today > date(2026, 12, 12)), today     # open by its due mark to 14 days past
     assert (tmp_path / "backups" / "1" / "facts.example-neighbour.md").read_text() == before
     assert len(card.read_text().split("\n")) == len(before.split("\n"))
 
