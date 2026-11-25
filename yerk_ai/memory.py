@@ -952,8 +952,13 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
     holds a line in LATER, gets the live end of that line's replacements (lessons.HOPS at most, a cite met twice ends it) read
     in right above it, as the reader may see it, unless a hit above already shows it. On a converted store a cite into the store
     (a lesson's, an old rules.md:N or rules-topics.md:N, one a mark or LATER names) ends at the live lesson it leads to, through
-    the tombstones (lessons.live_slug), so a history line in the day log reaches the lesson its rule is now."""
+    the tombstones (lessons.live_slug), so a history line in the day log reaches the lesson its rule is now.
+    The first RECALL_HITS stay exactly as a call of six gives them, so a hit past them rises among its own alone; there its mark
+    and its `supersedes` are read off its whole line (its text is one line cut to EXTRA), what is read in is one such line, and
+    a hit already shown word for word above is not shown again."""
     hits, kept, whole = list(r.get("hits") or []), later(s), lessons.converted(s.root)
+    lone = {j: read(s, hits[j]["cite"], lines=1, reader=reader) for j in range(RECALL_HITS, len(hits))}    # a hit past the six: its line
+    said = [h["text"] + (f'\n{got["text"]}' if (got := lone.get(j)) and got["ok"] else "") for j, h in enumerate(hits)]
 
     def walk(c: str) -> tuple[str, str]:
         line, at, been = "", "", set[str]()
@@ -970,19 +975,22 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
         return at, line
 
     def above(j: int) -> int:
-        names = {c.strip().rpartition(":")[0] for m in re.findall(r"\(supersedes ([^)]+)\)", hits[j]["text"]) for c in m.split(",")}
-        return next((i for i in range(j) if hits[i]["cite"].rpartition(":")[0] in names), j)
+        names = {c.strip().rpartition(":")[0] for m in re.findall(r"\(supersedes ([^)]+)\)", said[j]) for c in m.split(",")}
+        return next((i for i in range(RECALL_HITS if j >= RECALL_HITS else 0, j) if hits[i]["cite"].rpartition(":")[0] in names), j)
     out: list[dict[str, Any]] = []
-    for h in [hits[j] for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j))]:
+    for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j)):
+        h, past = hits[j], j >= RECALL_HITS
         f, _, at = h["cite"].rpartition(":")         # a read-only root's pair names its real file: two copies share a cite (A1)
-        mine = (f, read(s, h["cite"], lines=1).get("path") if kept else f)
-        store = [m[0] for m in (*lessons.CITE.finditer(h["text"]), *lessons.OLD_CITE.finditer(h["text"]))] if whole else []
-        for c in dict.fromkeys(BY.findall(h["text"]) + store + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
+        mine = (f, (lone[j] if past else read(s, h["cite"], lines=1)).get("path") if kept else f)
+        store = [m[0] for m in (*lessons.CITE.finditer(said[j]), *lessons.OLD_CITE.finditer(said[j]))] if whole else []
+        for c in dict.fromkeys(BY.findall(said[j]) + store + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
                                                                 and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]):
             to, line = walk(c)
-            if line and not (to.rpartition(":")[0] == f and lessons.CITE.search(f)) and not any(line in x["text"] for x in [*out, h]):
-                out.append({"cite": to, "text": line})
-        out.append(h)
+            if line and not (to.rpartition(":")[0] == f and lessons.CITE.search(f)) and not any(
+                    line in x["text"] or past and x["cite"] == to for x in [*out, h]):
+                out.append({"cite": to, "text": line if not past or len(line) <= EXTRA else _cut(line, {}, EXTRA - 2)})
+        if not (past and any(x["cite"] == h["cite"] and h["text"].strip("…") in x["text"] for x in out)):      # not twice: a line read in above
+            out.append(h)
     return {**r, "hits": out} if r.get("ok") else r
 
 
