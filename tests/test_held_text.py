@@ -110,6 +110,6 @@ def test_a_text_card_shows_each_text_exactly_and_its_hold_keys_exactly_those_tex
     """texting-5: a held text's card shows each text of the draft as it is, one a line, and its hold is keyed by exactly those
     texts and that handle, so the owner's word on the card releases the texts it showed and no other."""
     row = {"decision": "reply", "handle": "+15550000101", "parts": json.dumps(["see you ``` there", "  two spaces"])}
-    assert holds.card("Alex", "09:17", [], row, "why", False).split("\n")[2:4] == ["see you ``` there", "  two spaces"]
+    assert holds.card("Alex", "09:17", [], row, False).split("\n")[2:4] == ["see you ``` there", "  two spaces"]
     assert holds.key(row) == gates.call_key(texts.TOOL, {"to": "+15550000101", "parts": ["see you ``` there", "  two spaces"]})
     assert holds.key({**row, "parts": json.dumps(["see you ``` there", " two spaces"])}) != holds.key(row)
