@@ -1062,6 +1062,17 @@ def real_day(text: str) -> bool:
         return False
 
 
+def named_days(path: str) -> list[str]:
+    """The days a file's own name holds (a day log's one, a dated note's among its other words): never a folder's, never the
+    file's time on disk. A fact file, the curated file and the docs hold none."""
+    return [d for d in DAY.findall(path.rpartition("/")[2]) if real_day(d)]
+
+
+def in_range(path: str, since: str, until: str) -> bool:
+    """The file's name holds a day from `since` through `until`, the two ends in it; an empty one is no bound."""
+    return any(since <= d and (not until or d <= until) for d in named_days(path))
+
+
 def no_range(since: str, until: str) -> str:
     """Why recall takes no such range, in one line; "" for one it takes, no range among them."""
     for name, given in (("since", since), ("until", until)):
