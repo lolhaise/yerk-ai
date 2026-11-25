@@ -469,17 +469,22 @@ def rarity(total: int, df: int) -> float:
 
 
 def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80, weights: dict[str, float] | None = None,
-           skip: Path | None = None, keep: Callable[[str, str], bool] | None = None, most: int = 0) -> list[dict[str, Any]]:
+           skip: Path | None = None, keep: Callable[[str, str], bool] | None = None, most: int = 0,
+           only: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
     """Ranked chunks for a query: any of its words (FTS5, stemmed), ordered by how much of the
     query's weight a chunk covers (each distinct word weighted by its rarity), then by bm25.
     `weights`, when given, gets each word's weight (recall's snippet cut reads them). No chunk under the
     folder `skip` is a candidate, so none of them takes a place in the pool (a filter after it could leave none); with `keep`, a reader's
-    filter (path, text), the pool is the first `pool` rows it keeps in bm25 order, at most `most` past it, inside the connection's deadline."""
+    filter (path, text), the pool is the first `pool` rows it keeps in bm25 order, at most `most` past it, inside the connection's deadline.
+    `only` (path) says which files' chunks are candidates at all: asked once a file, and in the SQL, as `skip` is, by the files it kept."""
     if not (ts := terms(query)):
         return []
     out, args = "", [" OR ".join(f'"{t}"' for t in ts)]
     if skip:
         out, args = " AND instr(c.path, ?) != 1", [*args, f"{skip}/"]
+    if only:            # the + keeps the match the outer loop, whatever the planner makes of the list's length
+        files = [p for (p,) in conn.execute("SELECT path FROM files") if only(p)]
+        out, args = f"{out} AND +c.path IN (SELECT value FROM json_each(?))", [*args, json.dumps(files, ensure_ascii=False)]
     cur = conn.execute("SELECT c.id, c.path, c.lo, c.hi, c.body, bm25(chunks_fts) FROM chunks_fts "
                        f"JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?{out} "
                        "ORDER BY bm25(chunks_fts) LIMIT ?", (*args, pool + most if keep else pool))

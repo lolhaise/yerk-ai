@@ -1195,10 +1195,12 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114).
-    `since` and `until`, a range of days, are refused in one line when they are not one."""
+    With `since` or `until` only a file whose own name holds a day in the range is a candidate, in both halves, the reader's
+    rule still over it: in SQL before the keyword pool is cut, and from MEANING_MOST of yerk-index's rows, which it cannot filter."""
     if no := no_range(since, until):
         return {"ok": False, "status": "refused", "error": no}
     k = max(1, min(int(k), 20))
+    only = functools.partial(in_range, since=since, until=until) if since or until else None
     def mine(path: str, text: str) -> bool:
         return recalled(s, reader, Path(path), text)
     keep = mine if s.scoped or reader and (not reader.owner or reader.sealed) else None     # an unscoped owner room: no filter, as before
@@ -1207,7 +1209,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs, keep=keep, most=READ_ON)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs, keep=keep, most=READ_ON, only=only)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -1217,11 +1219,13 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query, pool=MEANING_MOST if keep else POOL, deadline_s=wait) if wide else ("off", [])
+    state, vectors = meaning(s, query, pool=MEANING_MOST if keep or only else POOL, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
         vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
+    if only:                 # nor the range's
+        vectors = [h for h in vectors if only(h["path"])]
     if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
         vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
     hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
