@@ -1,11 +1,22 @@
-"""What is due, for the open-loops ability: the notes a room filed with a date through its `remember` tool (memory.due_of), and which are still open."""
+"""What is due, for the open-loops ability: the notes a room filed with a date through its `remember` tool (memory.due_of), and which are still open.
+
+yerk-index lists them with no model and no database of their own, as one JSON file beside the mention index (Builder); the daemon
+and `yerk due` read that file (Index) and give a room the ones `recall` may return there (listed). Yerk's own tree only, its fact
+files and its day logs: nothing else is filed with a date, and a copy of the tree in a read-only root would list a closed one."""
 from __future__ import annotations
 
-from datetime import date, timedelta
+import json
+import logging
+import time
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 from . import memory, mentions
+from .config import write_private
 
 KEEP = 14            # days past its date a dated line is still open
+log = logging.getLogger("yerk.due")
 
 
 def kept(day: str, today: date) -> bool:
@@ -18,3 +29,100 @@ def is_open(raw: str, today: date, day: str = "") -> bool:
     date no more than KEEP days past. The list drops a line that memory.LATER names as replaced too (Builder)."""
     x = None if mentions.OLD in raw else memory.due_of(raw, day)
     return x is not None and kept(x["date"], today)
+
+
+def items_of(path: Path, name: str, day: str = "") -> list[dict[str, str]]:
+    """One file's dated lines with no superseded mark: what each says (memory.due_of), its cite (`name`:line), its class and room as
+    a mention entry carries them (a day log's own line's), and the line itself, which the reader's rule is asked of (listed)."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if "[due " not in text:                          # nearly every file: no line of it is looked at
+        return []
+    out, of = list[dict[str, str]](), ("", "") if day else memory.file_class(path)
+    for n, raw in enumerate(text.splitlines(), 1):   # numbered as the index and read_memory number them
+        if "[due " not in raw or mentions.OLD in raw or (x := memory.due_of(raw, day)) is None:
+            continue
+        ln = memory.parse_line(raw) if day else None
+        cls, room = (ln.cls, ln.rid) if ln else of
+        out.append({**x, "cite": f"{name}:{n}", "class": cls, "room": room, "path": str(path), "raw": raw})
+    return out
+
+
+class Builder:
+    """yerk-index's half: the list written again when a fact file, a day log or memory.LATER moved. A day log is large and today's
+    moves on every message, so only a file whose size or mtime moved is read again; the rest keep what the last pass found in them."""
+
+    def __init__(self, s: memory.Settings):
+        self.s, self.facts, self.daily = s, f"{s.root / 'facts'}/", f"{s.daily}/"
+        self.files: dict[str, tuple[tuple[int, int], list[dict[str, str]]]] = {}       # path -> (its size and mtime, its items)
+        self.sig: Any = None                         # what the last list came from
+        self.items: list[dict[str, str]] | None = None      # the last list written
+        self.read = 0                                # files the last pass read
+
+    def source(self, p: str) -> bool:
+        under = self.facts if p.startswith(self.facts) else self.daily if p.startswith(self.daily) else ""
+        return bool(under) and "/" not in p[len(under):] and (under == self.facts or memory.is_daylog(p))
+
+    def refresh(self, disk: dict[str, tuple[int, int]], now: datetime | None = None) -> int | None:
+        """The open items listed, None when nothing they come from moved (`disk`: the pass's path -> size and mtime). A file that
+        could not be read is tried again next pass, and a LATER that could not be leaves the list as it was: never read as empty."""
+        srcs = {p: st for p, st in disk.items() if self.source(p)}
+        try:
+            st = (self.s.root / memory.LATER).stat()
+            sig: Any = (srcs, st.st_size, st.st_mtime_ns)
+        except OSError:
+            sig = (srcs, 0, 0)
+        if not disk or (sig == self.sig and self.s.due.is_file()):
+            return None
+        files, self.read, whole = dict[str, tuple[tuple[int, int], list[dict[str, str]]]](), 0, True
+        for p, seen in sorted(srcs.items()):
+            if (had := self.files.get(p)) is None or had[0] != seen:
+                path = Path(p)
+                try:
+                    self.read += 1
+                    had = (seen, items_of(path, memory.cite(self.s, path), path.stem if p.startswith(self.daily) else ""))
+                except OSError:
+                    whole = False
+                    continue
+            files[p] = had
+        self.files = files
+        try:
+            closed = memory.later(self.s)
+        except (OSError, ValueError) as e:
+            log.warning("due: %s could not be read, the list stays as it was: %s", memory.LATER, e)
+            return None
+        today = (now or datetime.now(timezone.utc)).astimezone(self.s.tz).date()
+        items = [x for _, got in files.values() for x in got if x["cite"] not in closed and kept(x["date"], today)]
+        if items != self.items or not self.s.due.is_file():      # a day log moves on every message, the list when a dated line does
+            self.s.due.parent.mkdir(parents=True, exist_ok=True)
+            write_private(self.s.due, json.dumps({"built": round(time.time(), 3), "sources": len(srcs), "items": items}))
+        self.items, self.sig = items, sig if whole else None
+        return len(items)
+
+
+class Index:
+    """The daemon's half: the list, loaded again only when its file changed; none yet, or one that does not read, is no item."""
+
+    def __init__(self, path: Path):
+        self.path, self.stamp, self.items = path, (0, 0), list[dict[str, str]]()
+
+    def load(self) -> list[dict[str, str]]:
+        try:
+            st = self.path.stat()
+            if (st.st_mtime_ns, st.st_size) != self.stamp:
+                self.items, self.stamp = list(json.loads(self.path.read_text())["items"]), (st.st_mtime_ns, st.st_size)
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(e, FileNotFoundError):
+                log.warning("due: %s could not be read: %s", self.path, e)
+            self.items, self.stamp = [], (0, 0)
+        return self.items
+
+
+def listed(s: memory.Settings, items: list[dict[str, str]], reader: memory.Reader | None = None,
+           now: datetime | None = None) -> list[dict[str, Any]]:
+    """The open items `recall` may return to `reader` (memory.recalled, its own rule), each with `overdue`: overdue first, the oldest
+    on top, then by date, the soonest on top. A day is overdue once it is over, a day and time once that minute is."""
+    at = (now or datetime.now(timezone.utc)).astimezone(s.tz)
+    stamp = (at.date().isoformat(), f"{at:%H:%M}")
+    out = [{**x, "overdue": (x["date"], x["time"] or "24:00") < stamp} for x in items
+           if kept(x["date"], at.date()) and memory.recalled(s, reader, Path(x["path"]), x["raw"])]
+    return sorted(out, key=lambda x: (not x["overdue"], x["date"], x["time"], x["cite"]))

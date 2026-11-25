@@ -75,6 +75,10 @@ class Settings:
         return self.root / "daily"
 
     @property
+    def due(self) -> Path:          # what is due and open, the list yerk-index writes (due.py)
+        return self.mentions.with_name("due.json")
+
+    @property
     def roots_for_mentions(self) -> tuple[Path, ...]:
         return self.scope.roots
 
@@ -1138,6 +1142,13 @@ def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]
     return weight
 
 
+def recalled(s: Settings, reader: Reader | None, path: Path, text: str) -> bool:
+    """What a room ranks, its pool drawn from these alone: in its own `also` roots, and a chunk it reads whole (R2), since one read in
+    part ranks on words it may not see (its own line beside a hidden one reaches it by its pack, its topic hits and read_memory).
+    The same rule says which dated lines it is shown (due.listed)."""
+    return (not s.scoped or s.scope.contains(path)) and allowed_text(reader, path, text, daily=s.daily) == text
+
+
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
            weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
@@ -1148,9 +1159,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
     k = max(1, min(int(k), 20))
     def mine(path: str, text: str) -> bool:
-        """What a room ranks, its pool drawn from these alone: in its own `also` roots, and a chunk it reads whole (R2), since one read in
-        part ranks on words it may not see (its own line beside a hidden one reaches it by its pack, its topic hits and read_memory)."""
-        return (not s.scoped or s.scope.contains(Path(path))) and allowed_text(reader, Path(path), text, daily=s.daily) == text
+        return recalled(s, reader, Path(path), text)
     keep = mine if s.scoped or reader and (not reader.owner or reader.sealed) else None     # an unscoped owner room: no filter, as before
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
