@@ -982,7 +982,7 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
         h, past = hits[j], j >= RECALL_HITS
         f, _, at = h["cite"].rpartition(":")         # a read-only root's pair names its real file: two copies share a cite (A1)
         mine = (f, (lone[j] if past else read(s, h["cite"], lines=1)).get("path") if kept else f)
-        store = [m[0] for m in (*lessons.CITE.finditer(said[j]), *lessons.OLD_CITE.finditer(said[j]))] if whole else []
+        store = [m[0] for m in (*lessons.CITE.finditer(h["text"]), *lessons.OLD_CITE.finditer(h["text"]))] if whole else []
         for c in dict.fromkeys(BY.findall(said[j]) + store + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
                                                                 and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]):
             to, line = walk(c)
