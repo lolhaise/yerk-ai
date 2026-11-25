@@ -211,7 +211,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         your words) is your note, and is shown as your note, never as their words. `due`: the day `text` is due
         (YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone), in front of you at a session start from a week before; `owes`,
         with it: who owes it to the owner, empty when the owner does. Give a date only when the words give one or the clock
-        line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line."""
+        line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
+        `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history ("worked there until ...");
+        from the day after, the line is no longer handed to you as current, and recall still finds it as filed."""
         if (due or owes) and (job or retire):
             return json.dumps({"ok": False, "error": words.DUE_JOB})
         if until and (job or retire):

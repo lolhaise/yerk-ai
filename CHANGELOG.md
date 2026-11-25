@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-25
 
+### end-date-2026-11-25 (#138)
+
+- `remember` takes `until`, the last day a state holds (away until a day, an offer good until a day), one real day, not before
+  today in the install's zone. The note's words end with `[until YYYY-MM-DD]`, the mark the nightly curation already writes on a
+  card line: in a fact file before the filing's room and time, in a day log before a `due` mark, and before a correction's
+  supersedes clause. The answer names it. `until` with `said`, `job` or `retire` is refused, and so is a day before today, a
+  day that is no real day, `until` beside a mark typed in `text`, and a typed mark that fails the same rule. With `due` both
+  hold: the line is due by its due date as before.
+- From the day after its `until`, deep recall, the room's topic lines and the recall pack leave the line out, with no sweep or
+  index run between. Only a room's own note is ever left out this way: a person's words and a `said` line never are, and an
+  open commitment is kept while its `due` mark keeps it. One rule says a line has ended, and the sweep blanks a card line by
+  it as it did; a mark with no real day in it is no mark.
+- `recall` and `read_memory` still give an ended line as filed, its mark on it, in its place. The mention index drops a card's
+  ended line when the sweep blanks it, as before; what is due goes by `due` alone.
+
+**Upgrading:** nothing to do. `yerk_tools` rose by the description's two sentences, in every room.
+
 ### twelve-hits-2026-11-25 (#137)
 
 - `recall` gives twelve hits when a call names no number (a room's tool and a worker's, `k` still 1 through 20). The first six are
