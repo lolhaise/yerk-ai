@@ -140,10 +140,10 @@ def near(x: dict[str, Any], s: memory.Settings, days: int = AHEAD, now: datetime
     return bool(x["date"] <= ((now or datetime.now(timezone.utc)).astimezone(s.tz).date() + timedelta(days=days)).isoformat())
 
 
-def line(x: dict[str, Any], retired: tuple[str, ...] = (), most: int = WORDS) -> str:
+def line(x: dict[str, Any], retired: tuple[str, ...] = (), whole: bool = False) -> str:
     """One item as it is shown: its date, its time when it has one, who it waits on, its words (a person's own behind their mark; the
-    install's `retired` marks dropped, as the pack drops them) and its cite."""
-    cut = [t if len(t) <= n else t[:n - 1] + "…" for t, n in ((x["owes"], NAME), (memory.unmarked(x["text"], retired), most))]
+    install's `retired` marks dropped, as the pack drops them), each cut to its size unless `whole`, and its cite."""
+    cut = [t if whole or len(t) <= n else t[:n - 1] + "…" for t, n in ((x["owes"], NAME), (memory.unmarked(x["text"], retired), WORDS))]
     return (f"- {x['date']}{' ' + x['time'] if x['time'] else ''}{', waiting on ' + cut[0] if cut[0] else ''}: "
             f"{memory.MARKS[memory.SAID] + ' ' if x['role'] == memory.SAID else ''}{cut[1]} ({x['cite']})")
 

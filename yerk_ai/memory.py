@@ -234,6 +234,12 @@ class Reader:
     sealed: bool = False
 
 
+def reader_of(room: str, conf: dict[str, Any] | None) -> Reader:
+    """Who a memory read from `room` is for, by its table in rooms.toml: an owner room reads everything, any other room its own lines
+    and shared files, a name that is no room (None) shared files only (R2), and a sealed room its own lines in Yerk's tree."""
+    return Reader(room) if conf is None else Reader(room, room_id(room, conf), str(conf.get("privacy", "owner")) == "owner", flag(conf.get("sealed")))
+
+
 def file_class(path: Path) -> tuple[str, str]:
     """(class, room id) of a memory file: in a room's upload inbox, its room's (INBOXES), whatever the file says; else its
     front matter (`class: shared`, `room: <id>`), else a sidecar `<file>.class` (one line: the class, then optionally the

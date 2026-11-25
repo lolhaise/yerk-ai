@@ -750,6 +750,38 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
     return 1 if failed else 0
 
 
+def cmd_due(a: argparse.Namespace) -> int:
+    """`yerk due`: the open dated items (due.py) as yerk-index last listed them, the ones `--room` may recall, with no room an owner
+    room's view: overdue first, then due within --days; --all every open one. Read-only. Exit 2 with no such room, or no list that reads."""
+    from . import due
+    priv, now = private_dir(a.private), datetime.now(timezone.utc)
+    s, rd = memory.settings(priv, state_dir(a.state)), None
+    if a.room:
+        if (conf := (rs := rooms(priv)).get(a.room)) is None:
+            print(f"no room {a.room!r} in {priv / 'rooms.toml'}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
+            return 2
+        rd, s = memory.reader_of(a.room, conf), s.only(priv, a.room, conf["also"]) if "also" in conf else s
+    items = (idx := due.Index(s.due)).load()
+    if idx.stamp == (0, 0):
+        print(f"no list of what is due reads at {s.due}; yerk-index writes it (`systemctl --user status yerk-index`)", file=sys.stderr)
+        return 2
+    every = due.listed(s, items, rd, now)
+    shown = [x for x in every if a.all or due.near(x, s, a.days, now)]
+    if a.json:
+        print(json.dumps({"items": [{k: v for k, v in x.items() if k not in ("path", "raw")} for x in shown], "open": len(every)}, indent=1))
+        return 0
+    soon = [x for x in shown if not x["overdue"] and due.near(x, s, a.days, now)]
+    for head, rows in (("overdue:", [x for x in shown if x["overdue"]]), (f"due in the next {a.days} days:", soon),
+                       ("later:", [x for x in shown if not x["overdue"] and x not in soon])):
+        if rows:
+            print("\n".join([head, *(due.line(x, whole=True) for x in rows)]))
+    if not shown:
+        print("nothing is open" if a.all or not every else f"nothing is overdue or due in the next {a.days} days")
+    if len(every) > len(shown):
+        print(f"({len(every) - len(shown)} more open: yerk due --all)")
+    return 0
+
+
 def cmd_abilities(a: argparse.Namespace) -> int:
     """Every ability in the manifest, one line each, state first: on, needs <provider>, runs on the
     free path, known but not built."""
@@ -979,6 +1011,12 @@ def parser() -> argparse.ArgumentParser:
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
     rb.add_argument("--controls", action="store_true", help="the controls alone, as `yerk deploy` holds them: one JSON line, "
                     "nothing written (exit 2 when one misses)")
+    du = sub.add_parser("due", help="what is due: the open items filed with a date that a room may recall (no room: an owner room's "
+                        "view), overdue first, then within --days, each with its cite; read-only (exit 2 with no such room or no list)")
+    du.add_argument("--room", help="what this room may read (default: an owner room's view)")
+    du.add_argument("--days", type=int, default=7, help="how many days ahead (default 7)")
+    du.add_argument("--all", action="store_true", help="every open one, whatever its date")
+    du.add_argument("--json", action="store_true")
     bn = sub.add_parser("bench", help="latency: the first visible line, the turn, the hooks, Yerk's tools and the cache hit rate per "
                         "room, from the ledger (read only) and the logs; the table, and <state>/bench/latency-<day>.json to diff")
     bn.add_argument("what", choices=["latency"])
@@ -1085,7 +1123,7 @@ def parser() -> argparse.ArgumentParser:
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     dp.add_argument("--timers", action="store_true", help="only install and turn on each timer in units/ not installed yet")
-    for x in (ac, st, mo, rb, bn, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl, tx):
+    for x in (ac, st, mo, rb, du, bn, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl, tx):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -1096,7 +1134,7 @@ def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
-                "recall-bench": cmd_recall_bench, "bench": cmd_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
+                "recall-bench": cmd_recall_bench, "due": cmd_due, "bench": cmd_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
                 "add": cmd_add, "remove": cmd_add,
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,

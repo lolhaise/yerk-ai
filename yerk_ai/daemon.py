@@ -407,10 +407,7 @@ class Yerkd:
         return location.part(self.location, conf, now) if (conf := self.room_confs.get(room)) is not None else ""
 
     def reader(self, room: str) -> memory.Reader:
-        """Who a memory read is for: an owner room reads everything, any other room its own lines and
-        shared files, a caller that is no room at all shared files only (R2), and a sealed room its own lines in Yerk's tree."""
-        return memory.Reader(room, room_id(room, self.room_confs[room]) if room in self.room_confs else "",
-                             self.owner(room), flag(self.room_confs.get(room, {}).get("sealed")))
+        return memory.reader_of(room, self.room_confs.get(room))
 
     def check(self) -> mcp_server.Check:
         return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token, self.page.room_of)
