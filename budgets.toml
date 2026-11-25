@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 135075
+total = 135470
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -352,10 +352,15 @@ total = 135075
 # 3,412 as this tree builds it, all 25 from 27,180 to 27,666 (486 more, measured on main bc6d586 and on this tree the same
 # way, each entry's compact JSON), on the about 29,627 the rooms send, so about 30,113; the line is that count, no part could
 # pay, the total rose by the 463 (to 135,075 on main's 134,612). The hands plug-in's tool entries do not change.
+# 2026-11-25, recall-by-day-2026-11-25 (the owner's order, Wed Nov 25): the `recall` tool's `since` and `until` and their
+# two sentences (what they are, and when the room works them out), since a question about a day competed with every other day:
+# recall 602 to 997 as this tree builds it, all 25 from 27,666 to 28,061 (395 more, measured on main 66377a2 and on this tree
+# the same way, each entry's compact JSON), on the about 30,113 the rooms send, so about 30,508; the line is that count, no part
+# could pay, the total rose by the 395 (to 135,470 on main's 135,075). The hands plug-in's tool entries do not change.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 30113
+yerk_tools = 30508
 deferred_tool_names = 3781
 mcp__hands__ = 10970
 mcp__web-ladder__web_image = 913
@@ -2038,4 +2043,9 @@ secs = 60
 # 36,458: 36,155 plus 303.
 # 36,467: plus 9, the judge's read the same day (due.py: the part, which is shown unasked, holds no other room's own line and
 # no line marked do-not-surface; the asked list, `yerk due` and recall, still holds both).
-lines = 36467
+# 2026-11-25: recall-by-day-2026-11-25 raised it by 78, recall's search takes a range of days and puts it in the index's
+# query before the pool is cut (the owner's order, Wed Nov 25), not folded to fit (memory.py 64: the day of a
+# file's name, the refusals, the range in both halves, the widened search and the bench's dated object; memindex.py 5: the
+# filter in SQL; mcp_server.py 3: the two parameters and their words; words.py 3: the refusals and the widened line;
+# daemon.py 2: handing them on; cli.py 1: the bench's line). 36,467 plus 78.
+lines = 36545
