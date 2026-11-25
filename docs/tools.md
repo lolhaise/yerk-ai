@@ -69,7 +69,10 @@ its line is deleted and its words kept in the day log.
 named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
 wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
 those words): it is filed as their words. Anything else about a person (what they decided or want, in
-your words) is your note, and is shown as your note, never as their words.
+your words) is your note, and is shown as your note, never as their words. `due`: the day `text` is due
+(YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone), in front of you at a session start from a week before; `owes`,
+with it: who owes it to the owner, empty when the owner does. Give a date only when the words give one or the clock
+line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
 ```
 
 - `text`: string, required
@@ -81,6 +84,8 @@ your words) is your note, and is shown as your note, never as their words.
 - `source`: string, default ""
 - `older`: list of string or null, default null
 - `retire`: string, default ""
+- `due`: string, default ""
+- `owes`: string, default ""
 
 ## worker
 
