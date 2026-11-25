@@ -693,7 +693,7 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
     from . import words
     from .accounts import load_accounts
     from .config import models, room_settings, table
-    from .daemon import Yerkd
+    from .daemon import PACK_HITS, Yerkd
     from .lifted.classify import FailureTable
     from .texting import people, replay
     t, room_confs = dict(conf.get("texting") or {}), rooms(priv)
@@ -735,7 +735,7 @@ def texting_replay(a: argparse.Namespace, priv: Any, conf: dict[str, Any]) -> in
     d: Any = Search()
 
     def search(text: str) -> list[dict[str, Any]]:      # a search that does not answer fails its cut: never decided blind
-        if not (r := d.search(report, text, docs=False)).get("ok"):
+        if not (r := d.search(report, text, k=PACK_HITS, docs=False)).get("ok"):
             raise LookupError(words.REPLAY_NO_SEARCH.format(why=r.get("status") or "failed"))
         return list(r.get("hits") or [])
     accts = load_accounts(priv / "accounts.toml")
