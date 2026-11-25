@@ -1242,9 +1242,15 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
     together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
-    adds its best line, at most EXTRA. `since` and `until` keep it to files named for a day in that range (`ranked`)."""
+    adds its best line, at most EXTRA. `since` and `until` keep it to files named for a day in that range (`ranked`); a range with no
+    hit is searched once more without it, for the same reader, and the answer says so: `widened`, and a `line` for the room."""
     weights: dict[str, float] = {}
     r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs, since=since, until=until)
+    if r["ok"] and not r["hits"] and (since or until):
+        r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs)
+        if r["ok"]:                 # the line before the hits it is about
+            days = since if since == until else " ".join(x for x in (since and f"from {since}", until and f"until {until}") if x)
+            r = {"ok": True, "status": r["status"], "widened": True, "line": words.RECALL_WIDENED.format(days=days), "hits": r["hits"]}
     return {**r, "hits": snippets(r["hits"], weights, chars or s.recall_chars)} if r["ok"] else r
 
 

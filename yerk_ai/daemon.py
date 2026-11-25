@@ -1377,7 +1377,8 @@ class Yerkd:
         recall in a room while yerk-index runs without a provider key tells the room so, once. A superseded
         line never comes above its replacement (memory.live_first). `since` and `until`: a range of days (memory.recall)."""
         r = await asyncio.to_thread(self.search, room, query, k, since=since, until=until)
-        log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
+        log.info("recall: %s, %d hit(s)%s%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}",
+                 ", widened" if r.get("widened") else "")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r

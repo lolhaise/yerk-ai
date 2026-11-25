@@ -2,6 +2,7 @@
 The range is applied before either half of the search (keywords and meaning) cuts its pool, an empty range is searched once more
 is a placeholder."""
 import os
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -123,3 +124,59 @@ def test_since_after_until_is_refused_in_one_line_naming_the_shape(tmp_path):
     r = memory.recall(s, "kettle", since="2026-01-06", until=DAY)
     assert r == {"ok": False, "status": "refused",
                  "error": f"since 2026-01-06 is after until {DAY}: each is YYYY-MM-DD, since on or before until"}
+
+
+# R4: an empty range widens once and says so
+def test_an_empty_range_is_searched_once_more_without_it_and_says_so(tmp_path, monkeypatch):
+    s, runs = three_days(tmp_path), []
+    real = memory.ranked
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: runs.append((k.get("since", ""), k.get("until", ""))) or real(*a, **k))
+    plain = memory.recall(s, "kettle shelf")
+    assert runs == [("", "")] and "widened" not in plain and "line" not in plain
+    for since, until, said in (("2025-01-01", "2025-01-01", "(2025-01-01)"), ("2025-01-01", "2025-01-31", "(from 2025-01-01 until 2025-01-31)"),
+                               ("2027-01-01", "", "(from 2027-01-01)"), ("", "2025-01-31", "(until 2025-01-31)")):
+        runs.clear()
+        r = memory.recall(s, "kettle shelf", since=since, until=until)
+        assert runs == [(since, until), ("", "")]                                # once, and without the range
+        assert r["hits"] == plain["hits"] and r["widened"] is True and r["ok"] and r["status"] == "ok"
+        assert r["line"] == words.RECALL_WIDENED.format(days=said.strip("()")) and said in r["line"] and len(r["line"].splitlines()) == 1
+        assert "Nothing was found in that range" in r["line"] and "from any time" in r["line"]
+        assert list(r).index("line") < list(r).index("hits")                     # read before the hits it is about
+    runs.clear()
+    none = memory.recall(s, "zeppelin", since="2025-01-01", until="2025-01-01")        # nor anything at any time: once, and said
+    assert none["hits"] == [] and none["widened"] is True and len(runs) == 2
+
+
+def test_a_range_with_one_hit_never_widens(tmp_path, monkeypatch):
+    s, runs = three_days(tmp_path), []
+    real = memory.ranked
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: runs.append(1) or real(*a, **k))
+    r = memory.recall(s, "kettle shelf", since=DAY, until=DAY)
+    assert len(r["hits"]) == 1 and len(runs) == 1 and sorted(r) == ["hits", "ok", "status"]
+
+
+def test_a_search_that_did_not_finish_is_no_empty_range(tmp_path, monkeypatch):
+    s, runs = three_days(tmp_path), []
+    real, late = memory.ranked, {"ok": False, "status": "timeout", "error": "busy"}
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: runs.append(1) or late)
+    assert memory.recall(s, "kettle", since="2025-01-01", until="2025-01-01") == late and len(runs) == 1
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: real(*a, **k) if k.get("since") else late)      # the widened one did not
+    assert memory.recall(s, "kettle", since="2025-01-01", until="2025-01-01") == late
+
+
+# R3: the meaning half
+def test_the_meaning_half_fuses_only_rows_in_the_range_from_its_larger_pool(tmp_path, monkeypatch):
+    s, asked, fused = three_days(tmp_path), [], []
+    (s.root / "facts" / "kettle.md").write_text("# Kettle\n\n- A vessel.\n")
+    reindex(s)
+    conn = sqlite3.connect(s.index_db)
+    rows = [{"id": i, "path": p, "line": lo, "text": b, "score": 0.9} for i, p, lo, b in conn.execute("SELECT id, path, lo, body FROM chunks")]
+    conn.close()
+    monkeypatch.setattr(memory, "meaning", lambda s, q, pool=memory.POOL, deadline_s=0: asked.append(pool) or ("ok", [dict(h) for h in rows]))
+    real = memory.fuse
+    monkeypatch.setattr(memory, "fuse", lambda kw, vec, *a, **k: fused.append([Path(h["path"]).name for h in vec]) or real(kw, vec, *a, **k))
+    r = memory.recall(s, "an unrelated ask", since=DAY, until=DAY)                  # no keyword: the meaning half alone
+    assert cites(r) == [f"{DAY}.md"] and set(fused[-1]) == {f"{DAY}.md"} and asked == [memory.MEANING_MOST] and "widened" not in r
+    assert len(cites(memory.recall(s, "an unrelated ask"))) == 4 and asked[-1] == memory.POOL and len(set(fused[-1])) == 4
+    r = memory.recall(s, "an unrelated ask", since="2025-01-01", until="2025-01-01")             # none in range: widened, and whole
+    assert r["widened"] and len(cites(r)) == 4 and fused[-2] == [] and asked[-2:] == [memory.MEANING_MOST, memory.POOL]
