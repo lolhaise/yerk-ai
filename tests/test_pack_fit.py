@@ -332,7 +332,8 @@ def test_a_room_starts_and_compacts_with_what_is_due_and_an_uncapped_one_lifts_i
 
 def test_a_peoples_rooms_part_holds_its_own_items_never_the_owners_and_a_sealed_room_its_own(tmp_path):
     """What a room may read is what `recall` in it may return (memory.recalled): the owner's fact, note and said line reach no person's
-    room and no sealed one; a person's own item reaches that room and the owner's; a shared file every room but a sealed one."""
+    room and no sealed one; a person's own item reaches that room's part, and an owner room only when it asks (due.unasked: no part
+    shows another room's own line); a shared file every room but a sealed one."""
     y = install(tmp_path, sealed=True, family=True)
     owner, sealed, hers = "example-room", "frozen-room", "family-room"
     when = (datetime.now(y.memory.tz).date() + timedelta(days=2)).isoformat()
@@ -352,10 +353,31 @@ def test_a_peoples_rooms_part_holds_its_own_items_never_the_owners_and_a_sealed_
 
     def got(room: str) -> set[str]:
         return {w for w in ("Owner fact", "Owner note", "owner words", "Sealed note", "Her note", "Shared fee") if w in y.due_pack(room)}
-    assert got(owner) == {"Owner fact", "Owner note", "owner words", "Sealed note", "Her note", "Shared fee"}
+    assert got(owner) == {"Owner fact", "Owner note", "owner words", "Sealed note", "Shared fee"}    # a person's room's own line: not unasked
+    asked = {x["text"] for x in due.listed(y.memory, y.owed.load(), y.reader(owner))}         # asked, an owner room reads them all
+    assert "Her note to do." in asked and "more open" not in y.due_pack(owner)               # and it is not counted as left out
     assert got(hers) == {"Her note", "Shared fee"} and "waiting on Riley" in y.due_pack(hers)
     assert got(sealed) == {"Sealed note"}
     assert y.due_pack("no-such-room") and got("no-such-room") == {"Shared fee"}              # no room: shared files only, as recall
     club = y.memory.root / "facts" / "example-club.md"                                       # its class as it is now, no rebuild
     club.write_text(club.read_text().replace("class: shared", "class: room"))
     assert got(hers) == {"Her note"}
+
+
+def test_a_line_marked_do_not_surface_is_in_no_part_and_in_the_asked_list_and_the_two_word_form_is_only_words(tmp_path):
+    """The part is shown unasked, so a dated line carrying mention recall's do-not-surface mark stays out of it (due.unasked), as it
+    stays out of mention recall; `yerk due` and `recall`, which are asked, still hold it. "Ask only" as two words is what a thing's
+    own words can say, and hides nothing."""
+    y = install(tmp_path, sealed=True, family=True)
+    owner = "example-room"
+    y.add_room(owner, ConsoleChannel())
+    when = (datetime.now(y.memory.tz).date() + timedelta(days=2)).isoformat()
+    for n, text in enumerate(("\u26d4 Example renewal, never raised.", "Example deposit, ask-only.", "Ask only Dana about the example fee.", "Example form.")):
+        y.rooms[owner].inflight = [Inbound(f"m-{n}", "owner", "a placeholder message")]
+        assert asyncio.run(y.tool_remember(owner, text, "", [], due=when))["ok"]
+    due.Builder(y.memory).refresh(y.memory.scope.files())
+    part = y.due_pack(owner)
+    assert "Example form." in part and "Ask only Dana" in part
+    assert "Example renewal" not in part and "Example deposit" not in part and "more open" not in part
+    asked = {x["text"] for x in due.listed(y.memory, y.owed.load(), y.reader(owner))}
+    assert {"\u26d4 Example renewal, never raised.", "Example deposit, ask-only."} <= asked

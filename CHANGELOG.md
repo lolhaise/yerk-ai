@@ -22,7 +22,8 @@ version changes.
   fact file or a day log again only when it moved.
 - What is overdue, oldest first, then what is due in the next 7 days opens the recall pack at a session start and after a
   compaction: at most 12 lines, each with its cite, the last saying how many more are open. Its size is `due` in budgets.toml
-  (`[session_start.recall_pack]`, 2,400 of the pack's own 6,000). A room reads of it what `recall` may return there, a room's
+  (`[session_start.recall_pack]`, 2,400 of the pack's own 6,000). A room reads of it what `recall` may return there, less another room's own
+  lines and any line marked do-not-surface (⛔, ask-only), which only the asked list shows; a room's
   `open_loops` file keeps its room, and a room with nothing near gets the pack it had, byte for byte.
 - `yerk due [--room NAME] [--days N] [--all] [--json]` lists them on the command line, read-only.
 - A fact filed with a date is still shown as the room's note, and the `open-loops` ability is built.

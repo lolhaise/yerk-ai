@@ -2036,4 +2036,6 @@ secs = 60
 # its reader and the retry rule, reader_of and recalled for what both callers asked apart; cli.py 38: `yerk due`; daemon.py
 # 8; mcp_server.py 7; context.py 5; words.py 4: the refusals; memindex.py 2; curate.py 1: an open line left to its mark).
 # 36,458: 36,155 plus 303.
-lines = 36458
+# 36,467: plus 9, the judge's read the same day (due.py: the part, which is shown unasked, holds no other room's own line and
+# no line marked do-not-surface; the asked list, `yerk due` and recall, still holds both).
+lines = 36467

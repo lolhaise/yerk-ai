@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ HEAD = ("[due] Dated items on file as of {at}, overdue first, then the next {day
         "that line in `replaces`.")
 MORE = "({} more open, not shown; recall or read_memory reaches each)"
 FIELDS = frozenset(("date", "time", "owes", "text", "role", "filed", "cite", "class", "room", "path", "raw"))     # each item's
+HUSH = re.compile(r"⛔|ask-only", re.I)       # mention recall's do-not-surface mark, less its two-word form, which a thing's own words can hold
 log = logging.getLogger("yerk.due")
 
 
@@ -151,13 +153,20 @@ def line(x: dict[str, Any], retired: tuple[str, ...] = (), whole: bool = False) 
             f"{memory.MARKS[memory.SAID] + ' ' if x['role'] == memory.SAID else ''}{cut[1]} ({x['cite']})")
 
 
+def unasked(x: dict[str, Any], reader: memory.Reader | None) -> bool:
+    """An item the part may put in front of a room that did not ask: never another room's own line (an owner room reads those when it
+    asks, by `recall` or `yerk due`; a line a person's room filed is not the owner's own, and no unasked part shows one), and never
+    a line marked do-not-surface."""
+    return (x["class"] != "room" or reader is not None and bool(x["room"]) and x["room"] == reader.rid) and not HUSH.search(x["raw"])
+
+
 def part(s: memory.Settings, items: list[dict[str, str]], reader: memory.Reader | None, budget: int, now: datetime | None = None,
          retired: tuple[str, ...] = ()) -> str:
-    """The recall pack's due part: the open items `reader` may read that are overdue or due in the next AHEAD days, a line each under
+    """The recall pack's due part: the open items `reader` may read and may be shown unasked (unasked) that are overdue or due in the next AHEAD days, a line each under
     a head, at most LINES lines and `budget` characters as Claude Code counts them, whole lines only, so the farthest go; with more
     open than shown, the last line says how many. "" when none is near, or not even the head and one item fit."""
     now = now or datetime.now(timezone.utc)
-    every = listed(s, items, reader, now)
+    every = [x for x in listed(s, items, reader, now) if unasked(x, reader)]
     out = [HEAD.format(at=f"{now.astimezone(s.tz):%Y-%m-%d %H:%M}", days=AHEAD)]
     used = memory.chars(out[0])
     for x in (x for x in every if near(x, s, now=now)):

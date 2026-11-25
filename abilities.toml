@@ -1239,7 +1239,7 @@ how = [
   "The date: `remember` takes `due` (a day, or a day and a time in the install's zone) and `owes` (who owes it to the owner, empty when the owner does), kept on the line as a mark after its words and source, before its class and id.",
   "Open: until the line is superseded, which is how a thing is said done (its outcome filed with `replaces` naming the line), or its date is more than 14 days past.",
   "The list: yerk-index writes the open lines of Yerk's own fact files and day logs as one JSON file beside the mention index, with no model, reading a file again only when it moved.",
-  "At a session start: the open items the room may recall, overdue first, then the next 7 days, at most 12 lines of the recall pack, the last one saying how many more are open.",
+  "At a session start: the open items the room may recall, less another room's own lines and any line marked do-not-surface, overdue first, then the next 7 days, at most 12 lines of the recall pack, the last one saying how many more are open.",
   "On the command line: `yerk due`, with --room for what one room may read, --days, --all and --json.",
 ]
 tier = "free"
