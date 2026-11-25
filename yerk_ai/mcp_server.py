@@ -38,7 +38,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from . import words
-from .memory import READ_LINES
+from .memory import READ_LINES, RECALL_K
 from .shape import PINS
 
 log = logging.getLogger("yerk.http")
@@ -48,7 +48,8 @@ Auth = dict[str, str]                      # {"kind": install | room | worker, "
 RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords\n"
           "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
           "Each hit is the lines that carry the match and a `cite` (file:line). Cite every fact you use\n"
-          "by its `cite`; read_memory(cite) reads on from it. A \"timeout\" status means busy, not down.\n"
+          "by its `cite`; read_memory(cite) reads on from it. A call gives twelve hits (k, 1 through 20): the first six as before and six more\n"
+          "as one line each, read_memory(cite) to read on from one. A \"timeout\" status means busy, not down.\n"
           "`since` and `until` (each YYYY-MM-DD, either alone) keep the search to files named for a day in that range, both ends in it.\n"
           "Work them out from the clock line when the question names a day, a week, a month or a phrase like \"last Sunday\", and leave\n"
           "them out when it names no time.")
@@ -182,7 +183,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))
 
     @mcp.tool(description=RECALL)
-    async def recall(query: str, k: int = 6, since: str = "", until: str = "", *, ctx: Context) -> str:
+    async def recall(query: str, k: int = RECALL_K, since: str = "", until: str = "", *, ctx: Context) -> str:
         return json.dumps(await daemon.tool_recall(caller_room(ctx), query, k, since, until))
 
     @mcp.tool(description=READ_MEMORY)
@@ -539,7 +540,7 @@ def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
             return json.dumps({"ok": False, "error": f"the daemon did not answer: {e}"})
 
     if "recall" in allowed:
-        async def recall(query: str, k: int = 6, since: str = "", until: str = "") -> str:
+        async def recall(query: str, k: int = RECALL_K, since: str = "", until: str = "") -> str:
             return await call({"recall": {"room": room, "query": query, "k": k, "since": since, "until": until}})
         mcp.tool(description=RECALL)(recall)
     if "read_memory" in allowed:

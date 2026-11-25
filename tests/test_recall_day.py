@@ -251,12 +251,12 @@ def test_the_room_and_its_workers_hand_the_range_on(tmp_path, monkeypatch):
     asyncio.run(server.call_tool("recall", {"query": "kettle", "since": DAY, "until": "2026-01-06"}))
     asyncio.run(server.call_tool("recall", {"query": "kettle", "until": DAY}))
     asyncio.run(server.call_tool("recall", {"query": "kettle"}))
-    assert asked == [("example-room", "kettle", 6, DAY, "2026-01-06"), ("example-room", "kettle", 6, "", DAY), ("example-room", "kettle", 6, "", "")]
+    assert asked == [("example-room", "kettle", 12, DAY, "2026-01-06"), ("example-room", "kettle", 12, "", DAY), ("example-room", "kettle", 12, "", "")]
     sent: list[dict] = []
     monkeypatch.setattr(jobs, "post_control", lambda state, payload, *a: sent.append(payload) or {"ok": True})
     worker = mcp_server.worker_server(tmp_path, "example-room", ["recall"])
     asyncio.run(worker.call_tool("recall", {"query": "kettle", "since": DAY, "until": DAY}))
-    assert sent == [{"recall": {"room": "example-room", "query": "kettle", "k": 6, "since": DAY, "until": DAY}}]
+    assert sent == [{"recall": {"room": "example-room", "query": "kettle", "k": 12, "since": DAY, "until": DAY}}]
     for tools in (server, worker):
         tool = next(t for t in asyncio.run(tools.list_tools()) if t.name == "recall")
         assert list(tool.inputSchema["properties"]) == ["query", "k", "since", "until"] and tool.inputSchema["required"] == ["query"]

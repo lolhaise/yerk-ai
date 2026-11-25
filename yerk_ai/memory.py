@@ -36,6 +36,7 @@ READ_LINES = 12          # read_memory's default window: a whole hit chunk from 
 SNIPPET = 750
 RECALL_CHARS = 4500      # recall: the first six hits' snippets together ([memory] recall_chars), six hits of SNIPPET
 RECALL_HITS = 6          # recall_chars is six hits' worth: a call of more cuts its first six as a call of six does
+RECALL_K = 12            # recall: the hits a call gives when it names no number: the first six as a call of six gives them, the rest one line each
 EXTRA = 160              # recall: each hit past the sixth, its best line cut around the match, on top of recall_chars
 
 

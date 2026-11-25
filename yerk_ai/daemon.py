@@ -2110,7 +2110,7 @@ class Yerkd:
             return await self.need_build(dict(payload["needs"]))
         if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
             req = dict(payload["recall"])
-            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6),
+            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or memory.RECALL_K),
                                           str(req.get("since") or ""), str(req.get("until") or ""))
         if isinstance(payload.get("read_memory"), dict):
             req = dict(payload["read_memory"])
