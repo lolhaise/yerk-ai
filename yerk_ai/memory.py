@@ -422,6 +422,7 @@ TAGGED = re.compile(r"\)( \[due [^\[\]]+\]) \[m:[^\]\s]+\]$")           # its ma
 FILED = re.compile(r"^- .+ \([\w.-]+(?:#\S+)?, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d\)(?: \[due [^\[\]]+\])? \[m:[^\]\s]+\]$")   # a fact file's filed note
 GONE = re.compile(r" \[superseded[^\]]*\](?=(?: \[m:[^\]\s]+\])?$)")      # a superseded mark at its place, after a dated line's own
 SUPERSEDES = re.compile(r" \(supersedes [^()]*\)$")          # what a filing with `replaces` says after its words
+UNTIL = re.compile(r"\[until ([0-9]{4}-[0-9]{2}-[0-9]{2})\]")    # the last day a line holds (`until`, curate.md): ended()'s one mark
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
 RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
@@ -642,6 +643,18 @@ def due_of(raw: str, day: str = "") -> dict[str, str] | None:
 def local_day(s: Settings, now: datetime | None = None) -> date:
     """Today, or `now`'s day, in the install's zone (the day logs' days, and the day curate's run sweeps on)."""
     return (now or datetime.now(timezone.utc)).astimezone(s.tz).date()
+
+
+def ended(raw: str, today: date, day: str = "") -> bool:
+    """A line that held only until a day before `today`: a fact file's bullet, or with `day` a day log's room note (NOTE; a person's
+    line or a said line never, whatever characters it holds), holding UNTIL with a real day, its commitment not open (due.is_open).
+    The one rule the curation's sweep blanks a card line by and every reader of a line per message leaves one out by."""
+    if "[until " not in raw:                         # nearly every line: nothing else is looked at
+        return False
+    from . import due                  # due reads this module's names as it loads
+    ln = parse_line(raw) if day else None
+    said = (ln.body if ln and ln.role == NOTE else "") if day else raw if raw.lstrip().startswith("- ") else ""
+    return any(until_day(d) and d < today.isoformat() for d in UNTIL.findall(said)) and not due.is_open(raw, today, day)
 
 
 def until_day(day: str) -> date | None:

@@ -154,6 +154,42 @@ def note(at: str, body: str, mid: str, role: str = "note") -> str:
     return f"- {at}:00-05:00 owner-room {role}: {body} [c:private] [m:{mid}]"
 
 
+def test_ended_is_the_one_rule_past_its_last_day_a_real_day_its_commitment_closed_a_rooms_note_only():
+    day, src = "2026-11-25", "(owner-room, 2026-11-25 10:00:00-05:00)"
+    fact = f"- Ada is away [until 2026-11-30] {src} [m:a]"
+    assert [memory.ended(fact, d) for d in (date(2026, 11, 29), date(2026, 11, 30), date(2026, 12, 1))] == [False, False, True]
+    assert memory.ended(f"- Ada is away [until 2026-11-30] and back [until 2026-12-05] {src} [m:a]", date(2026, 12, 1))   # any mark past
+    for kept in (f"- Ada is away [until 2026-02-30] {src} [m:a]", f"- Ada is away [until 2026-11-30T10:00] {src} [m:a]",
+                 f"- Ada is away [until 2026-11-300] {src} [m:a]", f"- Ada is away [until 2026-11-3] {src} [m:a]",
+                 "- Ada is away [until ２０２６-11-30] (x, y) [m:a]", "Ada is away [until 2026-11-30] as a heading's words",
+                 f"- Ada is away until 2026-11-30 {src} [m:a]", f"- Ada is away {src} [m:a]"):
+        assert not memory.ended(kept, date(2026, 12, 9)), kept                    # no real day in the mark, no mark, no bullet
+    open_ = f"- Ada returns it [until 2026-11-30] {src} [due 2026-11-28] [m:a]"
+    assert not memory.ended(open_, date(2026, 12, 12)) and memory.ended(open_, date(2026, 12, 13))      # open while its mark keeps it
+    assert memory.ended(note("10:00", "Away [until 2026-11-30]", "m-1.n12345678"), date(2026, 12, 1), day)
+    assert not memory.ended(note("10:00", "Away [until 2026-11-30]", "m-1.n12345678"), date(2026, 11, 30), day)
+    assert not memory.ended(note("10:00", "Away [until 2026-11-30]", "m-1", "owner"), date(2026, 12, 1), day)       # a person's line
+    assert not memory.ended(note("10:00", 'Dana: "Away [until 2026-11-30]" (from m-9)', "m-1.n1", "said"), date(2026, 12, 1), day)
+    assert not memory.ended(note("10:00", "Back [until 2026-11-30] [due 2026-11-28]", "m-1.d12345678"), date(2026, 12, 1), day)
+    assert memory.ended(note("10:00", "Back [until 2026-11-30] [due 2026-11-05]", "m-1.d12345678"), date(2026, 12, 1), day)  # closed
+
+
+def test_the_sweep_blanks_a_line_remember_filed_the_day_after_its_day_never_on_it_nor_while_its_commitment_is_open(tmp_path, monkeypatch):
+    s, log = install(tmp_path)
+    clock(monkeypatch, TODAY)
+    away = file(s, log, "Example Neighbour is away at the lake.", "example neighbour", until=LAST)
+    owed = file(s, log, "Example Neighbour returns the ladder.", "example neighbour", "m-2", due="2026-11-28", until=LAST)
+    card = s.root / "facts" / "example-neighbour.md"
+    before = card.read_text()
+    for n, today in enumerate((date(2026, 11, 30), date(2026, 12, 1), date(2026, 12, 12), date(2026, 12, 13))):
+        curate.sweep(s, s.root.parent, [], tmp_path / "backups" / str(n), False, today)
+        rows = card.read_text().split("\n")
+        assert (rows[2] == line_at(s, away["cite"]) == "") == (today > date(2026, 11, 30)), today
+        assert (rows[3] == "") == (today > date(2026, 12, 12)), today                   # open by its due mark to 14 days past
+    assert (tmp_path / "backups" / "1" / "facts.example-neighbour.md").read_text() == before
+    assert len(card.read_text().split("\n")) == len(before.split("\n"))
+
+
 # U3: left out on the day, where a line is read per message
 
 LINES = [note("09:00", "Example ladder decided: lent to the neighbour [until 2026-11-30]", "m-1.n00000001"),          # 3: ends

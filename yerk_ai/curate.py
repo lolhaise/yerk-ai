@@ -47,7 +47,7 @@ FLAT = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
 def flat(text: str) -> str:
     """Curly quotes and apostrophes as straight ones, on both sides of a quote's match."""
     return text.translate(FLAT)
-UNTIL = re.compile(r"\[moved (\to{4}-\with{2}-\queue{2})\]")                            # the sample item moved to the next step and the
+UNTIL = memory.UNTIL                                                            # a line that holds only to a date says so (memory.ended)
 SAYS_UNTIL = re.compile(r"\buntil (\d{4}-\d{2}-\d{2})\b")                        # in its words: an expiry or a history, so a finding
 SECRET = re.compile(r"passw(?:or)?d|passcode|one-time code|\b(?:sk|rk)-[\w-]{16,}|\bgh[pousr]_\w{20,}|\bxox[abp]-|\bAKIA[0-9A-Z]{16}|"
                     r"X-Amz-|[?&](?:sig|token|key)=|\b\d(?:[ -]?\d){11,18}\b|\b[A-Za-z0-9+/_-]{40,}\b", re.I)
@@ -138,8 +138,8 @@ def sweep(s: memory.Settings, private: Path, logs: list[Path], backup: Path, dry
             t = x.decode(errors="replace").strip()
             if not t.startswith("- "):
                 return None
-            past = bool(STRUCK.search(t)) or any(d < today.isoformat() for d in UNTIL.findall(t))
-            old = t in seen or past and not due.is_open(t, today)     # an open commitment goes by its own mark, never by its words
+            struck = bool(STRUCK.search(t)) and not due.is_open(t, today)     # an open commitment goes by its own mark, never by its words
+            old = t in seen or struck or memory.ended(t, today)        # past its until: the one rule every reader leaves a line out by
             seen.add(t)
             return b"\n" if old else None
         moves: dict[str, str] = {}
