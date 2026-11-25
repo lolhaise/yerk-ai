@@ -320,3 +320,17 @@ def test_a_drop_in_the_twelve_is_no_drop_for_the_ratchet_which_reads_the_six_alo
     fell = {**row, "kinds": {"recall": {**row["kinds"]["recall"], "top_k": row["top_k"] + 2}}}                  # the six fell by two: a drop
     f.write_text("".join(json.dumps(fell) + "\n" for _ in range(4)))
     assert cli.main(args) == 4 and "RATCHET: top 6 fell" in capsys.readouterr().err
+
+
+def test_a_long_replaced_lines_mark_is_read_off_the_whole_line_and_what_is_read_in_is_one_line_of_at_most_extra(tmp_path, monkeypatch):
+    """The lines are longer than a tail hit shows (160 characters), so n02's mark, n03's and the replacement's own words are past the cut."""
+    far = " and the shelf it stands on is the one by the window" * 4
+    s, rows = notes(tmp_path, n01="The kettle of note 01 stands on shelf 01," + far, n10="The kettle of note 10 stands on shelf 10," + far,
+                    n02="The kettle of note 02 stood on shelf 02," + far + " [superseded by memory/facts/n10.md:3]",
+                    n03="The kettle of note 03 stood on shelf 03. [superseded by memory/facts/n01.md:3]")
+    halves(monkeypatch, rows[:4], rows[4:24])
+    hits = live(s, 12)
+    names = [h["cite"].rpartition(":")[0].rpartition("/")[2].removesuffix(".md") for h in hits]
+    assert names == ["n04", "n05", "n06", "n07", "n08", "n00", "n01", "n10", "n02", "n03", "n09", "n11"]           # n10 above n02, n01 above n03
+    assert len({h["cite"] for h in hits}) == 12 and all(len(h["text"]) <= memory.EXTRA and len(h["text"].splitlines()) == 1 for h in hits[6:])
+    assert json.dumps(live(s, 12)[:6]) == json.dumps(live(s, 6))
