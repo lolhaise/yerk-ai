@@ -99,16 +99,21 @@ def _read(base: Path, rel: str | None) -> tuple[str, str]:
 
 
 Pack = Callable[[int], tuple[str, str]]       # characters left -> (the room's filed items, their source)
+Due = Callable[[int], str]                    # characters left -> what is due in this room (due.part), each line its own cite
 
 
-def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack | None = None) -> tuple[str, str]:
-    """The room's own filed items of the last 14 days, newest first (from the daemon, which reads
-    the private day logs; decision 20), else the layer's newest daily notes; then the open
-    commitments, which keep their room inside the limit: the pack has what they and the line between leave."""
+def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack | None = None, due: Due | None = None) -> tuple[str, str]:
+    """What is due (from the daemon, when it gives one), then the room's own filed items of the last 14 days, newest first (from the
+    daemon, which reads the private day logs; decision 20), else the layer's newest daily notes; then the open commitments file. The
+    file keeps its room inside the limit, what is due keeps its own inside what the file leaves, and the pack has the rest."""
     texts, srcs = [], []
     loops, src = _read(base, room.get("open_loops"))
+    left = max(0, limit - chars(loops) - chars(SEP)) if loops else limit
+    if due is not None and (owed := due(left)):
+        texts.append(owed)
+        left = max(0, left - chars(owed) - chars(SEP))
     if pack is not None:
-        text, psrc = pack(max(0, limit - chars(loops) - chars(SEP)) if loops else limit)
+        text, psrc = pack(left)
         if text:
             texts.append(text)
             srcs.append(psrc)
@@ -142,7 +147,7 @@ def rules_text(room: dict[str, Any], rules: Path | None, topical: str | None = N
 
 
 def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None,
-                  rules: Path | None = None, room_name: str = "") -> list[Part]:
+                  rules: Path | None = None, room_name: str = "", due: Due | None = None) -> list[Part]:
     """The appended parts, each fitted to its line; an uncapped install's each whole, the rules part with `room_name`'s topic rules."""
     limits, whole = budgets["session_start"]["appended"], uncapped(budgets)
     base = layer_dir(private, room)
@@ -155,7 +160,7 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
         "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
         "pinned_memory": _read(base, room.get("pinned_memory")),
         "rules": rules_text(room, rules, room_name if whole else None, room_name),
-        "recall_pack": recall_pack(base, room, NONE if whole else int(limits["recall_pack"]), pack),
+        "recall_pack": recall_pack(base, room, NONE if whole else int(limits["recall_pack"]), pack, due),
     }
     parts = []
     for name in APPENDED:

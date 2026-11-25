@@ -476,6 +476,14 @@ pinned_memory = 4000
 rules = 16000
 recall_pack = 6000
 
+# Inside the recall pack's own 6,000, so no part and no total moves: `due`, what is due in the room (due.part), the first lines of
+# the pack. 2026-11-25, due-view-2026-11-25 (the owner's order, Wed Nov 25): at most 12 lines, their head and the line
+# counting what is left out among them, so 2,400 is 12 lines of 200 characters, the most the part takes of the pack (the room's
+# filed items have what it and the open commitments file leave); it is nothing when nothing is due, and a room whose open
+# commitments file leaves less has fewer lines.
+[session_start.recall_pack]
+due = 2400
+
 # What the UserPromptSubmit hook adds to each message: `typical` caps the parts every message carries (the next table),
 # `cap` the most one message's hook output may carry with the parts paid only on a hit.
 [per_message]
