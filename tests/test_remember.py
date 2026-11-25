@@ -6,9 +6,9 @@ import asyncio
 import json
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from yerk_ai import mcp_server, memindex, memory, mentions, words
+from yerk_ai import due, mcp_server, memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
@@ -403,3 +403,32 @@ def test_a_superseded_due_line_keeps_both_marks_parses_and_reads_as_blank_where_
     assert entries and all("the yearly check" not in t for t in entries)                 # blank to mention recall
     assert "Send the example form back" not in y.room_pack("example-room")[0]            # and to the pack
     assert not y.recall_for("example-room", "send the example form back by noon")[1]     # and to the topic hit
+
+
+def test_a_dated_line_is_open_until_it_is_marked_superseded_or_its_date_is_more_than_fourteen_days_past():
+    src, today = "(example-room, 2026-11-01 09:00:00+00:00)", date(2026, 11, 25)
+    line = "- Example form: send it back " + src + " [due {}]{} [m:m-1]"
+    assert due.KEEP == 14
+    for day, want in (("2026-12-02", True), ("2026-11-25", True), ("2026-11-11", True), ("2026-11-10", False), ("2025-11-25", False),
+                      ("2026-11-11T09:00", True), ("2026-11-10T23:59", False), ("2026-11-11 owes Dana", True)):
+        assert due.is_open(line.format(day, ""), today) is want, day
+        assert due.is_open(line.format(day, " [superseded by tree/facts/example-form.md:4]"), today) is False, day
+        assert due.is_open(line.format(day, " [superseded]"), today) is False, day
+    note = "- 09:00:00+00:00 example-room#rid note: Send it back [due 2026-11-11]{} [c:private] [m:m-1.d0a1b2c3d]"
+    assert due.is_open(note.format(""), today, "2026-11-01") and not due.is_open(note.format(" [superseded]"), today, "2026-11-01")
+
+
+def test_the_characters_of_a_mark_in_a_lines_own_words_are_words_and_no_date():
+    src, mark = "(example-room, 2026-11-01 09:00:00+00:00)", "[due 2026-12-02]"
+    for raw in (f"- Example form: {mark} {src} [m:m-1]", f"- {mark} send it {src} [m:m-1]", f"- The line said x {src} {mark} [m:m-0] {src} [m:m-1]",
+                f"- Example form: send it back {mark}", f"- Example form {mark} [m:m-1]", f"- Example form {src} [m:m-1] {mark}",
+                f"- Example form {src} [due 2026-12-02 owes ] [m:m-1]", f"- Example form {src} [due soon] [m:m-1]"):
+        assert memory.due_of(raw) is None and not due.is_open(raw, date(2026, 11, 25)), raw
+    at = "- 09:00:00+00:00 example-room#rid "
+    for raw in (f"{at}owner: send it {mark} [c:private] [m:1001]", f"{at}note: send it {mark} [c:private] [m:m-1.n0a1b2c3d]",
+                f"{at}note: the mark {mark} in it [c:private] [m:m-1.d0a1b2c3d]", f"{at}owner@pat: {mark} [c:private] [m:m-1.d0a1b2c3d]",
+                f"{at}note: retired: x {mark} [c:private] [m:m-1.r0a1b2c3d]", f"{at}note: send it [c:private] {mark} [m:m-1.d0a1b2c3d]",
+                f"{at}note: send it [c:private] [m:m-1.d0a1b2c3d] {mark}"):
+        assert memory.due_of(raw, "2026-11-01") is None and not due.is_open(raw, date(2026, 11, 25), "2026-11-01"), raw
+    kept = memory.due_of(f"{at}note: it said [due 2026-12-09] then [due 2026-12-02] [c:private] [m:m-1.d0a1b2c3d]", "2026-11-01")
+    assert kept and (kept["date"], kept["text"]) == ("2026-12-02", "it said [due 2026-12-09] then")          # the last is the mark

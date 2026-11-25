@@ -614,7 +614,7 @@ def due_of(raw: str, day: str = "") -> dict[str, str] | None:
     day log's of that day."""
     if day:
         ln = parse_line(raw)
-        if ln is None or ln.role not in (NOTE, SAID) or not DATED.search(ln.mid) or not (
+        if ln is None or ln.role not in (NOTE, SAID) or not ln.cls or not DATED.search(ln.mid) or not (
                 m := re.fullmatch(r"(.+?)" + DUE, GONE.sub("", ln.body))):
             return None
         said, when, at, owes = m.groups()
