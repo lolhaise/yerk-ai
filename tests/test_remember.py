@@ -3,11 +3,12 @@ Yerk's own memory tree in the same turn. A correction marks every old line it na
 puts a superseded line above its replacement, and a room that is not an owner room writes its own
 placeholder."""
 import asyncio
+import json
 import re
 import threading
 from datetime import datetime, timezone
 
-from yerk_ai import memindex, memory, mentions, words
+from yerk_ai import mcp_server, memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
@@ -278,3 +279,127 @@ def test_a_cite_past_a_vertical_tab_opens_its_own_line_and_a_correction_marks_th
     assert r["superseded"] == ["tree/facts/example-car.md:34"] and r["refused"] == []
     text = car.read_text()
     assert text.splitlines()[33].endswith(f"[superseded by {r['cite']}]") and text.count("\x0b") == 14
+
+
+# `due` and `owes` (2026-11-25): a filed commitment carries its date as a mark
+NOTED = r"- \d\d:\d\d:\d\d[+-]\d\d:\d\d example-room#discord:CHANNEL_ID "
+
+
+def dated(y: Yerkd, room: str, text: str, about: str = "", replaces: tuple[str, ...] = (), **kw: str) -> dict:
+    return asyncio.run(y.tool_remember(room, text, about, list(replaces), **kw))
+
+
+def line_at(y: Yerkd, cite: str) -> str:
+    path, _, n = cite.rpartition(":")
+    return (y.memory.root / path.removeprefix("tree/")).read_text().splitlines()[int(n) - 1]
+
+
+def test_a_fact_filed_with_due_carries_its_mark_before_its_id_and_the_answer_names_the_date(tmp_path):
+    y = daemon(tmp_path)
+    r = dated(y, "example-room", "Example boiler: the yearly check.", "example boiler", due="2026-12-02")
+    assert r["ok"] and r["cite"] == "tree/facts/example-boiler.md:3" and r["due"] == "2026-12-02" and "owes" not in r and list(r)[-1] == "next"
+    line = line_at(y, r["cite"])
+    assert re.fullmatch(r"- Example boiler: the yearly check\. \(example-room#discord:CHANNEL_ID, [^)]+\) \[due 2026-12-02\] \[m:m-1\]", line)
+    got = memory.due_of(line)
+    assert got and {k: got[k] for k in ("date", "time", "owes", "text", "role")} == {
+        "date": "2026-12-02", "time": "", "owes": "", "text": "Example boiler: the yearly check.", "role": memory.NOTE}
+    assert datetime.fromisoformat(got["filed"]).tzinfo is not None                        # when it was filed, its own offset
+    assert "- [the room's note, not their words] Example boiler: the yearly check. (" in memory.read(y.memory, r["cite"], lines=1)["text"]
+    assert "due" not in remember(y, "example-room", "Example boiler: in the cellar.", "example boiler")    # undated: as today
+    assert re.fullmatch(r"- Example boiler: in the cellar\. " + SRC, line_at(y, "tree/facts/example-boiler.md:4"))
+
+
+def test_the_day_log_path_carries_the_mark_before_the_class_and_id_and_a_said_line_carries_it(tmp_path):
+    y = daemon(tmp_path)
+    note = dated(y, "example-room", "Send the example form back.", due="2026-12-02T09:30")
+    wait = dated(y, "example-room", "The example quote for the roof.", due="2026-12-02", owes="Example Roofers")
+    said = dated(y, "example-room", "I will bring the key on the second", said="Dana", source="message m-9", due="2026-12-02", owes="Dana")
+    assert (note["due"], wait["due"], wait["owes"], said["owes"]) == ("2026-12-02T09:30", "2026-12-02", "Example Roofers", "Dana")
+    tail = r" \[c:private\] \[m:m-1\.d[0-9a-f]{8}\]"
+    assert re.fullmatch(NOTED + r"note: Send the example form back\. \[due 2026-12-02T09:30\]" + tail, line_at(y, note["cite"]))
+    assert re.fullmatch(NOTED + r"note: The example quote for the roof\. \[due 2026-12-02 owes Example Roofers\]" + tail, line_at(y, wait["cite"]))
+    assert re.fullmatch(NOTED + r'said: Dana: "I will bring the key on the second" \(from message m-9\) \[due 2026-12-02 owes Dana\]' + tail,
+                        line_at(y, said["cite"]))
+    day = note["cite"].rpartition("/")[2].partition(".")[0]
+    got = [memory.due_of(line_at(y, r["cite"]), day) for r in (note, wait, said)]
+    assert [(x["date"], x["time"], x["owes"], x["text"], x["role"]) for x in got if x] == [
+        ("2026-12-02", "09:30", "", "Send the example form back.", "note"),
+        ("2026-12-02", "", "Example Roofers", "The example quote for the roof.", "note"),
+        ("2026-12-02", "", "Dana", 'Dana: "I will bring the key on the second" (from message m-9)', "said")]
+    parsed = memory.parse_line(line_at(y, wait["cite"]))
+    assert parsed and (parsed.cls, parsed.rid, parsed.role) == ("private", "discord:CHANNEL_ID", "note")
+    assert "[the room's note, not their words] Send the example form back. [due 2026-12-02T09:30]" in y.room_pack("example-room")[0]
+
+
+def test_what_due_and_owes_refuse_each_in_one_line_and_files_nothing(tmp_path, monkeypatch):
+    y = daemon(tmp_path)
+    for bad in ("Friday", "2026-13-40", "2026-12-02 09:30", "2026-12-02T24:30", "2026-12-2", "2026-12-02T09:30:00", "2026-12-02\n", " 2026-12-02",
+                "\u0662\u0660\u0662\u0666-12-02", "2026-12-02T09:30Z", "20261202"):
+        r = dated(y, "example-room", "Send the example form back.", due=bad)
+        assert r == {"ok": False, "error": words.DUE_SHAPE.format(due=memory.one_line(bad))}, bad
+        assert "YYYY-MM-DD or YYYY-MM-DDTHH:MM" in r["error"] and "\n" not in r["error"], bad
+    assert dated(y, "example-room", "A wait.", owes="Dana") == {"ok": False, "error": "owes needs due: a wait needs the day to look at it again"}
+    for bad in ("Dana]", "[Dana", "Dana (the roofer)", "Dana\nand Riley"):
+        assert dated(y, "example-room", "A wait.", due="2026-12-02", owes=bad) == {
+            "ok": False, "error": words.DUE_NAME.format(owes=memory.one_line(bad))}, bad
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: "example-room")
+    server = mcp_server.build(y, y.port, y.hook)
+
+    def call(**args: str) -> dict:
+        got = asyncio.run(server.call_tool("remember", args))
+        return json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
+    for args in ({"job": "example job"}, {"retire": "tree/rules.md:6"}):
+        for more in ({"due": "2026-12-02"}, {"due": "2026-12-02", "owes": "Dana"}, {"owes": "Dana"}):
+            assert call(text="Send the example form back.", **args, **more) == {"ok": False, "error": words.DUE_JOB}, (args, more)
+    assert not y.memory.daily.exists() and not (y.memory.root / "facts").exists() and not (y.memory.root / memory.RULES).exists()
+    ok = call(text="Send the example form back.", due="2020-01-05", owes=" Dana ")        # a thing told late, the name's spaces off
+    assert ok["ok"] and ok["due"] == "2020-01-05" and ok["owes"] == "Dana" and "[due 2020-01-05 owes Dana] [c:" in line_at(y, ok["cite"])
+
+
+def test_a_retried_call_with_the_same_date_files_nothing_twice_and_another_date_is_another_line(tmp_path):
+    y = daemon(tmp_path)
+    for about in ("example boiler", ""):
+        text = "Example boiler: the yearly check."
+        first = dated(y, "example-room", text, about, due="2026-12-02")
+        assert dated(y, "example-room", text, about, due="2026-12-02")["cite"] == first["cite"]
+        f = y.memory.root / first["cite"].rpartition(":")[0].removeprefix("tree/")
+        n = len(f.read_text().splitlines())
+        moved = dated(y, "example-room", text, about, due="2026-12-09")                       # the date is part of what was filed
+        plain = dated(y, "example-room", text, about)
+        assert len({first["cite"], moved["cite"], plain["cite"]}) == 3 and len(f.read_text().splitlines()) == n + 2
+        assert dated(y, "example-room", text, about)["cite"] == plain["cite"]
+        assert dated(y, "example-room", text, about, due="2026-12-09")["cite"] == moved["cite"] and len(f.read_text().splitlines()) == n + 2
+        owed = dated(y, "example-room", text, about, due="2026-12-09", owes="Dana")
+        assert owed["cite"] not in (first["cite"], moved["cite"], plain["cite"])
+    ends = dated(y, "example-room", "Example words that end [due 2026-12-02]")                # words, filed with no date
+    same = dated(y, "example-room", "Example words that end", due="2026-12-02")
+    assert ends["cite"] != same["cite"] and len(line_at(y, same["cite"]).split("[due ")) == 2
+
+
+def test_a_dated_fact_closed_since_is_filed_again_and_never_taken_for_a_retry(tmp_path):
+    y = daemon(tmp_path)
+    first = dated(y, "example-room", "Example boiler: the yearly check.", "example boiler", due="2026-12-02")
+    done = dated(y, "example-room", "Example boiler: checked.", "example boiler", (first["cite"],))
+    assert done["superseded"] == [first["cite"]]
+    again = dated(y, "example-room", "Example boiler: the yearly check.", "example boiler", due="2026-12-02")
+    assert again["cite"] == "tree/facts/example-boiler.md:5" and memory.mentions.OLD not in line_at(y, again["cite"])
+
+
+def test_a_superseded_due_line_keeps_both_marks_parses_and_reads_as_blank_where_one_does_today(tmp_path):
+    y = daemon(tmp_path)
+    fact = dated(y, "example-room", "Example boiler: the yearly check.", "example boiler", due="2026-12-02")
+    note = dated(y, "example-room", "Send the example form back by noon.", due="2026-12-02", owes="Dana")
+    r = dated(y, "example-room", "Example boiler: checked, and the form is back.", "example boiler", (fact["cite"], note["cite"]))
+    assert r["superseded"] == [fact["cite"], note["cite"]]
+    a, b = line_at(y, fact["cite"]), line_at(y, note["cite"])
+    assert a.endswith(f") [due 2026-12-02] [superseded by {r['cite']}] [m:m-1]")
+    assert re.search(re.escape(f" [due 2026-12-02 owes Dana] [superseded by {r['cite']}] [c:private] [m:m-1.d") + r"[0-9a-f]{8}\]$", b)
+    ln = memory.parse_line(b)
+    assert ln and ln.role == "note" and ln.cls == "private" and ln.body.endswith(f"[superseded by {r['cite']}]")
+    day = note["cite"].rpartition("/")[2].partition(".")[0]
+    assert (memory.due_of(a) or {}).get("date") == (memory.due_of(b, day) or {}).get("date") == "2026-12-02"      # both marks read
+    assert (memory.due_of(b, day) or {}).get("text") == "Send the example form back by noon."
+    entries = [e["text"] for e in names(y).match("the example boiler")]
+    assert entries and all("the yearly check" not in t for t in entries)                 # blank to mention recall
+    assert "Send the example form back" not in y.room_pack("example-room")[0]            # and to the pack
+    assert not y.recall_for("example-room", "send the example form back by noon")[1]     # and to the topic hit

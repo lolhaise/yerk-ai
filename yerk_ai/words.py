@@ -178,6 +178,10 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
               "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
               "filing is {clause}.")
 FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
+DUE_SHAPE = "due is YYYY-MM-DD or YYYY-MM-DDTHH:MM, a day or a day and time in this install's zone, not \"{due}\""     # remember's dates
+DUE_OWES = "owes needs due: a wait needs the day to look at it again"
+DUE_NAME = "owes is a name on one line with no bracket, not \"{owes}\""
+DUE_JOB = "due and owes date a fact, a decision or a person's words, never a rule (job) or its retiring (retire)"
 RULE_CLAUSE = FILED_AT_MOST + " (every room now does {job} this way)"
 INDEX_NEAR = ("rules.md, the index every session start loads, is at {said}: shorten it by merging lessons that say one thing "
               "and retiring stale ones, since {sentence}")      # a filing near code-memory's limits: filed, and told so

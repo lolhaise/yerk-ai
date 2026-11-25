@@ -1403,15 +1403,16 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.scoped.get(room, self.memory), path, start, lines, self.reader(room))
 
-    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]:
-        """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
-        the ids of the messages its turn answers, or with `said` and `source` a person's words; a filed one ends with `next`."""
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "",
+                            due: str = "", owes: str = "") -> dict[str, Any]:
+        """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with the ids of the messages its turn
+        answers, or with `said` and `source` a person's words, its date with `due`; a filed one ends with `next`."""
         if room not in self.rooms:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
-                                    tuple(replaces), self.reader(room), said, source)
+                                    tuple(replaces), self.reader(room), said, source, due, owes)
         return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
