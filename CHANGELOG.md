@@ -8,6 +8,24 @@ version changes.
 
 ## 2026-11-25
 
+### recall-by-day-2026-11-25 (#136)
+
+- `recall` takes `since` and `until`, each `YYYY-MM-DD` and either alone, and the room works them out from the clock line when a
+  question names a day, a week, a month or "last Sunday". Only files whose own name holds a day in the range, both ends in it, are
+  then candidates: the day logs, a dated note, a day file in an `also` root. A fact file, the curated file and the docs hold no day
+  and are out, and a file's time on disk is never read. Any other shape, and `since` after `until`, is refused in one line.
+- The range is in the keyword search's SQL, before its pool is cut, so a day's line is found under its day however many other chunks
+  outrank it. yerk-index's meaning search has no such filter: its rows (400, as a room that may not read everything asks for) are
+  kept to the range before they are fused.
+- A range that finds nothing is searched once more without it, and the answer says so: `widened: true` and one line, before the
+  hits. A room reads no more with a range than without one, in the first search or the widened one.
+- A worker's `recall` takes both too. The search a message starts never has a range and is as it was.
+- `yerk recall-bench` runs the questions whose answer sits in a date-named file (`gold`, the answer's cites) with that day as the
+  range too, and its row gains one object, `dated`: how many there are, how many are in the top six plainly, and how many with the
+  day. The plain numbers and the ratchet are as they were.
+
+**Upgrading:** nothing to do. `yerk_tools` and the session start's total rose by the two parameters' words, in every room. The
+weekly bench takes about twice as long and asks the provider for each dated question once more.
 ### texting-card-2026-11-25 (#135)
 
 - A texting card no longer says why it waits. It shows who, their texts, the draft and the words to answer it with. The

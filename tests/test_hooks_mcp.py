@@ -128,7 +128,7 @@ def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
     assert "`effort` its thinking level, low, medium, high, xhigh or max, and `model` one from the install's list, default this room's live ones" in said
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]
     assert list(tools["hold"].inputSchema["properties"]) == ["wait_for", "reason"]
-    assert list(tools["recall"].inputSchema["properties"]) == ["query", "k"]
+    assert list(tools["recall"].inputSchema["properties"]) == ["query", "k", "since", "until"]
     assert list(tools["read_memory"].inputSchema["properties"]) == ["path", "from_line", "lines"]
     assert list(tools["worker"].inputSchema["properties"]) == ["action", "brief", "id", "room", "tasks", "cap_minutes",
                                                               "account", "model", "effort", "addons"]

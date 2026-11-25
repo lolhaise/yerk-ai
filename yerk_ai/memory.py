@@ -19,7 +19,7 @@ import threading
 import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
@@ -1051,6 +1051,36 @@ def is_daylog(path: str) -> bool:
     return bool(DAYLOG.search(str(path)))
 
 
+DAY = re.compile(r"(?<![0-9])[0-9]{4}-[0-9]{2}-[0-9]{2}(?![0-9])")     # a day as recall's range and a file's name write it
+
+
+def real_day(text: str) -> bool:
+    """`text` is YYYY-MM-DD, a day of the calendar, and nothing else."""
+    try:
+        return bool(DAY.fullmatch(text) and date.fromisoformat(text))
+    except ValueError:
+        return False
+
+
+def named_days(path: str) -> list[str]:
+    """The days a file's own name holds (a day log's one, a dated note's among its other words): never a folder's, never the
+    file's time on disk. A fact file, the curated file and the docs hold none."""
+    return [d for d in DAY.findall(path.rpartition("/")[2]) if real_day(d)]
+
+
+def in_range(path: str, since: str, until: str) -> bool:
+    """The file's name holds a day from `since` through `until`, the two ends in it; an empty one is no bound."""
+    return any(since <= d and (not until or d <= until) for d in named_days(path))
+
+
+def no_range(since: str, until: str) -> str:
+    """Why recall takes no such range, in one line; "" for one it takes, no range among them."""
+    for name, given in (("since", since), ("until", until)):
+        if given and not real_day(given):
+            return words.RECALL_DAY.format(name=name, given=words.line(one_line(given), 40))
+    return words.RECALL_ORDER.format(since=since, until=until) if since and until and since > until else ""
+
+
 def index_status(s: Settings) -> dict[str, Any]:
     """What yerk-index wrote about itself (index.json), or {} when nothing is serving."""
     try:
@@ -1157,14 +1187,20 @@ def recalled(s: Settings, reader: Reader | None, path: Path, text: str) -> bool:
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
-           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True) -> dict[str, Any]:
+           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True,
+           since: str = "", until: str = "") -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
     yerk-index serves one and `wide`, waiting `wait` for it at most (the bench's rank reads these; the recall tool cuts them). A timeout and a
     failure of the index read differently (L54); a provider timeout or error reads differently from
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
-    `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
+    `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114).
+    With `since` or `until` only a file whose own name holds a day in the range is a candidate, in both halves, the reader's
+    rule still over it: in SQL before the keyword pool is cut, and from MEANING_MOST of yerk-index's rows, which it cannot filter."""
+    if no := no_range(since, until):
+        return {"ok": False, "status": "refused", "error": no}
     k = max(1, min(int(k), 20))
+    only = functools.partial(in_range, since=since, until=until) if since or until else None
     def mine(path: str, text: str) -> bool:
         return recalled(s, reader, Path(path), text)
     keep = mine if s.scoped or reader and (not reader.owner or reader.sealed) else None     # an unscoped owner room: no filter, as before
@@ -1173,7 +1209,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs, keep=keep, most=READ_ON)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs, keep=keep, most=READ_ON, only=only)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -1183,11 +1219,13 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query, pool=MEANING_MOST if keep else POOL, deadline_s=wait) if wide else ("off", [])
+    state, vectors = meaning(s, query, pool=MEANING_MOST if keep or only else POOL, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
         vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
+    if only:                 # nor the range's
+        vectors = [h for h in vectors if only(h["path"])]
     if keep:                 # nor this one: the room's meaning rows, MEANING_MOST of them, pass the same filter as its keyword rows
         vectors = [h for h in vectors if keep(h["path"], str(h.get("text", "")))]
     hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)
@@ -1200,13 +1238,19 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
 
 
 def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None, chars: int = 0,
-           wait: float = MEANING_WAIT, docs: bool = True) -> dict[str, Any]:
+           wait: float = MEANING_WAIT, docs: bool = True, since: str = "", until: str = "") -> dict[str, Any]:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
     together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
-    adds its best line, at most EXTRA."""
+    adds its best line, at most EXTRA. `since` and `until` keep it to files named for a day in that range (`ranked`); a range with no
+    hit is searched once more without it, for the same reader, and the answer says so: `widened`, and a `line` for the room."""
     weights: dict[str, float] = {}
-    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs)
+    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs, since=since, until=until)
+    if r["ok"] and not r["hits"] and (since or until):
+        r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs)
+        if r["ok"]:                 # the line before the hits it is about
+            days = since if since == until else " ".join(x for x in (since and f"from {since}", until and f"until {until}") if x)
+            r = {"ok": True, "status": r["status"], "widened": True, "line": words.RECALL_WIDENED.format(days=days), "hits": r["hits"]}
     return {**r, "hits": snippets(r["hits"], weights, chars or s.recall_chars)} if r["ok"] else r
 
 
@@ -1571,12 +1615,30 @@ def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"questions": len(scored), "top_k": top_k, "top_1": top_1, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3)}
 
 
-def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, Any]:
+def dated(s: Settings, asked: list[tuple[dict[str, Any], int | None, re.Pattern[str]]], k: int = 6) -> dict[str, Any]:
+    """The range measured: the scored questions whose answer sits in a date-named file (`gold`, the answer's cites; the first one's
+    day), how many are in the top k plainly (`asked` holds each one's rank) and how many with that day as `since` and `until`, with
+    no widening. A search that did not finish is no miss (L54): the object then says only that."""
+    out = {"questions": 0, "top_k": 0, "top_k_day": 0}
+    for q, rank, stale in asked:
+        if not (day := next((d for x in q.get("gold") or [] for d in named_days(str(x))), "")):
+            continue
+        r = ranked(s, str(q["q"]), k, deadline_s=30.0, since=day, until=day)
+        if not r["ok"]:
+            return {"status": r["status"]}
+        for key, n in (("questions", 1), ("top_k", rank), ("top_k_day", rank_of(r["hits"], q, stale))):
+            out[key] += bool(n)
+    return out
+
+
+def bench(s: Settings, questions: Path | None = None, k: int = 6, days: bool = False) -> dict[str, Any]:
     """Each question's search; a hit is a result in the top k whose whole chunk holds every answer token
     and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
     whose snippet, as recall hands it to the room, still holds every answer token. The file is the recall kind; each other
-    kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart."""
+    kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart. With
+    `days` (the weekly run) the dated questions are then run with their day too (`dated`), which no number here is made from."""
     qfile, rows = questions or s.bench, []
+    asked: list[tuple[dict[str, Any], int | None, re.Pattern[str]]] = []
     for kind, f in ((x, qfile if x == "recall" else qfile.with_name(f"{x}-questions.json")) for x in KINDS):
         if kind != "recall" and not f.is_file():
             continue
@@ -1592,11 +1654,13 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
             rows.append({"id": q["id"], "kind": kind, "control": bool(q.get("control")), "rank": rank,
                          "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
                          "top": r["hits"][0]["path"] if r["hits"] else None})
+            asked += [] if q.get("control") else [(q, rank, stale)]
     scored = [r for r in rows if not r["control"]]
     return {"ok": True, **score(rows), "controls": len(rows) - len(scored), "k": k,
             "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
-            "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile)}
+            "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile),
+            **({"dated": dated(s, asked, k)} if days else {})}
 
 
 def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
