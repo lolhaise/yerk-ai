@@ -245,6 +245,17 @@ def test_deep_recall_leaves_out_an_ended_bullet_and_note_from_the_day_after_and_
     assert got == day_lines | facts, sorted(got)          # 7 closed past its until, 8 superseded: out on every day, as before
 
 
+def test_deep_recall_hands_over_a_marked_bullet_of_a_file_that_is_no_fact_file_and_no_day_log(tmp_path):
+    """The rule is for the lines `remember` and the promotion file: a fact file's bullet and a day log's room note. A standing file's
+    bullet holding the same characters is neither, and no sweep takes it: deep recall hands it over on any day."""
+    s = readers_tree(tmp_path)
+    (s.root / "example-shed.md").write_text("# Example shed\n\n- Example ladder: kept in the shed [until 2026-11-20]\n")
+    memindex.Index(s.index_db, s.scope).sync()
+    for when in DAYS.values():
+        got = {x["cite"] for x in memory.lines_on(s, "example ladder", None, 8, None, 20, now=when)}
+        assert "memory/example-shed.md:3" in got, sorted(got)
+
+
 @pytest.mark.parametrize("when", list(DAYS))
 def test_the_rooms_topic_lines_and_the_pack_leave_out_an_ended_note_from_the_day_after(tmp_path, when):
     s = readers_tree(tmp_path)
