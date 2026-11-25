@@ -605,7 +605,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         return 3 if r["status"] == "timeout" else 1
     keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost", "kinds")
     row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **{x: r[x] for x in keep},
-           "misses": [x["id"] for x in r["rows"] if not x["rank"]], "dated": r["dated"]}      # last: the plain row as it was, byte for byte
+           "misses": [x["id"] for x in r["rows"] if not x["rank"]], "dated": r["dated"], "k12": r["k12"]}      # last: the plain row as it was
     (state / "memory").mkdir(parents=True, exist_ok=True)
     with open(state / "memory" / "recall-bench.jsonl", "a") as f:
         f.write(json.dumps(row) + "\n")
@@ -623,6 +623,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
             print(f"{x}: top {r['k']} {n['top_k']}/{n['questions']} ({n['top_k_rate']:.1%})   top one {n['top_1']}/{n['questions']} "
                   f"({n['top_1_rate']:.1%})")
         print("dated: " + (r["dated"].get("status") or "top {} {top_k}/{questions} without the day, {top_k_day}/{questions} with it".format(r["k"], **r["dated"])))
+        print("k12: " + (r["k12"].get("status") or "top {} {top_k}/{}, answer in the snippet {kept}/{top_k}".format(memory.RECALL_K, r["questions"], **r["k12"])))
         if r["blind"]:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
     for d in drops:

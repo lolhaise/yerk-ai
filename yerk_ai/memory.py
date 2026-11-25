@@ -1657,9 +1657,12 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6, days: bool = F
     and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
     whose snippet, as recall hands it to the room, still holds every answer token. The file is the recall kind; each other
     kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart. With
-    `days` (the weekly run) the dated questions are then run with their day too (`dated`), which no number here is made from."""
+    `days` (the weekly run) the dated questions are then run with their day too (`dated`) and the twelve beside the six (`k12`: the
+    scored questions' hits in the first RECALL_K and those kept in the snippet), neither of which any number here is made from. The
+    weekly run is of six, so its one search is of twelve, whose first six are the call of six's own; any other k asks twice."""
     qfile, rows = questions or s.bench, []
     asked: list[tuple[dict[str, Any], int | None, re.Pattern[str]]] = []
+    both, k12 = days and k == RECALL_HITS, {"top_k": 0, "kept": 0} if days else {}
     for kind, f in ((x, qfile if x == "recall" else qfile.with_name(f"{x}-questions.json")) for x in KINDS):
         if kind != "recall" and not f.is_file():
             continue
@@ -1667,21 +1670,31 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6, days: bool = F
         stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
         for q in data["questions"]:
             weights: dict[str, float] = {}
-            r = ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
+            r = ranked(s, str(q["q"]), RECALL_K if both else k, deadline_s=30.0, weights=weights)
             if not r["ok"]:
                 return {"ok": False, "status": r["status"], "error": r["error"]}
-            rank = rank_of(r["hits"], q, stale)
-            cut = snippets(r["hits"], weights, s.recall_chars) if rank else []
+            hits = r["hits"][:k]
+            rank = rank_of(hits, q, stale)
+            cut = snippets(hits, weights, s.recall_chars) if rank else []
             rows.append({"id": q["id"], "kind": kind, "control": bool(q.get("control")), "rank": rank,
                          "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
-                         "top": r["hits"][0]["path"] if r["hits"] else None})
+                         "top": hits[0]["path"] if hits else None})
             asked += [] if q.get("control") else [(q, rank, stale)]
+            if days and not q.get("control") and "status" not in k12:
+                if not both:                           # any other k: its own search, beside the plain one
+                    weights.clear()
+                    r = ranked(s, str(q["q"]), RECALL_K, deadline_s=30.0, weights=weights)
+                if not r["ok"]:                        # a search that did not finish is no miss (L54): `k12` then says only that
+                    k12 = {"status": r["status"]}
+                elif at := rank_of(r["hits"][:RECALL_K], q, stale):
+                    k12["top_k"] += 1
+                    k12["kept"] += has_all(snippets(r["hits"][:RECALL_K], weights, s.recall_chars)[at - 1]["text"], list(q["answer_tokens"]))
     scored = [r for r in rows if not r["control"]]
     return {"ok": True, **score(rows), "controls": len(rows) - len(scored), "k": k,
             "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
             "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile),
-            **({"dated": dated(s, asked, k)} if days else {})}
+            **({"dated": dated(s, asked, k), "k12": k12} if days else {})}
 
 
 def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:

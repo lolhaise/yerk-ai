@@ -331,19 +331,19 @@ def test_the_bench_runs_the_dated_questions_both_ways_and_its_plain_numbers_are_
     s, qfile = questions(tmp_path)
     was, got = shipped_bench(s, qfile), memory.bench(s, qfile, days=True)
     assert got["dated"] == {"questions": 4, "top_k": 1, "top_k_day": 3}
-    assert json.dumps({k: v for k, v in got.items() if k != "dated"}) == json.dumps(was) == json.dumps(memory.bench(s, qfile))
+    assert json.dumps({k: v for k, v in got.items() if k not in ("dated", "k12")}) == json.dumps(was) == json.dumps(memory.bench(s, qfile))
     assert (was["questions"], was["top_k"]) == (6, 3)                           # q1, q3 and e1 plainly missed
     args = ["recall-bench", "--private", str(s.private), "--state", str(tmp_path / "state"), "--questions", str(qfile)]
     assert cli.main(args) == 0
     raw = (tmp_path / "state" / "memory" / "recall-bench.jsonl").read_text().splitlines()[-1]
     keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost", "kinds")     # as it was
     plain = json.dumps({"at": json.loads(raw)["at"], **{x: was[x] for x in keep}, "misses": [x["id"] for x in was["rows"] if not x["rank"]]})
-    assert raw == plain[:-1] + ', "dated": {"questions": 4, "top_k": 1, "top_k_day": 3}}'
+    assert raw.startswith(plain[:-1] + ', "dated": {"questions": 4, "top_k": 1, "top_k_day": 3}, "k12": {"top_k": ')      # k12: tests/test_recall_twelve.py
     assert "dated: top 6 1/4 without the day, 3/4 with it" in capsys.readouterr().out.splitlines()
     real = memory.ranked                                                         # a dated search that did not finish is no miss, and
     monkeypatch.setattr(memory, "ranked", lambda *a, **k: {"ok": False, "status": "timeout", "error": "busy"} if k.get("since") else real(*a, **k))
     late = memory.bench(s, qfile, days=True)                                     # the plain numbers stand
-    assert late["dated"] == {"status": "timeout"} and json.dumps({k: v for k, v in late.items() if k != "dated"}) == json.dumps(was)
+    assert late["dated"] == {"status": "timeout"} and json.dumps({k: v for k, v in late.items() if k not in ("dated", "k12")}) == json.dumps(was)
     assert cli.main(args) == 0 and "dated: timeout" in capsys.readouterr().out.splitlines()
 
 
