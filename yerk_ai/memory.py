@@ -1615,12 +1615,30 @@ def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"questions": len(scored), "top_k": top_k, "top_1": top_1, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3)}
 
 
-def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, Any]:
+def dated(s: Settings, asked: list[tuple[dict[str, Any], int | None, re.Pattern[str]]], k: int = 6) -> dict[str, Any]:
+    """The range measured: the scored questions whose answer sits in a date-named file (`gold`, the answer's cites; the first one's
+    day), how many are in the top k plainly (`asked` holds each one's rank) and how many with that day as `since` and `until`, with
+    no widening. A search that did not finish is no miss (L54): the object then says only that."""
+    out = {"questions": 0, "top_k": 0, "top_k_day": 0}
+    for q, rank, stale in asked:
+        if not (day := next((d for x in q.get("gold") or [] for d in named_days(str(x))), "")):
+            continue
+        r = ranked(s, str(q["q"]), k, deadline_s=30.0, since=day, until=day)
+        if not r["ok"]:
+            return {"status": r["status"]}
+        for key, n in (("questions", 1), ("top_k", rank), ("top_k_day", rank_of(r["hits"], q, stale))):
+            out[key] += bool(n)
+    return out
+
+
+def bench(s: Settings, questions: Path | None = None, k: int = 6, days: bool = False) -> dict[str, Any]:
     """Each question's search; a hit is a result in the top k whose whole chunk holds every answer token
     and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
     whose snippet, as recall hands it to the room, still holds every answer token. The file is the recall kind; each other
-    kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart."""
+    kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart. With
+    `days` (the weekly run) the dated questions are then run with their day too (`dated`), which no number here is made from."""
     qfile, rows = questions or s.bench, []
+    asked: list[tuple[dict[str, Any], int | None, re.Pattern[str]]] = []
     for kind, f in ((x, qfile if x == "recall" else qfile.with_name(f"{x}-questions.json")) for x in KINDS):
         if kind != "recall" and not f.is_file():
             continue
@@ -1636,11 +1654,13 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
             rows.append({"id": q["id"], "kind": kind, "control": bool(q.get("control")), "rank": rank,
                          "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
                          "top": r["hits"][0]["path"] if r["hits"] else None})
+            asked += [] if q.get("control") else [(q, rank, stale)]
     scored = [r for r in rows if not r["control"]]
     return {"ok": True, **score(rows), "controls": len(rows) - len(scored), "k": k,
             "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
-            "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile)}
+            "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile),
+            **({"dated": dated(s, asked, k)} if days else {})}
 
 
 def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:

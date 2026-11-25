@@ -4,13 +4,15 @@ is a placeholder."""
 import asyncio
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from yerk_ai import jobs, mcp_server, memindex, memory, words
+from yerk_ai import cli, jobs, mcp_server, memindex, memory, words
+from yerk_ai.config import EXAMPLE_PRIVATE
 
 from test_room_scope import install, sync
 
@@ -279,3 +281,79 @@ def test_the_prompt_hooks_own_search_is_as_it_was(tmp_path, monkeypatch):
     assert [(h["cite"], len(h["text"])) for h in got["hits"]] == pinned[:4]
     assert [(h["cite"], len(h["text"])) for h in y.recall_for("example-room", ask)[2]] == pinned
     assert seen and all((a[8:] in ((), ("", ""))) and not (k.get("since") or k.get("until")) for a, k in seen)
+
+
+# R6: the bench
+def shipped_bench(s: memory.Settings, qfile: Path, k: int = 6) -> dict:
+    """memory.bench as it was before the range (main 66377a20), kept here to hold the plain numbers to it byte for byte."""
+    rows = []
+    for kind, f in ((x, qfile if x == "recall" else qfile.with_name(f"{x}-questions.json")) for x in memory.KINDS):
+        if kind != "recall" and not f.is_file():
+            continue
+        data = json.loads(f.read_text())
+        stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
+        for q in data["questions"]:
+            weights: dict[str, float] = {}
+            r = memory.ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
+            rank = memory.rank_of(r["hits"], q, stale)
+            cut = memory.snippets(r["hits"], weights, s.recall_chars) if rank else []
+            rows.append({"id": q["id"], "kind": kind, "control": bool(q.get("control")), "rank": rank,
+                         "kept": memory.has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
+                         "top": r["hits"][0]["path"] if r["hits"] else None})
+    scored = [r for r in rows if not r["control"]]
+    return {"ok": True, **memory.score(rows), "controls": len(rows) - len(scored), "k": k,
+            "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
+            "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
+            "kinds": {x: memory.score(xs) for x in memory.KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile)}
+
+
+def questions(tmp_path: Path) -> tuple[memory.Settings, Path]:
+    """Two day logs' lines that 200 chunks outrank, one that ranks plainly, and facts; six questions, one a control."""
+    crowd = "\n".join(f"## note {n}\n\nkettle kettle kettle {n}" for n in range(200))
+    filler = "some other words of the day, " * 12
+    s = layer(tmp_path, {"2026-01-04": crowd, DAY: f"- 09:00 a person: {filler}a kettle was teal", "2026-01-06": "- 09:00 a person: the lamp is red"},
+              facts__kettle="# Kettle\n\n- The kettle holds a litre.\n")
+    at = s.private / "evals"
+    at.mkdir()
+    (at / "recall-questions.json").write_text(json.dumps({"questions": [
+        {"id": "c1", "q": "which lamp", "answer_tokens": ["lamp"], "control": True, "gold": ["daily/2026-01-06.md:3"]},
+        {"id": "q1", "q": "the kettle", "answer_tokens": ["teal"], "gold": [f"memory/{DAY}.md:3"]},                    # only with its day
+        {"id": "q2", "q": "what colour is the lamp", "answer_tokens": ["red"], "gold": ["daily/2026-01-06.md:3"]},      # both ways
+        {"id": "q3", "q": "the kettle", "answer_tokens": ["nowhere"], "gold": ["facts/kettle.md:3", f"/abs/{DAY}.md:3"]},  # neither
+        {"id": "q4", "q": "litre", "answer_tokens": ["litre"], "gold": ["facts/kettle.md:3"]},                          # no day
+        {"id": "q5", "q": "the lamp", "answer_tokens": ["lamp"]}]}))                                                    # no gold
+    (at / "episodic-questions.json").write_text(json.dumps({"questions": [
+        {"id": "e1", "kind": "episodic", "q": "kettle", "answer_tokens": ["teal"], "gold": [f"{DAY}-notes.md:1", "2026-01-06.md:3"]}]}))
+    return s, at / "recall-questions.json"
+
+
+def test_the_bench_runs_the_dated_questions_both_ways_and_its_plain_numbers_are_as_they_were(tmp_path, monkeypatch, capsys):
+    s, qfile = questions(tmp_path)
+    was, got = shipped_bench(s, qfile), memory.bench(s, qfile, days=True)
+    assert got["dated"] == {"questions": 4, "top_k": 1, "top_k_day": 3}
+    assert json.dumps({k: v for k, v in got.items() if k != "dated"}) == json.dumps(was) == json.dumps(memory.bench(s, qfile))
+    assert (was["questions"], was["top_k"]) == (6, 3)                           # q1, q3 and e1 plainly missed
+    args = ["recall-bench", "--private", str(s.private), "--state", str(tmp_path / "state"), "--questions", str(qfile)]
+    assert cli.main(args) == 0
+    raw = (tmp_path / "state" / "memory" / "recall-bench.jsonl").read_text().splitlines()[-1]
+    keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost", "kinds")     # as it was
+    plain = json.dumps({"at": json.loads(raw)["at"], **{x: was[x] for x in keep}, "misses": [x["id"] for x in was["rows"] if not x["rank"]]})
+    assert raw == plain[:-1] + ', "dated": {"questions": 4, "top_k": 1, "top_k_day": 3}}'
+    assert "dated: top 6 1/4 without the day, 3/4 with it" in capsys.readouterr().out.splitlines()
+    real = memory.ranked                                                         # a dated search that did not finish is no miss, and
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: {"ok": False, "status": "timeout", "error": "busy"} if k.get("since") else real(*a, **k))
+    late = memory.bench(s, qfile, days=True)                                     # the plain numbers stand
+    assert late["dated"] == {"status": "timeout"} and json.dumps({k: v for k, v in late.items() if k != "dated"}) == json.dumps(was)
+    assert cli.main(args) == 0 and "dated: timeout" in capsys.readouterr().out.splitlines()
+
+
+def test_the_ratchet_is_not_asked_about_the_dated_object(tmp_path):
+    n = {"questions": 209, "top_k": 126, "top_1": 69, "top_k_rate": 0.6, "top_1_rate": 0.3}
+    rows = [{"k": 6, **n, "kinds": {"recall": n}, "dated": {"questions": 148, "top_k": 90, "top_k_day": x}} for x in (120, 120, 120, 120, 0)]
+    assert memory.ratchet(rows, []) is None and memory.ratchet([{k: v for k, v in r.items() if k != "dated"} for r in rows], []) is None
+
+
+def test_the_example_layers_question_files_name_no_gold_and_the_object_counts_none(tmp_path):
+    s = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state", {"timezone": "UTC"})
+    reindex(s)
+    assert memory.bench(s, EXAMPLE_PRIVATE / "evals" / "recall-questions.json", days=True)["dated"] == {"questions": 0, "top_k": 0, "top_k_day": 0}

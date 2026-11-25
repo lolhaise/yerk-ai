@@ -598,14 +598,14 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     if not qfile.is_file():
         print(f"no question set at {qfile} ([memory] bench in yerkd.toml names it)", file=sys.stderr)
         return 2
-    r = memory.bench(s, qfile, a.k)
+    r = memory.bench(s, qfile, a.k, days=True)
     if not r["ok"]:
         print(f"recall-bench: the index {'timed out (busy, not down)' if r['status'] == 'timeout' else 'failed'}: "
               f"{r['error']}", file=sys.stderr)
         return 3 if r["status"] == "timeout" else 1
     keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost", "kinds")
     row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **{x: r[x] for x in keep},
-           "misses": [x["id"] for x in r["rows"] if not x["rank"]]}
+           "misses": [x["id"] for x in r["rows"] if not x["rank"]], "dated": r["dated"]}      # last: the plain row as it was, byte for byte
     (state / "memory").mkdir(parents=True, exist_ok=True)
     with open(state / "memory" / "recall-bench.jsonl", "a") as f:
         f.write(json.dumps(row) + "\n")
@@ -622,6 +622,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         for x, n in r["kinds"].items():
             print(f"{x}: top {r['k']} {n['top_k']}/{n['questions']} ({n['top_k_rate']:.1%})   top one {n['top_1']}/{n['questions']} "
                   f"({n['top_1_rate']:.1%})")
+        print("dated: " + (r["dated"].get("status") or "top {} {top_k}/{questions} without the day, {top_k_day}/{questions} with it".format(r["k"], **r["dated"])))
         if r["blind"]:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
     for d in drops:
