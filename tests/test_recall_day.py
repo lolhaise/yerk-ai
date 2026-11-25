@@ -1,6 +1,8 @@
 """Checks searching memory by day: the `recall` tool's `since` and `until` keep a search to the files named for a day in that range.
 The range is applied before either half of the search (keywords and meaning) cuts its pool, an empty range is searched once more
 is a placeholder."""
+import asyncio
+import json
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -8,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import memindex, memory, words
+from yerk_ai import jobs, mcp_server, memindex, memory, words
 
-from test_room_scope import sync
+from test_room_scope import install, sync
 
 UTC = timezone.utc
 DAY = "2026-01-05"
@@ -180,3 +182,100 @@ def test_the_meaning_half_fuses_only_rows_in_the_range_from_its_larger_pool(tmp_
     assert len(cites(memory.recall(s, "an unrelated ask"))) == 4 and asked[-1] == memory.POOL and len(set(fused[-1])) == 4
     r = memory.recall(s, "an unrelated ask", since="2025-01-01", until="2025-01-01")             # none in range: widened, and whole
     assert r["widened"] and len(cites(r)) == 4 and fused[-2] == [] and asked[-2:] == [memory.MEANING_MOST, memory.POOL]
+
+
+# R5: the reader's rule, in the first search and the widened one
+def test_a_range_never_lets_a_room_read_what_it_may_not(tmp_path):
+    y = install(tmp_path, family=True)
+    mom, today = "family-room", memory.window(y.memory)[0]
+    y.daily.capture("example-room", "o1", "owner", "the owner's private line about the example kettle")
+    y.daily.capture(mom, "p1", "person", "the mother's line about the example kettle", who="mom")
+    sync(y)
+
+    def ask(room: str, query: str, *days: str) -> dict:
+        return asyncio.run(y.tool_recall(room, query, 20, *days))
+    got = ask(mom, "example kettle", today, today)
+    assert "the mother's line" in str(got["hits"]) and "owner's private" not in str(got["hits"]) and len(got["hits"]) == 1
+    assert "periwinkle" not in str(got) and "widened" not in got
+    for query in ("owner's private", "vermilion"):            # what she may not read is in that day, or in no day she reads: as nothing
+        r = ask(mom, query, today, today)
+        assert r["ok"] and r["widened"] is True and r["hits"] == []
+    for days in (("2001-01-01", "2001-01-01"), ("2026-10-19", "2026-10-19")):              # the widened one is hers too: the live day
+        r = ask(mom, "example kettle shed key", *days)                                     # of the read-only roots is in the range
+        assert r["widened"] is True and "the mother's line" in str(r["hits"]) and "owner's private" not in str(r["hits"])
+        assert not [w for w in ("vermilion", "periwinkle") if w in str(r["hits"])]
+        assert r["hits"] == ask(mom, "example kettle shed key")["hits"]
+    r = ask("example-room", "example kettle", today, today)                                # an owner room: both
+    assert "the mother's line" in str(r["hits"]) and "owner's private" in str(r["hits"])
+
+
+def test_a_range_never_lets_a_sealed_or_a_scoped_room_out_of_its_roots(tmp_path):
+    y = install(tmp_path, sealed=True)
+    today = memory.window(y.memory)[0]
+    y.daily.capture("live-room", "m2", "user", "the example shed key moved to the saffron shelf")
+    y.daily.capture("frozen-room", "m3", "user", "the example shed key question from the frozen room itself")
+    sync(y)
+
+    def ask(room: str, *days: str) -> dict:
+        return asyncio.run(y.tool_recall(room, "the example shed key by which door, on which shelf", 20, *days))
+    r = ask("frozen-room", "2026-10-19", "2026-10-19")
+    assert "periwinkle" in str(r["hits"]) and "vermilion" not in str(r["hits"]) and "widened" not in r
+    r = ask("frozen-room", today, today)
+    assert "frozen room itself" in str(r["hits"]) and "saffron" not in str(r["hits"]) and "widened" not in r
+    r = ask("frozen-room", "2001-01-01", "2001-01-01")
+    assert r["widened"] is True and "frozen room itself" in str(r["hits"]) and "periwinkle" in str(r["hits"])
+    assert "saffron" not in str(r["hits"]) and "vermilion" not in str(r["hits"])
+    r = ask("live-room", "2026-10-19", "2026-10-19")                                       # scoped and not sealed: its own roots
+    assert "vermilion" in str(r["hits"]) and "periwinkle" not in str(r["hits"])
+    assert "periwinkle" in str(r := ask("example-room", "2026-10-19", "2026-10-19")) and "vermilion" in str(r)
+
+
+# the surfaces: the room's tool, a worker's server and its call to the daemon
+def test_the_room_and_its_workers_hand_the_range_on(tmp_path, monkeypatch):
+    y = install(tmp_path)
+    got = asyncio.run(y.control({"recall": {"room": "example-room", "query": "example shed key", "k": 20,
+                                            "since": "2026-10-19", "until": "2026-10-19"}}, {"kind": "worker"}))
+    assert got["ok"] and cites(got) == ["2026-10-19.md"]
+    assert asyncio.run(y.control({"recall": {"room": "example-room", "query": "x", "since": "Friday"}}))["status"] == "refused"
+    assert cites(asyncio.run(y.control({"recall": {"room": "example-room", "query": "example kettle"}}))) != ["2026-10-19.md"]
+    asked: list[tuple] = []
+
+    async def heard(*a: object) -> dict:
+        asked.append(a)
+        return {"ok": True}
+    monkeypatch.setattr(y, "tool_recall", heard)
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: "example-room")
+    server = mcp_server.build(y, y.port, y.hook)
+    asyncio.run(server.call_tool("recall", {"query": "kettle", "since": DAY, "until": "2026-01-06"}))
+    asyncio.run(server.call_tool("recall", {"query": "kettle", "until": DAY}))
+    asyncio.run(server.call_tool("recall", {"query": "kettle"}))
+    assert asked == [("example-room", "kettle", 6, DAY, "2026-01-06"), ("example-room", "kettle", 6, "", DAY), ("example-room", "kettle", 6, "", "")]
+    sent: list[dict] = []
+    monkeypatch.setattr(jobs, "post_control", lambda state, payload, *a: sent.append(payload) or {"ok": True})
+    worker = mcp_server.worker_server(tmp_path, "example-room", ["recall"])
+    asyncio.run(worker.call_tool("recall", {"query": "kettle", "since": DAY, "until": DAY}))
+    assert sent == [{"recall": {"room": "example-room", "query": "kettle", "k": 6, "since": DAY, "until": DAY}}]
+    for tools in (server, worker):
+        tool = next(t for t in asyncio.run(tools.list_tools()) if t.name == "recall")
+        assert list(tool.inputSchema["properties"]) == ["query", "k", "since", "until"] and tool.inputSchema["required"] == ["query"]
+        said = " ".join(str(tool.description).split())
+        assert said.endswith("\"timeout\" status means busy, not down. `since` and `until` (each YYYY-MM-DD, either alone) keep the search to "
+                             "files named for a day in that range, both ends in it. Work them out from the clock line when the question names a "
+                             "day, a week, a month or a phrase like \"last Sunday\", and leave them out when it names no time.")
+
+
+def test_the_prompt_hooks_own_search_is_as_it_was(tmp_path, monkeypatch):
+    """The search a message starts takes no range, whatever day it names, and hands the same hits at the same sizes: the pinned
+    ones, and byte for byte those of the recall it made before."""
+    y, seen = install(tmp_path), []
+    real = memory.recall
+    ask = "where did the example shed key hang on 2026-10-19?"
+    before = memory.live_first(y.memory, real(y.memory, ask, 4, 3.0, y.reader("example-room"), 1500, 2.0, False), y.reader("example-room"))
+    monkeypatch.setattr(memory, "recall", lambda *a, **k: seen.append((a, k)) or real(*a, **k))
+    got = y.search("example-room", ask, 4, 1500, 2.0, 3.0, docs=False)
+    assert json.dumps(got) == json.dumps(before) and sorted(got) == ["hits", "ok", "status"]
+    day, pinned = "memory/daily/2026-01-0", [("snap/memory/2026-10-19.md:1", 64), ("live/memory/2026-10-19.md:1", 110)]      # main 66377a20's own
+    pinned += [(f"{day}7.md:5", 267), (f"{day}7.md:1", 168), (f"{day}6.md:1", 169), (f"{day}5.md:1", 186)]
+    assert [(h["cite"], len(h["text"])) for h in got["hits"]] == pinned[:4]
+    assert [(h["cite"], len(h["text"])) for h in y.recall_for("example-room", ask)[2]] == pinned
+    assert seen and all((a[8:] in ((), ("", ""))) and not (k.get("since") or k.get("until")) for a, k in seen)
