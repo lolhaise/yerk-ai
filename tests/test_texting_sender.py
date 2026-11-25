@@ -290,7 +290,7 @@ def test_a_text_of_theirs_before_the_fire_time_stops_it_and_a_card_his_word_rele
     assert armed(s, led, rid)["state"] == "cancelled" and led.texting_get(rid)["reason"] == "they wrote again"
     asyncio.run(h.flush())
     assert calls(tmp_path) == [] and shows.posts == []
-    assert shows.edits[-1][2].split("\n")[0] == "📱 Alex · 13:59 · not sent: they wrote again"
+    assert shows.edits[-1][2] == "📱 Alex · 13:59 · not sent: they wrote again"       # one line: a card stored with more is cut to it
 
 
 def test_at_fire_time_a_changed_text_is_decided_again_a_gone_one_cancels_and_an_away_bridge_waits_then_drops_once(tmp_path: Path) -> None:

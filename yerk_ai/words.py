@@ -643,12 +643,13 @@ REPLAY_SENDER_LIMITS = (
     "limit: a thread's file ends where its import does, so its last burst reads as handed with nobody after",
     "he-too, old-agent, nobody: of the texts handed, what came in the hour after the send time; a line of the owner's counts over an old agent's")
 REPLAY_WHEN, REPLAY_SENDER_COLUMNS = ("early", "middle", "late"), ("bursts", "he-first", "they-again", "handed", "he-too", "old-agent", "nobody")
-# a text that may not go on its own (texting/holds.py): one card in the owner's texting room, answered by his word there
+# a text that may not go on its own (texting/holds.py): one card in the owner's texting room, answered by the owner's word there. It shows
+# who, their texts, the draft and the words to answer with; why it waits stays in the ledger (the texting tool's `why` reads it
+# back), and a card once answered is one line, the texts that went under it when one did
 TEXTING_CARD, TEXTING_CARD_MARK = "{mark} {first} · {at} · {state}", {"live": "📱", "dry": "DRY"}
-TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK = "draft:", "draft: a {react} tapback"
-TEXTING_CARD_WHY, TEXTING_CARD_WORDS = "why: {why}", "reply: send · edit <text> · skip"
-TEXTING_CARD_OFF, TEXTING_CARD_ASKS = "checked; release is off for {first}", "reply: edit <text> · skip"     # ASKS: a card with no draft
-TEXTING_CARD_EDIT, TEXTING_CARD_CLEAN = "your words; {found}", "the code finds nothing"
+TEXTING_CARD_DRAFT, TEXTING_CARD_TAPBACK, TEXTING_CARD_TAPPED = "draft:", "draft: a {react} tapback", "a {react} tapback"
+TEXTING_CARD_WORDS = "reply: send · edit <text> · skip"
+TEXTING_CARD_ASKS = "reply: edit <text> · skip"     # a card with no draft
 TEXTING_HOLD_WHAT, TEXTING_NEWER = "a text to {first}", "their newer texts took over its card"
 TEXTING_SHOWS = {"held": "held", "queued": "sending", "would-send": "would send", "skipped": "skipped", "expired": "expired, not sent",
                  "withdrawn": "answered by you {at}", "superseded": "replaced by your edit", "cancelled": "answered by you"}
