@@ -81,6 +81,31 @@ def test_the_tail_is_the_keyword_halfs_own_six_then_the_fused_orders_next(tmp_pa
     assert stems(more)[:12] == stems(r) and len(more["hits"]) == 20 and len(set(h["cite"] for h in more["hits"])) == 20
 
 
+def test_the_tail_takes_the_keyword_halfs_first_six_and_no_more_before_the_fused_orders_next(tmp_path, monkeypatch):
+    """A keyword half of ten: its first six not yet shown come first, and its seventh waits for its own place in the fused order."""
+    s, rows = notes(tmp_path)
+    halves(monkeypatch, rows[:10], rows[10:24])
+    assert stems(memory.recall(s, ASK, 6)) == ["n10", "n11", "n12", "n13", "n14", "n00"]
+    assert stems(memory.recall(s, ASK, 12)) == ["n10", "n11", "n12", "n13", "n14", "n00", "n01", "n02", "n03", "n04", "n05", "n15"]
+    twenty = stems(memory.recall(s, ASK, 20))
+    assert twenty[:12] == stems(memory.recall(s, ASK, 12)) and twenty[12:] == [f"n{i}" for i in range(16, 24)]
+    assert "n06" not in twenty                                                        # keyword rank seven: its fused place is past the twenty
+
+
+def test_a_docs_hit_among_the_first_six_stays_where_a_call_of_six_puts_it(tmp_path, monkeypatch):
+    """The docs come last among the six and last among the rest, each apart: a longer call never moves a docs hit of the six below the rest."""
+    s, rows = notes(tmp_path)
+    (s.docs / "claude").mkdir()
+    (s.docs / "claude" / "guide.md").write_text("---\nclass: shared\n---\n# Guide\n\nA kettle in the docs, on a shelf.\n")
+    reindex(s)
+    doc = next(c for c in chunks(s) if Path(c["path"]).name == "guide.md")
+    halves(monkeypatch, [doc, *rows[:8]], rows[8:24])                                 # the keyword half's own first: held among the six
+    r6, r12, r20 = (memory.recall(s, ASK, k) for k in (6, 12, 20))
+    assert stems(r6) == ["n08", "n09", "n10", "n11", "n12", "guide"]
+    assert json.dumps(r12["hits"][:6]) == json.dumps(r6["hits"]) == json.dumps(r20["hits"][:6])
+    assert stems(r12)[6:] == ["n00", "n01", "n02", "n03", "n04", "n13"] and stems(r20).count("guide") == 1
+
+
 def test_no_hit_is_shown_twice_and_each_one_past_the_sixth_is_one_line_of_at_most_extra(tmp_path, monkeypatch):
     s, rows = notes(tmp_path)
     long = tmp_path / "private" / "memory" / "facts" / "long.md"
