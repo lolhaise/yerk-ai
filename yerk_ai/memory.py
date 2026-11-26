@@ -267,6 +267,19 @@ def file_class(path: Path) -> tuple[str, str]:
     return cls, room
 
 
+def card_names(path: Path, text: str | None = None) -> list[str]:
+    """What a fact file answers to: its own name, its file name as words, then each name an `aka:` line of its front matter (read
+    whole) gives, comma separated, that mentions.key_of takes, as it gives it; a file that is no fact file, none. Each reader (the
+    mention index, remember, the promotion) compares them as mentions.tokens(name, True) gives them, whole, never by their start."""
+    if path.parent.name != "facts" or path.suffix != ".md":
+        return []
+    with suppress(OSError):
+        text = path.read_text(errors="replace") if text is None else text
+    m = FRONT.match(text or "")
+    aka = [x.partition(":")[2] for x in (m[1].splitlines() if m else []) if x.partition(":")[0].strip() == "aka"]
+    return list(dict.fromkeys([path.stem.replace("-", " ").replace("_", " "), *(k for v in aka for x in v.split(",") if (k := mentions.key_of(x.strip())))]))
+
+
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     """An owner room reads everything; any other room reads shared files and its own room's lines; a sealed one its own lines only."""
     return reader is None or ((reader.owner or cls == "shared") and not reader.sealed) or (
