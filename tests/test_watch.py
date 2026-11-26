@@ -261,7 +261,7 @@ def test_a_watched_channel_files_only_the_owners_lines_so_the_room_never_reads_t
     edit(watched, 601, "squats felt heavier")
     edit(watched, 602, "OpenClaw: drop to 4 sets, then a back-off set", author=other)    # it streams by editing
     edit(own, 702, "someone else here, edited", author=other)
-    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    text = day_log(tmp_path)
     assert "OpenClaw" not in text and "a bot's take" not in text           # the other side, new or edited: never filed
     said = [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
     assert said == ["owner: squats felt heavy", "test-webhook: a test sender", "owner: the owner here",
@@ -301,7 +301,7 @@ def test_another_assistant_where_a_room_watches_is_filed_as_its_own_once_settled
         assert "Three blocks" not in "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))   # not yet settled
         await asyncio.sleep(0.3)
     asyncio.run(run())
-    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    text = day_log(tmp_path)
     said = [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
     assert said == ["owner: explain this very briefly", "other@Ben: here too", "assistant@Ben: Three blocks, ending on the angle."]
     assert "Reading the page" not in text and "a bot's take" not in text and dc.settling == {}
@@ -407,8 +407,15 @@ def watching(tmp_path, conf=None):
     return dc, room, own, watched
 
 
+def day_log(tmp_path):
+    """The day log as one text: its days in date order (the file names), each day's lines in the order filed. A run across
+    00:00 UTC files into two days, and a directory lists its files in no set order, so a glob alone may read the new day
+    first (three of the CI's reds, each at about 00:01 UTC)."""
+    return "".join(p.read_text() for p in sorted((tmp_path / "daily").glob("*.md")))
+
+
 def lines(tmp_path):
-    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    text = day_log(tmp_path)
     return [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
 
 
@@ -762,7 +769,7 @@ def test_a_file_the_other_assistant_attaches_is_saved_to_the_inbox_and_its_turn_
                              + words.FILE_TEXT.format(path=files.sidecar(saved))) and got.files == []
     rows = dc.ledger._select("SELECT * FROM attachments WHERE message_id = ?", ("2002",))
     assert [(r["name"], r["state"], r["path"]) for r in rows] == [("brief v2.pdf", "staged", str(saved))]   # judged, then filed: once
-    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    text = day_log(tmp_path)
     assert memory.MARK.findall(text) == ["2001", "2002"] and f"  - attachment: brief v2.pdf, application/pdf, {len(pdf):,} bytes" in text
     assert own.sent == [] and watched.writes == []
 
