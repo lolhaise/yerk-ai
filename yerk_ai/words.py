@@ -177,6 +177,7 @@ RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; rememb
 FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
               "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
               "filing is {clause}.")
+FILED_NEAR = "a new card was started; if it is one of near's, file the fact again with about as that card's name and replaces naming the line just filed"
 FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
 DUE_SHAPE = "due is YYYY-MM-DD or YYYY-MM-DDTHH:MM, a day or a day and time in this install's zone, not \"{due}\""     # remember's dates
 RECALL_DAY = "{name} is YYYY-MM-DD, one real day, not \"{given}\""          # recall's range (memory.no_range)

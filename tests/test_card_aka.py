@@ -168,7 +168,7 @@ def test_a_card_named_exactly_about_wins_and_two_cards_saying_one_aka_choose_nei
     y = fresh(tmp_path, "two")
     facts = cards(y, {"orla-vantree.md": ORLA, "orla-quay.md": ORLA.replace("Lady Vantree", "Quay Orla").replace("Vantree:", "Quay:")})
     r = remember(y, "example-room", "Orly caught a fish.", "Orly")
-    assert r["cite"] == "tree/facts/orly.md:3"
+    assert r["cite"] == "tree/facts/orly.md:3" and r["near"] == ["orla quay", "orla vantree"]
     assert (facts / "orla-vantree.md").read_text() == ORLA and "fish" not in (facts / "orla-quay.md").read_text()
 
 
@@ -182,3 +182,29 @@ def test_said_a_room_that_is_not_an_owner_room_and_an_aka_on_a_card_that_is_not_
     assert (facts / "orla-vantree.md").read_text() == ORLA
     r = remember(y, "example-room", "Brimmy baked rye.", "Brimmy")
     assert r["cite"] == "tree/facts/brimmy.md:3" and "rye" not in (facts / "brim-quell.md").read_text()
+
+
+def test_a_new_card_beside_one_sharing_its_first_word_by_name_or_aka_says_so_and_files_where_it_would(tmp_path):
+    for i, (have, about, near) in enumerate((
+            ({"orla-vantree.md": "# Orla Vantree\n\n- Orla Vantree: keeps the lighthouse.\n", "quay-orla.md": "# Quay Orla\n"}, "Orla", ["orla vantree"]),
+            ({"orla.md": "# Orla\n\n- Orla: the keeper's niece.\n", "vantree-hall.md": "# Vantree Hall\n"}, "Orla Vantree", ["orla"]),
+            ({"zed-quill.md": "---\naka: Orla\n---\n# Zed Quill\n"}, "Orla Vantree", ["zed quill"]),
+            ({"zed-quill.md": "---\naka: Orla Vantree\n---\n# Zed Quill\n"}, "Orla", ["zed quill"]))):
+        y = fresh(tmp_path, str(i))
+        facts = cards(y, have)
+        r = remember(y, "example-room", "Orla rowed to the point.", about)
+        stem = "-".join(mentions.tokens(about))
+        assert r == {"ok": True, "cite": f"tree/facts/{stem}.md:3", "superseded": [], "refused": [], "not_edited": [], "near": near,
+                     "near_next": words.FILED_NEAR, "next": NEXT}, about
+        assert all((facts / n).read_text() == t for n, t in have.items())
+        assert "near" not in remember(y, "example-room", "Orla rowed back.", about)          # a card that exists: none
+
+
+def test_a_new_card_with_no_neighbour_answers_as_main_and_six_neighbours_give_five_sorted(tmp_path):
+    y = daemon(tmp_path)
+    cards(y, {"orla-vantree.md": ORLA, "quay-orla.md": "---\naka: Gull Orla\n---\n# Quay Orla\n"})
+    assert remember(y, "example-room", "Example kettle: painted teal.", "example kettle") == {
+        "ok": True, "cite": "tree/facts/example-kettle.md:3", "superseded": [], "refused": [], "not_edited": [], "next": NEXT}
+    y = fresh(tmp_path, "six")
+    cards(y, {f"orla-{w}.md": f"# Orla {w}\n" for w in ("heath", "fen", "bay", "glen", "dune", "cove")})
+    assert remember(y, "example-room", "Orla rowed to the point.", "Orla")["near"] == ["orla bay", "orla cove", "orla dune", "orla fen", "orla glen"]
