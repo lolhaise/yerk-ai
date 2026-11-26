@@ -666,7 +666,7 @@ def test_a_card_is_never_filed_and_the_plain_message_after_it_is(tmp_path, monke
     async def run():
         dc.loop = asyncio.get_running_loop()
         live, turned = (Msg(watched, mid, CARD, author=HELPER, name="helper-bot") for mid in (1801, 1802))
-        live.created_at = turned.created_at = datetime.now(timezone.utc)
+        live.created_at = turned.created_at = now - timedelta(seconds=120)   # as old as the two below: one day; it settles from its edit
         for m in (live, turned):
             await dc.on_message(m)
         await asyncio.sleep(0.05)
