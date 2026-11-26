@@ -296,3 +296,44 @@ def test_a_card_with_front_matter_keeps_it_its_pointer_over_the_first_line_blank
     assert (s.root / "superseded.tsv").read_text() == "memory/facts/addie.md:6\tmemory/facts/ada-example.md:5\n"
     hit = {"ok": True, "hits": [{"cite": "memory/daily/2026-11-24.md:3", "text": day.splitlines()[2]}]}
     assert [h["cite"] for h in memory.live_first(s, hit)["hits"]] == ["memory/facts/ada-example.md:5", "memory/daily/2026-11-24.md:3"]
+
+
+def test_deep_recall_on_a_targets_name_hands_no_pointer_line_of_a_card_moved_to_it_and_a_line_that_only_says_the_words_as_before(tmp_path):
+    """A moved card reads `# moved to: <its target's own name>`, a line holding every word of that name: where its lines went, no line on it."""
+    s, private = tree(tmp_path, MERGE)
+    assert cards.merge(s, private, "addie", "ada example", go=True) == 0
+    memindex.Index(s.index_db, s.scope).sync()
+    got = memory.lines_on(s, "ada example")
+    assert got and {x["cite"].rpartition(":")[0] for x in got} == {"memory/facts/ada-example.md"} and not any("moved to" in x["text"] for x in got), got
+    (s.root / "facts" / "ada-example.md").write_text("# Ada Example\n\n- Ada Example: asked if the ferry moved to: the ada example pier.\n")
+    (s.root / "notes.md").write_text("# Notes\n\n# moved to: ada example\n")                           # no fact file: a heading, handed as before
+    memindex.Index(s.index_db, s.scope).sync()
+    assert sorted(x["cite"] for x in memory.lines_on(s, "ada example")) == ["memory/facts/ada-example.md:3", "memory/notes.md:3"]   # words only: handed
+
+
+def test_a_merge_into_a_card_whose_own_name_a_second_card_folds_to_is_refused_and_writes_nothing(tmp_path, capsys):
+    """A's pointer names B by its own name; with a second card folding to that name memory.moves follows it to neither, and A would
+    be left emptied and reaching nothing while the command said merged."""
+    s, private = tree(tmp_path, {**MERGE, "facts/ada_example.md": "# Ada example\n\n- Ada example: the other one.\n"})
+    before = snap(tmp_path)
+    for go in (False, True):
+        assert cards.merge(s, private, "addie", "ada-example", go) == 2
+        err = capsys.readouterr().err
+        assert "ada-example.md and ada_example.md answer to one name" in err and len(err.splitlines()) == 1 and snap(tmp_path) == before, err
+    (s.root / "facts" / "ada_example.md").unlink()
+    (s.root / "facts" / "ada.md").write_text("# Ada\n\n" + line(7, "Ada: mends the nets.") + "\n")       # a first word shared is no shared name
+    assert cards.merge(s, private, "ada", "ada-example", go=True) == 0 and cards.merge(s, private, "addie", "ada-example", go=True) == 0
+    moved = memory.moves(s.root, memory.local_day(s))
+    assert {c.name: to.name for c, to in moved.items()} == {"ada.md": "ada-example.md", "addie.md": "ada-example.md", "addie-b.md": "ada-example.md"}
+
+
+def test_a_merge_across_two_rooms_of_one_class_is_refused_and_writes_nothing(tmp_path, capsys):
+    """A room card is read by its own room alone: its lines never go onto another room's card, though both say `class: room`."""
+    one, two = ("---\nclass: room\nroom: " + r + "\n---\n# " + n + "\n\n- " + n + ": a line of that room.\n" for r, n in (("room-one", "Quay"), ("room-two", "Quay Two")))
+    s, private = tree(tmp_path, {"facts/quay.md": one, "facts/quay-two.md": two, "facts/quay-three.md": one.replace("# Quay", "# Quay Three")})
+    before = snap(tmp_path)
+    for go in (False, True):
+        assert cards.merge(s, private, "quay", "quay-two", go) == 2
+        err = capsys.readouterr().err
+        assert "a merge keeps to one class and room" in err and len(err.splitlines()) == 1 and snap(tmp_path) == before, err
+    assert cards.merge(s, private, "quay", "quay-three", go=True) == 0                                  # one room: merged

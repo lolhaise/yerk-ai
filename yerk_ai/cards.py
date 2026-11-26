@@ -54,6 +54,8 @@ def plan(s: memory.Settings, a: Path, b: Path, today: date) -> dict[str, Any]:
         return {"refused": f"{a.name} and {b.name} are one card"}
     if (ka := memory.file_class(a)) != (kb := memory.file_class(b)):
         return {"refused": f"{a.name} is {' '.join(filter(None, ka))} and {b.name} is {' '.join(filter(None, kb))}: a merge keeps to one class and room"}
+    if len(twins := [c.name for c in sorted((s.root / "facts").glob("*.md")) if not c.is_symlink() and fold(own(c)) == fold(own(b))]) > 1:
+        return {"refused": f"{' and '.join(twins)} answer to one name, so a pointer to it would name neither (memory.moves): rename one first"}
     if not memory.live(tb, today):
         return {"refused": f"{b.name} is " + (f"moved to {moved[b].stem}: merge into that card" if b in moved else "emptied: no card to merge into")}
     if not memory.live(ta, today):

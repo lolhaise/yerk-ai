@@ -1409,7 +1409,7 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
     of the k chunks the keyword rank gives, unweighed (a name is its words: no meaning search), each holding every word of it; then a standing file's
     lines first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, one
     that asks about it (words.ASKED): an ask is not on file, or a fact file's bullet or a day log's note past its until on `now`'s day
-    (ended). A keyword read that did not finish raises LookupError: it proves no absence."""
+    (ended), or a fact file's pointer line (MOVED). A keyword read that did not finish raises LookupError: it proves no absence."""
     want, today = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}, local_day(s, now)
     out: list[dict[str, Any]] = []
     r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False, weigh=False) if want else {"ok": True}
@@ -1430,7 +1430,8 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
         for i, raw in enumerate(str(h["text"]).splitlines()):
             ln = parse_line(raw)
             if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
-                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day) or not day and h["line"] + i in head(h["path"], fact):
+                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day) or not day and h["line"] + i in head(h["path"], fact) or (
+                    fact and MOVED.fullmatch(raw.strip())):     # a moved card's pointer says where its lines went: never a line on its target
                 continue
             text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else
                                                      marked(raw.strip(), fact, mark_of(h["path"])).removeprefix("- "))

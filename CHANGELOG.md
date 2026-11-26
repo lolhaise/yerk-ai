@@ -15,15 +15,15 @@ version changes.
   each blanked in A, which keeps its line count and title and reads `# moved to: <B's own name>`. `superseded.tsv` gains a row
   per moved line, and a card moved to A is pointed at B. The copies go first to `<private>/backups/cards-merge-<day>/`, the
   undo. Refused with one line, nothing written: a file that is no fact card of the tree, A and B one card, another class or
-  room, B emptied or moved, A holding a pointer already, the writers' lock held for ten seconds. Run again, it finishes a
-  stopped merge without doubling a line.
+  room, B emptied or moved, B's own name shared by a second card, A holding a pointer already, the writers' lock held for
+  ten seconds. Run again, it finishes a stopped merge without doubling a line.
 - `yerk cards near` lists the groups of live cards whose names share a first word, read-only and on demand (`--json`).
 - A card with no line that is not blank, a heading, superseded or past its until is emptied: `remember` counts it as no card,
   so the fact goes to the card whose aka it is, else on that path again. An emptied card whose one pointer line names a live
   card is moved: its own name and aka reach that card in the mention index (its list first, then what else they key), in
   `remember` and in the promotion, and `near` names live cards only, a moved one as its target.
 - Recall's walk goes on through `superseded.tsv` from a line a merge moved, so a day-log note a card's line replaced still
-  shows the line where it now is. Deep recall no longer hands a front matter line (an `aka:` line) or a card's title.
+  shows the line where it now is. Deep recall no longer hands a front matter line (an `aka:` line), a card's title or a moved card's pointer.
 - A tree with no pointer builds the same name index as before.
 
 **Upgrading:** nothing to do. No card is merged, emptied or pointed until the owner runs a merge.
