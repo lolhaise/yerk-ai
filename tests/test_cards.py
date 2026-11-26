@@ -285,3 +285,14 @@ def test_after_a_merge_each_reader_reaches_b_by_as_name_and_a_moved_dated_line_i
     assert [x["cite"] for x in due.Index(s.due).load()] == ["memory/facts/ada-example.md:8"]
     r = memory.remember(s, memory.DailyLog(s.daily, s.tz), "example-room", "m-9", "Addie rowed back.", about="Addie")
     assert r["cite"] == "memory/facts/ada-example.md:9"
+
+
+def test_a_card_with_front_matter_keeps_it_its_pointer_over_the_first_line_blanked_and_recall_walks_on_from_that_pointer(tmp_path):
+    a = "---\naka: Addy Bee\n---\n# Addie\n\n" + line(1, "Addie: rows the ferry on Sundays.") + "\n"
+    day = "# 2026-11-24\n\n" + memory.mark("- 09:00:00-05:00 example-room note: Addie rows. [c:private] [m:m-9]", "memory/facts/addie.md:6") + "\n"
+    s, private = tree(tmp_path, {"facts/addie.md": a, "facts/ada-example.md": "\n".join(B_LINES) + "\n", "daily/2026-11-24.md": day})
+    assert cards.merge(s, private, "addie", "ada example", go=True) == 0
+    assert (s.root / "facts" / "addie.md").read_text() == "---\naka: Addy Bee\n---\n# Addie\n\n# moved to: ada example\n"
+    assert (s.root / "superseded.tsv").read_text() == "memory/facts/addie.md:6\tmemory/facts/ada-example.md:5\n"
+    hit = {"ok": True, "hits": [{"cite": "memory/daily/2026-11-24.md:3", "text": day.splitlines()[2]}]}
+    assert [h["cite"] for h in memory.live_first(s, hit)["hits"]] == ["memory/facts/ada-example.md:5", "memory/daily/2026-11-24.md:3"]
