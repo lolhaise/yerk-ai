@@ -1415,12 +1415,22 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
     r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False, weigh=False) if want else {"ok": True}
     if not r["ok"]:
         raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
+    heads: dict[str, set[int]] = {}
+
+    def head(p: str, fact: bool) -> set[int]:          # a file's front matter lines and a fact file's title: never a line on anything (M5)
+        if p not in heads:
+            top = ""
+            with suppress(OSError), open(p, encoding="utf-8", errors="replace") as f:
+                top = f.read(65536)
+            n = len(m[0].splitlines()) if (m := FRONT.match(top)) else 0
+            heads[p] = {*range(1, n + 1), next((k for k, x in enumerate(top.splitlines()[n:], n + 1) if x.startswith("# ")), 0) if fact else 0}
+        return heads[p]
     for h in r.get("hits", []):
         day, fact = Path(h["path"]).stem if is_daylog(h["path"]) else "", Path(h["path"]).parent.name == "facts"
         for i, raw in enumerate(str(h["text"]).splitlines()):
             ln = parse_line(raw)
             if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
-                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day):
+                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day) or not day and h["line"] + i in head(h["path"], fact):
                 continue
             text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else
                                                      marked(raw.strip(), fact, mark_of(h["path"])).removeprefix("- "))

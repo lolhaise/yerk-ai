@@ -10,7 +10,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from yerk_ai import cards, curate, memory, words
+from yerk_ai import cards, curate, memindex, memory, words
 from test_card_aka import NEXT, build, fresh, seen, sync, write
 from test_card_aka import cards as put
 from test_remember import daemon, remember
@@ -240,3 +240,14 @@ def test_recall_shows_bs_line_above_a_day_log_line_a_merged_cards_line_replaced_
     (s.root / "facts" / "addie.md").write_text("# Addie\n" + "\n" * 7)             # the pointer line blank too: on through its row
     (s.root / "superseded.tsv").write_text("memory/facts/addie.md:3\tmemory/facts/addie.md:2\nmemory/facts/addie.md:2\tmemory/facts/addie.md:3\n")
     assert [h["cite"] for h in memory.live_first(s, hit)["hits"]] == ["memory/daily/2026-11-24.md:3"]       # a loop of rows ends
+
+
+def test_deep_recall_hands_no_front_matter_line_and_no_card_title_and_every_other_line_as_before(tmp_path):
+    day = "# 2026-11-24\n\n- 09:00:00-05:00 example-room owner@ann: Addie rang about the ladder. [c:private] [m:m-9]\n"
+    s, _ = tree(tmp_path, {"facts/ada-example.md": "---\naka: addie\n---\n# Ada Example\n\n- Ada Example: keeps the grey ladder.\n"
+                                                   "- Ada Example: says aka Addie on the ferry list.\n", "daily/2026-11-24.md": day,
+                           "notes.md": "---\ntitle: addie notes\n---\n# Addie notes\n\nAddie keeps a ladder.\n"})
+    memindex.Index(s.index_db, s.scope).sync()
+    got = [x["cite"] for x in memory.lines_on(s, "addie")]          # a note's heading is no card title: handed as before
+    assert sorted(got[:-1]) == ["memory/facts/ada-example.md:7", "memory/notes.md:4", "memory/notes.md:6"] and got[-1] == "memory/daily/2026-11-24.md:3"
+    assert sorted(x["cite"] for x in memory.lines_on(s, "ada example")) == ["memory/facts/ada-example.md:6", "memory/facts/ada-example.md:7"]

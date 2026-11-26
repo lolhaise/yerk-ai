@@ -203,7 +203,7 @@ def test_the_sweep_and_every_reader_ask_the_one_rule(tmp_path, monkeypatch):
     deep = [x["cite"] for x in memory.lines_on(s, "example ladder", now=now)]
     topics = [x["cite"] for x in memory.topic_hits(s, ROOM, "the example ladder decided?", now=now)]
     items = [x["cite"] for x in memory.room_items(s, ROOM, now)]
-    assert sorted(deep) == ["memory/daily/2026-11-25.md:4", "memory/facts/example-ladder.md:1", "memory/facts/example-ladder.md:3"], deep
+    assert sorted(deep) == ["memory/daily/2026-11-25.md:4", "memory/facts/example-ladder.md:3"], deep       # a card's title: never (M5)
     assert topics == ["daily/2026-11-25.md:4"] and items == ["daily/2026-11-25.md:4"], (topics, items)
     curate.sweep(s, s.root.parent, [], tmp_path / "b", False, date(2026, 11, 25))
     assert (s.root / "facts" / "example-ladder.md").read_text().split("\n")[1:3] == ["", "- Example ladder: kept (owner-room, 2026-11-25 10:00:00-05:00) [m:b]"]
@@ -241,7 +241,7 @@ def test_deep_recall_leaves_out_an_ended_bullet_and_note_from_the_day_after_and_
     got = {x["cite"] for x in memory.lines_on(s, "example ladder", None, 8, None, 20, now=DAYS[when])}
     after = when == "the day after"
     day_lines = {f"memory/daily/2026-11-25.md:{n}" for n in (3, 4, 5, 6, 9)} - ({"memory/daily/2026-11-25.md:3"} if after else set())
-    facts = {f"memory/facts/example-ladder.md:{n}" for n in (1, 3, 4, 5)} - ({"memory/facts/example-ladder.md:3"} if after else set())
+    facts = {f"memory/facts/example-ladder.md:{n}" for n in (3, 4, 5)} - ({"memory/facts/example-ladder.md:3"} if after else set())   # no title
     assert got == day_lines | facts, sorted(got)          # 7 closed past its until, 8 superseded: out on every day, as before
 
 
