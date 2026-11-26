@@ -1477,6 +1477,83 @@ test("every run is asked for its disagreements and its gaps: the standing words 
   }
 });
 
+// ---- the kept answer, the judge's edges (research-answers-2026-11-26): each was right in the code and stood on no test -----
+test("a question of several lines, with a blank line and a line shaped like a fact, is kept on one line: the file's facts stay the run's own, a second collect finds the file and the list shows it", async () => {
+  const { at, dir } = keptRoom("lines-room");
+  const query = "Which pools open before seven?\n\nRun: agent_run_other\nCost: nothing\tat all";
+  const one = "Which pools open before seven? Run: agent_run_other Cost: nothing at all";
+  const f = exaRuns({ created: RUN("agent_run_lines1", "queued"), reads: [done("agent_run_lines1", query, "minimal", 0.012)] });
+  try {
+    const a = textOf(await webResearch({ query, effort: "minimal" }, { at, deps: rdeps() }));
+    const name = `${dayStamp()}-which-pools-open-before-seven-run-agent-lines1.md`;
+    assert.deepEqual(keptNames(dir), [name, "KEEP"]);
+    const file = path.join(dir, name);
+    assert.deepEqual(fs.readFileSync(file, "utf8").split("\n").slice(0, 7), [HEAD, "", `Question: ${one}`, "Run: agent_run_lines1", "Effort: minimal", "Cost: US$0.012", "Status: completed"]);
+    assert.deepEqual(keptLineOf(a), [`Kept as ${file}: ${READ_KEPT}`]);
+    const st = fs.statSync(file);
+    const b = textOf(await webResearchResult({ run_id: "agent_run_lines1" }, { at, deps: rdeps() }));
+    assert.deepEqual(keptLineOf(b), [`Kept already (not rewritten) as ${file}: ${READ_KEPT}`]); // its Run line was read, so it was found
+    assert.deepEqual([fs.statSync(file).mtimeMs, fs.statSync(file).ino], [st.mtimeMs, st.ino]);
+    assert.deepEqual(keptNames(dir), [name, "KEEP"]);
+    assert.deepEqual(textOf(await webResearchResult({}, { at, deps: rdeps() })).split("\n"), [LIST_HEAD(1), `- ${dayStamp()} · minimal · US$0.012 · "${one}" · ${file}`]);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a kept file is found by its run, never by the id's last six alone: two runs whose ids end alike each keep their own answer, and each collect names its own file", async () => {
+  const { at, dir } = keptRoom("tails-room");
+  const runs = [
+    [done("agent_run_first_Zq9x7k", "Where is the north pool?", "minimal", 0.012), `${dayStamp()}-where-is-the-north-pool-Zq9x7k.md`],
+    [done("agent_run_second_Zq9x7k", "Where is the south pool?", "minimal", 0.012), `${dayStamp()}-where-is-the-south-pool-Zq9x7k.md`],
+  ];
+  for (const [run, name] of runs) {
+    const f = exaRuns({ created: RUN(run.id, "queued"), reads: [run] });
+    try {
+      const t = textOf(await webResearch({ query: run.request.query, effort: "minimal" }, { at, deps: rdeps() }));
+      assert.deepEqual(keptLineOf(t), [`Kept as ${path.join(dir, name)}: ${READ_KEPT}`]); // the second is not taken for the first
+    } finally {
+      f.restore();
+    }
+  }
+  assert.deepEqual(keptNames(dir), [runs[0][1], runs[1][1], "KEEP"]);
+  for (const [run, name] of runs) {
+    const f = exaRuns({ reads: [run] });
+    try {
+      assert.deepEqual(keptLineOf(textOf(await webResearchResult({ run_id: run.id }, { at, deps: rdeps() }))), [`Kept already (not rewritten) as ${path.join(dir, name)}: ${READ_KEPT}`]);
+    } finally {
+      f.restore();
+    }
+    assert.match(fs.readFileSync(path.join(dir, name), "utf8"), new RegExp(`^Run: ${run.id}$`, "m"));
+  }
+});
+
+test("the list takes only a file in the kept file's own shape: one whose first line is not the kept line, one with no blank line under it and one that names no run are each left out, though each is named like an answer", async () => {
+  const { at, dir } = keptRoom("shape-room");
+  await keepOne(at, "agent_run_shape1", "A real question", "minimal", 0.012, dayAgo(0, 9));
+  const facts = "Question: shaped like an answer\nRun: agent_run_stray1\nEffort: low\nCost: US$0.025\nStatus: completed\nSaved: 2026-01-01T00:00:00.000Z\n\nWords.\n";
+  fs.writeFileSync(path.join(dir, `${dayStamp()}-wrong-first-line-stray1.md`), `A note of the room's own.\n\n${facts}`);
+  fs.writeFileSync(path.join(dir, `${dayStamp()}-no-blank-line-stray2.md`), `${HEAD}\nnot blank\n${facts}`);
+  fs.writeFileSync(path.join(dir, `${dayStamp()}-no-run-named-stray3.md`), `${HEAD}\n\n${facts.replace(/^Run: .*\n/m, "")}`);
+  const f = exaRuns({});
+  try {
+    const rows = textOf(await webResearchResult({}, { at, deps: rdeps() })).split("\n");
+    assert.deepEqual(rows, [LIST_HEAD(1), `- ${dayStamp()} · minimal · US$0.012 · "A real question" · ${path.join(dir, `${dayStamp()}-a-real-question-shape1.md`)}`]);
+    assert.equal(f.seen.length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+test("answers of one day are listed by when each was saved, the later first, whatever their names", async () => {
+  const { at } = keptRoom("order-room");
+  await keepOne(at, "agent_run_order1", "Zebra crossings near the school", "minimal", 0.012, dayAgo(0, 8));
+  await keepOne(at, "agent_run_order2", "Apple orchards open this week", "minimal", 0.012, dayAgo(0, 9));
+  await keepOne(at, "agent_run_order3", "Museums free on Sunday", "minimal", 0.012, dayAgo(0, 10));
+  const rows = textOf(await webResearchResult({}, { at, deps: rdeps() })).split("\n");
+  assert.deepEqual(rows.slice(1).map((r) => /"(.*)"/.exec(r)[1]), ["Museums free on Sunday", "Apple orchards open this week", "Zebra crossings near the school"]);
+});
+
 // ---- web_image ------------------------------------------------------------------------------------
 // Example pictures made here: a png any viewer opens (deflated rows, CRC'd chunks), and a jpeg's markers up to its
 // frame header, the part web_image reads its size from (the scan data is left out). A noisy png's pixels come from a
