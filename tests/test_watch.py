@@ -523,7 +523,10 @@ def test_after_a_restart_a_watched_message_with_its_answer_in_history_comes_in_a
 
     async def run():
         await dc.recover(WATCHED, room)
-        await asyncio.sleep(0.05)
+        for _ in range(500):                                        # the turns recover releases: polled, never slept on
+            if len(room.got) == 2 and not dc.order:
+                break
+            await asyncio.sleep(0.01)
     asyncio.run(run())
     at = {s: f"{(now - timedelta(seconds=s)).astimezone(ZoneInfo('Asia/Tokyo')):%H:%M}" for s in (120, 40)}
     folded = " ".join(long.split())
@@ -714,7 +717,10 @@ def test_after_a_restart_a_card_in_history_is_never_the_answer_and_holds_the_wai
 
     async def run():
         await dc.recover(WATCHED, room)
-        await asyncio.sleep(0.05)
+        for _ in range(500):                                        # the turns recover releases: polled, never slept on
+            if len(room.got) == 1 and not dc.order:
+                break
+            await asyncio.sleep(0.01)
         said = f"[Helper answered at {now - timedelta(seconds=280):%H:%M} in #lounge: {REPLY}]"
         assert [(g.id, g.text.splitlines()[-1]) for g in room.got] == [("1901", said)] and dc.held == {}
         dc.ledger.inbound_set("1901", state="answered")
