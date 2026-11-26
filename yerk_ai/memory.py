@@ -308,14 +308,14 @@ def moves(root: Path, today: date, texts: dict[Path, str] | None = None) -> dict
     mentions.tokens(name, True) gives it whole, the own name of exactly one other card of `facts/`, that card live; a pointer on a live
     card, to a card missing, emptied or moved, or one of two in a file, is words. A link is no card. A moved card's names are its target's."""
     folder = (root := root.resolve()) / "facts"
-    got = {c: (texts or {}).get(c) or c.read_text(errors="replace") for c in sorted(folder.glob("*.md")) if c.resolve() == c}
-    on, own = {c: live(x, today) for c, x in got.items()}, dict[str, list[Path]]()
+    got = {c: (texts or {}).get(c) or c.read_text(errors="replace") for c in (sorted(texts) if texts is not None else sorted(folder.glob(
+        "*.md"))) if c.parent == folder and not c.is_symlink()} if folder.resolve() == folder else {}
+    own, out = dict[str, list[Path]](), dict[Path, Path]()
     for c in got:
-        own.setdefault(" ".join(mentions.tokens(card_names(c)[0], True)), []).append(c)
-    out = {}
-    for c, x in got.items():
+        own.setdefault(" ".join(mentions.tokens(c.stem.replace("-", " ").replace("_", " "), True)), []).append(c)
+    for c, x in ((c, x) for c, x in got.items() if "# moved to: " in x):      # a card with no pointer costs no more than its read
         to = [own.get(" ".join(mentions.tokens(m[1], True)), []) for y in body_of(x) if (m := MOVED.fullmatch(y))]
-        if not on[c] and len(to) == 1 and len(to[0]) == 1 and on[to[0][0]]:
+        if len(to) == 1 and len(to[0]) == 1 and not live(x, today) and live(got[to[0][0]], today):
             out[c] = to[0][0]
     return out
 
@@ -804,8 +804,8 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
         to = {moved[path]} if path in moved else {t for c, t in moved.items() if fold(about) in map(fold, names[c][1:])}    # a card started
         alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:]) and c not in moved and live(texts[c], today)]   # there
         path, near = (to.pop(), []) if len(to) == 1 and card(next(iter(to))) else (alias[0], []) if len(alias) == 1 and card(alias[0]) else (
-            path, sorted({names[moved.get(c, c)][0] for c, n in names.items() if moved.get(c, c) != path and (c in moved or live(texts[c], today))
-                          and any(fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n)})[:5])
+            path, sorted({names[moved.get(c, c)][0] for c, n in names.items() if moved.get(c, c) != path and any(
+                fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n) and (c in moved or live(texts[c], today))})[:5])
     if card(path):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
             have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]
