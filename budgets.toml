@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 136028
+total = 136494
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -375,11 +375,18 @@ total = 136028
 # description and input schema, on main be8dc4f5 and on this tree the same way; 43 and 90 more, so as sent 1,284 to 1,327 and
 # 432 to 522 (a plug-in's entry goes out as written), and the other entries (web-ladder's four and the placeholder) 3,914 on
 # the 3,781 line; no other line lowered for it, the total rose by the 133 (to 136,028 on main's 135,895).
+# The same day, before the merge, the line was set from what a room sends (the judge's measure): a live room's newest request
+# shape (Claude Code's own record, 2026-11-26) holds web_fetch 1,228, web_search 1,060, web_research 1,313 and
+# web_research_result 432 beside the 214 placeholder, 4,247 on the 3,781 line. web_search's entry had grown with its filters
+# and web_research's with its cap wording (the cleanup of Nov 10 and 11) and the line was never raised for either, so the
+# 3,914 above stood 466 under. Each entry built as a room sends it (its name, description, input schema and Claude Code's
+# own eager_input_streaming key) equals the sent one byte for byte on main; on this tree web_research is 1,356 and
+# web_research_result 522, the line 4,380 and the total 136,494 (466 more; no other line lowered).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 30933
-deferred_tool_names = 3914
+deferred_tool_names = 4380
 mcp__hands__ = 10970
 mcp__web-ladder__web_image = 913
 skills = 0

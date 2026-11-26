@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 136028`
+- `total = 136494`
 
 ## [session_start.claude_code]
 
@@ -152,12 +152,12 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-25, end-date-2026-11-25 (the owner's order, Wed Nov 25): the `remember` tool's `until` (its parameter and two sentences: a state that ends by a day, never a history, and after the day no longer handed over as current): remember 3,401 to 3,686 as this tree builds it, all 25 from 27,926 to 28,211 (285 more, measured on main d2dc9819 and on this tree the same way, each entry's name, description and input schema as compact JSON; the entries' full dump moves by the same 285), so about 30,933 on the 30,648 above; the line is that count, no part could pay, the total rose by the 285 (to 135,895 on main's 135,610).
 
-2026-11-26, research-answers-2026-11-26 (the owner's order of 12:34, Wed Nov 25): a completed web_research run's answer is kept as a file in the room's work folder, and web_research_result with no run_id lists the last 7 days' (its run_id no longer required): web_research's description one clause longer, 1,282 to 1,325, and web_research_result's one sentence longer and its `required` gone, 401 to 491, each entry measured as `yerk map --wire` counts one, chars(json.dumps(entry)) of its name, description and input schema, on main be8dc4f5 and on this tree the same way; 43 and 90 more, so as sent 1,284 to 1,327 and 432 to 522 (a plug-in's entry goes out as written), and the other entries (web-ladder's four and the placeholder) 3,914 on the 3,781 line; no other line lowered for it, the total rose by the 133 (to 136,028 on main's 135,895).
+2026-11-26, research-answers-2026-11-26 (the owner's order, Wed Nov 25): a completed web_research run's answer is kept as a file in the room's work folder, and web_research_result with no run_id lists the last 7 days' (its run_id no longer required): web_research's description one clause longer, 1,282 to 1,325, and web_research_result's one sentence longer and its `required` gone, 401 to 491, each entry measured as `yerk map --wire` counts one, chars(json.dumps(entry)) of its name, description and input schema, on main be8dc4f5 and on this tree the same way; 43 and 90 more, so as sent 1,284 to 1,327 and 432 to 522 (a plug-in's entry goes out as written), and the other entries (web-ladder's four and the placeholder) 3,914 on the 3,781 line; no other line lowered for it, the total rose by the 133 (to 136,028 on main's 135,895). The same day, before the merge, the line was set from what a room sends (the judge's measure): a live room's newest request shape (Claude Code's own record, 2026-11-26) holds web_fetch 1,228, web_search 1,060, web_research 1,313 and web_research_result 432 beside the 214 placeholder, 4,247 on the 3,781 line. web_search's entry had grown with its filters and web_research's with its cap wording (the cleanup of Nov 10 and 11) and the line was never raised for either, so the 3,914 above stood 466 under. Each entry built as a room sends it (its name, description, input schema and Claude Code's own eager_input_streaming key) equals the sent one byte for byte on main; on this tree web_research is 1,356 and web_research_result 522, the line 4,380 and the total 136,494 (466 more; no other line lowered).
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 30933`
-- `deferred_tool_names = 3914`
+- `deferred_tool_names = 4380`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`

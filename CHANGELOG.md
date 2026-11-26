@@ -32,8 +32,9 @@ version changes.
   `KEEP` and the sweep's differ. The plug-in's Node tests are not run by the box's CI or the gate; run `npm test` in
   plugins/web.
 
-**Upgrading:** nothing to do. budgets.toml's `deferred_tool_names` is 3,914 (web_research's entry 43 longer as sent,
-web_research_result's 90) and `[session_start] total` 136,028; an install that keeps its own budgets.toml takes both. A
+**Upgrading:** nothing to do. budgets.toml's `deferred_tool_names` is 4,380 and `[session_start] total` 136,494; an install
+that keeps its own budgets.toml takes both. web_research's entry is 43 longer as sent and web_research_result's 90, and the
+line is now what a room sends: it had stood 466 under since web_search took its filters back on Nov 11. A
 room's kept answers stay in its work folder until someone removes them.
 
 ### doctor-fresh-examples-2026-11-26 (#142)
