@@ -1626,7 +1626,7 @@ layer = 4
 
 [abilities.remember]
 state = "built"
-what = "The remember tool: a room files a new fact, decision or correction into the install's own memory tree the same turn, each line carrying its room, source message and time. An owner room's fact goes to facts/<about>.md, where mention recall finds it by name; anything else to the room's day log as a note of the room's class, where the recall pack and the topic hit find it. A correction marks every old line it names in that tree as superseded (a line in a read-only root is named in the new line instead), and recall never puts a superseded line above its replacement. A room that is not an owner room writes its own class and supersedes only its own lines."
+what = "The remember tool: a room files a new fact, decision or correction into the install's own memory tree the same turn, each line carrying its room, source message and time. An owner room's fact goes to facts/<about>.md, where mention recall finds it by name; anything else to the room's day log as a note of the room's class, where the recall pack and the topic hit find it. A correction marks every old line it names in that tree as superseded (a line in a read-only root is named in the new line instead), and recall never puts a superseded line above its replacement. A room that is not an owner room writes its own class and supersedes only its own lines. With `until`, the last day a state holds, the line ends with the curation's [until YYYY-MM-DD] mark: from the day after, deep recall, the topic hit and the recall pack leave it out and the sweep blanks a card's, while recall and read_memory still give it as filed."
 tier = "free"
 needs = "nothing; writes <private>/memory/facts/ and the day's log"
 free_path = "this is the free path"

@@ -69,7 +69,7 @@ class Daemon(Protocol):
     async def tool_recall(self, room: str, query: str, k: int, since: str = "", until: str = "") -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "",
-                            due: str = "", owes: str = "") -> dict[str, Any]: ...
+                            due: str = "", owes: str = "", until: str = "") -> dict[str, Any]: ...
     async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None,
                         older: list[str] | None = None) -> dict[str, Any]: ...
     async def tool_retire(self, room: str, at: str, why: str) -> dict[str, Any]: ...
@@ -191,7 +191,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", triggers: list[str] | None = None,
-                       said: str = "", source: str = "", older: list[str] | None = None, retire: str = "", due: str = "", owes: str = "",
+                       said: str = "", source: str = "", older: list[str] | None = None, retire: str = "", due: str = "", owes: str = "", until: str = "",
                        *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
@@ -211,12 +211,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         your words) is your note, and is shown as your note, never as their words. `due`: the day `text` is due
         (YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone), in front of you at a session start from a week before; `owes`,
         with it: who owes it to the owner, empty when the owner does. Give a date only when the words give one or the clock
-        line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line."""
+        line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
+        `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history ("worked there until ...");
+        from the day after, the line is no longer handed to you as current, then a fact file's line is removed."""
         if (due or owes) and (job or retire):
             return json.dumps({"ok": False, "error": words.DUE_JOB})
+        if until and (job or retire):
+            return json.dumps({"ok": False, "error": words.UNTIL_JOB})
         return json.dumps(await (daemon.tool_retire(caller_room(ctx), retire, text) if retire else
                                  daemon.tool_rule(caller_room(ctx), text, job, triggers, older) if job else
-                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source, due, owes)))
+                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source, due, owes, until)))
     mcp.tool(description=inspect.cleandoc(remember.__doc__ or "").replace("LESSON_SHAPE", LESSON_SHAPE))(remember)
 
     @mcp.tool()
