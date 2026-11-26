@@ -295,6 +295,26 @@ def live(text: str, today: date) -> bool:
     return any(x.strip() and not HEAD.match(x) and mentions.OLD not in x and not ended(x, today) for x in body_of(text))
 
 
+MOVED = re.compile(r"# moved to: (.+)")            # a moved card's one pointer (moves): its target's own name
+
+
+def moves(root: Path, today: date, texts: dict[Path, str] | None = None) -> dict[Path, Path]:
+    """Each moved card of the tree at `root` and its target (M2): an emptied card whose one line that is a pointer (MOVED) names, as
+    mentions.tokens(name, True) gives it whole, the own name of exactly one other card of `facts/`, that card live; a pointer on a live
+    card, to a card missing, emptied or moved, or one of two in a file, is words. A link is no card. A moved card's names are its target's."""
+    folder = (root := root.resolve()) / "facts"
+    got = {c: (texts or {}).get(c) or c.read_text(errors="replace") for c in sorted(folder.glob("*.md")) if c.resolve() == c}
+    on, own = {c: live(x, today) for c, x in got.items()}, dict[str, list[Path]]()
+    for c in got:
+        own.setdefault(" ".join(mentions.tokens(card_names(c)[0], True)), []).append(c)
+    out = {}
+    for c, x in got.items():
+        to = [own.get(" ".join(mentions.tokens(m[1], True)), []) for y in body_of(x) if (m := MOVED.fullmatch(y))]
+        if not on[c] and len(to) == 1 and len(to[0]) == 1 and on[to[0][0]]:
+            out[c] = to[0][0]
+    return out
+
+
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     """An owner room reads everything; any other room reads shared files and its own room's lines; a sealed one its own lines only."""
     return reader is None or ((reader.owner or cls == "shared") and not reader.sealed) or (
@@ -766,11 +786,13 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     def fold(x: str) -> str:
         return " ".join(mentions.tokens(x, True))
     if card(path) and not (path.is_file() and live(path.read_text(errors="replace"), today)):   # no card by that name, or one emptied
-        texts = {c: c.read_text(errors="replace") for c in sorted((s.root / "facts").glob("*.md"))}      # (M1): the card whose aka it is,
-        names = {c: card_names(c, x) for c, x in texts.items()}                                           # else a card started on that path
-        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:]) and live(texts[c], today)]
-        path, near = (alias[0], []) if len(alias) == 1 and card(alias[0]) else (path, sorted({n[0] for c, n in names.items() if c.resolve() != path and any(
-            fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n)})[:5])
+        texts = {c: c.read_text(errors="replace") for c in sorted((s.root / "facts").glob("*.md"))}      # (M1): a moved card's target (M2),
+        names, moved = {c: card_names(c, x) for c, x in texts.items()}, moves(s.root, today, texts)      # the card whose aka it is, else
+        to = {moved[path]} if path in moved else {t for c, t in moved.items() if fold(about) in map(fold, names[c][1:])}    # a card started
+        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:]) and c not in moved and live(texts[c], today)]   # there
+        path, near = (to.pop(), []) if len(to) == 1 and card(next(iter(to))) else (alias[0], []) if len(alias) == 1 and card(alias[0]) else (
+            path, sorted({names[moved.get(c, c)][0] for c, n in names.items() if moved.get(c, c) != path and (c in moved or live(texts[c], today))
+                          and any(fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n)})[:5])
     if card(path):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
             have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]

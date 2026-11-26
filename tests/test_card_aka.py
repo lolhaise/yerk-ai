@@ -194,8 +194,8 @@ def test_a_new_card_beside_one_sharing_its_first_word_by_name_or_aka_says_so_and
     for i, (have, about, near) in enumerate((
             ({"orla-vantree.md": "# Orla Vantree\n\n- Orla Vantree: keeps the lighthouse.\n", "quay-orla.md": "# Quay Orla\n"}, "Orla", ["orla vantree"]),
             ({"orla.md": "# Orla\n\n- Orla: the keeper's niece.\n", "vantree-hall.md": "# Vantree Hall\n"}, "Orla Vantree", ["orla"]),
-            ({"zed-quill.md": "---\naka: Orla\n---\n# Zed Quill\n"}, "Orla Vantree", ["zed quill"]),
-            ({"zed-quill.md": "---\naka: Orla Vantree\n---\n# Zed Quill\n"}, "Orla", ["zed quill"]))):
+            ({"zed-quill.md": "---\naka: Orla\n---\n# Zed Quill\n\n- Zed Quill: mends nets.\n"}, "Orla Vantree", ["zed quill"]),
+            ({"zed-quill.md": "---\naka: Orla Vantree\n---\n# Zed Quill\n\n- Zed Quill: mends nets.\n"}, "Orla", ["zed quill"]))):
         y = fresh(tmp_path, str(i))
         facts = cards(y, have)
         r = remember(y, "example-room", "Orla rowed to the point.", about)
@@ -212,7 +212,7 @@ def test_a_new_card_with_no_neighbour_answers_as_main_and_six_neighbours_give_fi
     assert remember(y, "example-room", "Example kettle: painted teal.", "example kettle") == {
         "ok": True, "cite": "tree/facts/example-kettle.md:3", "superseded": [], "refused": [], "not_edited": [], "next": NEXT}
     y = fresh(tmp_path, "six")
-    cards(y, {f"orla-{w}.md": f"# Orla {w}\n" for w in ("heath", "fen", "bay", "glen", "dune", "cove")})
+    cards(y, {f"orla-{w}.md": f"# Orla {w}\n\n- Orla {w}: a place on the coast.\n" for w in ("heath", "fen", "bay", "glen", "dune", "cove")})
     assert remember(y, "example-room", "Orla rowed to the point.", "Orla")["near"] == ["orla bay", "orla cove", "orla dune", "orla fen", "orla glen"]
 
 

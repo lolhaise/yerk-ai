@@ -90,14 +90,16 @@ def proper(src: list[tuple[date, Path, list[tuple[int, str]]]]) -> set[str]:
     return (cap & mid) - low
 
 
-def names(card: Path, text: str, said_as: set[str] = set()) -> re.Pattern[str]:
-    """What a card answers to, any case: its title, its first key (and a name's first word), each key of two or more
-    words and each one-word key the night says as a name, its aka names (memory.card_names), none of them stop words alone, and the relation its first
+def names(card: Path, text: str, said_as: set[str] = set(), moved: dict[Path, Path] | None = None) -> re.Pattern[str]:
+    """What a card answers to, any case: its title, its first key (and a name's first word), each key of two or more words and each
+    one-word key the night says as a name, its aka names (memory.card_names) and the names of each card moved to it (memory.moves, of
+    its tree on the local day unless given), none of them stop words alone, and the relation its first
     line gives (`<someone>'s mom`): one said as a name (mom, dad, grandma) bare and in its long form, any other
     (`sister`, `second-oldest brother`) after my, his, her, our or a name's `'s`."""
     keys = [m for x in text.splitlines() if (m := re.match(r"- ([^:\n]{2,60}): (.*)", x))]
     said = [title(card, text), *(k[1].strip() for k in keys[:1]), *(k[1].strip() for k in keys if mentions.key_of(k[1]) and (
-        len(k[1].split()) > 1 or k[1].strip().lower() in said_as)), *memory.card_names(card, text)[1:]]
+        len(k[1].split()) > 1 or k[1].strip().lower() in said_as)), *memory.card_names(card, text)[1:], *(n for m, to in (
+        memory.moves(card.parent.parent, date.today()) if moved is None else moved).items() if to == card.resolve() for n in memory.card_names(m))]
     if keys and len(w := keys[0][1].split()) > 1 and all(x[:1].isupper() for x in w):
         said.append(w[0])
     pats = [rf"\b{re.escape(n)}\b" for n in said if content(n)]
@@ -210,10 +212,10 @@ def packs(s: memory.Settings, private: Path, logs: list[Path], days: list[date])
     """Per card, every kept source line naming it that the card does not cite yet, newest day first, each once, as the
     card's reader may read it, to PACK_CHARS a day; and the words the night says as names."""
     out, src = {}, [(d, p, rows) for d in reversed(days) for p, rows in sources(s, private, logs, d)]
-    said_as = proper(src)
+    said_as, moved = proper(src), memory.moves(s.root, memory.local_day(s))
     for card in sorted((s.root / "facts").glob("*.md")):
         text, who = card.read_text(errors="replace"), reader(card)
-        pat, pack, said, size = names(card, text, said_as), list[tuple[Path, int, str]](), set(), dict[date, int]()
+        pat, pack, said, size = names(card, text, said_as, moved), list[tuple[Path, int, str]](), set(), dict[date, int]()
         had = {(f, j) for m in map(LINE.match, text.splitlines()) if m for path, lo, hi, _ in cites(m[3])
                if (f := resolve(s, private, logs, path)) for j in range(lo, hi + 1)}
         for d, p, rows in src:

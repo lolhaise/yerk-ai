@@ -762,7 +762,7 @@ def main(argv: list[str] | None = None) -> int:
     store = embeddings.Vectors(m.embeddings_dim, m.embeddings_width)
     back = embeddings.Backfill(m.index_db, live, store, embedder, units=m.embeddings_units)
     idx = Index(m.index_db, m.scope, on_insert=back.note)
-    names, owed = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude), due.Builder(m)
+    names, owed = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude, m.tz), due.Builder(m)
     server = embeddings.Server(store, embedder, m.index_db, live, secrets.token_urlsafe(24))   # this run's own; index.json names it
     pin = Pin(m.index_db)
     if not a.once:

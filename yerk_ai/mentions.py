@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import datetime, tzinfo
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Callable
@@ -127,8 +128,8 @@ def short_cite(path: Path, roots: tuple[Path, ...]) -> str:
 class Builder:
     """yerk-index's half: rebuild the JSON when a source file's size or mtime moved."""
 
-    def __init__(self, out: Path, roots: tuple[Path, ...], curated: tuple[str, ...], exclude: tuple[str, ...]):
-        self.out, self.roots, self.curated, self.exclude = out, roots, curated, exclude
+    def __init__(self, out: Path, roots: tuple[Path, ...], curated: tuple[str, ...], exclude: tuple[str, ...], tz: tzinfo | None = None):
+        self.out, self.roots, self.curated, self.exclude, self.tz = out, roots, curated, exclude, tz    # tz: the day a card is live on
         self.sig: list[Any] | None = None
 
     def is_source(self, path: Path) -> bool:
@@ -139,7 +140,7 @@ class Builder:
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private
-        from .memory import card_names, file_class
+        from .memory import card_names, file_class, moves
         srcs = sorted((p, *st) for p, st in disk.items() if self.is_source(Path(p)))
         if srcs == self.sig and self.out.is_file():
             return None
@@ -181,6 +182,13 @@ class Builder:
             here = lists.get(a, [])
             if got := once([*(n for n in here if src[n][1] == a), *(n for o in owns for n in lists.get(o, [])), *here]):
                 lists[a] = got
+        for m, to in moves(self.roots[0], datetime.now(self.tz).date()).items() if self.roots else ():    # a moved card's names: its
+            own = " ".join(tokens(card_names(to)[0], True))                     # target's own name's list, then what else they key
+            for a in {" ".join(tokens(x, True)) for x in card_names(m)} - {own}:
+                if got := once([*lists.get(own, []), *(n for n in lists.get(a, []) if Path(src[n][0]).resolve() != m)]):
+                    lists[a] = got
+                else:
+                    lists.pop(a, None)
         at: dict[int, int] = {}                                # an entry's place in the file written: only what a key lists goes in
         keys = {k: [at.setdefault(n, len(at)) for n in kept] for k, kept in lists.items()}
         entries = [entries[n] for n in at]
