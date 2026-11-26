@@ -1415,6 +1415,8 @@ class Yerkd:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
                                     tuple(replaces), self.reader(room), said, source, due, owes, until)
+        if r.get("day"):                    # the room and the count only, never a day or a word: whether the notes lead to dated lines
+            log.info("remember: a filing in %s named %d coming day(s) with no due", room, len(re.findall(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", r["day"])))
         return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str) -> dict[str, Any] | None:

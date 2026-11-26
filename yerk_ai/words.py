@@ -186,6 +186,9 @@ RECALL_WIDENED = "Nothing was found in that range ({days}), so these hits are fr
 DUE_OWES = "owes needs due: a wait needs the day to look at it again"
 DUE_NAME = "owes is a name on one line with no bracket, not \"{owes}\""
 DUE_JOB = "due and owes date a fact, a decision or a person's words, never a rule (job) or its retiring (retire)"
+# remember's answer, after cite, when the words filed with no due and no until name a day still to come (memory.days_named)
+DAY_NAMED = ("these words name a day still to come ({days}). If there is a thing to do, to attend or to wait for then, file it now as a "
+             "line of its own with `due`; a day that only says when something was said or made needs nothing.")
 UNTIL_SHAPE = "until is YYYY-MM-DD, the last day the fact holds in this install's zone, one real day, not \"{until}\""     # remember's end
 UNTIL_PAST = "until {until} is before today ({today}): a fact that has stopped holding is filed as what holds now, or as history in its words"
 UNTIL_TWICE = "until is given and text holds an [until ...] mark too: give the day once, in until"
