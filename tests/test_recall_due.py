@@ -257,3 +257,29 @@ def test_the_tool_says_a_range_past_today_returns_due_and_the_three_lines_say_wh
         "range shows the rest. A thing filed with no `due` is not among them.")
     assert words.RECALL_DUE_NONE.format(days="until 2019-04-30") == ("Due until 2019-04-30: no open dated line this room may read. A "
                                                                      "thing filed with no `due` would not be here.")
+
+
+# D3: the part says so when everything open is further out
+FAR_TWO = ("[due] As of 2019-03-12 20:00: nothing overdue or due in the next 7 days; 2 open further out, which `recall` with `since` and "
+           "`until` lists by day.")
+
+
+def test_the_part_with_nothing_near_and_two_further_out_is_one_line_saying_so_and_with_nothing_open_none(tmp_path, monkeypatch):
+    y = yerkd(tmp_path, monkeypatch)
+    s, rd = y.memory, y.reader(ROOM)
+    far = dated(y, f"Example library | {on(8)}", f"Example renewal | {on(40)}", f"Example gone | {on(-15)}")
+    assert due.part(s, far, rd, 10 ** 6, NOW) == FAR_TWO == due.FAR.format(at="2019-03-12 20:00", days=7, n=2)
+    assert due.part(s, far, rd, len(FAR_TWO), NOW) == FAR_TWO and due.part(s, far, rd, len(FAR_TWO) - 1, NOW) == ""   # it fits, or none
+    assert due.part(s, dated(y, f"Example gone | {on(-15)}"), rd, 10 ** 6, NOW) == "" and due.part(s, [], rd, 10 ** 6, NOW) == ""
+    assert due.part(s, dated(y, "⛔ Example renewal, never raised. | " + on(40)), rd, 10 ** 6, NOW) == ""   # none it may show unasked
+    theirs = dated(y, f"Example club fee | {on(40)}", name="example-club", head="---\nclass: room\nroom: her-id\n---\n")
+    assert due.part(s, theirs, rd, 10 ** 6, NOW) == "" and "Example club fee" in [x["text"] for x in due.listed(s, theirs, rd, NOW)]
+
+
+def test_the_part_with_one_near_and_one_further_out_is_the_part_its_last_line_saying_recall_lists_the_rest_by_range(tmp_path, monkeypatch):
+    y = yerkd(tmp_path, monkeypatch)
+    items = dated(y, f"Example library | {on(3)}", f"Example renewal | {on(40)}")
+    rows = due.part(y.memory, items, y.reader(ROOM), 10 ** 6, NOW).split("\n")
+    assert rows == [due.HEAD.format(at="2019-03-12 20:00", days=7), f"- {on(3)}: Example library (memory/facts/example-dates.md:3)",
+                    "(1 more open, not shown; `recall` with `since` and `until` lists what is due in a range)"]
+    assert due.MORE == "({} more open, not shown; `recall` with `since` and `until` lists what is due in a range)"
