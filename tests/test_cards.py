@@ -10,7 +10,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from yerk_ai import cards, cli, curate, memindex, memory, words
+from yerk_ai import cards, cli, curate, due, memindex, memory, mentions, words
 from test_card_aka import NEXT, build, fresh, seen, sync, write
 from test_card_aka import cards as put
 from test_remember import daemon, remember
@@ -269,3 +269,19 @@ def test_cards_near_groups_live_cards_by_a_shared_first_word_a_moved_card_under_
         "ada: ada example (2 live lines, aka Addy Bee, moved addie); ada quay (1 live line)\n"
         "1 groups, 2 cards in them, of 6; 2 emptied, 1 holding a pointer, 1 moved\n")
     assert cli.main(["cards", "merge", "addie", *args[2:]]) == 2 and "takes two cards" in capsys.readouterr().err
+
+
+def test_after_a_merge_each_reader_reaches_b_by_as_name_and_a_moved_dated_line_is_due_once(tmp_path):
+    dated = "- Addie: the library at ten (example-room, 2026-11-20 10:00:00-05:00) [due 2030-01-01] [m:m-8]"
+    s, private = tree(tmp_path, {**MERGE, "facts/addie.md": MERGE["facts/addie.md"] + dated + "\n"})
+    assert cards.merge(s, private, "addie", "ada example", go=True) == 0
+    mentions.Builder(s.mentions, s.roots_for_mentions, s.curated, s.mentions_exclude, s.tz).refresh(s.scope.files())
+    said = [e["cite"] for e in mentions.Index(s.mentions).load().match("how is addie?")]
+    assert said and {c.rpartition(":")[0] for c in said} == {"facts/ada-example.md"}
+    memindex.Index(s.index_db, s.scope).sync()
+    deep = [x["cite"] for x in memory.lines_on(s, "addie")]
+    assert sorted(deep) == [f"memory/facts/ada-example.md:{n}" for n in (5, 6, 7, 8)]            # each moved line once, from B
+    due.Builder(s).refresh(s.scope.files())
+    assert [x["cite"] for x in due.Index(s.due).load()] == ["memory/facts/ada-example.md:8"]
+    r = memory.remember(s, memory.DailyLog(s.daily, s.tz), "example-room", "m-9", "Addie rowed back.", about="Addie")
+    assert r["cite"] == "memory/facts/ada-example.md:9"
