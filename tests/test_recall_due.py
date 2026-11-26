@@ -236,3 +236,24 @@ def test_the_journal_says_how_many_were_due_when_asked_and_never_a_day_or_a_word
     assert len(said) == 5 and said[0].endswith(", widened, 13 due") and said[1].endswith(", widened, 0 due")
     assert all(" due" not in x for x in said[2:]) and said[4] == "recall: example-room, 0 hit(s), refused"
     assert not any(re.search(r"\d{4}-\d\d-\d\d|Example|thing", x) for x in said), said
+
+
+# D2: the words, as written
+def test_the_tool_says_a_range_past_today_returns_due_and_the_three_lines_say_what_the_list_is(tmp_path, monkeypatch):
+    from test_recall_day import DUE_SAID
+    from yerk_ai import mcp_server
+    assert DUE_SAID == ("A range that reaches past today also returns `due`: every open dated line due in it that this room may read, the "
+                        "soonest first, whatever the query's words. That list is what answers \"what is on that day\" or \"what do I have "
+                        "that week\", and an empty one means nothing on file is due then.")
+    y = yerkd(tmp_path, monkeypatch)
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: ROOM)
+    for tools in (mcp_server.build(y, y.port, y.hook), mcp_server.worker_server(tmp_path, ROOM, ["recall"])):
+        said = " ".join(str(next(t for t in asyncio.run(tools.list_tools()) if t.name == "recall").description).split())
+        assert said.endswith("and leave them out when it names no time. " + DUE_SAID)
+    assert words.RECALL_DUE.format(days="2019-04-01", n=3) == ("Due 2019-04-01, every open dated line this room may read, the soonest first "
+                                                                  "(3). A thing filed with no `due` is not among them.")
+    assert words.RECALL_DUE_MORE.format(days="from 2019-04-01 until 2019-04-30", shown=12, n=13) == (
+        "Due from 2019-04-01 until 2019-04-30, the first 12 of 13 open dated lines this room may read, the soonest first; a narrower "
+        "range shows the rest. A thing filed with no `due` is not among them.")
+    assert words.RECALL_DUE_NONE.format(days="until 2019-04-30") == ("Due until 2019-04-30: no open dated line this room may read. A "
+                                                                     "thing filed with no `due` would not be here.")

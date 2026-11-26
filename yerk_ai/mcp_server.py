@@ -52,7 +52,10 @@ RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, 
           "as one line each, read_memory(cite) to read on from one. A \"timeout\" status means busy, not down.\n"
           "`since` and `until` (each YYYY-MM-DD, either alone) keep the search to files named for a day in that range, both ends in it.\n"
           "Work them out from the clock line when the question names a day, a week, a month or a phrase like \"last Sunday\", and leave\n"
-          "them out when it names no time.")
+          "them out when it names no time.\n"
+          "A range that reaches past today also returns `due`: every open dated line due in it that this room may read, the soonest\n"
+          "first, whatever the query's words. That list is what answers \"what is on that day\" or \"what do I have that week\", and an\n"
+          "empty one means nothing on file is due then.")
 # the rule shape `remember` says, in the Claude docs' own words: the pinned sentences, checked daily against the fetched page
 # and, 2026-11-09, Claude Fable 5.2: in place of the 40-word sentence cap the gate no longer asks (its page: a hard limit makes
 # prose choppy), the line of its "Communicating clearly" block on how a sentence reads
