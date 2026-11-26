@@ -289,10 +289,15 @@ def body_of(text: str) -> list[str]:
     return [""] * n + text.splitlines()[n:]
 
 
+def alive(line: str, today: date) -> bool:
+    """A card's line that keeps it live: not blank, not a heading, not marked superseded and not past its until on `today` (ended)."""
+    return bool(line.strip()) and not HEAD.match(line) and mentions.OLD not in line and not ended(line, today)
+
+
 def live(text: str, today: date) -> bool:
-    """A fact card is LIVE when a line past its front matter is not blank, not a heading, not marked superseded and not past its
-    until on `today` (ended); else EMPTIED, which `remember` counts as no card. The one rule every reader of a card asks."""
-    return any(x.strip() and not HEAD.match(x) and mentions.OLD not in x and not ended(x, today) for x in body_of(text))
+    """A fact card is LIVE when a line past its front matter is `alive`; else EMPTIED, which `remember` counts as no card. The one
+    rule every reader of a card asks."""
+    return any(alive(x, today) for x in body_of(text))
 
 
 MOVED = re.compile(r"# moved to: (.+)")            # a moved card's one pointer (moves): its target's own name
@@ -387,15 +392,23 @@ def format_line(at: datetime, label: str, rid: str, role: str, who: str, body: s
 
 
 @contextmanager
-def daily_lock(daily: Path) -> Iterator[None]:
+def daily_lock(daily: Path, wait: float | None = None) -> Iterator[None]:
     """The one lock every writer of the day logs holds, a flock on `.daily.lock` beside the folder
     (the daemon's capture and the migration's rewrite, in their own processes): an append that arrives
     while a file is being rewritten waits for the rename and lands in the new file, never in the file
-    the rename drops. The lock file sits outside `daily/`, so a listing of the day files stays clean."""
+    the rename drops. The lock file sits outside `daily/`, so a listing of the day files stays clean.
+    With `wait`, at most that many seconds for it, then TimeoutError (`yerk cards merge` refuses)."""
     daily.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(daily.parent / f".{daily.name}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    fd, end = os.open(daily.parent / f".{daily.name}.lock", os.O_RDWR | os.O_CREAT, 0o600), time.monotonic() + (wait or 0.0)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | (fcntl.LOCK_NB if wait is not None else 0))
+                break
+            except BlockingIOError:
+                if time.monotonic() >= end:
+                    raise TimeoutError(f"the writers' lock {daily.parent / f'.{daily.name}.lock'} is held") from None
+                time.sleep(0.05)
         yield
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
