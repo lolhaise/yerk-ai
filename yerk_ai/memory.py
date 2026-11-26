@@ -1094,6 +1094,9 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
                 return (f"{cite(s, f)}:{x.front().count(chr(10)) + 1}", x.whole) if ok and x else ("", "")
             got = read(s, c, lines=1)
             line = (allowed_text(reader, Path(got["path"]), got["text"], daily=s.daily) or "").strip() if got["ok"] else ""
+            if got["ok"] and (not got["text"].strip() or MOVED.fullmatch(got["text"].strip())):     # a line a merge moved, blank or
+                line, at, c = "", "", kept.get(f"{cite(s, Path(got['path']))}:{got['from']}", "")   # its pointer: on through its row
+                continue
             at = f"{cite(s, Path(got['path']))}:{got['from']}" if line else ""
             c = (BY.findall(line) or [kept.get(at, "")])[0] if line else ""
         return at, line

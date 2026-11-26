@@ -227,3 +227,16 @@ def test_a_merge_stopped_between_two_steps_loses_no_line_and_run_again_ends_in_t
         assert all(x in half for x in (A_LINES[2], A_LINES[4], A_LINES[7])) and (s.root / "facts" / "addie.md").read_text() == MERGE["facts/addie.md"]
         monkeypatch.setattr(cards, "write_private", real)
         assert cards.merge(s, private, "addie", "ada example", go=True) == 0 and snap(s.root) == clean, stop
+
+
+def test_recall_shows_bs_line_above_a_day_log_line_a_merged_cards_line_replaced_and_a_loop_of_rows_ends(tmp_path):
+    day = "# 2026-11-24\n\n" + memory.mark("- 09:00:00-05:00 example-room note: Addie rows the ferry. [c:private] [m:m-9]", "memory/facts/addie.md:3") + "\n"
+    s, private = tree(tmp_path, {**MERGE, "daily/2026-11-24.md": day})
+    hit = {"ok": True, "hits": [{"cite": "memory/daily/2026-11-24.md:3", "text": day.splitlines()[2]}]}
+    assert [h["cite"] for h in memory.live_first(s, hit)["hits"]] == ["memory/facts/addie.md:3", "memory/daily/2026-11-24.md:3"]
+    assert cards.merge(s, private, "addie", "ada example", go=True) == 0
+    got = memory.live_first(s, hit)["hits"]
+    assert [h["cite"] for h in got] == ["memory/facts/ada-example.md:5", "memory/daily/2026-11-24.md:3"] and A_LINES[2][2:] in got[0]["text"]
+    (s.root / "facts" / "addie.md").write_text("# Addie\n" + "\n" * 7)             # the pointer line blank too: on through its row
+    (s.root / "superseded.tsv").write_text("memory/facts/addie.md:3\tmemory/facts/addie.md:2\nmemory/facts/addie.md:2\tmemory/facts/addie.md:3\n")
+    assert [h["cite"] for h in memory.live_first(s, hit)["hits"]] == ["memory/daily/2026-11-24.md:3"]       # a loop of rows ends
