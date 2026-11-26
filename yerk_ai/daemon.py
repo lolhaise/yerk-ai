@@ -1376,10 +1376,17 @@ class Yerkd:
     async def tool_recall(self, room: str, query: str, k: int, since: str = "", until: str = "") -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
         recall in a room while yerk-index runs without a provider key tells the room so, once. A superseded
-        line never comes above its replacement (memory.live_first). `since` and `until`: a range of days (memory.recall)."""
-        r = await asyncio.to_thread(self.search, room, query, k, since=since, until=until)
-        log.info("recall: %s, %d hit(s)%s%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}",
-                 ", widened" if r.get("widened") else "")
+        line never comes above its replacement (memory.live_first). `since` and `until`: a range of days (memory.recall); one that
+        reaches past today (due.ahead) also returns what is due in it, `due_line` and `due` before the hits, the hits as they were."""
+        def find() -> tuple[dict[str, Any], list[dict[str, Any]] | None]:
+            r, s, now = self.search(room, query, k, since=since, until=until), self.scoped.get(room, self.memory), datetime.now(self.memory.tz)
+            if not (r["ok"] and due.ahead(since, until, memory.local_day(s, now))):
+                return r, None
+            every = due.ranged(s, self.owed.load(), self.reader(room), since, until, now)
+            return {**{x: r[x] for x in r if x != "hits"}, **due.asked(every, since, until, self.gates.retired), "hits": r["hits"]}, every
+        r, every = await asyncio.to_thread(find)
+        log.info("recall: %s, %d hit(s)%s%s%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}",
+                 ", widened" if r.get("widened") else "", "" if every is None else f", {len(every)} due")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r

@@ -220,7 +220,7 @@ def test_the_due_part_is_overdue_oldest_first_then_the_next_seven_days_soonest_f
     assert head == due.HEAD.format(at="2026-01-20 15:00", days=7) and last == due.MORE.format(1)      # the one eight days out
     assert [x["text"] for x in due.listed(s, items_, None, NOW)][-1] == "Eight days out" and "Eight days out" not in text
     assert [x["overdue"] for x in due.listed(s, items_, None, NOW)] == [True] * 3 + [False] * 5
-    assert due.part(s, items_[1:2], None, 10 ** 6, NOW) == ""                           # nothing near: no part, whatever is open
+    assert due.part(s, items_[1:2], None, 10 ** 6, NOW) == due.FAR.format(at="2026-01-20 15:00", days=7, n=1)    # nothing near: one line
 
 
 def test_the_day_a_dated_line_is_due_is_the_installs_own_day_and_a_time_its_own_minute(tmp_path):
@@ -238,7 +238,7 @@ def test_thirty_open_items_give_twelve_lines_the_last_with_the_count_and_the_key
     items_ = owed(s, *(f"Example thing {i:02d} | {on(i % 7)}" for i in range(30)))
     text = due.part(s, items_, None, 10 ** 6, NOW)
     lines = text.split("\n")
-    assert len(lines) == due.LINES == 12 and lines[-1] == "(20 more open, not shown; recall or read_memory reaches each)"
+    assert len(lines) == due.LINES == 12 and lines[-1] == "(20 more open, not shown; `recall` with `since` and `until` lists what is due in a range)"
     assert [x["cite"] for x in due.listed(s, items_, None, NOW)][:10] == [x.rpartition("(")[2][:-1] for x in lines[1:-1]]
     whole = [due.part(s, items_[:n], None, 10 ** 6, NOW).split("\n") for n in (1, 11, 12)]
     assert [len(x) for x in whole] == [2, 12, 12] and not whole[1][-1].startswith("(") and whole[2][-1] == due.MORE.format(2)
@@ -286,7 +286,7 @@ def test_the_due_part_and_the_open_loops_file_both_fit_inside_the_limit_and_the_
     assert part.size <= 6000 and part.text.startswith("[due] ") and "\n\n[recall pack] " in part.text and "[due]" not in none.text
 
 
-def test_a_room_with_no_open_item_near_gets_the_pack_it_gets_today_byte_for_byte(tmp_path):
+def test_a_room_with_nothing_open_gets_the_pack_it_gets_today_byte_for_byte_and_one_with_all_of_it_further_out_one_line_first(tmp_path):
     s = tree(tmp_path)
     items(s, 60)
     loops = "# Open commitments (example, invented)\n\n- Example promise: one.\n"
@@ -294,9 +294,13 @@ def test_a_room_with_no_open_item_near_gets_the_pack_it_gets_today_byte_for_byte
         for file in (None, loops):
             plain, part = with_due(tmp_path, s, key, [], file)
             assert part == plain, (key, file)
+    closed = owed(s, f"Fifteen days ago | {on(-15)}")                                    # past its fourteen days: nothing open
+    plain, part = with_due(tmp_path, s, 6000, closed, loops)
+    assert part == plain and part.text.startswith("[recall pack] ")
     far = owed(s, f"Eight days out | {on(8)}", f"Fifteen days ago | {on(-15)}")
     plain, part = with_due(tmp_path, s, 6000, far, loops)
-    assert part == plain and part.text.startswith("[recall pack] ")
+    one = due.FAR.format(at="2026-01-20 15:00", days=7, n=1)
+    assert part.text.startswith(one + "\n\n[recall pack] ") and part.size <= 6000 and not part.over and plain.text.startswith("[recall pack] ")
 
 
 def test_a_room_starts_and_compacts_with_what_is_due_and_an_uncapped_one_lifts_its_characters_never_its_lines(tmp_path):
@@ -316,7 +320,8 @@ def test_a_room_starts_and_compacts_with_what_is_due_and_an_uncapped_one_lifts_i
     y.spec_for(ROOM)
     part = next(p for p in start.read_text().split("\n\n") if p.startswith("[due] "))
     rows = part.split("\n")
-    assert context.chars(part) <= 2400 and 8 < len(rows) <= 12 and rows[-1].startswith("(1") and rows[-1].endswith(" more open, not shown; recall or read_memory reaches each)")
+    assert context.chars(part) <= 2400 and 8 < len(rows) <= 12 and rows[-1].startswith("(1") and rows[-1].endswith(
+        " more open, not shown; `recall` with `since` and `until` lists what is due in a range)")
     assert rows[1] == f'- {today - timedelta(days=3)}: [their words] Dana: "I will bring the key" (from message m-9) ({r["cite"]})'
     assert y.compact_pack(ROOM).split("\n\n")[0].split("\n")[1:] == rows[1:]            # after a compaction too; its head says when
     asyncio.run(y.tool_remember(ROOM, "Dana brought the key.", "", [r["cite"]]))          # its outcome filed clears it

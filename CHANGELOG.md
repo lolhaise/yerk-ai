@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-11-26
 
+*Above this line a pull request number is this public repository's, counted from #1. Below it the numbers belong to the repository's earlier, private history, and open nothing here.*
+
+- What is due on a day past the week has an answer. A `recall` whose `since` or `until` is after today (the install's day)
+  also returns, right before the hits, `due_line` and then `due`: every open dated line due from `since` through `until`, both
+  ends in it, that the room may read, the soonest first, at most 12, each as the session start's part shows an item, with its
+  cite. It is an asked list, whatever the query's words: another room's line an owner room may recall is in it, and so is a line
+  marked do-not-surface, as in `yerk due`. `since` alone lists everything due from then on, `until` alone everything up to it,
+  the overdue with it. `due_line` says the range and how many, or the first 12 of how many, or that nothing open is due then,
+  and that a thing filed with no `due` is not among them. The hits are as they were: a range all ahead of today still widens
+  as before, its `line` before `due_line`. Every other call answers byte for byte as before: no range, a range ending today or
+  before it, `since` alone on or before today, a refusal and a search that did not finish. A worker's `recall` answers the same
+  way. The tool's description says so in one sentence. The journal's recall line gains `, N due` when the list was asked,
+  never a day or a word.
+- The due part at a session start says so when everything open is further out: one line, that nothing is overdue or due in
+  the next 7 days, how many are open further out, and that `recall` with `since` and `until` lists them by day; it was nothing
+  at all. With nothing open, or only lines the part may not show unasked, there is still no part. The line that counts what
+  the part leaves out now points at `recall` with `since` and `until` too.
+
+**Upgrading:** nothing to do. `yerk_tools` and the session start's total rose by the description's 294 more characters, in
+every room.
+
 ### due-words-2026-11-26 (#144)
 
 - `remember`'s description now says when to reach for `due`, since a room dated a line only when it thought of it as due, and

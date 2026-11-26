@@ -18,6 +18,9 @@ from test_room_scope import install, sync
 
 UTC = timezone.utc
 DAY = "2026-01-05"
+DUE_SAID = ("A range that reaches past today also returns `due`: the open dated lines due in it that this room may read, the soonest twelve, "
+            "whatever the query's words. That list is what answers \"what is on that day\" or \"what do I have that week\", and an empty one "
+            "means nothing on file is due then.")          # what is due in a range past today (build 1c, 2026-11-26), its last sentences
 
 
 def layer(tmp_path: Path, daily: dict[str, str] | None = None, also: tuple[Path, ...] = (), **files: str) -> memory.Settings:
@@ -263,7 +266,7 @@ def test_the_room_and_its_workers_hand_the_range_on(tmp_path, monkeypatch):
         said = " ".join(str(tool.description).split())
         assert said.endswith("\"timeout\" status means busy, not down. `since` and `until` (each YYYY-MM-DD, either alone) keep the search to "
                              "files named for a day in that range, both ends in it. Work them out from the clock line when the question names a "
-                             "day, a week, a month or a phrase like \"last Sunday\", and leave them out when it names no time.")
+                             "day, a week, a month or a phrase like \"last Sunday\", and leave them out when it names no time. " + DUE_SAID)
 
 
 def test_the_prompt_hooks_own_search_is_as_it_was(tmp_path, monkeypatch):
