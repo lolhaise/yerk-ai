@@ -1,9 +1,9 @@
 // yerk-web's five tools: web_fetch over the fetch ladder (lib/fetch), web_search over the search engines
 // (lib/search), web_research and web_research_result over the Exa Agent (research.mjs), a completed run's answer kept
 // for the room's Read, and web_image over the ladder's fetch rungs (fetch/image.js), one picture saved for the room's
-// Read. Settings and keys are read on
-// every call from the private folder (common.mjs), so an edit or a new key applies to the next call; state lives under
-// <state>/web, a Yerk worker's under its own folder (where's `own`); each paid call books one spend row in Yerk's ledger.
+// Read. Settings and keys are read on every call from the private folder (common.mjs), so an edit or a new key applies
+// to the next call; state lives under <state>/web, a Yerk worker's under its own folder (where's `own`); each paid call
+// books one spend row in Yerk's ledger.
 // Keys stay in this process's memory: never written to a file, a log, a tool result or the environment (the search code
 // spawns children for YouTube).
 import { createHash } from "node:crypto";
