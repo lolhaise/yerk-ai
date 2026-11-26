@@ -181,10 +181,10 @@ def check(private: Path, m: Settings, rooms: dict[str, dict[str, Any]], docs: di
         for t, fs in per_room[name]["twice"].items():
             twice.setdefault(t, fs)
     fresh = []
-    if lessons.converted(m.root):                 # each lesson filed in the last day, by its file
+    if lessons.converted(m.root):                 # each lesson filed in the last day, by its file, read as its filing was (filing)
         for x in lessons.store(m.root):
             at = STAMP.search(x.line)
-            if at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := offenses(x.line, True, acronyms)):
+            if at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := list(filing(x.line, acronyms))):
                 fresh.append((f"{cite(m, m.root / x.cite)}:{x.front().count(chr(10)) + 1}", o))
     elif rules.is_file():
         for n, raw, ex in lines(rules.read_text(encoding="utf-8", errors="replace"), rules=True):

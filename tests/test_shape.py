@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from test_doctor import tree  # noqa: F401  (the doctor's healthy install: the example layer, a day log, a fresh index)
-from yerk_ai import context, doctor, memory, morning, shape, words
+from yerk_ai import context, doctor, lessons, memory, morning, shape, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets, rooms
 from yerk_ai.ledger import Ledger
@@ -112,6 +112,27 @@ def test_a_rule_line_of_the_last_day_that_misses_the_shape_is_named_by_its_cite(
     assert not [x for x in doctor.run(priv, state, dry=True, now=time.time() + 2 * DAY) if x[2:].startswith(f"rule shape {filed['cite']}")]
     memory.rule(m, "example-room", "m2", "dates", "take a date from a file, since a guessed date reads as fact")
     assert doctor.main(priv, state) == 0                                   # the old line is superseded, so never loaded
+
+
+def test_a_lesson_of_the_last_day_is_read_as_its_filing_read_it_so_its_own_cited_example_is_no_exchange(tree):  # noqa: F811
+    """On a converted store the doctor reads a lesson of the last day as its filing did, its examples out (shape.filing):
+    a quote in its words beside the word its own cited example opens with is no exchange outside the tags, so a lesson a room
+    filed is not handed back the morning after. A lesson written by hand with its exchange outside the tags still is."""
+    priv, state, *_ = tree
+    m = memory.settings(priv, state)
+    (m.root / lessons.DIR).mkdir(parents=True)
+    words_ = ('Hand over a check whose pass line prints a value only a real answer gives. Since a count in a list reads 1 for an '
+              'empty answer, the line "all good here now" passed a blank page too.')
+    filed = memory.rule(m, "example-room", "m1", "write a check", f"{words_} <example>Bounced, daily/2026-01-05.md:3</example>")
+    assert filed["ok"] and shape.offenses(lessons.store(m.root)[0].line, True) == ["untagged"]     # the tag's own word, read raw
+    assert not [x for x in doctor.run(priv, state, dry=True) if "filed in the last day" in x]
+    at = datetime.now(timezone.utc).astimezone(m.tz)
+    (m.root / lessons.DIR / "by-hand.md").write_text(
+        f"---\nclass: shared\njob: by hand\nfiled: example-room, {at:%Y-%m-%d %H:%M:%S%:z} [m:m2]\n---\n"
+        'Answer in one line, since a long answer is skipped on a phone.\nThe line "keep it short please" came back and the long answer bounced.\n')
+    named = [x[2:] for x in doctor.run(priv, state, dry=True) if "filed in the last day" in x]
+    assert named == [f"rule shape {memory.cite(m, m.root / lessons.DIR / 'by-hand.md')}:6: filed in the last day with an example outside "
+                     "<example> tags; file it again in the shape"]
 
 
 def test_two_rooms_files_of_one_name_in_two_folders_are_each_scored_and_named_apart(tmp_path):
