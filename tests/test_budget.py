@@ -317,7 +317,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     (43 and 90 more as built and as sent), the total by the 133 to 136,028; then the same line to 4,380, what a live room sends
     (web_search and web_research had grown on Nov 11 and 10 with no pin moved), the total by the 466 to 136,494; then
     (due-words-2026-11-26) `yerk_tools` to 31,363 for the `remember` tool's words on when to reach for `due` (430 more as built),
-    the total by the 430 to 136,924."""
+    the total by the 430 to 136,924; then (due-by-day-2026-11-26) `yerk_tools` to 31,657 for the `recall` tool's sentence on what
+    a range past today returns (294 more as built), the total by the 294 to 137,218."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -335,7 +336,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 136924
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 137218
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -509,10 +510,12 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     tools' line (285, the `remember` tool's `until`), no part could pay, to 135,895 (end-date-2026-11-25); then the other entries'
     line (133, web_research's clause on its kept answer and web_research_result's sentence on the list), no other line lowered,
     to 136,028 (research-answers-2026-11-26), then 466 more on that line, set from what a live room sends, to 136,494; then Yerk AI's
-    tools' line (430, the `remember` tool's words on when to reach for `due`), no part could pay, to 136,924 (due-words-2026-11-26)."""
+    tools' line (430, the `remember` tool's words on when to reach for `due`), no part could pay, to 136,924 (due-words-2026-11-26); then
+    Yerk AI's tools' line (294, the `recall` tool's sentence on what a range past today returns), no part could pay, to 137,218
+    (due-by-day-2026-11-26)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 136924
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 137218
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 136924`
+- `total = 137218`
 
 ## [session_start.claude_code]
 
@@ -156,9 +156,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-26, due-words-2026-11-26 (build 1b of the owner's build list of Wed Nov 25): the `remember` tool's words on when to reach for `due` (its first sentence names a thing on a day still to come, and the `due` part says which: a plan, a meeting, a booking, a deadline, an answer someone waits for, filed as a line of its own also in passing, the earliest of several days), since in the 19 hours after the due view's deploy no line was filed with `due`: remember 3,686 to 4,116 as this tree builds it (its description 2,716 to 3,141 characters), all 25 from 28,211 to 28,641 (430 more, measured on main be8dc4f5 and on this tree the same way, each entry's name, description and input schema as compact JSON), so about 31,363 on the 30,933 above; the line is that count, no part could pay, the total rose by the 430 (to 136,325 on main's 135,895). The hands plug-in's tool entries do not change. Merged after research-answers-2026-11-26: the total is 136,924, the same 430 on main's 136,494, and the other entries' line keeps that build's 4,380.
 
+2026-11-26, due-by-day-2026-11-26 (build 1c of the owner's build list of Wed Nov 25): a `recall` range that reaches past today also returns the open dated lines due in it, and the tool's words say so, one sentence after "leave them out when it names no time." (a room asked about a day past the week was answered from a list that never held it): recall's description 786 to 1,073 characters as Claude Code counts them, its entry 1,174 to 1,468 (294 more, the sentence and its JSON escapes), each measured on main b111ab1d and on this tree the same way, the entry's name, description and input schema as JSON (json.dumps, and compact the same 294), all 25 from 29,929 to 30,223; so about 31,657 on the 31,363 above. The line is that count, no part could pay, the total rose by the 294 (to 137,218 on main's 136,924). The worker's own `recall` carries the same words.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 31363`
+- `yerk_tools = 31657`
 - `deferred_tool_names = 4380`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -913,7 +915,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-26: due-words-2026-11-26 raised it by 38, the `remember` tool's words on when to reach for `due` and the note a filing that names a coming day with no date is given (build 1b of the owner's build list of Wed Nov 25), not folded to fit (memory.py 30: days_named, its forms and its month names, remember's clock for tests, the note after `cite` and its docstring; mcp_server.py 3: the description's longer `due` part; words.py 3: the note's words; daemon.py 2: the journal line, the room and the count). 36,994: 36,956 plus 38.
 
-- `lines = 36994`
+2026-11-26: due-by-day-2026-11-26 raised it by 41, a `recall` range that reaches past today also returns what is due in it and the due part says so when everything open is further out (build 1c of the owner's build list of Wed Nov 25), not folded to fit (due.py 26: ahead, ranged and asked, the asked list's cap, the part's one line and its docstring, MORE's words; daemon.py 7: tool_recall's list before the hits in the search's thread, its docstring and the journal's count; words.py 5: the three lines of due_line; mcp_server.py 3: the description's sentence). 37,035: 36,994 plus 41.
+
+- `lines = 37035`
 
 ## Uncapped
 
