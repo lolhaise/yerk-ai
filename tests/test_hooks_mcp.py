@@ -113,11 +113,17 @@ def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source", "older", "retire",
                                                                "due", "owes", "until"]
     said = " ".join(str(tools["remember"].description).split())   # a filed commitment's date (2026-11-25), in three sentences; an end, in two
-    assert said.endswith("never as their words. `due`: the day `text` is due (YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone), in front of you at a "
-                         "session start from a week before; `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when "
-                         "the words give one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome with "
-                         "`replaces` naming its line. `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history "
+    assert said.startswith("File in memory now, before you write the answer, what you were just told: a new fact, a decision, a correction, or a "
+                           "thing on a day still to come (`due`), one line in plain words. `about`: ")      # when to reach for `due` (2026-11-26)
+    assert said.endswith("never as their words. `due`: its day (YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone) when `text` is a thing to do, "
+                         "to attend or to wait for on a day still to come: a plan, a meeting, a booking, a deadline, an answer someone waits for. File "
+                         "such a thing as a line of its own, also when it came up in passing or sits inside words you file for another reason, and with "
+                         "several days offered take the earliest: only a line filed with `due` is in front of you at a session start from a week before, "
+                         "and it is what answers \"what is on that day\". `owes`, with it: who owes it to the owner, empty when the owner does. Give a "
+                         "date only when the words give one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome "
+                         "with `replaces` naming its line. `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history "
                          "(\"worked there until ...\"); from the day after, the line is no longer handed to you as current, then a fact file's line is removed.")
+    assert "the day `text` is due" not in said and said.count("in front of you at a session start") == 1
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
