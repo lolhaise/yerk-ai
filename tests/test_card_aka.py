@@ -24,10 +24,11 @@ AKAS = ("orly", "lady vantree", "bree-anne", "bramble")
 
 FRONT_CASES = {
     "facts/orla-vantree.md": "---\naka: the, my sister, Al, home, she is my sister, Orly\n---\n" + CARD,
-    "facts/quay-house.md": "# Quay House\n\naka: Quayside\n- Quay House: the keeper's cottage.\n",
+    "facts/quay-house.md": "# Quay House\n\naka: Quayside\n- Quay House: the keeper's cottage.\n- Keeper: the post at the quay.\n",
     "facts/gull-rock.md": "# Gull Rock\n---\naka: Gullet\n---\n- Gull Rock: a reef off the point.\n",
     "MEMORY.md": "---\naka: Pinny\n---\n# Pinned\n\n## Example Pier\nby the quay\n",
     "facts/MEMORY.md": "---\naka: Factsy\n---\n# Notes\n\n## Example Dune\nbehind the quay\n",
+    "facts/keeper.md": "---\naka: Keepy\n---\n# Keeper\n\n## Example Lamp\nlit at dusk\n",
     "facts/brim-quell.md": "---\nclass: shared\naka: Brimmy\n---\n# Brim Quell\n\n- Brim Quell: runs the example bakery.\n",
     "facts/zed-quill.md": "---\nclass: room\nroom: rid-1\naka: Zeddy\n---\n# Zed Quill\n\n- Zed Quill: mends nets.\n",
     "facts/ada-quill.md": "---\naka: ada, addie\nclass: private\n---\n# Ada Quill\n\n- Ada Quill: rows the ferry.\n",
@@ -48,7 +49,7 @@ def test_a_cards_names_are_its_file_name_then_each_aka_key_of_takes_from_front_m
     root = write(tmp_path / "tree", FRONT_CASES)
     assert {f: memory.card_names(root / f) for f in FRONT_CASES} == {
         "facts/orla-vantree.md": ["orla vantree", "Orly"], "facts/quay-house.md": ["quay house"], "facts/gull-rock.md": ["gull rock"],
-        "MEMORY.md": [], "facts/MEMORY.md": ["MEMORY", "Factsy"], "facts/brim-quell.md": ["brim quell", "Brimmy"],
+        "MEMORY.md": [], "facts/MEMORY.md": ["MEMORY", "Factsy"], "facts/keeper.md": ["keeper", "Keepy"], "facts/brim-quell.md": ["brim quell", "Brimmy"],
         "facts/zed-quill.md": ["zed quill", "Zeddy"], "facts/ada-quill.md": ["ada quill", "ada", "addie"], "notes/orla.md": [], "facts/orla.txt": []}
     assert [memory.file_class(root / f) for f in ("facts/brim-quell.md", "facts/zed-quill.md", "facts/ada-quill.md")] == [
         ("shared", ""), ("room", "rid-1"), ("private", "")]
@@ -56,9 +57,9 @@ def test_a_cards_names_are_its_file_name_then_each_aka_key_of_takes_from_front_m
 
 
 def build(tmp_path: Path, files: dict[str, str], name: str = "tree") -> mentions.Index:
-    """The name index of a tree holding `files` (MEMORY.md, wherever it sits, a curated file), as yerk-index builds it."""
+    """The name index of a tree holding `files` (MEMORY.md and keeper.md, wherever they sit, curated files), as yerk-index builds it."""
     root, out = write(tmp_path / name, files), tmp_path / f"{name}.json"
-    mentions.Builder(out, (root,), ("MEMORY.md",), ()).refresh({str(p): (p.stat().st_size, p.stat().st_mtime_ns) for p in root.rglob("*.md")})
+    mentions.Builder(out, (root,), ("MEMORY.md", "keeper.md"), ()).refresh({str(p): (p.stat().st_size, p.stat().st_mtime_ns) for p in root.rglob("*.md")})
     return mentions.Index(out).load()
 
 
@@ -99,8 +100,9 @@ def test_a_card_whose_own_name_is_the_aka_comes_first_then_the_card_that_says_it
 def test_the_index_keys_no_aka_key_of_refuses_none_outside_the_front_matter_and_none_of_a_curated_file(tmp_path):
     idx = build(tmp_path, FRONT_CASES)
     keys = set(json.loads((tmp_path / "tree.json").read_text())["keys"])
-    assert "orly" in keys and not keys & {"the", "my sister", "al", "home", "she is my sister", "quayside", "gullet", "pinny", "factsy"}
-    assert seen(idx, "quayside") == seen(idx, "gullet") == seen(idx, "pinny") == seen(idx, "factsy") == []
+    assert "orly" in keys and "keeper" in keys and not keys & {"the", "my sister", "al", "home", "she is my sister", "quayside", "gullet", "pinny",
+                                                               "factsy", "keepy"}
+    assert seen(idx, "quayside") == seen(idx, "gullet") == seen(idx, "pinny") == seen(idx, "factsy") == seen(idx, "keepy") == []
     assert {e["class"] for e in idx.match("brimmy")} == {"shared"} and {e["room"] for e in idx.match("zeddy")} == {"rid-1"}
     assert seen(idx, "addie") == seen(idx, "ada quill") != []
 
@@ -128,8 +130,10 @@ def test_a_room_that_may_not_read_a_card_gets_nothing_by_its_aka_and_an_owner_ro
     (facts := y.memory.root / "facts").mkdir(exist_ok=True)
     (facts / "orla-vantree.md").write_text("---\naka: Orly\n---\n# Orla Vantree\n\n- Orla Vantree: keeps the example lighthouse.\n")
     (facts / "brim-quell.md").write_text("---\nclass: shared\naka: Brimmy\n---\n# Brim Quell\n\n- Brim Quell: runs the example bakery.\n")
+    (facts / "ferry.md").write_text("---\nclass: shared\n---\n# Ferry\n\n- Orly: the ferry's cat, on board daily.\n")     # one key, both kinds
     sync(y)
-    assert not y.recall_for("family-room", "is orly at the lighthouse?")[0]
+    got = [e["text"] for e in y.recall_for("family-room", "is orly at the lighthouse?")[0]]
+    assert "Orly: the ferry's cat, on board daily." in got and not [x for x in got if "lighthouse" in x]
     assert "Orla Vantree: keeps the example lighthouse." in [e["text"] for e in y.recall_for("example-room", "is orly at the lighthouse?")[0]]
     assert "Brim Quell: runs the example bakery." in [e["text"] for e in y.recall_for("family-room", "did brimmy bake?")[0]]
 
