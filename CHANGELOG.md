@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-25
 
+### watch-tests-2026-11-25 (#140)
+
+- Tests only: nothing Yerk AI does changes. `tests/test_watch.py` stops giving the box's CI false reds.
+- The CI's three reds of `test_a_card_is_never_filed_and_the_plain_message_after_it_is` and its one of
+  `test_after_a_restart_a_watched_message_with_its_answer_in_history_comes_in_at_once` (2026-11-13, 11-23 and 11-25) each ran
+  at about 00:01 UTC, when a test's day log spans two days. The tests read the two day files in the order the directory listed
+  them and expected the order filed. They now read the days in date order, and the card test's lines fall on one day. With the
+  clock set to 00:00:50 UTC, main's code failed the two 199 and 290 times in 300; this branch failed none in 600.
+- `test_another_assistant_where_a_room_watches_is_filed_as_its_own_once_settled_and_never_answered` filed the reply before its
+  "not yet settled" check whenever a starved run took longer than its 0.05 s SETTLE (seen in whole-file runs on one core beside
+  three busy loops, on main and on this branch before the fix). It now runs out the code's own SETTLE waits by hand.
+- The two restart tests wait for the turns recover releases (polled, 5 s at most) where they slept 0.05 s.
+- The 11 reds of `test_a_watched_channel_is_read_as_the_rooms_own_and_never_written_to` were all on trees from before its fold
+  fix of 2026-11-17. On main it passed 420 runs under load, and it is unchanged.
+
+**Upgrading:** nothing to do.
+
 ### card-aka-2026-11-25 (#139)
 
 - A fact file may say in its front matter `aka: name, name`, the other names the card answers to, each one a name the mention
