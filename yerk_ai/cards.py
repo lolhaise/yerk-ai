@@ -152,7 +152,7 @@ def near(s: memory.Settings, today: date) -> dict[str, Any]:
 def shown(got: dict[str, Any], as_json: bool) -> str:
     if as_json:
         return json.dumps(got, indent=1)
-    out = [f"{g['word']}: " + "; ".join(f"{c['name']} ({c['live']} live lines" + "".join(f", {k} {', '.join(c[k])}" for k in ("aka", "moved") if c[k])
+    out = [f"{g['word']}: " + "; ".join(f"{c['name']} ({c['live']} live line{'s' * (c['live'] != 1)}" + "".join(f", {k} {', '.join(c[k])}" for k in ("aka", "moved") if c[k])
                                         + ")" for c in g["cards"]) for g in got["groups"]]
     return "\n".join([*out, f"{len(got['groups'])} groups, {len({c['name'] for g in got['groups'] for c in g['cards']})} cards in them, of "
                       f"{got['cards']}; {got['emptied']} emptied, {got['pointers']} holding a pointer, {got['moved']} moved"])

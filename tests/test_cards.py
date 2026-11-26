@@ -10,7 +10,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from yerk_ai import cards, curate, memindex, memory, words
+from yerk_ai import cards, cli, curate, memindex, memory, words
 from test_card_aka import NEXT, build, fresh, seen, sync, write
 from test_card_aka import cards as put
 from test_remember import daemon, remember
@@ -251,3 +251,21 @@ def test_deep_recall_hands_no_front_matter_line_and_no_card_title_and_every_othe
     got = [x["cite"] for x in memory.lines_on(s, "addie")]          # a note's heading is no card title: handed as before
     assert sorted(got[:-1]) == ["memory/facts/ada-example.md:7", "memory/notes.md:4", "memory/notes.md:6"] and got[-1] == "memory/daily/2026-11-24.md:3"
     assert sorted(x["cite"] for x in memory.lines_on(s, "ada example")) == ["memory/facts/ada-example.md:6", "memory/facts/ada-example.md:7"]
+
+
+def test_cards_near_groups_live_cards_by_a_shared_first_word_a_moved_card_under_its_target_and_no_group_of_one(tmp_path, capsys):
+    s, private = tree(tmp_path, {"facts/ada-example.md": "---\naka: Addy Bee\n---\n" + ADA + line(7, "Ada Example: x [superseded]") + "\n",
+                                 "facts/ada-quay.md": "# Ada Quay\n\n- Ada Quay: the harbour office.\n",
+                                 "facts/addie.md": "---\naka: Ada E\n---\n# Addie\n\n# moved to: ada example\n",
+                                 "facts/quay-ada.md": "# Quay Ada\n\n- Quay Ada: a boat.\n", "facts/bea-fen.md": "# Bea Fen\n\n\n",
+                                 "facts/bea-quay.md": "# Bea Quay\n\n- Bea Quay: a pier.\n"})
+    got = cards.near(s, TODAY)
+    assert got == {"groups": [{"word": "ada", "cards": [{"name": "ada example", "live": 2, "aka": ["Addy Bee"], "moved": ["addie"]},
+                                                        {"name": "ada quay", "live": 1, "aka": [], "moved": []}]}],
+                   "cards": 6, "emptied": 2, "moved": 1, "pointers": 1}
+    args = ["cards", "near", "--private", str(private), "--state", str(tmp_path / "state")]
+    assert cli.main([*args, "--json"]) == 0 and json.loads(capsys.readouterr().out) == got
+    assert cli.main(args) == 0 and capsys.readouterr().out == (
+        "ada: ada example (2 live lines, aka Addy Bee, moved addie); ada quay (1 live line)\n"
+        "1 groups, 2 cards in them, of 6; 2 emptied, 1 holding a pointer, 1 moved\n")
+    assert cli.main(["cards", "merge", "addie", *args[2:]]) == 2 and "takes two cards" in capsys.readouterr().err
