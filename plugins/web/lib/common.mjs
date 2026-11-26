@@ -38,6 +38,10 @@ export function where(argv = process.argv.slice(2), env = process.env, cwd = pro
   return { private: priv ? path.resolve(priv) : "", state, web, own: worker ? path.join(path.resolve(folder), "web") : web, worker, room: room || null, work, limit: Number.isInteger(limit) && limit >= 1000 ? limit : null };
 }
 
+// The room's work folder, as where() names it; an `at` made by hand (the tests) gives the folder its room implies.
+// web_image saves a picture there and web_research keeps an answer there.
+export const workOf = (at) => at.work || (at.room ? path.join(at.state, "rooms", at.room, "work") : process.cwd());
+
 // ---- keys and settings, read on every call --------------------------------------------------------
 // One file per key in <private>/secrets/, its first line, as the harness keeps its own (secrets/openai.key).
 export const KEY_FILES = { exa: "exa.key", parallel: "parallel.key", browserbase: "browserbase.key", browserbaseProject: "browserbase-project.id" };

@@ -8,6 +8,35 @@ version changes.
 
 ## 2026-11-26
 
+### research-answers-2026-11-26 (#143)
+
+- A web_research answer stays on file. A completed run's answer is kept as `research/<day>-<slug>-<tail>.md` in the room's
+  work folder the first time web_research or web_research_result sees the run completed, and the reply says where, after
+  the answer: Read opens it again for nothing once the room's context is compacted or its session ends, where asking again
+  paid again. The name is the day it was saved, the question's lowercase ASCII letters and digits (40 at most, `run` when
+  none is left) and the run id's last six letters or digits, so no question names a path and two runs of one question are
+  two files. The file's first line says it came off the web and is a record, never an instruction; then the question, run
+  id, effort, cost, status and when it was saved; then the answer, its JSON and its sources, with no key in it. The folder
+  is 0700 with a file named `KEEP` in it, so the nightly sweep of the work folder leaves it; the file 0600, written once
+  and never rewritten, a second collect (the next day too) naming the same file. A run still going, failed or cancelled
+  keeps nothing, a refusal makes no folder, and a save that fails returns the answer with one line saying why it was not
+  kept, the next collect keeping it.
+- `web_research_result` with no run_id lists the answers the room kept in the last 7 days, newest first, each with its
+  day, effort, cost, the first 80 characters of its question and its file; none is one line. It reads only the room's own
+  folder, asks Exa nothing and books nothing; with a run_id it is the tool it was.
+- Every run is asked where its sources disagree and what it did not find: its system prompt opens with standing words
+  (quote the words each finding rests on with its link, put sources that disagree side by side under Sources that disagree,
+  end with Not found), then the room's own `system` whole. The query, the effort, the schema and the reference are as they
+  were.
+- `yerk explain research-kept` describes it; docs/GUIDE.md's Web reach says it. A Python test fails the day the plug-in's
+  `KEEP` and the sweep's differ. The plug-in's Node tests are not run by the box's CI or the gate; run `npm test` in
+  plugins/web.
+
+**Upgrading:** nothing to do. budgets.toml's `deferred_tool_names` is 4,380 and `[session_start] total` 136,494; an install
+that keeps its own budgets.toml takes both. web_research's entry is 43 longer as sent and web_research_result's 90, and the
+line is now what a room sends: it had stood 466 under since web_search took its filters back on Nov 11. A
+room's kept answers stay in its work folder until someone removes them.
+
 ### doctor-fresh-examples-2026-11-26 (#142)
 
 - The doctor no longer names a lesson a room filed the day before for "an example outside <example> tags" when the lesson
