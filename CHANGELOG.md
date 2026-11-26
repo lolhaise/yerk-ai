@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-11-25
 
+### card-aka-2026-11-25 (#139)
+
+- A fact file may say in its front matter `aka: name, name`, the other names the card answers to, each one a name the mention
+  index would key (no stop word or sentence, 3 to 44 characters, six words at most); any other is ignored, and an `aka` line
+  below the front matter or in a file that is no fact file is words. It is written by hand for now; no tool sets it.
+- A message that says a card's aka gets what the card's own name gets, the same entries in the same order. A card whose own
+  name is that word comes first, then the card that says it, then the rest as before. A room gets only what it may read, as
+  before. A tree with no aka builds the same name index as before.
+- `remember` with an `about` that no card has as its own name, and exactly one card has as an aka, files on that card under
+  the same rules as any fact file. A card named so wins, and two cards saying one aka choose neither.
+- When `remember` starts a card beside cards whose name or aka shares its first word, its answer carries `near`, those cards'
+  names (five at most), and one line: file the fact again on the right one with `replaces`. Nothing is refused or moved.
+- The night's promotion reads a card's pack by its aka, under the same stop-word rule as its other names, and a proposed line
+  headed by an aka passes the one-word head check as a card's name does.
+
+**Upgrading:** nothing to do. No card has an aka until one is written.
+
 ### end-date-2026-11-25 (#138)
 
 - `remember` takes `until`, the last day a state holds (away until a day, an offer good until a day), one real day, not before
