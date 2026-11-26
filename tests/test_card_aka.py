@@ -5,13 +5,16 @@ whose aka its `about` is; a new card started beside one that shares its first wo
 made up."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from pathlib import Path
 
-from yerk_ai import memindex, memory, mentions
+from yerk_ai import memindex, memory, mentions, words
+from test_remember import daemon, remember
 from test_room_scope import install
 
+NEXT = words.FILED_NEXT.format(clause=words.FILED_AT_MOST)
 CARD = "# Orla Vantree\n\n- Orla Vantree: a retired lighthouse keeper.\n- Orla lives by the old quay.\n- Boat: the Example Gull, at pier 3.\n"
 PEOPLE = "# people\n\n- Orla Vantree: plays the fiddle on Fridays.\n- Boat: the ferry, twice a day.\n"
 AKAS = ("orly", "lady vantree", "bree-anne", "bramble")
@@ -127,3 +130,55 @@ def test_a_room_that_may_not_read_a_card_gets_nothing_by_its_aka_and_an_owner_ro
     assert not y.recall_for("family-room", "is orly at the lighthouse?")[0]
     assert "Orla Vantree: keeps the example lighthouse." in [e["text"] for e in y.recall_for("example-room", "is orly at the lighthouse?")[0]]
     assert "Brim Quell: runs the example bakery." in [e["text"] for e in y.recall_for("family-room", "did brimmy bake?")[0]]
+
+
+def fresh(tmp_path: Path, name: str):
+    (tmp_path / name).mkdir()
+    return daemon(tmp_path / name)
+
+
+def cards(y, files: dict[str, str]) -> Path:
+    (facts := y.memory.root / "facts").mkdir(parents=True, exist_ok=True)
+    for name, text in files.items():
+        (facts / name).write_text(text)
+    return facts
+
+
+ORLA = "---\naka: Orly, Lady Vantree\n---\n# Orla Vantree\n\n- Orla Vantree: keeps the example lighthouse.\n"
+
+
+def test_remember_about_an_aka_files_on_that_card_and_its_own_name_and_anything_else_file_as_today(tmp_path):
+    y = daemon(tmp_path)
+    facts = cards(y, {"orla-vantree.md": ORLA})
+    r = remember(y, "example-room", "Orly painted the lamp room blue.", "Orly")
+    assert r == {"ok": True, "cite": "tree/facts/orla-vantree.md:7", "superseded": [], "refused": [], "not_edited": [], "next": NEXT}
+    assert remember(y, "example-room", "Lady Vantree retired in May.", "lady vantree")["cite"] == "tree/facts/orla-vantree.md:8"
+    assert remember(y, "example-room", "Orla Vantree rows on Sundays.", "Orla Vantree")["cite"] == "tree/facts/orla-vantree.md:9"
+    assert remember(y, "example-room", "Orly painted the lamp room blue.", "Orly")["cite"] == r["cite"]         # a retry, once
+    text = (facts / "orla-vantree.md").read_text()
+    assert text.startswith(ORLA) and len(text.splitlines()) == 9 and sorted(p.name for p in facts.iterdir()) == ["orla-vantree.md"]
+    assert remember(y, "example-room", "Lady Gull sails on Monday.", "Lady")["cite"] == "tree/facts/lady.md:3"    # its start: a card of its own
+
+
+def test_a_card_named_exactly_about_wins_and_two_cards_saying_one_aka_choose_neither(tmp_path):
+    y = daemon(tmp_path)
+    facts = cards(y, {"orla-vantree.md": ORLA, "orly.md": "# Orly\n\n- Orly: the ferry's ginger cat.\n"})
+    assert remember(y, "example-room", "Orly caught a fish.", "Orly")["cite"] == "tree/facts/orly.md:4"
+    assert (facts / "orla-vantree.md").read_text() == ORLA
+    y = fresh(tmp_path, "two")
+    facts = cards(y, {"orla-vantree.md": ORLA, "orla-quay.md": ORLA.replace("Lady Vantree", "Quay Orla").replace("Vantree:", "Quay:")})
+    r = remember(y, "example-room", "Orly caught a fish.", "Orly")
+    assert r["cite"] == "tree/facts/orly.md:3"
+    assert (facts / "orla-vantree.md").read_text() == ORLA and "fish" not in (facts / "orla-quay.md").read_text()
+
+
+def test_said_a_room_that_is_not_an_owner_room_and_an_aka_on_a_card_that_is_not_private_file_where_they_did(tmp_path):
+    y = daemon(tmp_path, "example-room", "family-room")
+    facts = cards(y, {"orla-vantree.md": ORLA, "brim-quell.md": "---\nclass: shared\naka: Brimmy\n---\n# Brim Quell\n\n- Brim Quell: bakes.\n"})
+    r = asyncio.run(y.tool_remember("example-room", "I painted the lamp room", "Orly", [], said="Orla", source="m-1"))
+    assert r["ok"] and r["cite"].startswith("tree/daily/") and "near" not in r
+    r = remember(y, "family-room", "Orly painted the lamp room blue.", "Orly")
+    assert r["ok"] and r["cite"].startswith("tree/daily/") and "near" not in r
+    assert (facts / "orla-vantree.md").read_text() == ORLA
+    r = remember(y, "example-room", "Brimmy baked rye.", "Brimmy")
+    assert r["cite"] == "tree/facts/brimmy.md:3" and "rye" not in (facts / "brim-quell.md").read_text()

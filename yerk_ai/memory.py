@@ -739,12 +739,22 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     edit, named = ([f"{cite(s, p)}:{k}" for p, k in olds[b]] for b in (True, False))
     note = body + end + (f" (supersedes {', '.join(edit + named)})" if edit or named else "")
     at = datetime.now(timezone.utc).astimezone(s.tz)
-    words = [w for w in "-".join(mentions.tokens(about)).split("-") if w][:mentions.KEY_WORDS]
-    while len("-".join(words)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
-        words.pop()
-    path = (s.root / "facts" / f"{'-'.join(words)}.md").resolve()       # never through a link out of the tree (F8)
-    if owner and not who and mentions.key_of(" ".join(words)) and path.is_relative_to(s.root) and file_class(path)[0] == "private" and not any(
-            path.is_relative_to(a) and not s.root.is_relative_to(a) for a in s.scope.roots[1:]):
+    parts = [w for w in "-".join(mentions.tokens(about)).split("-") if w][:mentions.KEY_WORDS]
+    while len("-".join(parts)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
+        parts.pop()
+    path = (s.root / "facts" / f"{'-'.join(parts)}.md").resolve()       # never through a link out of the tree (F8)
+
+    def card(p: Path) -> bool:                              # a fact file's filing: an owner room's, no `said`, a private card in the tree
+        return bool(owner and not who and mentions.key_of(" ".join(parts)) and p.is_relative_to(s.root) and file_class(p)[0] == "private" and not any(
+            p.is_relative_to(a) and not s.root.is_relative_to(a) for a in s.scope.roots[1:]))
+
+    def fold(x: str) -> str:
+        return " ".join(mentions.tokens(x, True))
+    if card(path) and not path.is_file():      # no card by that name: the one card whose aka it is
+        names = {c: card_names(c) for c in sorted((s.root / "facts").glob("*.md"))}
+        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:])]
+        path = alias[0] if len(alias) == 1 and card(alias[0]) else path
+    if card(path):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
             have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]
             n = next((i + 1 for i, x in enumerate(have) if x.startswith(f"- {note} (") and (m[1] if (m := TAGGED.search(GONE.sub("", x))) else "") == tag
