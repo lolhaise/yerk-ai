@@ -92,12 +92,12 @@ def proper(src: list[tuple[date, Path, list[tuple[int, str]]]]) -> set[str]:
 
 def names(card: Path, text: str, said_as: set[str] = set()) -> re.Pattern[str]:
     """What a card answers to, any case: its title, its first key (and a name's first word), each key of two or more
-    words and each one-word key the night says as a name, none of them stop words alone, and the relation its first
+    words and each one-word key the night says as a name, its aka names (memory.card_names), none of them stop words alone, and the relation its first
     line gives (`<someone>'s mom`): one said as a name (mom, dad, grandma) bare and in its long form, any other
     (`sister`, `second-oldest brother`) after my, his, her, our or a name's `'s`."""
     keys = [m for x in text.splitlines() if (m := re.match(r"- ([^:\n]{2,60}): (.*)", x))]
     said = [title(card, text), *(k[1].strip() for k in keys[:1]), *(k[1].strip() for k in keys if mentions.key_of(k[1]) and (
-        len(k[1].split()) > 1 or k[1].strip().lower() in said_as))]
+        len(k[1].split()) > 1 or k[1].strip().lower() in said_as)), *memory.card_names(card, text)[1:]]
     if keys and len(w := keys[0][1].split()) > 1 and all(x[:1].isupper() for x in w):
         said.append(w[0])
     pats = [rf"\b{re.escape(n)}\b" for n in said if content(n)]
@@ -353,7 +353,8 @@ def promote(s: memory.Settings, private: Path, state: Path, conf: dict[str, Any]
     model = model or (lambda p, tools: ask(private, state, conf, p, tools))
     out: dict[str, Any] = {k: [] for k in ("proposed", "dropped", "checked", "landed", "corrections")} | {"bench": None}
     (pk, said_as), land = packs(s, private, logs, days), list[tuple[Path, str]]()
-    heads = said_as | {n.lower() for c in (s.root / "facts").glob("*.md") for n in (c.stem.replace("-", " "), title(c, c.read_text(errors="replace")))}
+    heads = said_as | {n.lower() for c in (s.root / "facts").glob("*.md") for t in [c.read_text(errors="replace")]
+                       for n in (c.stem.replace("-", " "), title(c, t), *memory.card_names(c, t)[1:])}       # every card's name, its aka too
     per, most = (int(conf.get(k, n)) * max(1, len(days)) for k, n in (("per_card", 3), ("per_night", 25)))   # a day's cap: no card doubles unread
     for batch in batches(s, pk):
         cards = {c: c.read_text(errors="replace") for c in batch}

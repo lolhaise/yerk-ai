@@ -139,12 +139,13 @@ class Builder:
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private
-        from .memory import file_class
+        from .memory import card_names, file_class
         srcs = sorted((p, *st) for p, st in disk.items() if self.is_source(Path(p)))
         if srcs == self.sig and self.out.is_file():
             return None
         entries: list[dict[str, Any]] = []
         src: list[tuple[str, str]] = []                        # each entry's file, and that file as a key if a fact file ("ada example")
+        akas: dict[str, list[str]] = {}                        # a card's other name (memory.card_names): the own names of the cards saying it
         dropped = 0
         for path in (Path(p) for p, _, _ in srcs):
             try:
@@ -153,6 +154,9 @@ class Builder:
                 continue
             entries += e
             src += [(str(path), " ".join(tokens(path.stem.replace("-", " ").replace("_", " "), True)) if path.parent.name == "facts" else "")] * len(e)
+            said = [" ".join(tokens(x, True)) for x in ([] if path.name in self.curated else card_names(path))]
+            for a in dict.fromkeys(x for x in said[1:] if x != said[0]):
+                akas.setdefault(a, []).append(said[0])
             dropped += d
         keys: dict[str, list[int]] = {}
         for n, entry in enumerate(entries):
@@ -164,13 +168,21 @@ class Builder:
             if len(t) != 1:                                    # no key of its own, or a longer one: listed under each name its first words
                 for name in names.intersection(tokens(" ".join(x for x in entry["text"].split()[:KEY_WORDS] if x[:1].isupper()), True)):
                     keys[name].append(n)                       # write as a name ("Ada lives" under ada, never "Ada's car" under car)
-        at: dict[int, int] = {}                                # an entry's place in the file written: only what a key lists goes in
-        for k, ids in keys.items():                            # the key's own fact file in its order, then lines keyed by it, then file order;
-            kept: list[int] = []                               # within one file, a text that starts another listed one, or starts with it, once
-            for n in sorted(set(ids), key=lambda n: (src[n][1] != k, src[n][1] != k and " ".join(tokens(entries[n]["key"], True)) != k, n)):
+
+        def once(order: list[int]) -> list[int]:               # within one file, a text that starts another listed one, or starts with it, once
+            kept: list[int] = []
+            for n in order:
                 if not any(src[m][0] == src[n][0] and entries[m]["text"][:len(entries[n]["text"])] == entries[n]["text"][:len(entries[m]["text"])] for m in kept):
                     kept.append(n)
-            keys[k] = [at.setdefault(n, len(at)) for n in kept]
+            return kept
+        lists = {k: once(sorted(set(ids), key=lambda n: (src[n][1] != k, src[n][1] != k and " ".join(tokens(entries[n]["key"], True)) != k, n)))
+                 for k, ids in keys.items()}                   # the key's own fact file in its order, then lines keyed by it, then file order
+        for a, owns in akas.items():                           # an aka: what its card's own name lists, in that order, after a card named it
+            here = lists.get(a, [])
+            if got := once([*(n for n in here if src[n][1] == a), *(n for o in owns for n in lists.get(o, [])), *here]):
+                lists[a] = got
+        at: dict[int, int] = {}                                # an entry's place in the file written: only what a key lists goes in
+        keys = {k: [at.setdefault(n, len(at)) for n in kept] for k, kept in lists.items()}
         entries = [entries[n] for n in at]
         self.out.parent.mkdir(parents=True, exist_ok=True)
         write_private(self.out, json.dumps({"built": round(time.time(), 3), "sources": len(srcs), "entries": entries, "keys": keys}))

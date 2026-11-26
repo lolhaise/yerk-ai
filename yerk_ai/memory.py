@@ -267,6 +267,19 @@ def file_class(path: Path) -> tuple[str, str]:
     return cls, room
 
 
+def card_names(path: Path, text: str | None = None) -> list[str]:
+    """What a fact file answers to: its own name, its file name as words, then each name an `aka:` line of its front matter (read
+    whole) gives, comma separated, that mentions.key_of takes, as it gives it; a file that is no fact file, none. Each reader (the
+    mention index, remember, the promotion) compares them as mentions.tokens(name, True) gives them, whole, never by their start."""
+    if path.parent.name != "facts" or path.suffix != ".md":
+        return []
+    with suppress(OSError):
+        text = path.read_text(errors="replace") if text is None else text
+    m = FRONT.match(text or "")
+    aka = [x.partition(":")[2] for x in (m[1].splitlines() if m else []) if x.partition(":")[0].strip() == "aka"]
+    return list(dict.fromkeys([path.stem.replace("-", " ").replace("_", " "), *(k for v in aka for x in v.split(",") if (k := mentions.key_of(x.strip())))]))
+
+
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     """An owner room reads everything; any other room reads shared files and its own room's lines; a sealed one its own lines only."""
     return reader is None or ((reader.owner or cls == "shared") and not reader.sealed) or (
@@ -726,12 +739,23 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     edit, named = ([f"{cite(s, p)}:{k}" for p, k in olds[b]] for b in (True, False))
     note = body + end + (f" (supersedes {', '.join(edit + named)})" if edit or named else "")
     at = datetime.now(timezone.utc).astimezone(s.tz)
-    words = [w for w in "-".join(mentions.tokens(about)).split("-") if w][:mentions.KEY_WORDS]
-    while len("-".join(words)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
-        words.pop()
-    path = (s.root / "facts" / f"{'-'.join(words)}.md").resolve()       # never through a link out of the tree (F8)
-    if owner and not who and mentions.key_of(" ".join(words)) and path.is_relative_to(s.root) and file_class(path)[0] == "private" and not any(
-            path.is_relative_to(a) and not s.root.is_relative_to(a) for a in s.scope.roots[1:]):
+    parts = [w for w in "-".join(mentions.tokens(about)).split("-") if w][:mentions.KEY_WORDS]
+    while len("-".join(parts)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
+        parts.pop()
+    path, near = (s.root / "facts" / f"{'-'.join(parts)}.md").resolve(), list[str]()      # never through a link out of the tree (F8)
+
+    def card(p: Path) -> bool:                              # a fact file's filing: an owner room's, no `said`, a private card in the tree
+        return bool(owner and not who and mentions.key_of(" ".join(parts)) and p.is_relative_to(s.root) and file_class(p)[0] == "private" and not any(
+            p.is_relative_to(a) and not s.root.is_relative_to(a) for a in s.scope.roots[1:]))
+
+    def fold(x: str) -> str:
+        return " ".join(mentions.tokens(x, True))
+    if card(path) and not path.is_file():      # no card by that name: the one card whose aka it is, else a new card and those it may be
+        names = {c: card_names(c) for c in sorted((s.root / "facts").glob("*.md"))}
+        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:])]
+        path, near = (alias[0], []) if len(alias) == 1 and card(alias[0]) else (path, sorted({n[0] for n in names.values() if any(
+            fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n)})[:5])
+    if card(path):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
             have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]
             n = next((i + 1 for i, x in enumerate(have) if x.startswith(f"- {note} (") and (m[1] if (m := TAGGED.search(GONE.sub("", x))) else "") == tag
@@ -768,7 +792,8 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
             f.write("".join(f"{a}\t{b}\n" for a, b in pairs))
     return {"ok": True, "cite": new, **({"due": due} if tag else {}), **({"owes": owes.strip()} if tag and owes.strip() else {}), **({"until": until} if end else {}),
             "superseded": [c for c in edit if c not in taken], "refused": refused, "not_edited":
-            [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
+            [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)],
+            **({"near": near, "near_next": words.FILED_NEAR} if near else {})}
 
 
 def retire(s: Settings, log: DailyLog, room: str, mid: str, at: str, why: str) -> dict[str, Any]:

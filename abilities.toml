@@ -1626,7 +1626,7 @@ layer = 4
 
 [abilities.remember]
 state = "built"
-what = "The remember tool: a room files a new fact, decision or correction into the install's own memory tree the same turn, each line carrying its room, source message and time. An owner room's fact goes to facts/<about>.md, where mention recall finds it by name; anything else to the room's day log as a note of the room's class, where the recall pack and the topic hit find it. A correction marks every old line it names in that tree as superseded (a line in a read-only root is named in the new line instead), and recall never puts a superseded line above its replacement. A room that is not an owner room writes its own class and supersedes only its own lines. With `until`, the last day a state holds, the line ends with the curation's [until YYYY-MM-DD] mark: from the day after, deep recall, the topic hit and the recall pack leave it out and the sweep blanks a card's, while recall and read_memory still give it as filed."
+what = "The remember tool: a room files a new fact, decision or correction into the install's own memory tree the same turn, each line carrying its room, source message and time. An owner room's fact goes to facts/<about>.md, where mention recall finds it by name; anything else to the room's day log as a note of the room's class, where the recall pack and the topic hit find it. A correction marks every old line it names in that tree as superseded (a line in a read-only root is named in the new line instead), and recall never puts a superseded line above its replacement. A room that is not an owner room writes its own class and supersedes only its own lines. With `until`, the last day a state holds, the line ends with the curation's [until YYYY-MM-DD] mark: from the day after, deep recall, the topic hit and the recall pack leave it out and the sweep blanks a card's, while recall and read_memory still give it as filed. An `about` that is one card's `aka` (its front matter's other names) files on that card when no card has it as its own name; a card started beside cards whose name or aka shares its first word comes back with `near`, their names, to file again on the right one."
 tier = "free"
 needs = "nothing; writes <private>/memory/facts/ and the day's log"
 free_path = "this is the free path"
@@ -1679,7 +1679,7 @@ layer = 4
 
 [abilities.mention-recall]
 state = "built"
-what = "The people, places and things a message names, from the fact files and the curated file's headings, put in front of the model before it starts, with no tool call; at most 1,500 characters a message, owner-privacy rooms only."
+what = "The people, places and things a message names, from the fact files and the curated file's headings, put in front of the model before it starts, with no tool call; at most 1,500 characters a message, owner-privacy rooms only. A card answers to each name its front matter's `aka:` gives as to its own name, after a card whose own name it is."
 tier = "free"
 needs = "a running yerk-index (it builds the name index when a fact file changes)"
 free_path = "this is the free path"
