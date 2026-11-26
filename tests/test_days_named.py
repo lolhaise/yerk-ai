@@ -45,14 +45,28 @@ def test_each_form_names_its_day_a_weekday_in_front_and_a_comma_before_the_year_
     assert named("The example visit is November 27, 2026") == ["2026-11-27"]
     assert named("The example visit is November 27 2026") == ["2026-11-27"]
     assert named("The example visit is Dec 2") == ["2026-12-02"]
-    assert named("The example visit is Sept 5") == named("The example visit is Sep 5") == named("on September 5") == ["2027-09-05"]
+    assert named("The example visit is Sept 5, 2027") == named("The example visit is Sep 5 2027") == named("on September 5, 2027") == ["2027-09-05"]
 
 
 def test_a_form_with_no_year_is_the_next_such_day_across_the_turn_of_the_year_and_a_year_already_past_is_none():
     assert named("Dec 30, then Jan 5") == ["2026-12-30", "2027-01-05"]
-    assert named("the example check of Nov 20") == ["2027-11-20"]           # this year's has passed: the coming one
+    assert named("the example check of Nov 20") == []                       # this year's has just passed: never next year's
     assert named("the example check of Jan 5, 2026") == named("2025-12-02") == named("Dec 2, 2025") == []
     assert named("the example check of Jan 5, 2027") == ["2027-01-05"]
+
+
+def test_a_form_with_no_year_names_its_next_day_only_within_183_days_so_a_day_just_behind_is_never_next_years():
+    """The judge's rule, set before the ship: most filed lines that name a month and a day with no year name a day just behind
+    them, the time something was said or done, and reading each as next year's told the room of a day still to come that no
+    line meant, with a wrong year in the note. A form with no year is the nearer of its two days: named only when the next
+    such day is within 183 days. Written with its year, a day is itself, to day 366."""
+    for text in ("Nov 20", "Nov 25", "Fri Nov 20", "Oct 3", "Sept 5", "June 1", "May 29", "November 20"):
+        assert named(f"The example form was sent {text}.") == [], text
+    assert TODAY + timedelta(days=183) == date(2027, 5, 28)
+    assert named("May 28") == ["2027-05-28"] and named("May 29") == []          # day 183 is in, day 184 out
+    assert named("May 29, 2027") == named("2027-05-29") == ["2027-05-29"]       # with its year a day is itself
+    assert named("Nov 20, 2027") == ["2027-11-20"] and named("Nov 20, 2026") == []
+    assert named("said Nov 20 that the example visit is Dec 2") == ["2026-12-02"]   # the day behind is left out, the coming one kept
 
 
 def test_today_and_yesterday_are_never_named_and_day_366_is_in_and_day_367_out():
@@ -174,3 +188,34 @@ def test_a_rule_and_its_retiring_never_answer_with_day(tmp_path, monkeypatch):
     gone = call(text=f"the example browser stops on {soon.isoformat()}", retire=rule["cite"])
     assert gone["ok"] and "day" not in gone, gone
     assert call(text=f"The example browser stops on {soon.isoformat()}.")["day"] == note(soon.isoformat())     # the same words, told
+
+
+# the judge's edges (2026-11-26): each was right in the code and stood on no test
+
+def test_a_letter_or_a_clock_time_right_behind_a_months_number_is_no_day():
+    for text in ("the example May 5K run", "the example call, Dec 9:30 sharp", "Dec 12pm"):
+        assert named(text) == [], text
+    assert named("the example run of May 5, then Dec 9 at 9:30") == ["2026-12-09", "2027-05-05"]
+
+
+def test_the_notes_words_are_these_word_for_word():
+    assert words.DAY_NAMED == ("these words name a day still to come ({days}). If there is a thing to do, to attend or to wait for then, file it now as a "
+                               "line of its own with `due`; a day that only says when something was said or made needs nothing.")
+
+
+def test_the_clock_given_to_remember_is_the_day_it_goes_by_whatever_clock_the_machine_runs_on(tmp_path):
+    y = daemon(tmp_path)
+    s, log = y.memory, memory.DailyLog(y.memory.daily, y.memory.tz)
+    far = datetime(2031, 6, 1, 12, 0, tzinfo=s.tz)                          # years from any clock this test runs under
+    r = memory.remember(s, log, "example-room", "m-1", "The example piano tuner comes Jun 3, 2031.", now=far)
+    assert r["ok"] and r["day"] == note("2031-06-03")
+    r = memory.remember(s, log, "example-room", "m-2", "The example piano was tuned May 30, 2031, and the tuner comes again Jun 3.", now=far)
+    assert r["ok"] and r["day"] == note("2031-06-03")
+
+
+def test_only_the_words_filed_are_read_for_a_day_never_what_the_line_is_about(tmp_path, monkeypatch):
+    y = daemon(tmp_path)
+    clock(monkeypatch, noon(y))
+    r = dated(y, "example-room", "The example visit is on.", "example visit Dec 2")
+    assert r["ok"] and "day" not in r, r
+    assert dated(y, "example-room", "The example visit is on Dec 2.", "example visit")["day"] == note("2026-12-02")

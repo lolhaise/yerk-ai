@@ -692,8 +692,8 @@ DAY_FORM = re.compile(r"(?<![\w./\\:#@+=-])([0-9]{4})-([0-9]{2})-([0-9]{2})(?:T[
 
 def days_named(text: str, today: date) -> list[str]:
     """The days still to come (after `today`, at most 366 days on) that `text` names in an explicit form (DAY_FORM), as ISO days, the
-    soonest first, each once, three at most: a form with no year is the next such day on or after `today`; today itself, a past
-    day and a form that is no real day (Feb 30) are none. Never a relative word, a bare weekday or a numeric date like 12/02."""
+    soonest first, each once, three at most: a form with no year is the next such day when that is within 183 days, so a day just
+    behind is never next year's; today, a past day and no real day (Feb 30) are none. Never a relative word, a weekday or 12/02."""
     days = set()
     for m in DAY_FORM.finditer(text):
         y, mo, d = (m[1], int(m[2]), int(m[3])) if m[1] else (m[6], MONTH_OF[m[4]], int(m[5]))     # y None: no year written
@@ -703,7 +703,7 @@ def days_named(text: str, today: date) -> list[str]:
                     break
         else:
             continue
-        if today < day <= today + timedelta(days=366):
+        if today < day <= today + timedelta(days=366 if y else 183):      # no year written: the nearer one, never a day just behind
             days.add(day.isoformat())
     return sorted(days)[:3]
 
