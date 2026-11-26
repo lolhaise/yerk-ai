@@ -6,6 +6,17 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-26
+
+### doctor-fresh-examples-2026-11-26 (#142)
+
+- The doctor no longer names a lesson a room filed the day before for "an example outside <example> tags" when the lesson
+  has none. On a converted rule store its daily pass read a lesson of the last day whole, so a quote of three words in the
+  lesson's own words, beside the word its cited example opens with ("Bounced, daily/..." inside the tags), counted as an
+  exchange outside them, and the lesson was handed back to be filed again. The pass now reads the lesson as its filing did,
+  with its examples out (`shape.filing`), so the gate that files a lesson and the check that reads it the next morning agree.
+  A lesson written by hand with its exchange outside the tags is still named. One test; no line of code more.
+
 ## 2026-11-25
 
 ### cards-merge-2026-11-25 (#141)
