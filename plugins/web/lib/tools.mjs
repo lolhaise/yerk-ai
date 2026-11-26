@@ -1,6 +1,7 @@
 // yerk-web's five tools: web_fetch over the fetch ladder (lib/fetch), web_search over the search engines
-// (lib/search), web_research and web_research_result over the Exa Agent (research.mjs), and web_image over the
-// ladder's fetch rungs (fetch/image.js), one picture saved for the room's Read. Settings and keys are read on
+// (lib/search), web_research and web_research_result over the Exa Agent (research.mjs), a completed run's answer kept
+// for the room's Read, and web_image over the ladder's fetch rungs (fetch/image.js), one picture saved for the room's
+// Read. Settings and keys are read on
 // every call from the private folder (common.mjs), so an edit or a new key applies to the next call; state lives under
 // <state>/web, a Yerk worker's under its own folder (where's `own`); each paid call books one spend row in Yerk's ledger.
 // Keys stay in this process's memory: never written to a file, a log, a tool result or the environment (the search code
@@ -134,7 +135,7 @@ export const TOOLS = [
   {
     name: "web_research",
     description:
-      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one daily cap, the one web.json sets, else US$" + DAILY_USD + ". A run still going after about 3 minutes comes back as a run id for web_research_result.",
+      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given, kept as a file in this room's work folder. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one daily cap, the one web.json sets, else US$" + DAILY_USD + ". A run still going after about 3 minutes comes back as a run id for web_research_result.",
     inputSchema: {
       type: "object",
       properties: {

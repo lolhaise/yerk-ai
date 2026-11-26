@@ -216,9 +216,11 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
 # newest request shapes hold them, 5,587 and 1,309 (10,970 together): the last two changes had been added by the plug-in's
 # own count of its entries, 20 under what a room sends, and the mac's entry stood 3 over.
 # web_fetch then (need-2026-11-22-136) with its sentence on an ÖBB ticket shop link, 200 more as built and as sent, 1,230.
+# web_research and web_research_result then (research-answers-2026-11-26, the owner's order, Wed Nov 25) with the
+# kept answer's clause and the list's sentence, its run_id no longer required, 43 and 90 more as built and as sent, 1,327 and 522.
 LIVE_PROMPT = 10889
 LIVE_TOOLS = {"Bash": 4248, "Edit": 1037, "Glob": 785, "Grep": 3362, "Read": 2006, "Write": 694, "mcp__web-ladder__web_fetch": 1230,
-              "mcp__web-ladder__web_search": 621, "mcp__web-ladder__web_research": 1284, "mcp__web-ladder__web_research_result": 432,
+              "mcp__web-ladder__web_search": 621, "mcp__web-ladder__web_research": 1327, "mcp__web-ladder__web_research_result": 522,
               "mcp__web-ladder__web_image": 913, "mcp__hands__browser": 5587, "mcp__hands__desktop": 1381, "mcp__hands__discord": 1168,
               "mcp__hands__mac": 1309, "mcp__hands__mail": 1525, "mcp__yerk__hold": 481, "mcp__yerk__read_memory": 551, "mcp__yerk__recall": 656,
               "mcp__yerk__remember": 1656, "mcp__yerk__schedule": 2180, "mcp__yerk__send": 604, "mcp__yerk__settings": 878,
@@ -307,7 +309,9 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     (recall-by-day-2026-11-25) `yerk_tools` to 30,508 for the `recall` tool's `since` and `until` (395 more as built), the total by
     the 395 to 135,470; then (twelve-hits-2026-11-25) `yerk_tools` to 30,648 for the `recall` tool's twelve hits and one sentence
     (140 more as built), the total by the 140 to 135,610; then (end-date-2026-11-25) `yerk_tools` to 30,933 for the `remember`
-    tool's `until` and its two sentences (285 more as built), the total by the 285 to 135,895."""
+    tool's `until` and its two sentences (285 more as built), the total by the 285 to 135,895; then (research-answers-2026-11-26)
+    the other entries to 3,914 for web_research's clause on its kept answer and web_research_result's sentence on the list
+    (43 and 90 more as built and as sent), the total by the 133 to 136,028."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -318,14 +322,14 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
         r"(?: \(.*?\))?\s+([\d,]+)\s+([\d,]+)", out, re.M)}
     cc = b["session_start"]["claude_code"]
     assert rows == {"system prompt: Claude Code's own": (LIVE_PROMPT, cc["claude_code_prompt"]), "built-in tools": (12132, cc["builtin_tools"]),
-                    "Yerk AI's tools": (11734, cc["yerk_tools"]), "other tool entries": (3781, cc["deferred_tool_names"]),
+                    "Yerk AI's tools": (11734, cc["yerk_tools"]), "other tool entries": (3914, cc["deferred_tool_names"]),
                     "mcp__hands__": (10970, cc["mcp__hands__"]), "mcp__web-ladder__web_image": (913, cc["mcp__web-ladder__web_image"])}
     builtin, other = (next(x for x in out.splitlines() if x.startswith(f"  {k} (")) for k in ("built-in tools", "other tool entries"))
     assert "DeferredToolPlaceholder" in other and "DeferredToolPlaceholder" not in builtin and "hands" not in other and "web_image" not in other
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 135895
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 136028
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -496,10 +500,12 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     tools' line (463, the `remember` tool's `due` and `owes`), no part could pay, to 135,075 (due-view-2026-11-25); then Yerk AI's
     tools' line (395, the `recall` tool's `since` and `until`), no part could pay, to 135,470 (recall-by-day-2026-11-25); then Yerk AI's
     tools' line (140, the `recall` tool's twelve hits), no part could pay, to 135,610 (twelve-hits-2026-11-25); then Yerk AI's
-    tools' line (285, the `remember` tool's `until`), no part could pay, to 135,895 (end-date-2026-11-25)."""
+    tools' line (285, the `remember` tool's `until`), no part could pay, to 135,895 (end-date-2026-11-25); then the other entries'
+    line (133, web_research's clause on its kept answer and web_research_result's sentence on the list), no other line lowered,
+    to 136,028 (research-answers-2026-11-26)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 135895
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 136028
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

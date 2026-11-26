@@ -1429,6 +1429,10 @@ test("with no answer kept in the last 7 days the list is one line: no folder, or
   }
 });
 
+test("web_research's description says its answer is kept as a file in this room's work folder", () => {
+  assert.match(TOOLS.find((t) => t.name === "web_research").description, /returns a cited answer, as JSON too when a schema is given, kept as a file in this room's work folder\. Use it for/);
+});
+
 test("web_research_result with a run_id is the tool it was: a blank or a bad one is refused as before, never the list", async () => {
   const { at } = keptRoom("args-room");
   const refused = "web_research_result refused: run_id must be what web_research gave: an Exa Agent run id (it starts agent_run_) or a run's reference (it starts yerk_).";
