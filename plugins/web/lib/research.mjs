@@ -304,18 +304,18 @@ function keptText(run, { effort, query, saved }) {
   return `${head.join("\n")}\n\n${answerOf(run) || "The run gave no answer text."}\n`;
 }
 
-// A kept file's facts by label, read from the lines after its first line up to the first blank one; null when its
-// first line is not KEPT_HEAD, so a stray file in the folder is no kept answer.
+// A kept file's facts by label, read from the lines after its first line and a blank one up to the next blank one; null
+// when its first line is not KEPT_HEAD or it names no run, so a stray file in the folder is no kept answer.
 function keptFacts(text) {
   const lines = String(text).split("\n");
-  if (lines[0] !== KEPT_HEAD) return null;
+  if (lines[0] !== KEPT_HEAD || lines[1] !== "") return null;
   const facts = {};
   for (const l of lines.slice(2)) {
     if (!l) break;
     const m = /^([A-Z][a-z]+): (.*)$/.exec(l);
     if (m && !(m[1] in facts)) facts[m[1]] = m[2];
   }
-  return facts;
+  return facts.Run ? facts : null;
 }
 
 // The file a run was kept in: a regular file of the folder named for its id's tail whose Run line is its id, else "".
