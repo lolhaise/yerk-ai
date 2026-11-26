@@ -242,8 +242,8 @@ def test_the_journal_says_how_many_were_due_when_asked_and_never_a_day_or_a_word
 def test_the_tool_says_a_range_past_today_returns_due_and_the_three_lines_say_what_the_list_is(tmp_path, monkeypatch):
     from test_recall_day import DUE_SAID
     from yerk_ai import mcp_server
-    assert DUE_SAID == ("A range that reaches past today also returns `due`: every open dated line due in it that this room may read, the "
-                        "soonest first, whatever the query's words. That list is what answers \"what is on that day\" or \"what do I have "
+    assert DUE_SAID == ("A range that reaches past today also returns `due`: the open dated lines due in it that this room may read, the "
+                        "soonest twelve, whatever the query's words. That list is what answers \"what is on that day\" or \"what do I have "
                         "that week\", and an empty one means nothing on file is due then.")
     y = yerkd(tmp_path, monkeypatch)
     monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: ROOM)

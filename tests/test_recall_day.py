@@ -18,7 +18,7 @@ from test_room_scope import install, sync
 
 UTC = timezone.utc
 DAY = "2026-01-05"
-DUE_SAID = ("A range that reaches past today also returns `due`: every open dated line due in it that this room may read, the soonest first, "
+DUE_SAID = ("A range that reaches past today also returns `due`: the open dated lines due in it that this room may read, the soonest twelve, "
             "whatever the query's words. That list is what answers \"what is on that day\" or \"what do I have that week\", and an empty one "
             "means nothing on file is due then.")          # what is due in a range past today (build 1c, 2026-11-26), its last sentences
 

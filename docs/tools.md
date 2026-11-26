@@ -39,8 +39,8 @@ as one line each, read_memory(cite) to read on from one. A "timeout" status mean
 `since` and `until` (each YYYY-MM-DD, either alone) keep the search to files named for a day in that range, both ends in it.
 Work them out from the clock line when the question names a day, a week, a month or a phrase like "last Sunday", and leave
 them out when it names no time.
-A range that reaches past today also returns `due`: every open dated line due in it that this room may read, the soonest
-first, whatever the query's words. That list is what answers "what is on that day" or "what do I have that week", and an
+A range that reaches past today also returns `due`: the open dated lines due in it that this room may read, the soonest
+twelve, whatever the query's words. That list is what answers "what is on that day" or "what do I have that week", and an
 empty one means nothing on file is due then.
 ```
 
