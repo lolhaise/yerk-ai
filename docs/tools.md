@@ -60,8 +60,8 @@ Exact lines of a memory file, `lines` of them (default 12; ask more, up to 400, 
 ## remember
 
 ```text
-File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
-correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
+File in memory now, before you write the answer, what you were just told: a new fact, a decision, a correction,
+or a thing on a day still to come (`due`), one line in plain words. `about`: for a fact, the person, place or thing it is about,
 by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
 `cite | its words` (a hit's cite, then the old line's words); the one line from that cite through the
 next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
@@ -75,10 +75,13 @@ its line is deleted and its words kept in the day log.
 named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
 wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
 those words): it is filed as their words. Anything else about a person (what they decided or want, in
-your words) is your note, and is shown as your note, never as their words. `due`: the day `text` is due
-(YYYY-MM-DD, or YYYY-MM-DDTHH:MM in the install's zone), in front of you at a session start from a week before; `owes`,
-with it: who owes it to the owner, empty when the owner does. Give a date only when the words give one or the clock
-line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
+your words) is your note, and is shown as your note, never as their words. `due`: its day (YYYY-MM-DD, or
+YYYY-MM-DDTHH:MM in the install's zone) when `text` is a thing to do, to attend or to wait for on a day still to come:
+a plan, a meeting, a booking, a deadline, an answer someone waits for. File such a thing as a line of its own, also when
+it came up in passing or sits inside words you file for another reason, and with several days offered take the earliest:
+only a line filed with `due` is in front of you at a session start from a week before, and that is what answers "what is
+coming up". `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when the words give
+one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
 `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history ("worked there until ...");
 from the day after, the line is no longer handed to you as current, then a fact file's line is removed.
 ```

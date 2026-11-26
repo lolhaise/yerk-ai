@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 136494`
+- `total = 136924`
 
 ## [session_start.claude_code]
 
@@ -154,9 +154,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-26, research-answers-2026-11-26 (the owner's order, Wed Nov 25): a completed web_research run's answer is kept as a file in the room's work folder, and web_research_result with no run_id lists the last 7 days' (its run_id no longer required): web_research's description one clause longer, 1,282 to 1,325, and web_research_result's one sentence longer and its `required` gone, 401 to 491, each entry measured as `yerk map --wire` counts one, chars(json.dumps(entry)) of its name, description and input schema, on main be8dc4f5 and on this tree the same way; 43 and 90 more, so as sent 1,284 to 1,327 and 432 to 522 (a plug-in's entry goes out as written), and the other entries (web-ladder's four and the placeholder) 3,914 on the 3,781 line; no other line lowered for it, the total rose by the 133 (to 136,028 on main's 135,895). The same day, before the merge, the line was set from what a room sends (the judge's measure): a live room's newest request shape (Claude Code's own record, 2026-11-26) holds web_fetch 1,228, web_search 1,060, web_research 1,313 and web_research_result 432 beside the 214 placeholder, 4,247 on the 3,781 line. web_search's entry had grown with its filters and web_research's with its cap wording (the cleanup of Nov 10 and 11) and the line was never raised for either, so the 3,914 above stood 466 under. Each entry built as a room sends it (its name, description, input schema and Claude Code's own eager_input_streaming key) equals the sent one byte for byte on main; on this tree web_research is 1,356 and web_research_result 522, the line 4,380 and the total 136,494 (466 more; no other line lowered).
 
+2026-11-26, due-words-2026-11-26 (build 1b of the owner's build list of Wed Nov 25): the `remember` tool's words on when to reach for `due` (its first sentence names a thing on a day still to come, and the `due` part says which: a plan, a meeting, a booking, a deadline, an answer someone waits for, filed as a line of its own also in passing, the earliest of several days), since in the 19 hours after the due view's deploy no line was filed with `due`: remember 3,686 to 4,116 as this tree builds it (its description 2,716 to 3,141 characters), all 25 from 28,211 to 28,641 (430 more, measured on main be8dc4f5 and on this tree the same way, each entry's name, description and input schema as compact JSON), so about 31,363 on the 30,933 above; the line is that count, no part could pay, the total rose by the 430 (to 136,325 on main's 135,895). The hands plug-in's tool entries do not change. Merged after research-answers-2026-11-26: the total is 136,924, the same 430 on main's 136,494, and the other entries' line keeps that build's 4,380.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 30933`
+- `yerk_tools = 31363`
 - `deferred_tool_names = 4380`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -348,7 +350,7 @@ Claude Fable 5.2's page: a hard limit such as "in 20 words or fewer" can make it
 The recall bench as a ratchet (memory.ratchet): every `yerk recall-bench` run adds its row to <state>/memory/recall-bench.jsonl and exits 4, and the budget test fails where the install's index is (it runs the bench, `yerk deploy`'s fast tests among them), when the top six is more than `slack` questions under the best of the four runs before it on the same questions, unless a note in `drops` names that drop: "YYYY-MM-DD: BEST to NEW, why". A run at NEW less the slack or more passes while BEST is in the window; it leaves after four runs.
 
 - `slack = 1`
-- `drops = [ "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back", "2026-11-04: 105 to 103, the index grew under the bench from Nov 1 to Nov 4: 2 answers crowded out of the top six by day-log lines written since the Nov 1 run, one by two lines of Nov 4 on the same event (written that evening: the same commit had passed this test at a deploy that afternoon), one by a line of Nov 1 that shares its word; both still whole in one chunk, fifth and eighth when twelve are asked for; the commit the daemon ran before the change under test scores the index the same 103 of 164", ]`
+- `drops = [ "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back", "2026-11-04: 105 to 103, the index grew under the bench from Nov 1 to Nov 4: 2 answers crowded out of the top six by day-log lines written since the Nov 1 run, one by two lines of Nov 4 on the same event (written that evening: the same commit had passed this test at a deploy that afternoon), one by a line of Nov 1 that shares its word; both still whole in one chunk, fifth and eighth when twelve are asked for; the commit the daemon ran before the change under test scores the index the same 103 of 164", "2026-11-26: self 8 to 6, the index grew under the bench from Nov 22 to Nov 26: two answers out of the top six, one under four chunks of two README files a room's work folder took in on Nov 24, one under an attachment's text read on Nov 26 and old day-log chunks reordered as the day's lines moved the word counts; the first sits at the edge, so the set read 7, 6 and 6 in three runs within two minutes while lines came in. No code moved between the deploy whose run passed that morning and the one refused that afternoon (a web plug-in change, no Python file), and it was read by hand before this note (the paths above each answer and their dates)", ]`
 
 ## [files]
 
@@ -909,7 +911,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-25: the judging of cards-merge-2026-11-25 raised it by 3 (the owner's order, Wed Nov 25), not folded to fit (cards.py 2: a merge into a card whose own name a second card folds to is refused, since its pointer would name neither; memory.py 1: deep recall hands no pointer line of a moved card on its target's name). 36,956: 36,953 plus 3.
 
-- `lines = 36956`
+2026-11-26: due-words-2026-11-26 raised it by 38, the `remember` tool's words on when to reach for `due` and the note a filing that names a coming day with no date is given (build 1b of the owner's build list of Wed Nov 25), not folded to fit (memory.py 30: days_named, its forms and its month names, remember's clock for tests, the note after `cite` and its docstring; mcp_server.py 3: the description's longer `due` part; words.py 3: the note's words; daemon.py 2: the journal line, the room and the count). 36,994: 36,956 plus 38.
+
+- `lines = 36994`
 
 ## Uncapped
 

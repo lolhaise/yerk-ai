@@ -682,6 +682,32 @@ def due_mark(due: str, owes: str) -> tuple[str, str]:
     return f" [due {due}{' owes ' + owes if owes else ''}]", ""
 
 
+# the days a filing's words name in an explicit form (days_named): an ISO day, never inside a longer token (a file name, a path, an
+# id), and a month's English name or three-letter form, with its capital, then the day of the month, then a four-digit year or not
+MONTH_OF = {m: i for i, n in enumerate(("Jan January", "Feb February", "Mar March", "Apr April", "May", "Jun June", "Jul July", "Aug August",
+                                        "Sep Sept September", "Oct October", "Nov November", "Dec December"), 1) for m in n.split()}
+DAY_FORM = re.compile(r"(?<![\w./\\:#@+=-])([0-9]{4})-([0-9]{2})-([0-9]{2})(?:T[0-9]{2}:[0-9]{2})?(?![\w/\\#@+=-]|[.:][\w/\\])"
+                      r"|\b(" + "|".join(MONTH_OF) + r") +([0-9]{1,2})(?:st|nd|rd|th)?(?![0-9A-Za-z]|:[0-9])(?:,? +([0-9]{4})(?![0-9]))?")
+
+
+def days_named(text: str, today: date) -> list[str]:
+    """The days still to come (after `today`, at most 366 days on) that `text` names in an explicit form (DAY_FORM), as ISO days, the
+    soonest first, each once, three at most: a form with no year is the next such day when that is within 183 days, so a day just
+    behind is never next year's; today, a past day and no real day (Feb 30) are none. Never a relative word, a weekday or 12/02."""
+    days = set()
+    for m in DAY_FORM.finditer(text):
+        y, mo, d = (m[1], int(m[2]), int(m[3])) if m[1] else (m[6], MONTH_OF[m[4]], int(m[5]))     # y None: no year written
+        for year in [int(y)] if y else [today.year, today.year + 1]:
+            with suppress(ValueError):
+                if (day := date(year, mo, d)) >= today:
+                    break
+        else:
+            continue
+        if today < day <= today + timedelta(days=366 if y else 183):      # no year written: the nearer one, never a day just behind
+            days.add(day.isoformat())
+    return sorted(days)[:3]
+
+
 def due_of(raw: str, day: str = "") -> dict[str, str] | None:
     """What a dated line says, None for any other line, whatever characters its words hold: the date, the time ("" for a day),
     `owes`, its words (no source, no mark), its role (note or said), and when it was filed; a fact file's line, or with `day` a
@@ -745,7 +771,7 @@ def until_mark(until: str, text: str, today: date, said: bool = False) -> tuple[
 
 def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: str = "",
              old: tuple[str, ...] = (), reader: Reader | None = None, who: str = "", source: str = "",
-             due: str = "", owes: str = "", until: str = "") -> dict[str, Any]:
+             due: str = "", owes: str = "", until: str = "", now: datetime | None = None) -> dict[str, Any]:
     """A fact, decision or correction into the install's own tree, with its room, message and time. An owner
     room's fact goes to facts/<about>.md, named by a key mention recall keys (private); anything else, or a fact
     with no such key or no folder inside the tree, to the room's day log as a `note` line of its class. Each line in
@@ -755,7 +781,9 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     and `source` (where their words are), `text` is their words: a `said` line in the day log, word for word, never a fact file's note.
     With `due` (and `owes`) the line carries its date as a mark (due_mark); the same words with another date are another line.
     With `until`, the last day it holds, its words end with UNTIL's mark (until_mark), before any supersedes clause and due mark:
-    from the day after, the readers of a line per message leave it out (ended), and the sweep blanks a card's."""
+    from the day after, the readers of a line per message leave it out (ended), and the sweep blanks a card's. With neither, words
+    that name a day still to come (days_named, today in the install's zone, or `now`'s day) gain `day` in the answer, after `cite`
+    (words.DAY_NAMED): the room is told, the line is filed as it would be without it, and nothing is dated but by the room."""
     body, about, who, source = one_line(text), about.strip(), one_line(who), one_line(source)
     if not body:
         return {"ok": False, "error": "nothing to remember: give the fact, decision or correction as text"}
@@ -764,7 +792,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     tag, why = due_mark(due, owes)
     if why:
         return {"ok": False, "error": why}
-    end, why = until_mark(until, body, today := local_day(s), bool(who))
+    end, why = until_mark(until, body, today := local_day(s, now), bool(who))
     if why:
         return {"ok": False, "error": why}
     rid, cls = log.rooms.get(room, (room, "private"))
@@ -841,7 +869,9 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     if pairs:
         with daily_lock(s.daily), os.fdopen(os.open(s.root / LATER, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
             f.write("".join(f"{a}\t{b}\n" for a, b in pairs))
-    return {"ok": True, "cite": new, **({"due": due} if tag else {}), **({"owes": owes.strip()} if tag and owes.strip() else {}), **({"until": until} if end else {}),
+    coming = [] if tag or end else days_named(body, today)        # a coming day the words name, no date given: the room is told
+    return {"ok": True, "cite": new, **({"day": words.DAY_NAMED.format(days=", ".join(coming))} if coming else {}),
+            **({"due": due} if tag else {}), **({"owes": owes.strip()} if tag and owes.strip() else {}), **({"until": until} if end else {}),
             "superseded": [c for c in edit if c not in taken], "refused": refused, "not_edited":
             [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)],
             **({"near": near, "near_next": words.FILED_NEAR} if near else {})}
