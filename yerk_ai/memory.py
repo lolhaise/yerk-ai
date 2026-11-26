@@ -280,6 +280,21 @@ def card_names(path: Path, text: str | None = None) -> list[str]:
     return list(dict.fromkeys([path.stem.replace("-", " ").replace("_", " "), *(k for v in aka for x in v.split(",") if (k := mentions.key_of(x.strip())))]))
 
 
+HEAD = re.compile(r" {0,3}#{1,6}(?:\s|$)")         # a line that is a Markdown heading
+
+
+def body_of(text: str) -> list[str]:
+    """A file's lines as read() numbers them, its front matter's (FRONT) read as blank."""
+    n = len(m[0].splitlines()) if (m := FRONT.match(text)) else 0
+    return [""] * n + text.splitlines()[n:]
+
+
+def live(text: str, today: date) -> bool:
+    """A fact card is LIVE when a line past its front matter is not blank, not a heading, not marked superseded and not past its
+    until on `today` (ended); else EMPTIED, which `remember` counts as no card. The one rule every reader of a card asks."""
+    return any(x.strip() and not HEAD.match(x) and mentions.OLD not in x and not ended(x, today) for x in body_of(text))
+
+
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     """An owner room reads everything; any other room reads shared files and its own room's lines; a sealed one its own lines only."""
     return reader is None or ((reader.owner or cls == "shared") and not reader.sealed) or (
@@ -716,7 +731,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     tag, why = due_mark(due, owes)
     if why:
         return {"ok": False, "error": why}
-    end, why = until_mark(until, body, local_day(s), bool(who))
+    end, why = until_mark(until, body, today := local_day(s), bool(who))
     if why:
         return {"ok": False, "error": why}
     rid, cls = log.rooms.get(room, (room, "private"))
@@ -750,10 +765,11 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
 
     def fold(x: str) -> str:
         return " ".join(mentions.tokens(x, True))
-    if card(path) and not path.is_file():      # no card by that name: the one card whose aka it is, else a new card and those it may be
-        names = {c: card_names(c) for c in sorted((s.root / "facts").glob("*.md"))}
-        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:])]
-        path, near = (alias[0], []) if len(alias) == 1 and card(alias[0]) else (path, sorted({n[0] for n in names.values() if any(
+    if card(path) and not (path.is_file() and live(path.read_text(errors="replace"), today)):   # no card by that name, or one emptied
+        texts = {c: c.read_text(errors="replace") for c in sorted((s.root / "facts").glob("*.md"))}      # (M1): the card whose aka it is,
+        names = {c: card_names(c, x) for c, x in texts.items()}                                           # else a card started on that path
+        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:]) and live(texts[c], today)]
+        path, near = (alias[0], []) if len(alias) == 1 and card(alias[0]) else (path, sorted({n[0] for c, n in names.items() if c.resolve() != path and any(
             fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n)})[:5])
     if card(path):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
