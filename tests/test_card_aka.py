@@ -5,11 +5,16 @@ whose aka its `about` is; a new card started beside one that shares its first wo
 made up."""
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
-from yerk_ai import memory
+from yerk_ai import memindex, memory, mentions
+from test_room_scope import install
 
 CARD = "# Orla Vantree\n\n- Orla Vantree: a retired lighthouse keeper.\n- Orla lives by the old quay.\n- Boat: the Example Gull, at pier 3.\n"
+PEOPLE = "# people\n\n- Orla Vantree: plays the fiddle on Fridays.\n- Boat: the ferry, twice a day.\n"
+AKAS = ("orly", "lady vantree", "bree-anne", "bramble")
 
 
 FRONT_CASES = {
@@ -43,3 +48,82 @@ def test_a_cards_names_are_its_file_name_then_each_aka_key_of_takes_from_front_m
     assert [memory.file_class(root / f) for f in ("facts/brim-quell.md", "facts/zed-quill.md", "facts/ada-quill.md")] == [
         ("shared", ""), ("room", "rid-1"), ("private", "")]
     assert memory.card_names(root / "facts" / "ada-quill.md", "# Ada Quill\n") == ["ada quill"]      # the text given is the one read
+
+
+def build(tmp_path: Path, files: dict[str, str], name: str = "tree") -> mentions.Index:
+    """The name index of a tree holding `files` (MEMORY.md, wherever it sits, a curated file), as yerk-index builds it."""
+    root, out = write(tmp_path / name, files), tmp_path / f"{name}.json"
+    mentions.Builder(out, (root,), ("MEMORY.md",), ()).refresh({str(p): (p.stat().st_size, p.stat().st_mtime_ns) for p in root.rglob("*.md")})
+    return mentions.Index(out).load()
+
+
+def seen(idx: mentions.Index, text: str) -> list[tuple[str, str]]:
+    return [(e["cite"], e["text"]) for e in idx.match(text)]
+
+
+def test_saying_a_cards_aka_gets_what_its_own_name_gets_in_that_order_and_any_other_word_what_it_got(tmp_path):
+    """Each aka, one word or two, in another case, with a hyphen or a plural, folds as a name does and gets the card's own
+    name's entries in their order, `named` the words said; its start, one of its words or a longer word gets nothing; a word
+    that is no aka gets what the tree with no aka line gives; the index is that tree's but for the aka keys."""
+    idx = build(tmp_path, {"facts/orla-vantree.md": "---\naka: Orly, Lady Vantree, BREE-ANNE, Brambles\n---\n" + CARD, "facts/people.md": PEOPLE})
+    plain = build(tmp_path, {"facts/orla-vantree.md": "---\nclass: private\n---\n" + CARD, "facts/people.md": PEOPLE}, "plain")
+    own = seen(idx, "how is orla vantree?")
+    assert [c for c, _ in own] == ["facts/orla-vantree.md:6", "facts/people.md:3"]
+    for said_as, named in (("how is orly?", "orly"), ("is Lady Vantree home", "lady vantree"), ("was it BREE-ANNE's?", "bree-anne"),
+                           ("bree-anne", "bree-anne"), ("the bramble", "bramble"), ("the brambles", "bramble")):
+        assert seen(idx, said_as) == own and {e["named"] for e in idx.match(said_as)} == {named}, said_as
+    for word in ("orl", "orlyx", "lady", "vantree", "bree anne", "bree", "bram"):     # its start, one of its words, the hyphen apart
+        assert seen(idx, f"what about {word}?") == [], word
+    for word in ("boat", "orla lives by the old quay", "people"):                # a word no aka is: what it got with no aka line
+        assert seen(idx, word) == seen(plain, word), word
+    assert seen(idx, "boat") and seen(plain, "orly") == []
+    full, bare = (json.loads((tmp_path / f"{n}.json").read_text()) for n in ("tree", "plain"))
+    assert full["entries"] == bare["entries"] and {k: v for k, v in full["keys"].items() if k not in AKAS} == bare["keys"]
+    assert all(full["keys"][a] == full["keys"]["orla vantree"] for a in AKAS)
+
+
+def test_a_card_whose_own_name_is_the_aka_comes_first_then_the_card_that_says_it_then_the_rest(tmp_path):
+    files = {"facts/orla-vantree.md": "---\naka: Orly\n---\n" + CARD, "facts/orly.md": "# Orly\n\n- Orly: the ferry's ginger cat.\n",
+             "facts/people.md": PEOPLE + "- Orly: naps on the ferry's bench.\n"}
+    assert [c for c, _ in seen(build(tmp_path, files), "where is orly")] == [
+        "facts/orly.md:3", "facts/orla-vantree.md:6", "facts/people.md:3", "facts/people.md:5"]
+    files["facts/orla-vantree.md"] = "---\nclass: private\n---\n" + CARD
+    assert [c for c, _ in seen(build(tmp_path, files, "plain"), "where is orly")] == ["facts/orly.md:3", "facts/people.md:5"]
+
+
+def test_the_index_keys_no_aka_key_of_refuses_none_outside_the_front_matter_and_none_of_a_curated_file(tmp_path):
+    idx = build(tmp_path, FRONT_CASES)
+    keys = set(json.loads((tmp_path / "tree.json").read_text())["keys"])
+    assert "orly" in keys and not keys & {"the", "my sister", "al", "home", "she is my sister", "quayside", "gullet", "pinny", "factsy"}
+    assert seen(idx, "quayside") == seen(idx, "gullet") == seen(idx, "pinny") == seen(idx, "factsy") == []
+    assert {e["class"] for e in idx.match("brimmy")} == {"shared"} and {e["room"] for e in idx.match("zeddy")} == {"rid-1"}
+    assert seen(idx, "addie") == seen(idx, "ada quill") != []
+
+
+def test_a_tree_with_no_aka_builds_the_index_main_builds(tmp_path):
+    """Main 8dc53f66's build of this tree, its entries and keys hashed (all but `built`): no aka, no change."""
+    build(tmp_path, {"MEMORY.md": "# Pinned\n\n## Example Gull\nthe boat, at pier 3\n\n## Orla Vantree\nthe keeper\n",
+                     "facts/orla-vantree.md": "---\nclass: private\n---\n" + CARD,
+                     "facts/orla.md": "# Orla\n\n- Orla: the keeper's niece.\n- Orla Vantree: her aunt.\n- Orla: the keeper's niece, nine.\n",
+                     "facts/people.md": PEOPLE + "- Orla: sings in the choir.\n- Zed lives in Example Bay with Orla.\n",
+                     "facts/brim-quell.md": "---\nclass: shared\n---\n# Brim Quell\n\n- Brim Quell: runs the example bakery.\n- ⛔ Brim: old address\n",
+                     "facts/quay-house.md": "# Quay House\n\nThe keeper's cottage.\n- Quay House: two rooms.\n## Orla's room\n- Orla Vantree: sleeps here.\n"})
+    data = json.loads((tmp_path / "tree.json").read_text())
+    assert hashlib.sha256(json.dumps([data["entries"], data["keys"]]).encode()).hexdigest()[:16] == "3b82457b67947f13"
+
+
+def sync(y) -> None:
+    s = y.memory
+    memindex.Index(s.index_db, s.scope).sync()
+    mentions.Builder(s.mentions, s.roots_for_mentions, s.curated, s.mentions_exclude).refresh(s.scope.files())
+
+
+def test_a_room_that_may_not_read_a_card_gets_nothing_by_its_aka_and_an_owner_room_gets_it(tmp_path):
+    y = install(tmp_path, family=True)
+    (facts := y.memory.root / "facts").mkdir(exist_ok=True)
+    (facts / "orla-vantree.md").write_text("---\naka: Orly\n---\n# Orla Vantree\n\n- Orla Vantree: keeps the example lighthouse.\n")
+    (facts / "brim-quell.md").write_text("---\nclass: shared\naka: Brimmy\n---\n# Brim Quell\n\n- Brim Quell: runs the example bakery.\n")
+    sync(y)
+    assert not y.recall_for("family-room", "is orly at the lighthouse?")[0]
+    assert "Orla Vantree: keeps the example lighthouse." in [e["text"] for e in y.recall_for("example-room", "is orly at the lighthouse?")[0]]
+    assert "Brim Quell: runs the example bakery." in [e["text"] for e in y.recall_for("family-room", "did brimmy bake?")[0]]
