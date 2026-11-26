@@ -183,6 +183,11 @@ DUE_SHAPE = "due is YYYY-MM-DD or YYYY-MM-DDTHH:MM, a day or a day and time in t
 RECALL_DAY = "{name} is YYYY-MM-DD, one real day, not \"{given}\""          # recall's range (memory.no_range)
 RECALL_ORDER = "since {since} is after until {until}: each is YYYY-MM-DD, since on or before until"
 RECALL_WIDENED = "Nothing was found in that range ({days}), so these hits are from any time: the search ran again without it."
+# recall's list of what is due in a range past today (due.asked), its line before it
+RECALL_DUE = "Due {days}, every open dated line this room may read, the soonest first ({n}). A thing filed with no `due` is not among them."
+RECALL_DUE_MORE = ("Due {days}, the first {shown} of {n} open dated lines this room may read, the soonest first; a narrower range shows the "
+                   "rest. A thing filed with no `due` is not among them.")
+RECALL_DUE_NONE = "Due {days}: no open dated line this room may read. A thing filed with no `due` would not be here."
 DUE_OWES = "owes needs due: a wait needs the day to look at it again"
 DUE_NAME = "owes is a name on one line with no bracket, not \"{owes}\""
 DUE_JOB = "due and owes date a fact, a decision or a person's words, never a rule (job) or its retiring (retire)"
