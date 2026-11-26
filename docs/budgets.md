@@ -901,7 +901,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-25: end-date-2026-11-25 raised it by 60, a room files the last day a state holds with `remember`'s `until` and the line is left out where a line is read per message from the day after (the owner's order, Wed Nov 25), not folded to fit (memory.py 50: the one rule for ended and the mark's one pattern, the refusals, the mark in the note, the three readers and the day they read; words.py 5: the refusals; mcp_server.py 4: the parameter, its two sentences and its refusal; mentions.py 1: the index's lag said; curate.py 0: the sweep asks the rule; daemon.py 0). 36,654: 36,594 plus 60.
 
-- `lines = 36654`
+2026-11-25: card-aka-2026-11-25 raised it by 39, a card answers to the names its front matter's `aka:` gives, in the mention index, in `remember` and in the promotion, and a card started beside one sharing its first word says so (the owner's order, Wed Nov 25), not folded to fit (memory.py 25: card_names, the one reader of a card's names, the filing's rule as one function asked of the own card and of the aka card, the aka card chosen, near; mentions.py 12: the aka keys, after a card whose own name it is and in the order the card's own name gives, its dedupe as one function; words.py 1: near's line; curate.py 1: heads reads each card once, its aka with its title). 36,693: 36,654 plus 39.
+
+- `lines = 36693`
 
 ## Uncapped
 
