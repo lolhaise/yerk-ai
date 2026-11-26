@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 135895`
+- `total = 136325`
 
 ## [session_start.claude_code]
 
@@ -152,9 +152,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-25, end-date-2026-11-25 (the owner's order, Wed Nov 25): the `remember` tool's `until` (its parameter and two sentences: a state that ends by a day, never a history, and after the day no longer handed over as current): remember 3,401 to 3,686 as this tree builds it, all 25 from 27,926 to 28,211 (285 more, measured on main d2dc9819 and on this tree the same way, each entry's name, description and input schema as compact JSON; the entries' full dump moves by the same 285), so about 30,933 on the 30,648 above; the line is that count, no part could pay, the total rose by the 285 (to 135,895 on main's 135,610).
 
+2026-11-26, due-words-2026-11-26 (build 1b of the owner's build list of Wed Nov 25): the `remember` tool's words on when to reach for `due` (its first sentence names a thing on a day still to come, and the `due` part says which: a plan, a meeting, a booking, a deadline, an answer someone waits for, filed as a line of its own also in passing, the earliest of several days), since in the 19 hours after the due view's deploy no line was filed with `due`: remember 3,686 to 4,116 as this tree builds it (its description 2,716 to 3,141 characters), all 25 from 28,211 to 28,641 (430 more, measured on main be8dc4f5 and on this tree the same way, each entry's name, description and input schema as compact JSON), so about 31,363 on the 30,933 above; the line is that count, no part could pay, the total rose by the 430 (to 136,325 on main's 135,895). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 30933`
+- `yerk_tools = 31363`
 - `deferred_tool_names = 3781`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -907,7 +909,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-25: the judging of cards-merge-2026-11-25 raised it by 3 (the owner's order, Wed Nov 25), not folded to fit (cards.py 2: a merge into a card whose own name a second card folds to is refused, since its pointer would name neither; memory.py 1: deep recall hands no pointer line of a moved card on its target's name). 36,956: 36,953 plus 3.
 
-- `lines = 36956`
+2026-11-26: due-words-2026-11-26 raised it by 38, the `remember` tool's words on when to reach for `due` and the note a filing that names a coming day with no date is given (build 1b of the owner's build list of Wed Nov 25), not folded to fit (memory.py 30: days_named, its forms and its month names, remember's clock for tests, the note after `cite` and its docstring; mcp_server.py 3: the description's longer `due` part; words.py 3: the note's words; daemon.py 2: the journal line, the room and the count). 36,994: 36,956 plus 38.
+
+- `lines = 36994`
 
 ## Uncapped
 

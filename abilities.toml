@@ -1241,6 +1241,7 @@ how = [
   "The list: yerk-index writes the open lines of Yerk's own fact files and day logs as one JSON file beside the mention index, with no model, reading a file again only when it moved.",
   "At a session start: the open items the room may recall, less another room's own lines and any line marked do-not-surface, overdue first, then the next 7 days, at most 12 lines of the recall pack, the last one saying how many more are open.",
   "On the command line: `yerk due`, with --room for what one room may read, --days, --all and --json.",
+  "A filing that names a coming day with no date is told so: when its words name a day still to come (an ISO day, or a month's name and its day) and it gave no `due` or `until`, `remember`'s answer names the days after its cite, by code and with no model, and the room decides whether to file the thing with `due`.",
 ]
 tier = "free"
 needs = "a running yerk-index, which writes the list"
