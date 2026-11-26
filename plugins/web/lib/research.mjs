@@ -145,10 +145,15 @@ async function call(key, method, p, body, { signal, deadline, cap = 60000 } = {}
   return j;
 }
 
+// Every run is asked where its sources disagree and what it did not find, so a thin answer reads as thin: these words
+// are its system prompt, then a blank line and the room's own `system` whole when it gives one. Nothing else in the
+// request changes: not the query, the effort, the schema or the reference.
+export const STANDING = "Quote the exact words each finding rests on, with its link. Where two sources disagree, put both quotes side by side under the heading Sources that disagree. End with the heading Not found: what you looked for and did not find, and any page that refused to load.";
+
 export function createRun(key, { query, effort, schema, system, ref }, opts) {
   const body = { query, effort };
   if (schema) body.outputSchema = schema;
-  if (system) body.systemPrompt = system;
+  body.systemPrompt = system ? `${STANDING}\n\n${system}` : STANDING;
   if (ref) body.metadata = { [META]: ref };
   return call(key, "POST", "/agent/runs", body, opts);
 }

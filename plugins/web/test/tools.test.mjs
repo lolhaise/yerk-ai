@@ -19,7 +19,7 @@ import { imageInfo } from "../lib/fetch/image.js";
 import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
-import { REF, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
+import { REF, STANDING, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
 import { buildExaBody, buildParallelPaidBody, buildYouCall, searchDuckDuckGo, searchFirecrawl, searchParallelFree } from "../lib/search/engines.js";
 import { resetCooldowns } from "../lib/search/provider.js";
 import { ENGINES, takeYouSlot } from "../lib/search/util.js";
@@ -803,7 +803,7 @@ test("web_research starts a run, polls it twice and returns the answer, the JSON
     assert.deepEqual(f.seen.map((s) => `${s.method} ${s.url.replace("https://api.exa.ai", "")}`), ["POST /agent/runs", "GET /agent/runs/agent_run_t1", "GET /agent/runs/agent_run_t1"]);
     const body = JSON.parse(f.seen[0].body);
     assert.match(body.metadata?.yerk_ref ?? "", REF); // the run's reference, Yerk's own: it finds the run when the create's answer never comes
-    assert.deepEqual(body, { query, effort: "medium", outputSchema: schema, systemPrompt: "This city only.", metadata: { yerk_ref: body.metadata.yerk_ref } });
+    assert.deepEqual(body, { query, effort: "medium", outputSchema: schema, systemPrompt: `${STANDING}\n\nThis city only.`, metadata: { yerk_ref: body.metadata.yerk_ref } });
     assert.ok(f.seen.every((s) => s.key === FAKE_EXA));
     assert.match(t, /EXTERNAL_UNTRUSTED_CONTENT/);
     assert.match(t, /Two cafes run weekly board game nights\./);
@@ -1446,6 +1446,31 @@ test("web_research_result with a run_id is the tool it was: a blank or a bad one
   const s = TOOLS.find((t) => t.name === "web_research_result");
   assert.deepEqual([s.inputSchema.required, Object.keys(s.inputSchema.properties)], [undefined, ["run_id"]]);
   assert.match(s.description, /\. With no run_id it lists the answers this room kept in the last 7 days, each a file to Read, and asks Exa nothing\.$/);
+});
+
+test("every run is asked for its disagreements and its gaps: the standing words alone are its system prompt, or with a blank line and the room's own rules whole after them; the query, effort, schema and reference as they were", async () => {
+  const words = "Quote the exact words each finding rests on, with its link. Where two sources disagree, put both quotes side by side under the heading Sources that disagree. End with the heading Not found: what you looked for and did not find, and any page that refused to load.";
+  assert.equal(STANDING, words);
+  const bodies = [];
+  const f = exaRuns({ created: RUN("agent_run_sys001", "completed", { costDollars: COST(0.012) }), onCreate: (b) => bodies.push(b) });
+  const { at } = keptRoom("system-room");
+  const query = "Which bakeries open before seven?";
+  const own = "Only bakeries inside the city.\n\nMark what you could not verify.";
+  const schema = { type: "object", properties: { names: { type: "array", items: { type: "string" } } } };
+  try {
+    await webResearch({ query, effort: "minimal" }, { at, deps: rdeps() });
+    await webResearch({ query, effort: "minimal", system: own, schema }, { at, deps: rdeps() });
+    await webResearch({ query, effort: "minimal", system: "   " }, { at, deps: rdeps() }); // blank: no rules of the room's
+    assert.deepEqual(bodies.map((b) => b.systemPrompt), [words, `${words}\n\n${own}`, words]);
+    assert.deepEqual(bodies.map((b) => Object.keys(b)), [["query", "effort", "systemPrompt", "metadata"], ["query", "effort", "outputSchema", "systemPrompt", "metadata"], ["query", "effort", "systemPrompt", "metadata"]]);
+    for (const b of bodies) {
+      assert.deepEqual([b.query, b.effort], [query, "minimal"]); // the words never go as the query
+      assert.match(b.metadata.yerk_ref, REF);
+    }
+    assert.deepEqual(bodies[1].outputSchema, schema);
+  } finally {
+    f.restore();
+  }
 });
 
 // ---- web_image ------------------------------------------------------------------------------------
