@@ -784,6 +784,21 @@ def cmd_due(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cards(a: argparse.Namespace) -> int:
+    """`yerk cards`: merge A B, by hand one pair at a time (cards.merge: a plan unless --go), or near, the groups of live cards sharing a
+    first word (cards.near), read-only, on demand. Exit 2 when a merge is refused or names no two cards."""
+    from . import cards
+    priv = private_dir(a.private)
+    s = memory.settings(priv, state_dir(a.state))
+    if a.action == "near":
+        print(cards.shown(cards.near(s, memory.local_day(s)), a.json))
+        return 0
+    if len(a.names) != 2:
+        print("nothing merged: merge takes two cards, A (whose live lines move) then B (whose end they go on)", file=sys.stderr)
+        return 2
+    return cards.merge(s, priv, a.names[0], a.names[1], a.go)
+
+
 def cmd_abilities(a: argparse.Namespace) -> int:
     """Every ability in the manifest, one line each, state first: on, needs <provider>, runs on the
     free path, known but not built."""
@@ -1019,6 +1034,14 @@ def parser() -> argparse.ArgumentParser:
     du.add_argument("--days", type=int, default=7, help="how many days ahead (default 7)")
     du.add_argument("--all", action="store_true", help="every open one, whatever its date")
     du.add_argument("--json", action="store_true")
+    cd = sub.add_parser("cards", help="the fact cards by hand: merge A B (A's live lines onto B's end, A left moved to B; the plan "
+                        "unless --go) or near (each group of live cards whose names share a first word; read-only)")
+    cd.add_argument("action", choices=["merge", "near"])
+    cd.add_argument("names", nargs="*", help="merge: A then B, each a card's file stem, own name or path")
+    cd.add_argument("--go", action="store_true", help="merge: write it, the copies first (default: print the plan, write nothing)")
+    cd.add_argument("--json", action="store_true", help="near: the groups as data")
+    cd.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    cd.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     bn = sub.add_parser("bench", help="latency: the first visible line, the turn, the hooks, Yerk's tools and the cache hit rate per "
                         "room, from the ledger (read only) and the logs; the table, and <state>/bench/latency-<day>.json to diff")
     bn.add_argument("what", choices=["latency"])
@@ -1136,7 +1159,7 @@ def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
-                "recall-bench": cmd_recall_bench, "due": cmd_due, "bench": cmd_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
+                "recall-bench": cmd_recall_bench, "due": cmd_due, "cards": cmd_cards, "bench": cmd_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
                 "add": cmd_add, "remove": cmd_add,
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,

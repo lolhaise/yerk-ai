@@ -133,11 +133,16 @@ def rewrite(path: Path, backup: Path, fix: Callable[[bytes], bytes | None], dry:
     parts[-1] = parts[-1][:-1]                               # what follows the last newline, if anything
     new = {i: y for i, x in enumerate(parts) if (y := fix(x)) is not None and y != x}
     if new and not dry:
-        backup.mkdir(parents=True, exist_ok=True)
-        dest = backup / f"{path.parent.name}.{path.name}"
-        write_private(dest.with_name(f"{dest.name}.{time.time_ns()}") if dest.exists() else dest, data)
+        keep(path, backup, data)
         write_private(path, b"".join(new.get(i, x) for i, x in enumerate(parts)), stat.S_IMODE(path.stat().st_mode))
     return [i + 1 for i in new]
+
+
+def keep(path: Path, backup: Path, data: bytes | None = None) -> Path:
+    """`path`'s bytes (`data`, as read) copied into `backup` as `<its folder>.<its name>`, a later copy of it with its time after."""
+    backup.mkdir(parents=True, exist_ok=True)
+    dest = backup / f"{path.parent.name}.{path.name}"
+    return write_private(dest.with_name(f"{dest.name}.{time.time_ns()}") if dest.exists() else dest, path.read_bytes() if data is None else data)
 
 
 def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:

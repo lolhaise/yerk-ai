@@ -903,7 +903,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-25: card-aka-2026-11-25 raised it by 39, a card answers to the names its front matter's `aka:` gives, in the mention index, in `remember` and in the promotion, and a card started beside one sharing its first word says so (the owner's order, Wed Nov 25), not folded to fit (memory.py 25: card_names, the one reader of a card's names, the filing's rule as one function asked of the own card and of the aka card, the aka card chosen, near; mentions.py 12: the aka keys, after a card whose own name it is and in the order the card's own name gives, its dedupe as one function; words.py 1: near's line; curate.py 1: heads reads each card once, its aka with its title). 36,693: 36,654 plus 39.
 
-- `lines = 36693`
+2026-11-25: cards-merge-2026-11-25 raised it by 260, two cards for one person become one by hand, `yerk cards merge A B` and `yerk cards near`, and the three edges the second name left open (the owner's order, Wed Nov 25), not folded to fit (cards.py 158: the card a name names and why not, the plan and each refusal, the write in its order under the lock, the plan's and the merge's lines, near and its lines; memory.py 64: live and its line rule, the front matter's lines, moves, remember's emptied and moved card and near, the lock's bounded wait, the walk on through a moved line, deep recall's front matter and title; cli.py 23: the command, its flags and its dispatch; mentions.py 8: a moved card's names in the index, the day it is live on; doctor.py 5: rewrite's copy as one function the merge shares; curate.py 2: the names of the cards moved to a card). 36,953: 36,693 plus 260.
+
+2026-11-25: the judging of cards-merge-2026-11-25 raised it by 3 (the owner's order, Wed Nov 25), not folded to fit (cards.py 2: a merge into a card whose own name a second card folds to is refused, since its pointer would name neither; memory.py 1: deep recall hands no pointer line of a moved card on its target's name). 36,956: 36,953 plus 3.
+
+- `lines = 36956`
 
 ## Uncapped
 

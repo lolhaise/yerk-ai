@@ -280,6 +280,46 @@ def card_names(path: Path, text: str | None = None) -> list[str]:
     return list(dict.fromkeys([path.stem.replace("-", " ").replace("_", " "), *(k for v in aka for x in v.split(",") if (k := mentions.key_of(x.strip())))]))
 
 
+HEAD = re.compile(r" {0,3}#{1,6}(?:\s|$)")         # a line that is a Markdown heading
+
+
+def body_of(text: str) -> list[str]:
+    """A file's lines as read() numbers them, its front matter's (FRONT) read as blank."""
+    n = len(m[0].splitlines()) if (m := FRONT.match(text)) else 0
+    return [""] * n + text.splitlines()[n:]
+
+
+def alive(line: str, today: date) -> bool:
+    """A card's line that keeps it live: not blank, not a heading, not marked superseded and not past its until on `today` (ended)."""
+    return bool(line.strip()) and not HEAD.match(line) and mentions.OLD not in line and not ended(line, today)
+
+
+def live(text: str, today: date) -> bool:
+    """A fact card is LIVE when a line past its front matter is `alive`; else EMPTIED, which `remember` counts as no card. The one
+    rule every reader of a card asks."""
+    return any(alive(x, today) for x in body_of(text))
+
+
+MOVED = re.compile(r"# moved to: (.+)")            # a moved card's one pointer (moves): its target's own name
+
+
+def moves(root: Path, today: date, texts: dict[Path, str] | None = None) -> dict[Path, Path]:
+    """Each moved card of the tree at `root` and its target (M2): an emptied card whose one line that is a pointer (MOVED) names, as
+    mentions.tokens(name, True) gives it whole, the own name of exactly one other card of `facts/`, that card live; a pointer on a live
+    card, to a card missing, emptied or moved, or one of two in a file, is words. A link is no card. A moved card's names are its target's."""
+    folder = (root := root.resolve()) / "facts"
+    got = {c: (texts or {}).get(c) or c.read_text(errors="replace") for c in (sorted(texts) if texts is not None else sorted(folder.glob(
+        "*.md"))) if c.parent == folder and not c.is_symlink()} if folder.resolve() == folder else {}
+    own, out = dict[str, list[Path]](), dict[Path, Path]()
+    for c in got:
+        own.setdefault(" ".join(mentions.tokens(c.stem.replace("-", " ").replace("_", " "), True)), []).append(c)
+    for c, x in ((c, x) for c, x in got.items() if "# moved to: " in x):      # a card with no pointer costs no more than its read
+        to = [own.get(" ".join(mentions.tokens(m[1], True)), []) for y in body_of(x) if (m := MOVED.fullmatch(y))]
+        if len(to) == 1 and len(to[0]) == 1 and not live(x, today) and live(got[to[0][0]], today):
+            out[c] = to[0][0]
+    return out
+
+
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     """An owner room reads everything; any other room reads shared files and its own room's lines; a sealed one its own lines only."""
     return reader is None or ((reader.owner or cls == "shared") and not reader.sealed) or (
@@ -352,15 +392,23 @@ def format_line(at: datetime, label: str, rid: str, role: str, who: str, body: s
 
 
 @contextmanager
-def daily_lock(daily: Path) -> Iterator[None]:
+def daily_lock(daily: Path, wait: float | None = None) -> Iterator[None]:
     """The one lock every writer of the day logs holds, a flock on `.daily.lock` beside the folder
     (the daemon's capture and the migration's rewrite, in their own processes): an append that arrives
     while a file is being rewritten waits for the rename and lands in the new file, never in the file
-    the rename drops. The lock file sits outside `daily/`, so a listing of the day files stays clean."""
+    the rename drops. The lock file sits outside `daily/`, so a listing of the day files stays clean.
+    With `wait`, at most that many seconds for it, then TimeoutError (`yerk cards merge` refuses)."""
     daily.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(daily.parent / f".{daily.name}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    fd, end = os.open(daily.parent / f".{daily.name}.lock", os.O_RDWR | os.O_CREAT, 0o600), time.monotonic() + (wait or 0.0)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | (fcntl.LOCK_NB if wait is not None else 0))
+                break
+            except BlockingIOError:
+                if time.monotonic() >= end:
+                    raise TimeoutError(f"the writers' lock {daily.parent / f'.{daily.name}.lock'} is held") from None
+                time.sleep(0.05)
         yield
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
@@ -716,7 +764,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     tag, why = due_mark(due, owes)
     if why:
         return {"ok": False, "error": why}
-    end, why = until_mark(until, body, local_day(s), bool(who))
+    end, why = until_mark(until, body, today := local_day(s), bool(who))
     if why:
         return {"ok": False, "error": why}
     rid, cls = log.rooms.get(room, (room, "private"))
@@ -750,11 +798,14 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
 
     def fold(x: str) -> str:
         return " ".join(mentions.tokens(x, True))
-    if card(path) and not path.is_file():      # no card by that name: the one card whose aka it is, else a new card and those it may be
-        names = {c: card_names(c) for c in sorted((s.root / "facts").glob("*.md"))}
-        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:])]
-        path, near = (alias[0], []) if len(alias) == 1 and card(alias[0]) else (path, sorted({n[0] for n in names.values() if any(
-            fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n)})[:5])
+    if card(path) and not (path.is_file() and live(path.read_text(errors="replace"), today)):   # no card by that name, or one emptied
+        texts = {c: c.read_text(errors="replace") for c in sorted((s.root / "facts").glob("*.md"))}      # (M1): a moved card's target (M2),
+        names, moved = {c: card_names(c, x) for c, x in texts.items()}, moves(s.root, today, texts)      # the card whose aka it is, else
+        to = {moved[path]} if path in moved else {t for c, t in moved.items() if fold(about) in map(fold, names[c][1:])}    # a card started
+        alias = [c.resolve() for c, n in names.items() if fold(about) in map(fold, n[1:]) and c not in moved and live(texts[c], today)]   # there
+        path, near = (to.pop(), []) if len(to) == 1 and card(next(iter(to))) else (alias[0], []) if len(alias) == 1 and card(alias[0]) else (
+            path, sorted({names[moved.get(c, c)][0] for c, n in names.items() if moved.get(c, c) != path and any(
+                fold(x).split()[:1] == fold(" ".join(parts)).split()[:1] for x in n) and (c in moved or live(texts[c], today))})[:5])
     if card(path):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
             have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]
@@ -1043,6 +1094,9 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
                 return (f"{cite(s, f)}:{x.front().count(chr(10)) + 1}", x.whole) if ok and x else ("", "")
             got = read(s, c, lines=1)
             line = (allowed_text(reader, Path(got["path"]), got["text"], daily=s.daily) or "").strip() if got["ok"] else ""
+            if got["ok"] and (not got["text"].strip() or MOVED.fullmatch(got["text"].strip())):     # a line a merge moved, blank or
+                line, at, c = "", "", kept.get(f"{cite(s, Path(got['path']))}:{got['from']}", "")   # its pointer: on through its row
+                continue
             at = f"{cite(s, Path(got['path']))}:{got['from']}" if line else ""
             c = (BY.findall(line) or [kept.get(at, "")])[0] if line else ""
         return at, line
@@ -1355,18 +1409,29 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
     of the k chunks the keyword rank gives, unweighed (a name is its words: no meaning search), each holding every word of it; then a standing file's
     lines first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, one
     that asks about it (words.ASKED): an ask is not on file, or a fact file's bullet or a day log's note past its until on `now`'s day
-    (ended). A keyword read that did not finish raises LookupError: it proves no absence."""
+    (ended), or a fact file's pointer line (MOVED). A keyword read that did not finish raises LookupError: it proves no absence."""
     want, today = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}, local_day(s, now)
     out: list[dict[str, Any]] = []
     r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False, weigh=False) if want else {"ok": True}
     if not r["ok"]:
         raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
+    heads: dict[str, set[int]] = {}
+
+    def head(p: str, fact: bool) -> set[int]:          # a file's front matter lines and a fact file's title: never a line on anything (M5)
+        if p not in heads:
+            top = ""
+            with suppress(OSError), open(p, encoding="utf-8", errors="replace") as f:
+                top = f.read(65536)
+            n = len(m[0].splitlines()) if (m := FRONT.match(top)) else 0
+            heads[p] = {*range(1, n + 1), next((k for k, x in enumerate(top.splitlines()[n:], n + 1) if x.startswith("# ")), 0) if fact else 0}
+        return heads[p]
     for h in r.get("hits", []):
         day, fact = Path(h["path"]).stem if is_daylog(h["path"]) else "", Path(h["path"]).parent.name == "facts"
         for i, raw in enumerate(str(h["text"]).splitlines()):
             ln = parse_line(raw)
             if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
-                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day):
+                    ln and ln.mid.split(".e")[0] in (exclude or set())) or (fact or day) and ended(raw, today, day) or not day and h["line"] + i in head(h["path"], fact) or (
+                    fact and MOVED.fullmatch(raw.strip())):     # a moved card's pointer says where its lines went: never a line on its target
                 continue
             text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else
                                                      marked(raw.strip(), fact, mark_of(h["path"])).removeprefix("- "))
