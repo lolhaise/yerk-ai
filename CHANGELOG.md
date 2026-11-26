@@ -15,14 +15,15 @@ version changes.
   fact, a decision and a correction, and the `due` part says which things are dated (a plan, a meeting, a booking, a deadline,
   an answer someone waits for), to file one as a line of its own also when it came up in passing or sits inside words filed
   for another reason, to take the earliest of several days offered, and why: only a dated line is in front of the room at a
-  session start from a week before, and it is what answers "what is on that day". The rest of the description is as it was.
+  session start from a week before, and that is what answers "what is coming up". The rest of the description is as it was.
 - A filing whose words name a day still to come and that gave no `due` and no `until` is told so: the answer gains `day` after
   `cite`, naming the days (`memory.days_named`, by code and with no model), and the room decides whether the thing goes on a
   line of its own with `due`. Read are an ISO day (with a time behind it or not, never inside a file name, a path or an id) and
   a month's English name or three-letter form with its capital, then the day of the month, with a weekday in front and a year
   behind or not (`Dec 2`, `Fri Nov 27`, `November 27, 2026`); never a weekday alone, a relative word, a numeric date like
-  12/02, a month in lower case or a month with no day. A day with no year is the next such day; today, a past day and a day
-  more than 366 days on are none, three days at most, the soonest first. The line is filed byte for byte as before, a person's
+  12/02, a month in lower case or a month with no day. A day with no year is the next such day when that is within 183 days,
+  so a day just behind the filing is never read as next year's; today, a past day and a day more than 366 days on are none,
+  three days at most, the soonest first. The line is filed byte for byte as before, a person's
   words (`said`) are told the same way, and a rule or its retiring never is. The journal gets one line per note, the room and
   how many days, never a day or a word of the text.
 

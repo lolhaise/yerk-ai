@@ -212,8 +212,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         YYYY-MM-DDTHH:MM in the install's zone) when `text` is a thing to do, to attend or to wait for on a day still to come:
         a plan, a meeting, a booking, a deadline, an answer someone waits for. File such a thing as a line of its own, also when
         it came up in passing or sits inside words you file for another reason, and with several days offered take the earliest:
-        only a line filed with `due` is in front of you at a session start from a week before, and it is what answers "what is
-        on that day". `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when the words give
+        only a line filed with `due` is in front of you at a session start from a week before, and that is what answers "what is
+        coming up". `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when the words give
         one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
         `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history ("worked there until ...");
         from the day after, the line is no longer handed to you as current, then a fact file's line is removed."""
