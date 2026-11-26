@@ -274,9 +274,9 @@ def test_another_assistant_where_a_room_watches_is_filed_as_its_own_once_settled
     watched channel goes in the day log under its own role and handle once it has sat with no edit or delete, so the room can
     read what was already said there; a card it edits and then deletes never does; none is ever run. Its id in the room's
     own channel, and any other bot in the watched one, stay as they were. The owner's message comes in with its answer."""
-    monkeypatch.setattr(dmod, "SETTLE", 0.05)
     monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.05)
-    other, ben, now = 4321, 5555, datetime.now(timezone.utc)      # example ids
+    other, ben = 4321, 5555                                       # example ids
+    at = datetime.now(timezone.utc) - timedelta(seconds=1)        # each message's time: its answer has settled, its SETTLE not
     log = DailyLog(tmp_path / "daily", timezone.utc, {ROOM: ("room-id", "room")})
     own, watched = Spy(OWN), Spy(WATCHED)
     room = Room(tmp_path)
@@ -284,28 +284,42 @@ def test_another_assistant_where_a_room_watches_is_filed_as_its_own_once_settled
     dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched), state=tmp_path,
                         capture=log.capture, assistants=frozenset({ben}))
     dc.add_room(OWN, room, watch=WATCHED)
+    waits = []                       # SETTLE's waits as the code arms them, run out here by hand: with SETTLE at 0.05 s a starved
+                                     # run filed the reply as it came, before the check below (1 in 4 file runs, 2026-11-25)
+
+    def call_later(delay, fn, *args):
+        w = NS(delay=delay, run=lambda: fn(*args), cancelled=False)
+        w.cancel = lambda: setattr(w, "cancelled", True)
+        return waits.append(w) or w
 
     async def run():
-        dc.loop = asyncio.get_running_loop()
-        reply, card = (Msg(watched, mid, text, author=ben, name="Ben") for mid, text in ((901, "Three blocks, ending on the angle."),
-                                                                                       (902, "Reading the page")))
-        reply.created_at = card.created_at = now
-        await dc.on_message(Msg(watched, 900, "explain this very briefly"))
+        dc.loop = NS(call_later=call_later)
+        ask, reply, card, here = (Msg(ch, mid, text, author=who, name=name) for ch, mid, text, who, name in (
+            (watched, 900, "explain this very briefly", OWNER, ""), (watched, 901, "Three blocks, ending on the angle.", ben, "Ben"),
+            (watched, 902, "Reading the page", ben, "Ben"), (own, 904, "here too", ben, "Ben")))
+        ask.created_at = reply.created_at = card.created_at = here.created_at = at      # one day's lines, whenever it runs
+        await dc.on_message(ask)
         await dc.on_message(reply)
         await dc.on_message(card)
         card.content, card.edited_at = "Reading the page, then the figures", datetime.now(timezone.utc)
         await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=card))       # it streams by editing, then deletes
         await dc.on_raw_message_delete(NS(channel_id=WATCHED, message_id=902))
         await dc.on_message(Msg(watched, 903, "a bot's take", author=other))
-        await dc.on_message(Msg(own, 904, "here too", author=ben, name="Ben"))
-        assert "Three blocks" not in "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))   # not yet settled
-        await asyncio.sleep(0.3)
+        await dc.on_message(here)
+        assert "Three blocks" not in day_log(tmp_path)              # not yet settled
+        assert [w.cancelled for w in waits] == [False, True, True]  # 901's wait; 902's, then its edit's, ended by the delete
+        for w in waits:
+            w.cancelled or w.run()                                  # SETTLE ran out with no edit or delete
+        for _ in range(200):                                        # the held message's turn: polled, never slept on
+            if room.got:
+                break
+            await asyncio.sleep(0.05)
     asyncio.run(run())
     text = day_log(tmp_path)
     said = [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
     assert said == ["owner: explain this very briefly", "other@Ben: here too", "assistant@Ben: Three blocks, ending on the angle."]
     assert "Reading the page" not in text and "a bot's take" not in text and dc.settling == {}
-    answer = f"[the other assistant answered at {now:%H:%M} in #{WATCHED}: Three blocks, ending on the angle.]"
+    answer = f"[the other assistant answered at {at:%H:%M} in #{WATCHED}: Three blocks, ending on the angle.]"
     assert [g.text for g in room.got] == [f"{SENT}\nexplain this very briefly\n{answer}"]   # the assistant's: never run
     assert dc.sender_of(Msg(watched, 905, "x", author=ben)) is None
     raw = next(x for x in text.splitlines() if " assistant@Ben: " in x)
