@@ -19,7 +19,6 @@ from test_remember import daemon, dated, line_at
 from test_until import clock
 
 TODAY = date(2026, 11, 26)
-AT = datetime(2026, 11, 26, 12, 0, tzinfo=timezone.utc)      # a stopped clock: Nov 26 in the example install's zone and in any near it
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
@@ -29,6 +28,11 @@ def named(text: str) -> list[str]:
 
 def note(*days: str) -> str:
     return words.DAY_NAMED.format(days=", ".join(days))
+
+
+def noon(y) -> datetime:
+    """A stopped clock's time: noon of TODAY in the example install's own zone, whatever zone the machine runs in."""
+    return datetime(2026, 11, 26, 12, 0, tzinfo=y.memory.tz)
 
 
 # days_named: the forms, and only these
@@ -87,10 +91,10 @@ def test_one_day_named_twice_is_listed_once_and_five_days_give_the_three_soonest
 
 def same_line(tmp_path, monkeypatch, about: str = "", **kw: str) -> tuple[dict, dict, str]:
     """The same call filed twice with memory's clock stopped, in two trees: with days_named, and with it giving none."""
-    clock(monkeypatch, AT)
     for d in ("told", "plain"):
         (tmp_path / d).mkdir()
     a, b, text = daemon(tmp_path / "told"), daemon(tmp_path / "plain"), "The example piano tuner comes Dec 2 and 2026-12-03."
+    clock(monkeypatch, noon(a))
     told = dated(a, "example-room", text, about, **kw)
     monkeypatch.setattr(memory, "days_named", lambda text, today: [])
     plain = dated(b, "example-room", text, about, **kw)
@@ -115,8 +119,8 @@ def test_a_persons_words_are_told_the_same_way_and_filed_the_same_bytes(tmp_path
 
 
 def test_with_due_with_until_on_a_refusal_and_with_only_past_or_todays_days_there_is_no_day(tmp_path, monkeypatch):
-    clock(monkeypatch, AT)
     y, text = daemon(tmp_path), "The example piano tuner comes Dec 2."
+    clock(monkeypatch, noon(y))
     assert dated(y, "example-room", "The example piano tuner comes Dec 3.")["day"] == note("2026-12-03")      # the same words, told
     with_due = dated(y, "example-room", text, due="2026-12-02")
     with_until = dated(y, "example-room", text, until="2026-12-02")
