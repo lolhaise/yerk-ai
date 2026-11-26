@@ -3,6 +3,7 @@ morning diff (the daily 06:30 report), `yerk explain web` answers from the abili
 by its command line, and the shipped mechanics send a picture on the web to its web_image. The spend rows follow
 tests: `npm test` in its folder."""
 import json
+import re
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +11,7 @@ from types import SimpleNamespace
 
 from test_observe import NOW, layer
 
-from yerk_ai import abilities, cli, context, morning, status, words
+from yerk_ai import abilities, cli, context, morning, retention, status, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets
 from yerk_ai.ledger import Ledger
 
@@ -156,6 +157,49 @@ def test_yerk_explain_research_ids_answers_from_the_abilities_file_on_with_the_e
     assert abilities.state("research-ids", ab, tab, off) == words.ability("on")
     code = (REPO / "plugins" / "web" / "lib" / "research.mjs").read_text()
     assert "body.metadata = { [META]: ref }" in code and "findRun(key.value, id" in code   # the reference sent, and taken back
+
+
+def test_yerk_explain_research_kept_answers_from_the_abilities_file_on_with_the_exa_key(tmp_path, capsys):
+    """research-answers-2026-11-26: a web_research answer lived only in the tool's result, so a compacted context lost it
+    and asking again paid again, and no run said where its sources disagreed or what it did not find. A completed run's
+    answer is now kept as a file in the room's work folder, web_research_result with no run id lists the last 7 days',
+    and every run is asked for its disagreements and its gaps (plugins/web/test/tools.test.mjs has each), an ability of
+    its own, on with the Exa key the runs need."""
+    assert cli.main(["explain", "research-kept", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    tab = abilities.manifest()
+    ab = tab["research-kept"]
+    assert lines[:2] == [f"{words.WORKING} research-kept: {words.ability('needs', provider='Exa')[1]}", ab["what"]]
+    assert all(w in ab["what"] for w in ("kept as a file in the room's work folder", "web_research_result with no run id", "disagree", "did not find"))
+    found = abilities.asked("can you pull up the earlier research on the venue?", None, tab)
+    assert "research-kept" in [e["key"] for e in found]
+    priv = tmp_path / "private"
+    (priv / "secrets").mkdir(parents=True)
+    off = SimpleNamespace(private=priv, embeddings_key=None)
+    assert abilities.state("research-kept", ab, tab, off) == words.ability("needs", provider="Exa")
+    (priv / "secrets" / "exa.key").write_text("exa-placeholder-key\n")
+    assert abilities.state("research-kept", ab, tab, off) == words.ability("on")
+    code = (REPO / "plugins" / "web" / "lib" / "research.mjs").read_text()
+    assert "const kept = keepRun(run, {" in code and "export const STANDING = " in code   # the answer kept, the words sent
+
+
+def test_the_plug_ins_kept_research_answers_sit_in_a_folder_the_nightly_sweep_leaves(tmp_path):
+    """research-answers-2026-11-26: web_research keeps a completed run's answer in research/ of the room's work folder beside
+    a file named KEEP (plugins/web/lib/research.mjs keepRun), which retention.kept() spares, so the sweep that takes every
+    other file of the work folder after two days leaves the answers. Fails the day the plug-in's name and retention.KEEP differ."""
+    code = (REPO / "plugins" / "web" / "lib" / "research.mjs").read_text()
+    names = dict(re.findall(r'^export const (KEEP|KEPT_DIR) = "([^"]+)";$', code, re.M))
+    assert names == {"KEEP": retention.KEEP, "KEPT_DIR": "research"}
+    room = tmp_path / "rooms" / "a-room"
+    answers, web = room / "work" / names["KEPT_DIR"], room / "work" / "web"
+    answers.mkdir(parents=True)
+    web.mkdir()
+    (answers / names["KEEP"]).write_text("web_research keeps this room's research answers in this folder.\n")
+    (answers / "2026-11-01-a-question-abc123.md").write_text("an answer\n")
+    (web / "0123456789ab.png").write_bytes(b"png")
+    assert retention.kept(room) == [answers]
+    swept = [p for p, _ in retention.scratch(room)]
+    assert web / "0123456789ab.png" in swept and not [p for p in swept if answers in p.parents]
 
 
 def test_yerk_explain_worker_web_answers_from_the_abilities_file_and_a_worker_s_plug_in_writes_only_its_own_folder(tmp_path, capsys):

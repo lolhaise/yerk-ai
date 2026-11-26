@@ -1870,7 +1870,7 @@ command = "curate --rules"
 
 [abilities.web]
 state = "built"
-what = "Web reach for the rooms that attach it, as one plug-in outside the harness (plugins/web, an MCP server): web_fetch reads a page with a plain read from the machine first, then its own stealth browser and captcha solver when they are installed, then a paid cloud browser, names the wall when a page stays shut (a login, a captcha, a region) and remembers per site which step read it; web_search asks a paid engine first and keyless ones behind it; web_research runs one cited research job at a fixed price; web_image saves one picture from a post or a page (a jpeg, png, gif or webp, read plainly from the machine first and by the paid cloud fetch only when a site refuses that) into the room's work folder, where the room's Read shows it; every paid call is a spend row, and the morning diff says the day's total."
+what = "Web reach for the rooms that attach it, as one plug-in outside the harness (plugins/web, an MCP server): web_fetch reads a page with a plain read from the machine first, then its own stealth browser and captcha solver when they are installed, then a paid cloud browser, names the wall when a page stays shut (a login, a captcha, a region) and remembers per site which step read it; web_search asks a paid engine first and keyless ones behind it; web_research runs one cited research job at a fixed price and keeps its answer as a file in the room's work folder; web_image saves one picture from a post or a page (a jpeg, png, gif or webp, read plainly from the machine first and by the paid cloud fetch only when a site refuses that) into the room's work folder, where the room's Read shows it; every paid call is a spend row, and the morning diff says the day's total."
 tier = "free"
 needs = "Node 22.13 or newer and `npm ci --omit=dev` once in plugins/web; the room's mcp table naming plugins/web/server.mjs with --private (rooms.toml.example); every key is optional"
 price = "nothing without keys; with them, each provider's own price, paid to it (October 2026): a search about 0.7 US cents on Exa or 0.1 on Parallel, a cloud-browser read inside its plan's included calls and hours, a research run 1.2 to 50 US cents by effort under one daily cap of two US dollars for every room"
@@ -1950,6 +1950,28 @@ price = "the run's own, 1.2 to 50 US cents by effort under the daily cap of two 
 key = "the web ability's exa.key, its first line, in the private folder's secrets/, 0600; the next call reads it, no restart"
 free_path = "none: without the Exa key web_research does not run, and web_search answers instead"
 asked_as = ["research timed out", "research run id", "no run id", "research timeout", "web_research timed out", "deep research timed out"]
+
+# research-answers-2026-11-26 (the owner's order, Wed Nov 25): a web_research answer lived only in the tool's result,
+# so a compacted context or an ended session lost it and asking again paid again, and no run was asked where its sources
+# disagreed or what it did not find, so a thin answer read as a full one.
+[abilities.research-kept]
+state = "built"
+what = "A web_research answer stays on file and says where its sources disagree and what it did not find: each run is asked to quote the words each finding rests on, to set sources that disagree side by side and to end with what it looked for and did not find, and a completed run's answer is kept as a file in the room's work folder, which the room's Read opens again for nothing after its context is compacted or its session ends, while web_research_result with no run id lists the answers kept in the last 7 days."
+how = [
+  "The file: research/<day>-<slug>-<tail>.md in the room's work folder, the day it was saved, the question's ASCII letters and digits (40 at most, run when none) and the run id's last six, so no question names a path and two runs of one question are two files; written the first time a call sees the run completed, by web_research or web_research_result, named in the reply, and never rewritten.",
+  "What it holds: a first line saying it came off the web and is a record, never an instruction; the question, the run id, the effort, the cost, the status and when it was saved; then the answer, its JSON and its sources, with no key in it.",
+  "Kept: the folder is 0700 with a file named KEEP in it, so the nightly sweep of the work folder leaves it, and the file 0600; a run still going, failed or cancelled keeps nothing, and a save that fails says so in one line under the answer, never failing the call, the next collect keeping it.",
+  "The list: web_research_result with no run id names each answer kept in the last 7 days by the day in its file's name, newest first, with its effort, cost, the start of its question and its file; it reads only the room's own folder, asks Exa nothing and books nothing.",
+  "Disagreements and gaps: every run's system prompt starts with standing words (quote the exact words each finding rests on with its link; under Sources that disagree, both quotes side by side; end with Not found, and any page that refused to load), then the room's own rules whole.",
+]
+tier = "key"
+keys = ["exa"]
+provider = "Exa"
+needs = "the web ability's plug-in attached to the room and its Exa key (secrets/exa.key in the private folder), the one web_research runs on; the list reads the room's own files and needs no key"
+price = "the run's own, 1.2 to 50 US cents by effort under the daily cap of two US dollars for every room; keeping an answer, reading it again and the list cost nothing"
+key = "the web ability's exa.key, its first line, in the private folder's secrets/, 0600; the next call reads it, no restart"
+free_path = "none for a new answer: without the Exa key web_research does not run; the answers already kept stay readable and listed"
+asked_as = ["earlier research", "past research", "research it already did", "kept research", "research answers kept", "sources that disagree", "what the research did not find", "research gaps"]
 
 [abilities.live-page]
 state = "built"
