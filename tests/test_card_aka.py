@@ -8,9 +8,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 
-from yerk_ai import memindex, memory, mentions, words
+from yerk_ai import curate, memindex, memory, mentions, words
+from test_curate import NOW, layer, said  # noqa: F401 (layer: the promotion's example layer, a fixture)
 from test_remember import daemon, remember
 from test_room_scope import install
 
@@ -208,3 +210,36 @@ def test_a_new_card_with_no_neighbour_answers_as_main_and_six_neighbours_give_fi
     y = fresh(tmp_path, "six")
     cards(y, {f"orla-{w}.md": f"# Orla {w}\n" for w in ("heath", "fen", "bay", "glen", "dune", "cove")})
     assert remember(y, "example-room", "Orla rowed to the point.", "Orla")["near"] == ["orla bay", "orla cove", "orla dune", "orla fen", "orla glen"]
+
+
+def test_the_promotion_reads_a_cards_pack_by_its_aka_and_a_card_with_no_aka_as_it_did(layer):  # noqa: F811
+    priv, state, s, log = layer
+    day = s.daily / "2026-10-20.md"
+    day.write_text(day.read_text() + said(20, 5, "Orly fixed the lamp room on Sunday") + "\n" + said(20, 6, "other things were moved") + "\n")
+    (orla := s.root / "facts" / "orla-vantree.md").write_text("---\naka: Orly, other things\n---\n# Orla Vantree\n"
+                                                             "- Orla Vantree: keeps the lighthouse (src: memory/daily/2026-10-19.md:3)\n")
+    pack = [x for _, _, x in curate.packs(s, priv, [log.resolve()], [date(2026, 10, 20)])[0].get(orla, [])]
+    assert any("Orly fixed the lamp room" in x for x in pack) and not any("other things" in x for x in pack)
+    assert "Orly" in curate.names(orla, orla.read_text()).pattern and "other" not in curate.names(orla, orla.read_text()).pattern
+    ada = s.root / "facts" / "ada.md"
+    assert curate.names(ada, ada.read_text()).pattern == r"\bAda\b|\bAda\ Example\b|\bAda\ Example\b|\bAda\b|\bmom\b|\bmother\b"
+
+
+def test_a_proposed_line_headed_by_a_cards_aka_passes_the_head_check_and_another_common_word_does_not(layer, monkeypatch):  # noqa: F811
+    priv, state, s, log = layer
+    monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
+    day = s.daily / "2026-10-20.md"
+    day.write_text(day.read_text() + said(20, 5, "Orly fixed the lamp room on Sunday") + "\n")
+    (s.root / "facts" / "orla-vantree.md").write_text("---\naka: Orly\n---\n# Orla Vantree\n"
+                                                      "- Orla Vantree: keeps the lighthouse (src: memory/daily/2026-10-19.md:3)\n")
+    (state / "memory").mkdir()
+    index = memindex.Index(s.index_db, s.scope)
+    index.sync()
+    monkeypatch.setattr(curate.time, "sleep", lambda n: index.sync())
+    cite = "memory/daily/2026-10-20.md:7"
+    lines = [f"orla-vantree.md: - Orly: fixed the lamp room on Sunday (src: {cite})", f"orla-vantree.md: - Lamp: fixed on Sunday (src: {cite})"]
+
+    def model(prompt: str, tools: str) -> str:
+        return "\n".join(f"KEEP {x}" for x in lines) if tools else "\n".join(lines) if "pack orla-vantree.md" in prompt else ""
+    r = curate.run(priv, state, now=NOW, model=model)
+    assert r["landed"] == [lines[0]] and [x for x in r["checked"] if "one common word" in x] == [lines[1] + " | its head 'Lamp' is one common word, a key that would pull the card into any message"]
