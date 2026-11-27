@@ -572,12 +572,15 @@ def cmd_curate(a: argparse.Namespace) -> int:
 def cmd_deploy(a: argparse.Namespace) -> int:
     """`yerk deploy [REF]` (deploy.py): fast-forward, fast tests, a quiet room, the restart, the proof,
     else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well. --timers: only each timer
-    in units/ the box has not installed, installed and on (the doctor's fix for one), nothing restarted."""
+    in units/ the box has not installed, installed and on (the doctor's fix for one), nothing restarted. --check: only the
+    fast tests, each add-on's and the recall controls on the checkout as it stands, as a deploy runs them (deploy.check_step)."""
     from . import deploy, words
     from .config import REPO, state_dir
     if a.timers:
         print("\n".join(out := deploy.timers(REPO, deploy.USER_UNITS)) or f"{words.DONE} every timer in units/ is installed")
         return int(any(x.startswith(words.NOT_DONE) for x in out))
+    if a.check:
+        return deploy.check_step(private_dir(a.private, quiet=True), state_dir(a.state))
     return deploy.run(private_dir(a.private, quiet=True), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
 
 
@@ -1148,6 +1151,8 @@ def parser() -> argparse.ArgumentParser:
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     dp.add_argument("--timers", action="store_true", help="only install and turn on each timer in units/ not installed yet")
+    dp.add_argument("--check", action="store_true", help="only the fast tests, each add-on's and the recall controls, as a deploy "
+                    "runs them, on the checkout as it stands: nothing moved, restarted or ledgered; 0 when all held")
     for x in (ac, st, mo, rb, du, bn, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl, tx):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))

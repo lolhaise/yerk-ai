@@ -360,6 +360,24 @@ def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check
     return "" if held else "recall failed", [W.line(f"{W.DONE} {W.TESTS_PASSED}"), *off, *rec]
 
 
+def check_step(private: Path, state: Path, *, sd: Systemd | None = None, systemd: Callable[[str], Systemd] = Systemd,
+               proc: Path = Path("/proc"), wall: Check | None = None, check: Callable[[Path, Path, Path], dict[str, Any]] | None = None) -> int:
+    """`yerk deploy --check`: the step alone, as a deploy runs it (step), on the daemon's tree and layer as a deploy finds them,
+    the checkout as it stands: nothing moved, waited for or restarted, no ledger row, no card to the machine room; the step's
+    card lines printed. 0 when all held, 1 when not (the example layer refused, as a deploy refuses it)."""
+    taken = daemon_layer(state, sd, proc, systemd) if private.resolve() == EXAMPLE_PRIVATE.resolve() else None
+    private, state = taken or (private, state)
+    if private.resolve() == EXAMPLE_PRIVATE.resolve():
+        print(words.line(f"{words.PLAIN} {words.NO_LAYER}"))
+        return 1
+    conf = dict(load_toml(private / "yerkd.toml").get("deploy", {})) if (private / "yerkd.toml").is_file() else {}
+    name = str(conf.get("unit") or "") or ("" if sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID")))
+    unit = sd or (systemd(name) if name else None)
+    outcome, lines = step(Path(conf.get("tree") or (unit.show("WorkingDirectory") if unit else "") or REPO), private, state, conf, wall, check)
+    print("\n".join(lines))
+    return 1 if outcome else 0
+
+
 def recalled(r: dict[str, Any]) -> tuple[bool, list[str]]:
     """(held, the card's lines): every control hit, how many only through the meaning half; else the ones missed."""
     W = words

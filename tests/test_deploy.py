@@ -1238,6 +1238,11 @@ def test_a_proven_deploy_installs_and_turns_on_each_timer_in_units_the_box_does_
 
 
 # the step behind the wall (deploy.step, workers.checked): the core's fast tests, each add-on's and the recall controls
+def ran(f):
+    """Each check the stand-in saw: (its command, its folder)."""
+    return [(argv, cwd) for argv, cwd in f.checks]
+
+
 def addon(state, test="def test_hi():\n    pass\n"):
     (a := state / "addons" / "hi" / "tests").mkdir(parents=True)
     (a.parent / "addon.toml").write_text('[abilities.hi]\nversion = "1"\n[abilities.hi.install]\ntests = ["tests"]\n')
@@ -1352,3 +1357,28 @@ def test_the_live_index_is_held_open_while_the_checks_run(tmp_path, capsys):
     f = Fake(tree)
     assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=wall) == 0
     assert held == [True, True]
+
+
+def test_check_runs_the_step_alone_and_touches_nothing(tmp_path, capsys, monkeypatch):
+    """`yerk deploy --check`: the step as a deploy runs it, on the checkout as it stands; nothing moved or restarted, no
+    ledger row; 0 when all held, 1 when not."""
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    assert open('f.txt').read() != '1\\n'\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    f = Fake(tree)
+    f.argv = lambda: ["/v/bin/yerkd"]                                  # a unit's command with no --private in it
+    assert deploy.check_step(priv, state, sd=f, wall=f.wall) == 0
+    assert capsys.readouterr().out.splitlines() == [f"{words.DONE} fast tests passed", f"{words.PLAIN} recall: not checked, no index"]
+    assert [a[-1] for a, _ in ran(f)] == ["tests/test_x.py", str(state)] and ran(f)[0][1] == tree
+    (tree / "f.txt").write_text("1\n")                                 # the checkout as it stands: a failing test
+    assert deploy.check_step(priv, state, sd=f, wall=f.wall) == 1
+    assert capsys.readouterr().out.splitlines()[0] == f"{words.PLAIN} the fast tests failed"
+    assert f.restarts == [] and where(tree) == ("main", ids[0]) and (tree / "f.txt").read_text() == "1\n"
+    assert not (state / "ledger.sqlite").exists() and len(f.checks) == 3
+    assert deploy.check_step(EXAMPLE_PRIVATE, state, sd=f, wall=f.wall) == 1 and len(f.checks) == 3   # the example layer: refused
+    assert capsys.readouterr().out.splitlines() == [f"{words.PLAIN} no private folder: pass --private"]
+    from yerk_ai import cli
+    got = []
+    monkeypatch.setattr(deploy, "check_step", lambda p, s: got.append((p, s)) or 0)
+    assert cli.main(["deploy", "--check", "--private", str(priv), "--state", str(state)]) == 0 and got == [(priv, state)]
