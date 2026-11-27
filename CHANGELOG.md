@@ -9,6 +9,14 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### changelog-plain-2026-11-27 (the changelog says what changed and why, never at which minute or in whose room)
+
+- This file's older entries no longer give an event's clock time, say which of the owner's rooms it happened in, or
+  quote a message: each still says what went wrong, with its date and its measurements. A time that is the fault
+  itself stays (the minutes after midnight, the hour of a fall-back night), and so do schedules and format examples.
+- budgets.toml: two dated notes under `[recall]` `drops` lose their clock times, and docs/budgets.md is written again
+  from it. Nothing in the code changes, so no budget line moves.
+
 ### owner-in-neutral-words-2026-11-27 (the owner in neutral words, one name for the folder, a first run that is no fault)
 
 - What Yerk AI says, and what its models read, calls the owner the owner, or they, never he, his or him: the texting
