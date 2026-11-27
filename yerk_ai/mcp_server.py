@@ -81,7 +81,7 @@ class Daemon(Protocol):
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
-    async def tool_render(self, room: str, path: str) -> dict[str, Any]: ...
+    async def tool_render(self, room: str, path: str, width: int = 1200, scale: int = 2) -> dict[str, Any]: ...
     async def tool_watch(self, room: str, url: str, frames: int = 6, owner_yes: bool = False, path: str = "") -> dict[str, Any]: ...
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
@@ -306,15 +306,20 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_transcribe(caller_room(ctx), path, owner_yes))
 
     @mcp.tool()
-    async def render(path: str, *, ctx: Context) -> str:
+    async def render(path: str, width: int = 1200, scale: int = 2, *, ctx: Context) -> str:
         """A document as a PDF and its page count, since LibreOffice does not run in your shell: `path` is a document in this
         room's folders (a .docx, .doc, .odt, .rtf, .xlsx, .pptx or anything LibreOffice opens). The daemon renders it to a PDF
         saved beside it as NAME.pdf (an older NAME.pdf there is replaced) and returns its page count; a .pdf path returns its
         page count alone, nothing rendered. A .tex in your work folder is compiled by LaTeX (latexmk; pdflatex unless it
         loads fontspec or has a `% !TEX program` line); a failed compile says TeX's first error and its line. Use it to check a document fits a page count before you send it, and `send` the PDF
         when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
-        spill in the other: say a result near the edge as near the edge."""
-        return json.dumps(await daemon.tool_render(caller_room(ctx), path))
+        spill in the other: say a result near the edge as near the edge. An .html in your work folder becomes a picture,
+        NAME.png beside it (an older one replaced): the whole page from top to bottom, `width` CSS pixels wide (default 1200)
+        at `scale` device pixels to each (default 2), drawn by a headless browser with no network, so the page carries its
+        own styles and a picture it shows lies in its own folder. Use it whenever the owner is to see a card, a table, a
+        chart or a layout in the chat: write the page, render it, Read the PNG to see it as they will, then `send` the PNG.
+        The answer gives the picture's size in pixels; a page too tall for one picture says so."""
+        return json.dumps(await daemon.tool_render(caller_room(ctx), path, width, scale))
 
     @mcp.tool()
     async def watch(url: str = "", path: str = "", frames: int = 6, owner_yes: bool = False, *, ctx: Context) -> str:
@@ -450,7 +455,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         """Opens a file of this room's folders on the owner's PC screen when they ask to have it up, since your shell reaches
         no screen: `path` its whole path (a built HTML deck, a PDF, a picture, a video). It opens in their own browser, never
         run; `screen` the monitor they name (left, middle, right, primary or its number from the left; default [page] screen)
-        puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first."""
+        puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first.
+        A page meant for the chat is a picture: `render` it and `send` the PNG; their screen is for when they ask to have it up."""
         return json.dumps(await daemon.tool_show(caller_room(ctx), path, screen))
 
     @mcp.tool()

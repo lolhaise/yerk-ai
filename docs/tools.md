@@ -219,10 +219,17 @@ saved beside it as NAME.pdf (an older NAME.pdf there is replaced) and returns it
 page count alone, nothing rendered. A .tex in your work folder is compiled by LaTeX (latexmk; pdflatex unless it
 loads fontspec or has a `% !TEX program` line); a failed compile says TeX's first error and its line. Use it to check a document fits a page count before you send it, and `send` the PDF
 when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
-spill in the other: say a result near the edge as near the edge.
+spill in the other: say a result near the edge as near the edge. An .html in your work folder becomes a picture,
+NAME.png beside it (an older one replaced): the whole page from top to bottom, `width` CSS pixels wide (default 1200)
+at `scale` device pixels to each (default 2), drawn by a headless browser with no network, so the page carries its
+own styles and a picture it shows lies in its own folder. Use it whenever the owner is to see a card, a table, a
+chart or a layout in the chat: write the page, render it, Read the PNG to see it as they will, then `send` the PNG.
+The answer gives the picture's size in pixels; a page too tall for one picture says so.
 ```
 
 - `path`: string, required
+- `width`: integer, default 1200
+- `scale`: integer, default 2
 
 ## watch
 
@@ -421,6 +428,7 @@ Opens a file of this room's folders on the owner's PC screen when they ask to ha
 no screen: `path` its whole path (a built HTML deck, a PDF, a picture, a video). It opens in their own browser, never
 run; `screen` the monitor they name (left, middle, right, primary or its number from the left; default [page] screen)
 puts it there maximized, woken with no click. A reload there shows its newest save; a document: render it to a PDF first.
+A page meant for the chat is a picture: `render` it and `send` the PNG; their screen is for when they ask to have it up.
 ```
 
 - `path`: string, required

@@ -43,7 +43,7 @@ It can reach your files, your mail and your accounts, so its limits are part of 
 
 **Who is it for?** One person per install. Other people get a walled room of their own, and a shell on your machine only if you give them one.
 
-**How big is it, and how do I know it works?** About 37,000 lines of Python, held under a ceiling a test enforces. More than 2,700 tests run on Python 3.12, 3.13 and 3.14 for every change, beside lint, type and dependency checks: the green checks on each commit. Every part Yerk AI builds for the model, at a session's start and with each message, has a declared size limit in `budgets.toml`, and the reference docs are written from the code: a test fails a stale page.
+**How big is it, and how do I know it works?** About 38,000 lines of Python, held under a ceiling a test enforces. More than 2,700 tests run on Python 3.12, 3.13 and 3.14 for every change, beside lint, type and dependency checks: the green checks on each commit. Every part Yerk AI builds for the model, at a session's start and with each message, has a declared size limit in `budgets.toml`, and the reference docs are written from the code: a test fails a stale page.
 
 **What is the catch?** It is one person's tool, built in the open: Discord only, Linux only (plus a Mac if you want texting), version 0.1, and you set it up in a terminal. There is no hosted version.
 

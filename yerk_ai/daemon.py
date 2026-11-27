@@ -660,6 +660,10 @@ class Yerkd:
             lines.append(words.SHOW_NOT_OPENED.format(name=p.name, why=why) if why else words.SHOW_OPENED.format(name=p.name))
             got["opened"] = not why
         log.info("show: room %s, %s, %s", room, p.name, "; ".join(lines)[:200])
+        if p.suffix.lower() in render.PAGE and (got["ok"] or got["opened"]):     # a page on a screen: was a picture of it made?
+            png = p.with_name(f"{p.stem}.png")
+            fresh = png.is_file() and png.stat().st_mtime >= p.stat().st_mtime
+            log.info("show page: room %s, %s, picture beside it: %s", room, p.name, "yes" if fresh else "no")
         return {"ok": True, "line": "; ".join(lines)} if got["ok"] or got["opened"] else {"ok": False, "error": "; ".join(lines)}
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
@@ -679,20 +683,25 @@ class Yerkd:
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
         return r
 
-    async def tool_render(self, room: str, path: str) -> dict[str, Any]:
+    async def tool_render(self, room: str, path: str, width: int = render.WIDTH[2], scale: int = render.SCALE[2]) -> dict[str, Any]:
         """The `render` tool: a document from the calling room's own folders (may_send's rule, as transcribe's) made a PDF
         beside it by LibreOffice off the loop (render.run), one at a time across rooms, and its pages counted; a PDF's
         pages counted alone; a .tex compiled by LaTeX in its sandbox, from the room's work folder only, since its folder is
-        what the sandbox shows and the layer can be the private folder itself. Free: no spend row."""
+        what the sandbox shows and the layer can be the private folder itself; a page (.html, .htm) drawn as a picture
+        `width` CSS pixels wide at `scale`, by the [render] chromium in its sandbox, from the work folder only for the
+        same reason. Free: no spend row."""
         p = Path(path).expanduser().resolve()
         if room not in self.rooms or not self.may_send(room, p):
             return {"ok": False, "error": words.RENDER_NOT_HERE.format(name=p.name)}
         if not p.is_file():
             return {"ok": False, "error": words.RENDER_NO_FILE.format(name=p.name)}
-        if p.suffix.lower() == ".tex" and not p.is_relative_to((self.state / "rooms" / room / "work").resolve()):
-            return {"ok": False, "error": words.RENDER_TEX_NOT_WORK.format(name=p.name)}
-        r = await asyncio.to_thread(render.run, p, self.state)
-        said = f"{p.name}, {r['pages']} page(s)" + (f" in {r['seconds']} s" if "seconds" in r else "") if r["ok"] else r["error"][:160]
+        if (kind := p.suffix.lower()) in (".tex", *render.PAGE) and not p.is_relative_to((self.state / "rooms" / room / "work").resolve()):
+            return {"ok": False, "error": (words.RENDER_TEX_NOT_WORK if kind == ".tex" else words.RENDER_PAGE_NOT_WORK).format(name=p.name)}
+        conf = self.conf.get("render")                    # [render] chromium: the browser a page is drawn by, else found
+        setting = str(conf.get("chromium") or "") if isinstance(conf, dict) else ""
+        r = await asyncio.to_thread(render.run, p, self.state, width, scale, setting)
+        said = (r["error"][:160] if not r["ok"] else f"{p.name}, picture {r['width']}x{r['height']} px in {r['seconds']} s" if "png" in r
+                else f"{p.name}, {r['pages']} page(s)" + (f" in {r['seconds']} s" if "seconds" in r else ""))
         log.info("render: %s, %s", room, said)
         return r
 
