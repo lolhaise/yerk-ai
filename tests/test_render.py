@@ -614,9 +614,10 @@ def test_the_chromium_is_the_setting_else_each_path_name_in_order_else_playwrigh
     exe(pw / "chromium_headless_shell-1100" / "chrome-headless-shell-linux64" / "chrome-headless-shell")
     shell = exe(pw / "chromium_headless_shell-1200" / "chrome-headless-shell-linux64" / "chrome-headless-shell")
     assert render.find_chromium() == shell                                   # the newest shell, before a newer full build
-    for name in render.CHROMIUMS:
+    order = ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome", "chrome")
+    for name in order:
         exe(bin_ / name)
-    for name in render.CHROMIUMS:                                            # each PATH name in its order, before the cache
+    for name in order:                                                       # each PATH name in its order, before the cache
         assert render.find_chromium() == (bin_ / name).resolve(), name
         (bin_ / name).unlink()
     assert render.find_chromium() == shell
