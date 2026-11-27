@@ -511,6 +511,23 @@ def test_the_morning_diff_carries_one_doctor_line_and_says_unknown_with_no_run(t
     assert doctor.line(state, time.time() + DAY + 60)[0] == "unknown doctor"           # a day later: no run since
 
 
+def test_a_doctor_that_never_ran_is_a_plain_line_and_one_that_ran_then_missed_a_day_stays_red(tmp_path):
+    """A new install's first start (no full run in doctor.json, with its crash repair's rows or with none) reads not run
+    yet with the plain mark, never the red one; once a run is on file, a day with none is the red unknown line, word for word."""
+    state, now = tmp_path / "state", time.time()
+    state.mkdir()
+    red = ("unknown doctor", words.line(f"{words.NOT_DONE} doctor: unknown, no run in 24h"))
+    plain = ("", words.line(f"{words.PLAIN} doctor: not run yet, runs each night"))
+    assert doctor.line(state, now) == plain and not plain[1].startswith(words.NOT_DONE)      # no doctor.json at all
+    doctor.save(state, now, [f"{words.WORKING} day log 2026-10-20.md: mended line 8"])        # the start's crash repair alone
+    assert doctor.line(state, now) == doctor.line(state, now + 2 * DAY) == plain
+    doctor.save(state, now, [], {"at": now, "findings": []})                                 # a full run
+    assert doctor.line(state, now + DAY - 60)[0].startswith("doctor ") and doctor.line(state, now + DAY + 60) == red
+    doctor.save(state, now + DAY + 60, [], {"at": now + DAY + 60, "findings": []})
+    assert doctor.line(state, now + DAY + 120) == ("", words.line(f"{words.DONE} {words.DOCTOR_OK}")) != plain
+    assert doctor.line(state, now + 3 * DAY) == red                                          # and every missed day after
+
+
 def test_yerkd_mends_a_zeroed_line_before_any_room_opens_and_logs_the_line(tree, caplog):
     priv, state, day, assembled, _ = tree
     day.write_bytes(day.read_bytes() + b"\0" * 30 + b"\n")
@@ -522,6 +539,7 @@ def test_yerkd_mends_a_zeroed_line_before_any_room_opens_and_logs_the_line(tree,
     assert [r["line"] for r in d["repaired"]] == [f"{words.WORKING} day log 2026-10-20.md: mended line 8", f"{words.WORKING} example-room assembled log: mended line 1"]
     assert "at" not in d                                     # the checks have not run: the morning line says not run yet
     said = [r.getMessage() for r in caplog.records]
+    assert f"{words.PLAIN} doctor: not run yet, runs each night" in said and not [x for x in said if words.NO_RUN in x or "curate" in x]
 
 
 @pytest.mark.parametrize("how", ["a zeroed sessions.json", "a list in sessions.json", "a backups folder it cannot write",
