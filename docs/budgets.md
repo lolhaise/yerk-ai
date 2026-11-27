@@ -923,7 +923,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: need-2026-11-27-138 raised it by 127, how each line of a recording was said (a laugh, a joke, sarcasm, a stressed word) read by Gemini into the one transcript, since a room read a joke in a transcript as a plain line with nothing in the file to say no tone was heard, not folded to fit (transcribe.py 117: the Gemini request and its key's own header in send, its price by the day it doubles, the numbered lines, the answer read or its failure named, mark's check that a note stresses or quotes only words its line has, the reads in parallel beside the speakers with their spend rows, the chunks' lines built while their mp3s are there, the gate's share, the tone line and the result's two keys, the docstring's sentences; words.py 9: the note, the tone line's forms and TRANSCRIBED_NEXT's sentence; daemon.py 1: the Gemini key's path for transcribe and watch). 37,344: 37,217 plus 127.
 
-- `lines = 37344`
+2026-11-27: page-to-picture-2026-11-27 raised it by 285, the render tool's page kind (the owner's ask), not folded to fit: an .html or .htm drawn whole as a PNG by a headless Chromium in the .tex run's kind of box, the box's walls now shared by the two (render.py 237: the finder, the walls, the DevTools pipe, the settle and measure, the picture written beside the page), the plain lines (words.py 18), the tool's width and scale, its work-folder rule and its two journal lines (daemon.py 9, mcp_server.py 6) and the [render] chromium setting (config.py 4); and, added at its judging the same day, the picture's two caps, the most device pixels one picture holds in all and the most one answer over the pipe may weigh, since the widest and sharpest page the first bounds allowed took a minute and a half and more than a gigabyte to take in (render.py 7, words.py 4). 37,629: 37,344 plus 285, main's 127 of the same day (need-2026-11-27-138) merged in under it.
+
+- `lines = 37629`
 
 ## Uncapped
 

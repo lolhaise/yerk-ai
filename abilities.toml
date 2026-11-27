@@ -805,6 +805,7 @@ how = [
   "Count: pypdf counts the PDF's pages; a .pdf path is counted alone, nothing run.",
   "Layout: LibreOffice's, not Word's, so a document that fits by a line in one can spill in the other; a result near the edge is said as near the edge.",
   "A .tex: LaTeX's, never LibreOffice's, which would typeset its source as text (yerk explain latex).",
+  "A page: an .html or .htm is drawn as a picture, never sent to LibreOffice (yerk explain page-picture).",
 ]
 tier = "free"
 needs = "LibreOffice on the machine: `soffice` on PATH"
@@ -829,6 +830,25 @@ needs = "TeX Live on the machine, on the daemon's PATH: latexmk and pdflatex, wi
 price = "none"
 free_path = "none: without TeX Live or bubblewrap the room says so"
 asked_as = ["compile latex", "compile the latex", "compile my latex", "latex to pdf", "tex to pdf", "compile the tex", "overleaf", "pdflatex", "xelatex", "latex resume"]
+
+[abilities.page-picture]
+state = "built"
+what = "An .html or .htm in a room's work folder becomes a picture through the render tool on Yerk's own MCP server: NAME.png beside it, the whole page from top to bottom, so a room that builds a card, a run of show, a table or a chart as a page shows it in the chat as a picture it has looked at first, never by putting the page on the owner's screen and taking a screenshot of it. The daemon runs it for every room, a shell or none, in a sandbox of its own."
+how = [
+  "Draw: a headless Chromium driven over its DevTools pipe (`--remote-debugging-pipe`, a JSON message each way ended by a NUL byte, Python's standard library only) lays the page out `width` CSS pixels wide (200 to 3000, default 1200), measures it, and draws it whole at `scale` device pixels to each (1 to 3, default 2): the PNG is width times scale wide and the page's own height times scale tall, no band under a short page and no cut on a tall one.",
+  "Settle: the page's scripts run, and it gets 5 seconds to settle (its fonts loaded, its finite animations ended, its DOM unchanged for a quarter second); a page still changing then is drawn as it stands and the answer says so, and one whose scripts never let it be measured is refused in one line.",
+  "Too tall: a page past 16,000 device pixels at its scale is refused with its height and the two ways out, a lower scale or a shorter page; never a cut picture. A picture past 40 million device pixels in all (its width times its height), or one whose PNG comes to more than about 36 MB, is refused the same way, the heavy one never read to its end.",
+  "Sandbox: bubblewrap, as a .tex's: no network, so a request the page makes fails at once; no home, state or private folder; the page's folder read-only, so the page carries its own styles and a picture it shows lies beside it; a fresh build folder under the state folder's render/ its HOME, its profile and the one thing writable, removed after; the browser's own folder read-only when it lies outside /usr. Chromium's own sandbox is off inside the box and nowhere else; with no bwrap that starts nothing runs, and the room is told.",
+  "Out: the PNG comes back over the pipe and only a clean run's is written beside the page, a new file over whatever had that name, a link left there replaced and never written through; an older NAME.png stays as it was when a run fails.",
+  "Work folder only: a page elsewhere in a room's folders is refused in words, as a .tex is, since its folder is what the sandbox shows.",
+  "Which browser: [render] chromium in yerkd.toml, a whole path, else the first of chrome-headless-shell, chromium, chromium-browser, google-chrome and chrome on the daemon's PATH, else the newest headless shell and then the newest full Chromium Playwright keeps in its cache folder.",
+  "One at a time: with every conversion, across rooms; a run past 120 seconds is stopped with its sandbox, and the room is told.",
+]
+tier = "free"
+needs = "A Chromium on the machine (a headless shell is enough: `npx playwright install chromium-headless-shell`, or a chromium or Chrome on the daemon's PATH, or [render] chromium naming one); bubblewrap (`bwrap`), which a room's shell sandbox needs anyway; and a colour emoji font for emoji (Debian or Ubuntu: `apt install fonts-noto-color-emoji`)"
+price = "none"
+free_path = "none: without a Chromium or bubblewrap the room says so, and names the setting"
+asked_as = ["html to png", "card as a picture", "screenshot of a page", "picture of a page"]
 
 [abilities.watch]
 state = "built"

@@ -106,7 +106,7 @@ def test_twenty_five_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]
     assert list(tools["delete"].inputSchema["properties"]) == ["paths"]
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
-    assert list(tools["render"].inputSchema["properties"]) == ["path"] and "`render`" in context.MECHANICS.read_text()
+    assert list(tools["render"].inputSchema["properties"]) == ["path", "width", "scale"] and "`render`" in context.MECHANICS.read_text()
     assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
     assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
