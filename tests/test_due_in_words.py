@@ -123,7 +123,9 @@ def test_a_due_whose_day_or_time_the_words_do_not_give_is_refused_in_its_line_an
     clock(monkeypatch, noon(y))
     for about in ("", "example boiler"):                                                 # a day log and a card with lines, and their index
         assert dated(y, "example-room", "The example boiler check is on Nov 30.", about, due="2026-11-30")["ok"]
-    memindex.Index(y.memory.index_db, y.memory.scope).sync()
+    index = memindex.Index(y.memory.index_db, y.memory.scope)
+    index.sync()
+    index.conn.close()                                                               # its log folded into the file now, not whenever the object dies
     before = files(tmp_path)
     caplog.set_level(logging.INFO, logger="yerk")
     for text, due, line in (("The example boiler check is on Monday.", "2026-11-30", DAY_LINE),
