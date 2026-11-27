@@ -722,6 +722,35 @@ def test_a_page_too_tall_for_one_picture_is_refused_with_its_height_and_the_two_
 
 
 @BOXED
+def test_a_picture_past_the_most_pixels_in_all_is_refused_with_its_size_and_the_bound_itself_is_drawn(tmp_path, monkeypatch):
+    y, work, bin_, cr = page_room(tmp_path, monkeypatch, h=501)
+    monkeypatch.setattr(render, "AREA", 1_000_000)                        # the real bound's pictures are too big for a test
+    (doc := work / "card.html").write_text(PAGE_DOC)
+    older(work / "card.png", b"an older picture")
+    error = words.RENDER_PAGE_LARGE.format(name="card.html", wide=1000, high=1002, most=1)
+    assert asyncio.run(y.tool_render("example-room", str(doc), width=500, scale=2)) == {"ok": False, "error": error}
+    assert "lower scale" in error and "smaller width" in error and "page shorter" in error
+    assert (work / "card.png").read_bytes() == b"an older picture" and list((tmp_path / "state" / "render").iterdir()) == []
+    (cr / "chromium.json").write_text(json.dumps({"h": 500}))
+    r = asyncio.run(y.tool_render("example-room", str(doc), width=500, scale=2))
+    assert (r["width"], r["height"]) == (1000, 1000)                       # the bound itself is drawn
+    assert render.AREA == 1_000_000 and 2400 * render.TALLEST <= 40_000_000   # the default width at its tallest is inside the real bound
+
+
+@BOXED
+def test_an_answer_too_heavy_to_take_in_is_never_read_to_its_end_and_no_picture_is_written(tmp_path, monkeypatch):
+    y, work, bin_, cr = page_room(tmp_path, monkeypatch)
+    monkeypatch.setattr(render, "HEAVY", 4096)                            # the stand-in's picture is a few thousand bytes past it
+    (doc := work / "card.html").write_text(PAGE_DOC)
+    older(work / "card.png", b"an older picture")
+    error = words.RENDER_PAGE_HEAVY.format(name="card.html", mb=0)
+    assert ask(y, doc) == {"ok": False, "error": error} and "lower scale" in error and "page lighter" in error
+    assert (work / "card.png").read_bytes() == b"an older picture" and list((tmp_path / "state" / "render").iterdir()) == []
+    monkeypatch.setattr(render, "HEAVY", 48 << 20)
+    assert ask(y, doc)["ok"]                                               # the same page under the real bound is drawn
+
+
+@BOXED
 def test_a_failed_run_writes_no_picture_and_leaves_an_older_one_as_it_was(tmp_path, monkeypatch):
     y, work, bin_, cr = page_room(tmp_path, monkeypatch, error="Unable to capture screenshot")
     (doc := work / "card.html").write_text(PAGE_DOC)

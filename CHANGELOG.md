@@ -15,7 +15,8 @@ files into pieces changes.
   older one replaced): `width` CSS pixels wide (200 to 3000, default 1200) at `scale` device pixels to each (1 to 3,
   default 2), top to bottom, with no band under a short page and no cut on a tall one. The answer gives the picture's size
   in pixels. A page past 16,000 device pixels tall is refused with its height and the two ways out, a lower scale or a
-  shorter page. Before, an .html went to LibreOffice and came back a PDF in LibreOffice's layout.
+  shorter page. So is a picture past 40 million device pixels in all, and one whose PNG comes to more than about 36 MB,
+  which is never read to its end. Before, an .html went to LibreOffice and came back a PDF in LibreOffice's layout.
 - A headless Chromium draws it, in the same kind of bubblewrap box a .tex compiles in: no network, so a request the page
   makes fails at once; no home, state or private folder; the page's folder read-only; a fresh build folder the one thing
   writable. Chromium's own sandbox is off inside the box and nowhere else, and with no bwrap that starts nothing runs. The
@@ -33,7 +34,7 @@ files into pieces changes.
 **Upgrading**: nothing to do where a Chromium is on the daemon's PATH or in Playwright's cache folder. Elsewhere, install a
 headless shell (`npx playwright install chromium-headless-shell`) or set `[render] chromium` in yerkd.toml to a Chromium's
 whole path; a colour emoji font (Noto Color Emoji, the distribution's package) draws emoji in colour. budgets.toml's
-`[code] lines` rises from 37,217 to 37,491.
+`[code] lines` rises from 37,344 to 37,629.
 
 ### need-2026-11-27-138 (how a recording was said: laughs, jokes, stressed words)
 

@@ -474,6 +474,10 @@ RENDER_PAGE_SCALE = ("scale {given} is outside {least} to {most} device pixels t
                      "scale in that range ({default} unless you ask)")
 RENDER_PAGE_TALL = ("{name} is {height} CSS pixels tall, {device} device pixels at scale {scale}, past the {most} one picture "
                     "may be, so none was made: render it at a lower scale, or make the page shorter")
+RENDER_PAGE_LARGE = ("{name} would be a picture of {wide} by {high} device pixels, past the {most} million one picture may hold, so "
+                     "none was made: render it at a lower scale or a smaller width, or make the page shorter")
+RENDER_PAGE_HEAVY = ("the picture of {name} came to more than about {mb} MB, so none was made: render it at a lower scale or a "
+                     "smaller width, or make the page lighter")
 RENDER_NO_CHROMIUM = ("a page is drawn by a Chromium (chrome-headless-shell, chromium or Chrome) and none is on this machine, so "
                       "no picture was made; [render] chromium in yerkd.toml names one by its whole path")
 RENDER_CHROMIUM_NOT_ONE = "[render] chromium in yerkd.toml names no program on this machine, so no picture was made"

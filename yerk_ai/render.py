@@ -18,7 +18,7 @@ An .html or .htm is a page, drawn as a picture (`picture`): a headless Chromium 
 Playwright's) in the same kind of box (`walls`, shared with TeX's), its own sandbox off inside it and nowhere else, driven
 over --remote-debugging-pipe (the DevTools protocol, a JSON message each way ended by a NUL byte, the standard library
 only). The page is laid out `width` CSS pixels wide, given SETTLE seconds to load and settle, measured, and drawn whole at
-`scale` device pixels to each, top to bottom, no taller than TALLEST; the PNG comes back over the pipe and only a clean
+`scale` device pixels to each, top to bottom, no taller than TALLEST and no more than AREA in all; the PNG comes back over the pipe (HEAVY at most) and only a clean
 run's is written beside the page as NAME.png, a new file over whatever had that name.
 """
 from __future__ import annotations
@@ -210,6 +210,7 @@ def latex(doc: Path, state: Path) -> dict[str, Any]:
 
 PAGE = (".html", ".htm")     # a page: drawn as a picture, never sent to LibreOffice
 WIDTH, SCALE, TALLEST = (200, 3000, 1200), (1, 3, 2), 16_000   # CSS px wide and device px to each (least, most, default); device px tall
+AREA, HEAVY = 40_000_000, 48 << 20   # device px one picture holds in all; bytes one answer over the pipe may be (a PNG of about 36 MB)
 SETTLE = 5                   # seconds a page gets to load and settle before it is drawn as it stands
 STUCK = 5                    # seconds more an unsettled page gets to be measured at all, else it is refused
 VIEW = 800                   # the CSS height of the window a page is laid out in before it is measured
@@ -274,6 +275,8 @@ class Pipe:
             if not (chunk := os.read(self.into, 1 << 20)):
                 raise EOFError
             self.buf += chunk
+            if len(self.buf) > HEAVY:                   # a picture too heavy to take in: never read to its end
+                raise OverflowError
         msg = json.loads(bytes(self.buf[:i]))
         del self.buf[:i + 1]
         return msg if isinstance(msg, dict) else {}
@@ -367,6 +370,8 @@ def draw(exe: Path, doc: Path, state: Path, width: int, scale: int) -> tuple[byt
             for _ in range(3):                             # laid out at its own height, what still overflows it is the page's too
                 if h * scale > TALLEST:
                     raise Failed(words.RENDER_PAGE_TALL.format(name=doc.name, height=h, device=h * scale, scale=scale, most=TALLEST))
+                if width * scale * h * scale > AREA:
+                    raise Failed(words.RENDER_PAGE_LARGE.format(name=doc.name, wide=width * scale, high=h * scale, most=AREA // 1_000_000))
                 talk.call("Emulation.setDeviceMetricsOverride", {**view, "height": h}, end, s)
                 if (grown := int((talk.value(MEASURE, min(time.monotonic() + STUCK, end), s) or {}).get("sh") or 0)) <= h:
                     break
@@ -374,6 +379,8 @@ def draw(exe: Path, doc: Path, state: Path, width: int, scale: int) -> tuple[byt
             png = base64.b64decode(talk.call("Page.captureScreenshot", {"format": "png", "fromSurface": True}, end, s).get("data") or "")
         except TimeoutError:
             raise Failed(words.RENDER_PAGE_TIMED_OUT.format(name=doc.name, seconds=RENDER_TIMEOUT)) from None
+        except OverflowError:
+            raise Failed(words.RENDER_PAGE_HEAVY.format(name=doc.name, mb=(HEAVY * 3 // 4) >> 20)) from None
         except EOFError:
             said = said_last(build / "browser.log")
             if said.startswith("bwrap:") and "execvp" not in said:
