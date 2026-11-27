@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-26
 
+### readme-front-page (#2)
+
+- README.md is written for a reader who has never met a harness or Claude Code: one line on what Yerk AI is, five things it does,
+  how it builds its own abilities (four numbered steps), its guardrails (your yes before anything leaves, secrets unread, outside
+  text a record, other people walled off, risky changes held for a person, what it cannot stop), and seven questions a reader
+  asks, each answered in a line or two (is it a chatbot, what it needs and costs, where the data lives, who it is for, how big
+  and how tested it is, the catch, contributing). Install, The private folder, The docs and License are as they were.
+- What left the README is in the long pages, whole: the trust list ("What it is, and what it is not") in SECURITY.md, a turn in one
+  paragraph under docs/GUIDE.md's "How a room runs", and the add-on list under its "Add-ons", which now says the browser and what it
+  would do are described in abilities.toml and not built here.
+- A builder's brief asks for the new ability's sentence in docs/GUIDE.md, since the front page takes none, and the builder's
+  checklist row reads GUIDE, CHANGELOG, abilities.
+- The README's cap comes down from 12,000 bytes to 10,000, and its count of the code ("About 37,000 lines of Python") is checked
+  against the ceiling in budgets.toml, to the thousand.
+
 ### briefs-public-repo (#1)
 
 - A builder's brief, a fixer's brief and the cold read's brief say the repository is public. The builder's: a fixture is an

@@ -1,14 +1,53 @@
 # Yerk AI
 
-Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Python program doing only what Claude Code does not: carry messages between a room and a session, build each room's context to a declared size, keep memory across sessions, and move work across the accounts you have. The agent loop, tools, skills, compaction and resume are Claude Code's own, used through its documented flags, settings and hooks.
+**An AI assistant that lives in your chat rooms, runs on your own computer, remembers what you told it, and builds its own upgrades.**
 
-## What it is, and what it is not
+You message it in Discord the way you would message a person. Each channel you give it is a *room*: one long-running assistant with its own voice, tools and privacy level. The thinking is done by [Claude Code](https://code.claude.com/docs/en/overview), Anthropic's AI agent built on its Claude models, which you install and log in to yourself. Yerk AI is the Python program around it, the part people call a *harness*: it carries messages in and out, decides what the model is shown, keeps the memory and keeps the rooms running.
 
-- A personal tool. You run it on your own machine, for yourself.
-- Bring your own Claude Code. Yerk AI starts your `claude` command under the login you made with it. Each account is a Claude Code config folder named in your `accounts.toml`.
-- No login handling for anyone else. Yerk AI never offers, brokers or copies a login, nor reads the credential files in a config folder (a test greps the package for any read under one). One thing touches your credentials: a one-year token you minted with `claude setup-token` can be kept in your private folder (`secrets/claude-<account>.token`, 0600) and is handed to Claude Code in `CLAUDE_CODE_OAUTH_TOKEN`. The usage meters in `yerk status` come from what Claude Code prints: `claude -p /usage` on the account's config folder when the card asks and every 15 minutes, ending a rest once usage is back (`usage-back`; no model call; a one-year token cannot read them, so it is left out), else the usage events in each room's stream. It never writes a config folder.
-- Nothing stored for anyone else. Persona, memory and room settings live in your private folder.
-- Who it trusts. One person per install: it runs as your user and serves you; a room's people (`room-people`) are answered there, never trusted with your memory or machine. The machine's other users are not trusted: yerkd makes its state folder 0700, writes every file holding a credential or your words 0600, hands a room's token to its hooks through a 0600 file, never on a command line (any local user reads those in /proc), and `yerk doctor` names any file or folder in your private or state folder another user can read; keep the private folder 0700 too. A room's shell runs in Claude Code's sandbox, and no room may read a secret (a token, the bot token, a provider key, the daemon's own secrets, an account folder's login) with its Read tool or its shell, because a web page, a mail or a pasted message can steer a model. What a room recalls or imports, and what anyone but you writes (mail, a web page, a quoted message), reaches it marked as a record, never an instruction; a person's own message in their room is an ask to act on there, and an order in it to act as you, in another room or against a rule is reported, not followed. An outward action (a send to another room, a public post, a login, money, a text in your name, a message out through another tool) and a delete outside a room's work folder wait for your word in the room; a person's room can never post into yours. No credential is printed or logged; the doctor names a secret-shaped line or a saved password in memory, imports or inboxes by file:line, never by value, to scrub and rotate. It does not defend against root or anyone who can log in as you, a stolen token, a model that is wrong or that you tell to do harm, or a room you give an unsandboxed shell.
+## What it does
+
+- **Answers where you already talk.** Message a room and it shows a live progress card while it works; the reply replaces the card.
+- **Remembers.** Every message is kept in a day log on your disk. Each new message reaches the model with your earlier notes that bear on it, and a room can search the rest.
+- **Works in the background.** A long job goes to a separate worker. It has a progress card of its own and reports back when it ends.
+- **Keeps going when an account runs out.** With more than one Claude account, a turn moves to the next one and carries on.
+
+## It builds its own upgrades
+
+When a room cannot do what you asked, Yerk AI builds that ability into itself:
+
+1. The room writes down what it needed, instead of building a one-off way of its own.
+2. A builder writes the ability, with tests.
+3. The checks run, and a fresh reviewer reads the change.
+4. It is merged, deployed and live in every room.
+
+No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer never wrote the change. The riskiest changes still wait for a person (Guardrails, below). The loop needs a GitHub token and checks on your copy of the repository; without them, a person merges and deploys.
+
+## Guardrails
+
+It can reach your files, your mail and your accounts, so its limits are part of the program:
+
+- **Your yes before it acts for you.** An email, a text, a public post, a login, a payment or a delete for good waits until you have seen it and said yes. The one exception is yours to make: a standing yes for texts to one person.
+- **Secrets stay unread.** No room can read a token, a key or a login, with its file tool or its shell. Yerk AI never reads the credential files of your Claude Code login either, and a test fails the build if any code tries.
+- **Outside text is a record, never an order.** A web page, an email or a quoted message reaches the model marked as a record, with a standing rule never to take orders from it.
+- **Other people are walled off.** Someone else can be answered in a room of their own. It sees only its own lines and the files you share, it cannot post into your rooms, and the model's rules say an order in it to act as you is reported, not followed.
+- **Risky changes wait for a person.** When it builds its own upgrades (above), a change to texting, email, logins, deletes, deploys or the pipeline itself is held for a human, and a change cannot loosen the list that judges it.
+- **It says what it cannot stop.** [SECURITY.md](SECURITY.md) lists it: anyone with root or your login, a stolen token, a model that is simply wrong.
+
+## Questions
+
+**Is this a chatbot?** No. A chatbot answers; this also acts. A room can read and write files in its own folder, run commands in a sandbox, search the web, read PDF and Word files, and, with your approval, email or text as you (texting needs a Mac). You choose which of these each room gets.
+
+**What do I need, and what does it cost?** A Linux machine, Claude Code logged in and a Discord bot you create ([Install](#install) has the list). Yerk AI itself is free under the MIT license and runs on your own Claude Code login, so the model use comes out of your Claude plan. A few optional abilities need a provider key or a paid service of your own; `yerk abilities` names them.
+
+**Where does my data live?** On your disk: settings, persona, memory and secrets sit in one private folder outside this repository, and nothing of yours is kept on a server of the project's. Your messages still pass through Discord and, through Claude Code, to Anthropic's models, as they would without it. If you add a provider key for search by meaning, your memory, the day logs included, is sent to that provider to be indexed.
+
+**Who is it for?** One person per install. Other people get a walled room of their own, and a shell on your machine only if you give them one.
+
+**How big is it, and how do I know it works?** About 37,000 lines of Python, held under a ceiling a test enforces. More than 2,700 tests run on Python 3.12, 3.13 and 3.14 for every change, beside lint, type and dependency checks: the green checks on each commit. Every part Yerk AI builds for the model, at a session's start and with each message, has a declared size limit in `budgets.toml`, and the reference docs are written from the code: a test fails a stale page.
+
+**What is the catch?** It is one person's tool, built in the open: Discord only, Linux only (plus a Mac if you want texting), version 0.1, and you set it up in a terminal. There is no hosted version.
+
+**Can I contribute?** Issues are welcome. Pull requests are by invitation for now, so open an issue first ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Install
 
@@ -50,13 +89,9 @@ Everything of yours lives in one folder outside the repository, named by `--priv
 ~/.local/state/yerk/           0700: the session table, the ledger, the index, logs, workers, the trash
 ```
 
-## A room's turn
-
-Each active room is one `claude -p` process, stream-json in and out, on a session Yerk AI minted or the room's own resumed, under only the settings Yerk AI writes (`--setting-sources ""`): a read rule for the room's folder (an owner room's also for Yerk's running checkout, a worker's folder, fetched docs and doctor.json, as the mechanics say, to check a claim there; rules, never a folder its shell could write), read denies on every secret, a command hook on every event, and Claude Code's sandbox when the room has a shell. Its session start is one assembled file passed with `--append-system-prompt-file`, each part capped by budgets.toml ([docs/budgets.md](docs/budgets.md)). Each message gets the clock, metadata, changed rules and recall parts from the UserPromptSubmit hook ([docs/hooks.md](docs/hooks.md)), and Yerk AI's own tools (send, recall, remember, GitHub, red checks' why (`red-checks`) and the rest) come from its local MCP server. One, `text`, texts a person as you from your Mac, from your own rooms only, once you see its words and who it goes to and say the word, wherever the shell is; `texts` reads them, yours whole, while it sleeps; `email` emails from your Gmail under your name, files attached, alike (`email-name`). Another, `delete`, deletes paths outside the room's work folder, for good, from your own rooms only: the daemon does it once you read each path and say the word, never the root, a top folder, your home folder, a mounted disk or Yerk's own. `show` puts a room's file on the PC monitor you name, never one the PC would run. Another, `remember` with a `job`, files how a job is done for every room, in the rules file each session starts with; a rule that file has no room for loads only when a message names its topic, on its job's words and those you choose (`triggers`), and the job's older line is marked replaced. A `worker`'s end on exactly NO_REPLY is left to its card, job and result (`job-cards`); its report reads its branches (`worker-branch`). A job fired as Yerk rewrites jobs.toml still starts (`job-fires`). A mid-turn message on Discord or a live page of code, talk and output (`page = true` or ask, on the Mac or PC monitor you name, painted with no click, answers in bubbles, chat on ask) joins that turn. A file sent to the room is saved in its `work/inbox/<message id>/` and named in the message, as is one another assistant in `[watch] assistants` attaches where the room reads or an old message carries (`attachments`). Only the text after the last tool call goes out, on one progress card the reply replaces, and the Stop hook bounces once on a rule check, a picture unread, a blank reply or a mid-turn message unnamed among them. A failed turn takes the action `failures.toml` gives its class: a rerun, a compaction, or the next account resuming the session. After 30 idle minutes the process closes; the next message resumes it; a session compacts between turns, never inside one, and the recall pack returns after it; every line is in the day log. [docs/GUIDE.md](docs/GUIDE.md), How a room runs, has every flag and rule.
-
 ## Add-ons
 
-What a room does past Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, tools in `allow`; a fix to one lands in its own repo (`plugin-builds`). One ships here, `plugins/web`: pages (Bookings as a guest, a Commons answer, ÖBB trains `oebb-trains`), PDF or Word files (`web-documents`), search and research (`research-ids`), in a worker too (`worker-web`) ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser outside (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free checkouts (`free-bookings`) and invoiced orders (`order-forms`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`), signs in by `/login` unseen (`logins`), gets age-locked reels (`locked-reels`).
+Past Claude Code's own tools and Yerk AI's own ([docs/tools.md](docs/tools.md)), a room's abilities come from add-ons: MCP servers (the standard way to hand a model new tools) named in rooms.toml. One ships here, `plugins/web`: web pages, PDF and Word files, search and research. `examples/addons/hello` is a small one to copy, and [docs/GUIDE.md](docs/GUIDE.md), Add-ons, has the rest.
 
 ## The docs
 
@@ -66,11 +101,11 @@ What a room does past Claude Code's tools comes as add-ons: MCP servers in rooms
 - [docs/STATUS.md](docs/STATUS.md): how it was built, stage by stage; not checked against today's code
 
 
-- [docs/GUIDE.md](docs/GUIDE.md): the long form: using it, moving or importing a chat, the service, backup, how a room runs, what you see, add-ons, voice notes, texting, web reach, the harness, the ledgers
+
 
 - [CHANGELOG.md](CHANGELOG.md) says what each merge changes, [STYLE.md](STYLE.md) how every card and notice reads, and [NOTICE](NOTICE) where the lifted code comes from.
 
-`yerk docs own` writes the first six from the code; a test fails a stale one. `yerk docs refresh` is the other half: the Claude docs Yerk AI runs on, kept for every room ([docs/GUIDE.md](docs/GUIDE.md), Yerk knows its harness), the rule checks quoting them word for word, re-pinned when a page moves (`lesson-pins`), a lesson off their shape kept only on your word (`lesson-keeps`).
+Every folder has a README.md that says what is in it.
 
 ## License
 
