@@ -848,6 +848,8 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     today = local_day(s, now)
     if tag and (gap := due_unsaid(due, body, today)):       # a due the words never gave: refused, before anything is written
         why = (words.DUE_DAY_UNSAID if gap == "day" else words.DUE_TIME_UNSAID).format(day=due[:10], time=due[11:])
+        logging.getLogger("yerk.memory").info("remember: a due in %s refused, its day not in the words" if gap == "day" else
+                                              "remember: a due in %s refused, its time not in the words", room)   # never a word of the text
     if why:
         return {"ok": False, "error": why}
     end, why = until_mark(until, body, today, bool(who))
