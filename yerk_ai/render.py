@@ -239,7 +239,8 @@ def find_chromium(setting: str = "") -> Path | None:
     def runs(p: Path) -> bool:
         return p.is_file() and os.access(p, os.X_OK)
     if setting:
-        return (p := Path(setting).expanduser()).resolve() if p.is_absolute() and runs(p) else None
+        p = Path(setting).expanduser()
+        return p.resolve() if p.is_absolute() and runs(p) else None
     if found := next((x for name in CHROMIUMS if (x := shutil.which(name))), None):
         return Path(found).resolve()
     cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "ms-playwright"
