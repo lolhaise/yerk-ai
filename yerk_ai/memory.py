@@ -727,10 +727,40 @@ def days_in(text: str, today: date) -> set[str]:
     return days
 
 
+# the clock times a filing's words name (times_in): noon, midnight, H:MM or HH:MM, an hour with AM or PM (either case, a space and
+# dots or none: "3pm", "3 p.m."), then maybe a range's second end after a dash, "to", "till", "until", "and" or "or"; never inside a
+# longer token (a file name, a path, an id) nor a timestamp's seconds
+CLOCK = r"(?:\b(noon|midnight)\b|([0-9]{1,2})(?::([0-9]{2}))?(?: ?([ap])\.?m(?![a-z0-9])\.?)?)"
+TIME_FORM = re.compile(r"(?<![\w./\\:#@+=])(?<!\w-)" + CLOCK + r"(?:(?: *[-–—] *| +(?:to|till|until|and|or) +)" + CLOCK + r")?"
+                       r"(?![\w/\\#@+=-]|[.:][\w/\\])", re.I)
+
+
+def times_in(text: str) -> set[str]:
+    """Every clock time `text` names (TIME_FORM), as HH:MM: an hour 1 to 12 with no AM or PM in both halves of the day, a range's
+    two ends, a bare hour that starts a range in the half of the end after it (the other half when it is later on the clock:
+    "11 to 1 PM" is 11 AM to 1 PM). Never a bare number alone."""
+    out = set()
+    for m in TIME_FORM.finditer(text):
+        (w, h, mm, half), end = m.group(1, 2, 3, 4), m.group(5, 6, 7, 8)
+        if h and not (mm or half) and end[1] and end[3]:            # "9 to 11 AM": the bare start takes the end's half
+            later = int(h) % 12 * 60 > int(end[1]) % 12 * 60 + int(end[2] or 0)
+            half = "ap"[end[3].lower() == "a"] if later else end[3]
+        for w, h, mm, half in ((w, h, mm, half), end):
+            hour, minute = int(h or 0), int(mm or 0)
+            if w:
+                out.add("12:00" if w.lower() == "noon" else "00:00")
+            elif half and 1 <= hour <= 12 and minute < 60:
+                out.add(f"{hour % 12 + 12 * (half.lower() == 'p'):02d}:{minute:02d}")
+            elif mm and not half and hour < 24 and minute < 60:
+                out |= {f"{x:02d}:{minute:02d}" for x in ({hour % 12, hour % 12 + 12} if 1 <= hour <= 12 else {hour})}
+    return out
+
+
 def due_unsaid(due: str, text: str, today: date) -> str:
     """What of a well-formed `due` the filing's `text` leaves out, read on `today`: "day" when its words name no such day
-    (days_in), else "". Nothing is dated by code: a day the room worked out goes into the line's words."""
-    return "day" if due[:10] not in days_in(text, today) else ""
+    (days_in), else "time" when it carries a time they hold no such clock time for (times_in), else "". Nothing is dated by code:
+    a day the room worked out goes into the line's words, and a thing with a day and no hour is filed by its day."""
+    return "day" if due[:10] not in days_in(text, today) else "time" if "T" in due and due[11:] not in times_in(text) else ""
 
 
 def due_of(raw: str, day: str = "") -> dict[str, str] | None:
@@ -817,7 +847,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     tag, why = due_mark(due, owes)
     today = local_day(s, now)
     if tag and (gap := due_unsaid(due, body, today)):       # a due the words never gave: refused, before anything is written
-        why = words.DUE_DAY_UNSAID.format(day=due[:10])
+        why = (words.DUE_DAY_UNSAID if gap == "day" else words.DUE_TIME_UNSAID).format(day=due[:10], time=due[11:])
     if why:
         return {"ok": False, "error": why}
     end, why = until_mark(until, body, today, bool(who))
