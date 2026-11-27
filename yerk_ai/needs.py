@@ -358,24 +358,24 @@ def brief(r: dict[str, Any], repo: Path, check: str = "", offered: dict[str, dic
         "## What done looks like\n"
         "1. The ability built once, the one best way, in Yerk itself, so one deploy gives every room the same way: never a "
         "workaround for one room, a script in a room's folder, or a rule telling rooms to improvise.\n"
-        "2. Tests in the existing style for what it does and for the wall the asks above hit; the full suite green (`uv run "
-        "pytest -q`, its exit status read, never through `| tail`); ruff and mypy clean. Every person, place, handle and id in "
-        "a test, a fixture, a doc or the CHANGELOG is a placeholder, never one from the asks above.\n"
-        "3. README.md, CHANGELOG.md and the abilities.toml entry.\n"
-        f"4. Committed on `{branch}`. Never merge, push, open a PR or deploy: a worker's gate refuses a push and a PR, the "
-        "branch reaches its pull request from outside this run, and the owner's cold read decides the merge.\n"
-        f"5. REPORT.md's first line: `PR <number>: <what it adds>` when `gh pr list --head {branch}` shows one, else `branch "
-        f"{branch} at <short sha>: <what it adds>`, or `no branch: <why>`; then the files changed, the test counts and every "
-        "decision you made.\n\n"
+        "2. Tests in the existing style for what it does and for the wall the asks above hit; the full suite green (`uv run pytest -q`, its exit status "
+        "read, never through `| tail`); ruff and mypy clean. Every person, place, handle and id in a test, a fixture, a doc or the CHANGELOG is a "
+        "placeholder, never one from the asks above. The repository is public: a fixture is an invented sentence in a neutral setting, never a room's ask, "
+        "reply or message with its names changed, and no test, comment, doc, commit message or branch name carries the owner's quoted words, a date or "
+        "clock time of his messages, a room's own name, or a real figure, ticket number or address.\n3. README.md, CHANGELOG.md and the abilities.toml "
+        f"entry.\n4. Committed on `{branch}`. Never merge, push, open a PR or deploy: a worker's gate refuses a push and a PR, the branch reaches its pull "
+        "request from outside this run, and the owner's cold read decides the merge.\n5. REPORT.md's first line: `PR <number>: <what it adds>` when `gh pr "
+        f"list --head {branch}` shows one, else `branch {branch} at <short sha>: <what it adds>`, or `no branch: <why>`; then the files changed, the test "
+        "counts and every decision you made.\n\n"
         "## Leave alone\n"
         "The owner's private folder and Yerk's state folder, every room's files, other branches, the running daemon. Surgical "
         "edits, never a whole file rewritten. Your last message is the deliverable: REPORT.md's first line and the test "
         "counts, with no tool call after it.\n" + RULES.format(check=check))
 
 
-RULES = ("\n## Every commit\n"
-         "- {check}\n- Never amend, squash or rebase a commit once it is made: every commit is pushed within seconds.\n"
-         "- No Agent tool and no subagents: read with grep and sed yourself.\n")
+RULES = ("\n## Every commit\n- {check}\n- Never amend, squash or rebase a commit once it is made: every commit is pushed within seconds.\n- No Agent tool "
+         "and no subagents: read with grep and sed yourself.\n- A commit message is public the second it is pushed: say what changed and why in the code's "
+         "terms, never who asked, when, where or in which words; when a hook refuses a message, reword it, never --no-verify.\n")
 
 
 def checked(tool: str) -> str:
@@ -391,14 +391,14 @@ def where(r: dict[str, Any], repo: Path) -> str:
 
 
 def read_brief(r: dict[str, Any], repo: Path, check: str) -> str:
-    """The cold read: a fresh worker, never the builder, reads the pull request against main and says merge, fix first or
-    unsure in its report's first line (pipeline.py acts on it)."""
+    """The cold read: a fresh worker, never the builder, reads the PR against main and says merge, fix first or unsure on line one (pipeline.py acts on it)."""
     return (f"# Yerk: the cold read of PR {r.get('pr')}, need {r['n']} of {r['day']}: \"{r['ability']}\"\n\n"
             "The rooms filed it so:\n\n" + "".join(filed(a) + "\n" for a in r["asks"]) + "\n" + where(r, repo) + carried(r) +
-            "Read the diff against main (`git diff origin/main...HEAD` in the worktree) as a reviewer who did not write it: does "
-            "it build the ability once for every room, with tests, in the repo's style (README.md, STYLE.md), and break nothing? "
-            f"{checked(check)}\n\nYour REPORT.md's first line is exactly one of `merge`, `fix first: <why>`, `unsure: <why>`, "
-            "and the rest is what you read. Never merge, push, open a PR or deploy, and change no file in the repo.\n")
+            "Read the diff against main (`git diff origin/main...HEAD` in the worktree) as a reviewer who did not write it: does it build the ability once "
+            "for every room, with tests, in the repo's style (README.md, STYLE.md), and break nothing? The repository is public: a fixture taken from a "
+            "real conversation (its names changed or not), the owner's quoted words, a room's own name, or a real figure or number in a test, comment, doc "
+            f"or commit message is `fix first`. {checked(check)}\n\nYour REPORT.md's first line is exactly one of `merge`, `fix first: <why>`, `unsure: "
+            "<why>`, and the rest is what you read. Never merge, push, open a PR or deploy, and change no file in the repo.\n")
 
 
 def fix_brief(r: dict[str, Any], repo: Path, check: str, what: str, offered: dict[str, dict[str, str]] | None = None) -> str:
