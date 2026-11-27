@@ -464,6 +464,24 @@ RENDER_NO_LATEX = "LaTeX (latexmk, from TeX Live) is not on this machine, so no 
 RENDER_NO_TEX_BOX = "LaTeX runs only in its sandbox (bubblewrap, `bwrap`), which is missing or would not start here, so no PDF was made"
 RENDER_TEX_FAILED = "LaTeX ({engine}) could not make a PDF of {name}: {why}"
 RENDER_TEX_TIMED_OUT = "LaTeX did not finish {name} in {seconds} s, so it was stopped and no PDF was made"
+# a page drawn as a picture (render.py's picture): why no picture came back, and a note on one drawn before it settled
+RENDER_PAGE_NOT_WORK = "{name} is not in this room's work folder; a page is drawn only there, so save it in the work folder first"
+RENDER_PAGE_WIDTH = ("width {given} is outside {least} to {most} CSS pixels, so no picture was made; give a width in that range "
+                     "({default} unless you ask)")
+RENDER_PAGE_SCALE = ("scale {given} is outside {least} to {most} device pixels to each CSS pixel, so no picture was made; give a "
+                     "scale in that range ({default} unless you ask)")
+RENDER_PAGE_TALL = ("{name} is {height} CSS pixels tall, {device} device pixels at scale {scale}, past the {most} one picture "
+                    "may be, so none was made: render it at a lower scale, or make the page shorter")
+RENDER_NO_CHROMIUM = ("a page is drawn by a Chromium (chrome-headless-shell, chromium or Chrome) and none is on this machine, so "
+                      "no picture was made; [render] chromium in yerkd.toml names one by its whole path")
+RENDER_CHROMIUM_NOT_ONE = "[render] chromium in yerkd.toml names no program on this machine, so no picture was made"
+RENDER_NO_PAGE_BOX = ("a page is drawn only in its sandbox (bubblewrap, `bwrap`), which is missing or would not start here, so no "
+                      "picture was made")
+RENDER_PAGE_FAILED = "the browser could not draw {name}: {why}"
+RENDER_NOT_PNG = "what it gave back is not a PNG"
+RENDER_PAGE_STUCK = "{name} did not settle in {seconds} s and its scripts never let it be measured, so no picture was made"
+RENDER_PAGE_TIMED_OUT = "the browser did not finish {name} in {seconds} s, so it was stopped and no picture was made"
+RENDER_PAGE_UNSETTLED = "the page was still changing after {seconds} s, so the picture is how it stood then"
 # a video watched (watch.py): why no video came back, and a result's note on what it has no frames or transcript for
 WATCH_NO_ROOM = "watch puts the video in a room's work folder, and there is no room {room}"
 WATCH_NOT_LINK = ("\"{given}\" is not a link: watch takes a post's web address, one that starts http:// or https://, or a video "
