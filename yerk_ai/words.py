@@ -191,6 +191,9 @@ RECALL_DUE_NONE = "Due {days}: no open dated line this room may read. A thing fi
 DUE_OWES = "owes needs due: a wait needs the day to look at it again"
 DUE_NAME = "owes is a name on one line with no bracket, not \"{owes}\""
 DUE_JOB = "due and owes date a fact, a decision or a person's words, never a rule (job) or its retiring (retire)"
+DUE_DAY_UNSAID = ("these words do not name {day}: write the day in the line as the words gave it or as you worked it out from them "
+                  "(\"Monday, so Nov 30\"), or file it without `due`")         # a due whose day the text does not name (memory.due_unsaid)
+DUE_TIME_UNSAID = "these words give no {time}: file it by its day alone ({day}), or write the time in the line as the words gave it"
 # remember's answer, after cite, when the words filed with no due and no until name a day still to come (memory.days_named)
 DAY_NAMED = ("these words name a day still to come ({days}). If there is a thing to do, to attend or to wait for then, file it now as a "
              "line of its own with `due`; a day that only says when something was said or made needs nothing.")

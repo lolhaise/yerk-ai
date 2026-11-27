@@ -9,6 +9,32 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### due-in-words-2026-11-27 (a `due` says only what the line's words say)
+
+- `remember` refuses a filing with `due` when its text does not name that day, read on the day of the filing
+  (`memory.days_in`, by code and with no model): an ISO day (never inside a file name, a path or an id), a month's name then
+  the day (`Nov 30`, `November 30th`, `Nov 30, 2026`) or the day then the month's name (`30 Nov`, `30th November`,
+  `30th of November, 2026`), each with a year or without. Today and a past day count here, and a form with no year is the
+  nearest such day. A weekday alone, a relative word and a numeric date like 12/02 name none, so a room that worked a day out
+  from "Monday" writes it in the line ("Monday, so Nov 30"). The answer is one line: "these words do not name 2026-11-30:
+  write the day in the line as the words gave it or as you worked it out from them ("Monday, so Nov 30"), or file it without
+  `due`".
+- A `due` with a time is refused too when the text holds no such clock time (`memory.times_in`): `3:00 PM`, `3:00pm`, `15:00`,
+  `3 p.m.`, `9 PM`, noon and midnight. An hour 1 to 12 with no AM or PM counts for both halves of the day, a range names both
+  of its ends (`11:00 to 11:30 AM`, `9 to 11 AM`), and a bare number is never an hour. The day is checked first. The answer:
+  "these words give no 09:30: file it by its day alone (2026-11-30), or write the time in the line as the words gave it".
+- Why: a made-up minute turns a line overdue the moment it passes, and the list every room is shown at a start puts overdue
+  first, so such lines stood above the things with a real day and pushed them off it.
+- A refused filing writes nothing. The journal gets one line per refusal, the room and nothing of the text:
+  `remember: a due in ROOM refused, its day not in the words`, or `its time not in the words`.
+- `remember`'s description says, in place of "Give a date only when the words give one or the clock line lets you work it
+  out, never as a guess.", to write a day worked out in the line, that a time goes in only when the words give the hour and a
+  minute of the room's own choosing never, that what might happen then is no thing due, and that the room's own plan to act at
+  a set time is a `schedule` job. Build 1b's `day` note, its reader and its journal line are as they were.
+
+**Upgrading:** nothing to do. A line already filed is not read again or re-marked. `yerk_tools` and the session start's total
+rose by the description's 426 more characters, in every room.
+
 ### page-to-picture-2026-11-27 (the render tool draws a page as a picture)
 
 - `render` takes an .html or .htm in a room's work folder and returns a picture of the whole page, NAME.png beside it (an

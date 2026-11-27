@@ -313,16 +313,18 @@ def test_a_room_starts_and_compacts_with_what_is_due_and_an_uncapped_one_lifts_i
     assert "[due]" not in start.read_text() and "[due]" not in y.compact_pack(ROOM)
     today = datetime.now(y.memory.tz).date()
     for i in range(20):
-        r = asyncio.run(y.tool_remember(ROOM, f"Example thing {i:02d} {'of the example list ' * 8}", "", [], due=(today + timedelta(days=i % 5)).isoformat()))
+        when = (today + timedelta(days=i % 5)).isoformat()                                 # a due its words name
+        r = asyncio.run(y.tool_remember(ROOM, f"Example thing {i:02d} {when} {'of the example list ' * 8}", "", [], due=when))
         assert r["ok"]
-    r = asyncio.run(y.tool_remember(ROOM, "I will bring the key", "", [], said="Dana", source="message m-9", due=(today - timedelta(days=3)).isoformat()))
+    back = (today - timedelta(days=3)).isoformat()
+    r = asyncio.run(y.tool_remember(ROOM, f"I will bring the key by {back}", "", [], said="Dana", source="message m-9", due=back))
     due.Builder(y.memory).refresh(y.memory.scope.files())                                # yerk-index's pass
     y.spec_for(ROOM)
     part = next(p for p in start.read_text().split("\n\n") if p.startswith("[due] "))
     rows = part.split("\n")
     assert context.chars(part) <= 2400 and 8 < len(rows) <= 12 and rows[-1].startswith("(1") and rows[-1].endswith(
         " more open, not shown; `recall` with `since` and `until` lists what is due in a range)")
-    assert rows[1] == f'- {today - timedelta(days=3)}: [their words] Dana: "I will bring the key" (from message m-9) ({r["cite"]})'
+    assert rows[1] == f'- {back}: [their words] Dana: "I will bring the key by {back}" (from message m-9) ({r["cite"]})'
     assert y.compact_pack(ROOM).split("\n\n")[0].split("\n")[1:] == rows[1:]            # after a compaction too; its head says when
     asyncio.run(y.tool_remember(ROOM, "Dana brought the key.", "", [r["cite"]]))          # its outcome filed clears it
     due.Builder(y.memory).refresh(y.memory.scope.files())
@@ -345,7 +347,7 @@ def test_a_peoples_rooms_part_holds_its_own_items_never_the_owners_and_a_sealed_
 
     def file(room: str, text: str, about: str = "", **kw: str) -> None:
         y.rooms[room].inflight = [Inbound(f"m-{room}", "owner", "a placeholder message")]
-        assert asyncio.run(y.tool_remember(room, text, about, [], due=when, **kw))["ok"]
+        assert asyncio.run(y.tool_remember(room, f"{text} Due {when}.", about, [], due=when, **kw))["ok"]      # a due its words name
     for room in (owner, sealed, hers):
         y.add_room(room, ConsoleChannel())
     file(owner, "Owner fact to do.", "example boiler")
@@ -360,7 +362,7 @@ def test_a_peoples_rooms_part_holds_its_own_items_never_the_owners_and_a_sealed_
         return {w for w in ("Owner fact", "Owner note", "owner words", "Sealed note", "Her note", "Shared fee") if w in y.due_pack(room)}
     assert got(owner) == {"Owner fact", "Owner note", "owner words", "Sealed note", "Shared fee"}    # a person's room's own line: not unasked
     asked = {x["text"] for x in due.listed(y.memory, y.owed.load(), y.reader(owner))}         # asked, an owner room reads them all
-    assert "Her note to do." in asked and "more open" not in y.due_pack(owner)               # and it is not counted as left out
+    assert f"Her note to do. Due {when}." in asked and "more open" not in y.due_pack(owner)               # and it is not counted as left out
     assert got(hers) == {"Her note", "Shared fee"} and "waiting on Riley" in y.due_pack(hers)
     assert got(sealed) == {"Sealed note"}
     assert y.due_pack("no-such-room") and got("no-such-room") == {"Shared fee"}              # no room: shared files only, as recall
@@ -379,10 +381,10 @@ def test_a_line_marked_do_not_surface_is_in_no_part_and_in_the_asked_list_and_th
     when = (datetime.now(y.memory.tz).date() + timedelta(days=2)).isoformat()
     for n, text in enumerate(("\u26d4 Example renewal, never raised.", "Example deposit, ask-only.", "Ask only Dana about the example fee.", "Example form.")):
         y.rooms[owner].inflight = [Inbound(f"m-{n}", "owner", "a placeholder message")]
-        assert asyncio.run(y.tool_remember(owner, text, "", [], due=when))["ok"]
+        assert asyncio.run(y.tool_remember(owner, f"{text} Due {when}.", "", [], due=when))["ok"]          # a due its words name
     due.Builder(y.memory).refresh(y.memory.scope.files())
     part = y.due_pack(owner)
     assert "Example form." in part and "Ask only Dana" in part
     assert "Example renewal" not in part and "Example deposit" not in part and "more open" not in part
     asked = {x["text"] for x in due.listed(y.memory, y.owed.load(), y.reader(owner))}
-    assert {"\u26d4 Example renewal, never raised.", "Example deposit, ask-only."} <= asked
+    assert {f"\u26d4 Example renewal, never raised. Due {when}.", f"Example deposit, ask-only. Due {when}."} <= asked

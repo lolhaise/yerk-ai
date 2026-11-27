@@ -91,7 +91,8 @@ def due_layer(tmp_path):
                                    ("family-room", "Her item soon.", 4, "Riley"), ("family-room", "Her item fifteen days late.", -15, "")):
         if room not in y.rooms:
             y.add_room(room, ConsoleChannel()).inflight = [Inbound(f"m-{room}", "owner", "a placeholder message")]
-        assert asyncio.run(y.tool_remember(room, text, "", [], due=(today + timedelta(days=days)).isoformat(), owes=owes))["ok"]
+        when = (today + timedelta(days=days)).isoformat()                                  # a due its words name
+        assert asyncio.run(y.tool_remember(room, f"{text} Due {when}.", "", [], due=when, owes=owes))["ok"]
     due.Builder(y.memory).refresh(y.memory.scope.files())
     return y, today, ["--private", str(y.private), "--state", str(y.state)]
 
@@ -108,9 +109,9 @@ def test_due_lists_an_owner_rooms_view_overdue_first_then_within_the_days_and_ev
     day = {n: (today + timedelta(days=n)).isoformat() for n in (-3, 2, 3, 4, 8)}
     code, out, err = due_said(capsys, *where)
     rows = [re.sub(r"\(memory/daily/\d{4}-\d\d-\d\d\.md:\d+\)$", "(cite)", x) for x in out.splitlines()]
-    assert code == 0 and rows == ["overdue:", f"- {day[-3]}: Owner item overdue. (cite)", "due in the next 7 days:",
-                                  f"- {day[2]}, waiting on Dana: Owner item soon. (cite)", f"- {day[3]}: Sealed item soon. (cite)",
-                                  f"- {day[4]}, waiting on Riley: Her item soon. (cite)", "(1 more open: yerk due --all)"]
+    assert code == 0 and rows == ["overdue:", f"- {day[-3]}: Owner item overdue. Due {day[-3]}. (cite)", "due in the next 7 days:",
+                                  f"- {day[2]}, waiting on Dana: Owner item soon. Due {day[2]}. (cite)", f"- {day[3]}: Sealed item soon. Due {day[3]}. (cite)",
+                                  f"- {day[4]}, waiting on Riley: Her item soon. Due {day[4]}. (cite)", "(1 more open: yerk due --all)"]
     assert due_said(capsys, "--room", "example-room", *where)[1] == out                      # an owner room's view
     whole = due_said(capsys, "--all", *where)[1].splitlines()
     assert whole[:6] == out.splitlines()[:6] and whole[6] == "later:" and "Owner item eight days out." in whole[7] and len(whole) == 8
@@ -120,10 +121,11 @@ def test_due_lists_an_owner_rooms_view_overdue_first_then_within_the_days_and_ev
     few = due_said(capsys, "--days", "2", *where)[1]
     assert "Owner item soon." in few and "Sealed item soon." not in few and "(3 more open: yerk due --all)" in few
     got = json.loads(due_said(capsys, "--json", *where)[1])
-    assert got["open"] == 5 and [x["text"] for x in got["items"]] == ["Owner item overdue.", "Owner item soon.", "Sealed item soon.", "Her item soon."]
+    assert got["open"] == 5 and [x["text"] for x in got["items"]] == [f"{t} Due {day[n]}." for t, n in (
+        ("Owner item overdue.", -3), ("Owner item soon.", 2), ("Sealed item soon.", 3), ("Her item soon.", 4))]
     assert set(got["items"][0]) == {"date", "time", "owes", "text", "role", "filed", "cite", "class", "room", "overdue"}
     assert [x["overdue"] for x in got["items"]] == [True, False, False, False] and got["items"][1]["owes"] == "Dana"
-    assert memory.read(y.memory, got["items"][0]["cite"], lines=1)["text"].endswith(f"Owner item overdue. [due {day[-3]}] [c:private] [m:m-example-room.d"
+    assert memory.read(y.memory, got["items"][0]["cite"], lines=1)["text"].endswith(f"Owner item overdue. Due {day[-3]}. [due {day[-3]}] [c:private] [m:m-example-room.d"
                                                                                 + memory.read(y.memory, got["items"][0]["cite"], lines=1)["text"][-9:])
 
 

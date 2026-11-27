@@ -83,8 +83,12 @@ YYYY-MM-DDTHH:MM in the install's zone) when `text` is a thing to do, to attend 
 a plan, a meeting, a booking, a deadline, an answer someone waits for. File such a thing as a line of its own, also when
 it came up in passing or sits inside words you file for another reason, and with several days offered take the earliest:
 only a line filed with `due` is in front of you at a session start from a week before, and that is what answers "what is
-coming up". `owes`, with it: who owes it to the owner, empty when the owner does. Give a date only when the words give
-one or the clock line lets you work it out, never as a guess. Clear a thing by filing its outcome with `replaces` naming its line.
+coming up". `owes`, with it: who owes it to the owner, empty when the owner does. Give a day only when the words give
+one or the clock line lets you work it out, and write that day in the line ("Monday, so Nov 30"): a `due` whose day the
+line does not name is refused. A time goes in only when the words give the hour (a meeting's, a booking's): a thing with
+a day and no hour is filed by its day, and a minute of your own choosing is never one. What might happen then (a call
+someone may make) is not a thing due: it stays in the line's words. Your own plan to act at a set time is a `schedule`
+job. Clear a thing by filing its outcome with `replaces` naming its line.
 `until`: the last day (YYYY-MM-DD) a state holds (away, an offer, a hold), never on a history ("worked there until ...");
 from the day after, the line is no longer handed to you as current, then a fact file's line is removed.
 ```
