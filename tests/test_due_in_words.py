@@ -155,6 +155,35 @@ def test_a_shape_refusal_comes_before_the_words_and_is_not_counted_as_theirs(tmp
     assert "remember: " not in caplog.text
 
 
+def test_a_line_that_replaces_another_is_checked_and_a_refusal_leaves_the_old_line_as_it_was(tmp_path, monkeypatch):
+    y = daemon(tmp_path)
+    clock(monkeypatch, noon(y))
+    old = dated(y, "example-room", "The example boiler check is on Nov 30.", due="2026-11-30")
+    was = line_at(y, old["cite"])
+    moved = dated(y, "example-room", "The example boiler check moved to Wednesday.", "", (old["cite"],), due="2026-12-02")
+    assert moved == {"ok": False, "error": words.DUE_DAY_UNSAID.format(day="2026-12-02")} and line_at(y, old["cite"]) == was
+    moved = dated(y, "example-room", "The example boiler check moved to Wednesday, so Dec 2.", "", (old["cite"],), due="2026-12-02")
+    assert moved["ok"] and moved["superseded"] == [old["cite"]] and "[superseded" in line_at(y, old["cite"])
+
+
+def test_a_due_of_today_or_of_a_day_behind_is_checked_like_a_coming_one(tmp_path, monkeypatch):
+    y = daemon(tmp_path)
+    clock(monkeypatch, noon(y))
+    for due in ("2026-11-27", "2026-11-20"):
+        refused = {"ok": False, "error": words.DUE_DAY_UNSAID.format(day=due)}
+        assert dated(y, "example-room", "The example form goes back this week.", due=due) == refused, due
+    assert dated(y, "example-room", "The example form goes back today, Nov 27.", due="2026-11-27")["ok"]
+    assert dated(y, "example-room", "The example form went back on Nov 20.", due="2026-11-20")["ok"]
+
+
+def test_the_day_and_the_time_are_read_on_every_line_of_the_words(tmp_path, monkeypatch):
+    y = daemon(tmp_path)
+    clock(monkeypatch, noon(y))
+    said = "The example boiler check is booked.\nIt is on Nov 30.\nThe engineer comes at 9:30 AM."
+    r = dated(y, "example-room", said, due="2026-11-30T09:30")
+    assert r["ok"] and r["due"] == "2026-11-30T09:30" and line_at(y, r["cite"]).count(" / ") == 2
+
+
 # what still files: main's line and answer, the same bytes as with no check at all
 
 def card(said: str, mark: str = "") -> str:
