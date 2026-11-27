@@ -1,6 +1,6 @@
 """Checks that every part a room is handed at its session start, such as the recall pack (the notes filed for that room), the open loops
 and what is due, fits under its size in budgets.toml by construction, cut by whole lines or items and never mid-line. The case behind it
-(2026-10-23, 09:23): one room's recall pack came out at 6,003 against its 6,000, since the pack kept 60 characters for the line counting
+(seen live): one room's recall pack came out at 6,003 against its 6,000, since the pack kept 60 characters for the line counting
 what it leaves out, which is 64 with its newline once that count has three digits, and measured its items in code points where the key
 counts UTF-16 units; the session start then cut 600 characters from the pack's middle, mid-line, and said 8 lines went. The pack drops
 whole items, the oldest first, its head and that line measured with it; the open loops keep their room; every part's fit keeps whole

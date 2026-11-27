@@ -9,6 +9,18 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### comments-plain (comments and docstrings say what the code guards, never when it happened to whom)
+
+- Comments and docstrings no longer tell a real event with its date and minute, name the owner's own rooms or machines, or quote
+  anyone: each says what the code or the test guards against. A date with no clock time that dates a decision stays, as the
+  comments of budgets.toml do by that file's own convention.
+- The owner is "the owner" or "they" in comments and docstrings. The strings the program itself says keep their wording for now:
+  the model reads them and budgets.toml sizes them, so they change with their tests.
+- 79 files, comments and docstrings only: for every Python file the syntax tree with its docstrings taken out is identical,
+  positions included, and for every toml file the parsed data is identical. docs/budgets.md is written again from budgets.toml.
+- tests/test_watch.py and tests/test_taste.py: a question, a progress card, a reply and three sample messages are replaced by
+  invented ones of the same shape.
+
 ### every-file-plain (every folder and every file opens in plain words)
 
 - Every folder a visitor can open has a README.md that says what the folder is and what each thing in it is, one line each: docs/,
