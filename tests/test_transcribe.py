@@ -30,6 +30,7 @@ from yerk_ai.ledger import Ledger
 from yerk_ai.room import Room
 
 EXAMPLE_PRIVATE = Path(__file__).resolve().parents[1] / "examples" / "private"
+NO_TONE = "tone: none (no Gemini key at secrets/gemini.key), so a joke, a laugh or a stressed word is not marked: never take a line as said plainly"
 FFMPEG = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not installed")
 
 
@@ -148,10 +149,11 @@ def test_a_call_runs_both_passes_writes_the_file_and_books_a_spend_row_per_paid_
     assert saved.splitlines() == [
         "voice-message.ogg, 14.1 min, checked by a second pass: 1 of 3 segments uncertain",
         "speakers: none (Muse: no Meta key at secrets/meta.key)",            # no key: the missing letters are said
+        NO_TONE,                                                             # and the missing tone
         "[00:00:00 -> 00:00:04] Call Nora about the rollout.",
         "[00:14:00 -> 00:14:03] (uncertain) Then email the vendor | second pass: Ten email a vendor",
         "[00:14:03 -> 00:14:05] by Friday."]
-    assert r["text"] == "\n".join(saved.splitlines()[2:]) and "sk-test" not in str(r) and "gsk_" not in str(r)
+    assert r["text"] == "\n".join(saved.splitlines()[3:]) and "sk-test" not in str(r) and "gsk_" not in str(r)
     assert r["speakers"] == {} and r["speakers_how"] == saved.splitlines()[1]
     assert sorted((e, round(u, 6), n) for e, u, n in rows) == sorted([
         ("groq/whisper-large-v3-turbo", 0.009333, "chunk 1 of 2, 840 s"), ("groq/whisper-large-v3-turbo", 0.000111, "chunk 2 of 2, 5 s"),
@@ -202,7 +204,7 @@ def test_a_chunk_pass_1_wrote_as_music_comes_back_with_pass_2s_lines_marked_and_
     assert Path(r["file"]).read_text().splitlines() == [
         "voice-message.ogg, 1.5 min, checked by a second pass: 0 of 0 segments uncertain, and 3 more heard by the second pass only, "
         "where the first heard no words",
-        "speakers: none (Muse: no Meta key at secrets/meta.key)",
+        "speakers: none (Muse: no Meta key at secrets/meta.key)", NO_TONE,
         "[00:00:02 -> 00:00:09] (second pass only) Thanks for calling, how can I help?",
         "[00:00:31 -> 00:00:40] (second pass only) I would like to ask about a charge.",
         "[00:01:04 -> 00:01:10] (second pass only) Sure, one moment please."]
@@ -211,7 +213,7 @@ def test_a_chunk_pass_1_wrote_as_music_comes_back_with_pass_2s_lines_marked_and_
     r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
     assert Path(r["file"]).read_text().splitlines() == [
         "voice-message.ogg, 1.5 min, checked by a second pass: 0 of 3 segments uncertain", "speakers: none (Muse: no Meta key at secrets/meta.key)",
-        "[00:00:00 -> 00:00:30] ♪", "[00:00:30 -> 00:01:00] ♪♪", "[00:01:00 -> 00:01:30] ♪"]
+        NO_TONE, "[00:00:00 -> 00:00:30] ♪", "[00:00:30 -> 00:01:00] ♪♪", "[00:01:00 -> 00:01:30] ♪"]
     answers[("groq", 0)] = speech
     keys[1].unlink()                                                         # no Groq key: one pass, as before
     r = transcribe.run(audio, *keys, lambda *a: rows.append(a))
@@ -509,7 +511,7 @@ APART = ["[00:00:05 -> 00:00:20] A: Hello there.", "[00:00:26 -> 00:00:48] B: Hi
 def test_a_voice_silent_through_a_shared_minute_keeps_its_letter_and_each_bridge_request_is_a_spend_row(tmp_path, monkeypatch):
     r, rows = silent_minute(tmp_path, monkeypatch, AGREE)
     assert Path(str(r["file"])).read_text().splitlines()[1:] == [
-        "speakers: A 2:35, B 0:55 (letters, not names: say who is who as a guess from what is said, unless the owner tells you)",
+        "speakers: A 2:35, B 0:55 (letters, not names: say who is who as a guess from what is said, unless the owner tells you)", NO_TONE,
         "[00:00:05 -> 00:00:20] A: Hello there.", "[00:00:26 -> 00:00:48] B: Hi, good to hear you.", "[00:03:20 -> 00:03:48] B: I am back now."]
     assert r["speakers"] == {"A": 155, "B": 55} and r["speakers_joined"] == 1
     assert sorted((round(u, 6), n) for e, u, n in rows if e.startswith("meta/")) == [                  # 34.3 s each at Muse's price
@@ -562,10 +564,10 @@ def test_two_voices_label_each_line_with_letters_matched_across_windows_and_a_sp
     assert saved == [
         "voice-message.ogg, 14.1 min, checked by a second pass: 1 of 3 segments uncertain",
         "speakers: A 0:14, B 0:33 (letters, not names: say who is who as a guess from what is said, unless the owner tells you)",
-        "[00:00:00 -> 00:00:04] A: Let us go over the plan.",
+        NO_TONE, "[00:00:00 -> 00:00:04] A: Let us go over the plan.",
         "[00:14:00 -> 00:14:03] B: (uncertain) Then email the vendor | second pass: Ten email a vendor",   # window 2's A
         "[00:14:03 -> 00:14:05] A: by Friday."]
-    assert r["speakers"] == {"A": 14, "B": 33} and r["speakers_how"] == saved[1] and r["text"] == "\n".join(saved[2:])
+    assert r["speakers"] == {"A": 14, "B": 33} and r["speakers_how"] == saved[1] and r["text"] == "\n".join(saved[3:])
     assert sorted(c for c in calls if c[0] == "meta") == [("meta", "meta-test-key-123456", "w000.wav"), ("meta", "meta-test-key-123456", "w001.wav")]
     assert sorted((e, round(u, 6), n) for e, u, n in rows if e.startswith("meta/")) == [
         ("meta/muse-voice-transcribe-1.0", 0.01975, "window 2 of 2, 395 s"), ("meta/muse-voice-transcribe-1.0", 0.027, "window 1 of 2, 540 s")]
@@ -573,12 +575,13 @@ def test_two_voices_label_each_line_with_letters_matched_across_windows_and_a_sp
 
 
 @pytest.mark.usefixtures("long_windows")
-def test_one_voice_writes_no_letters_and_the_file_is_as_it_was_before_speakers(tmp_path, monkeypatch):
+def test_one_voice_writes_no_letters_and_no_speakers_line(tmp_path, monkeypatch):
     answers = two_chunks() | {("meta", 0): answer((0, 4, "A"), (500, 539, "A")), ("meta", 1): answer((50, 89, "A"), (390, 395, "A"))}
     audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840, 8000 * 5], answers, meta="meta-test-key-123456")
     r = transcribe.run(audio, *keys, lambda *a: rows.append(a), meta_key=META(tmp_path))
-    assert Path(r["file"]).read_bytes() == (                                # the bytes the file had before speakers
+    assert Path(r["file"]).read_bytes() == (                                # the file as before speakers, with its tone line
         b"voice-message.ogg, 14.1 min, checked by a second pass: 1 of 3 segments uncertain\n"
+        + NO_TONE.encode() + b"\n"                                         # no speakers line; the tone line stays
         b"[00:00:00 -> 00:00:04] Let us go over the plan.\n"
         b"[00:14:00 -> 00:14:03] (uncertain) Then email the vendor | second pass: Ten email a vendor\n"
         b"[00:14:03 -> 00:14:05] by Friday.\n")
@@ -670,6 +673,125 @@ def test_a_request_that_ran_long_is_sent_once_a_quick_refusal_three_times_and_th
     with pytest.raises(transcribe.Failed) as e:                          # a quick refusal: three tries, 5 s and 10 s apart
         transcribe.post("groq", "gsk-abc-123456789", wav)
     assert str(e.value) == "whisper-large-v3-turbo did not answer: HTTP 503 after 0 s" and sent == [100] + [600] * 4 and naps == [5, 10]
+
+
+def notes(*said: dict[str, object], used: dict[str, int] | None = None) -> dict[str, object]:
+    """A Gemini answer in its live shape: the notes as JSON text in the first candidate's parts, a thought part before it."""
+    return {"candidates": [{"content": {"parts": [{"text": "weighing the laugh", "thought": True}, {"text": json.dumps({"lines": list(said)})}]},
+                            "finishReason": "STOP"}]} | ({"usageMetadata": used} if used else {})
+
+
+def toned(tmp_path, monkeypatch, answers: dict[int, object]):
+    """A call with a Gemini key on two_chunks() and fake tone reads ({chunk: answer or exception}), at this year's prices;
+    returns the result, the spend rows and the reads asked for (key, chunk, lines)."""
+    monkeypatch.setattr(transcribe, "TONE_CHANGE", "9999-12-31")
+    tmp_path.mkdir(exist_ok=True)
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840, 8000 * 5], two_chunks())
+    (tmp_path / transcribe.GEMINI_KEY).write_text("gemini-test-key-123456\n")
+    asked: list[tuple[str, str, str]] = []
+
+    def gemini(secret, chunk, lines, timeout=300):
+        asked.append((secret, chunk.name, lines))
+        if isinstance(got := answers[int(chunk.stem[1:])], Exception):
+            raise got
+        return got
+    monkeypatch.setattr(transcribe, "gemini", gemini)
+    r = transcribe.run(audio, *keys, lambda e, usd, note: rows.append((e, usd, note)), gemini_key=tmp_path / transcribe.GEMINI_KEY)
+    return r, rows, sorted(asked)
+
+
+def test_a_note_goes_on_the_line_it_numbers_and_one_naming_a_line_or_a_word_the_line_lacks_is_left_out():
+    lines = [{"start": 0, "end": 3, "text": "Sure, I love waiting in line."}, {"start": 3, "end": 5, "text": "We open at nine."}]
+    left = transcribe.mark(lines, [{"n": 1, "tone": "  deadpan,\n a joke ", "stress": ["love"]}, {"n": 2, "tone": "", "stress": ["nine"]},
+                                   {"n": 2, "tone": 'stresses "ten"'}, {"n": 1, "stress": ["hate"]}, {"n": 3, "tone": "sighs"},
+                                   {"n": 2, "tone": ""}, "laughs", {"n": "1", "tone": "laughs"}])
+    assert left == 6 and [s.get("tone") for s in lines] == ["deadpan, a joke; stressed: love", "stressed: nine"]
+    assert transcribe.line(lines[0]) == "[00:00:00 -> 00:00:03] Sure, I love waiting in line. (tone: deadpan, a joke; stressed: love)"
+    assert transcribe.mark(lines, [{"n": 2, "tone": "x" * 200}]) == 0 and lines[1]["tone"] == "x" * transcribe.TONE_CHARS
+
+
+def test_a_quote_is_checked_in_the_whole_note_before_its_cut_in_single_quotes_too_and_a_stress_that_is_no_list_is_none():
+    def kept(note, stress=None):
+        lines = [{"start": 0, "end": 3, "text": "We don't open at nine."}]
+        transcribe.mark(lines, [{"n": 1, "tone": note} | ({"stress": stress} if stress is not None else {})])
+        return lines[0].get("tone")
+    wind = "flat and slow, a long wind-up before the line comes, then it says "
+    assert len(wind) < transcribe.TONE_CHARS < len(made := wind + '"we never open on a holiday"') and kept(made) is None
+    assert kept(wind + '"we don\'t open at nine"') == (wind + '"we don\'t open at nine"')[:transcribe.TONE_CHARS]
+    for made_up in ["says 'we close at ten'", "says ‘we close at ten’", 'says "we close at ten', "says 'we close at"]:
+        assert kept(made_up) is None, made_up
+    for heard in ["says 'we don't open', deadpan", "says ‘we don’t open’", "it's a joke, he's dry about it", "the boss' joke"]:
+        assert kept(heard) == heard, heard
+    assert kept("laughs", 5) == "laughs" and kept("laughs", "nine") == "laughs" and kept("laughs", ["...", "nine"]) == "laughs; stressed: nine"
+
+
+def test_with_a_gemini_key_each_chunk_is_read_for_tone_its_notes_join_the_one_file_and_its_tokens_are_a_spend_row(tmp_path, monkeypatch):
+    r, rows, asked = toned(tmp_path, monkeypatch, {
+        0: notes({"n": 1, "tone": "laughs, a joke said deadpan", "stress": ["plan"]},
+                 used={"promptTokenCount": 27000, "candidatesTokenCount": 120, "thoughtsTokenCount": 380}),
+        1: notes({"n": 2, "tone": "teasing", "stress": ["Friday"]}, {"n": 1, "tone": 'says "right away"'}, {"n": 7, "tone": "sighs"},
+                 used={"promptTokenCount": 300, "candidatesTokenCount": 40})})
+    assert asked == [("gemini-test-key-123456", "c000.mp3", "1. [00:00-00:04] Let us go over the plan."),      # the chunk's own times
+                     ("gemini-test-key-123456", "c001.mp3", "1. [00:00-00:03] Then email the vendor\n2. [00:03-00:05] by Friday.")]
+    saved = Path(r["file"]).read_text().splitlines()
+    assert saved == [
+        "voice-message.ogg, 14.1 min, checked by a second pass: 1 of 3 segments uncertain",
+        "speakers: none (Muse: no Meta key at secrets/meta.key)",
+        "tone: 2 of 3 lines have a note on how they were said, gemini-3.8-flash's read of the sound, so give it as a read, "
+        "and 2 notes left out that named a line or a word the transcript does not have",
+        "[00:00:00 -> 00:00:04] Let us go over the plan. (tone: laughs, a joke said deadpan; stressed: plan)",
+        "[00:14:00 -> 00:14:03] (uncertain) Then email the vendor | second pass: Ten email a vendor",     # its made-up quote left out
+        "[00:14:03 -> 00:14:05] by Friday. (tone: teasing; stressed: Friday)"]
+    assert r["tone"] == 2 and r["tone_how"] == saved[2] and r["text"] == "\n".join(saved[3:]) and "gemini-test" not in str(r) + "".join(saved)
+    assert sorted((round(u, 6), n) for e, u, n in rows if e == "google/gemini-3.8-flash") == [
+        (0.000375, "tone, chunk 2 of 2"), (0.022125, "tone, chunk 1 of 2")] and len(rows) == 6   # its tokens in, out and thought
+
+
+def test_a_transcript_says_when_no_tone_was_heard_so_a_joke_is_never_read_as_a_plain_line(tmp_path, monkeypatch):
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840, 8000 * 5], two_chunks())
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a))              # no Gemini key: nothing sent, the file says so
+    assert r["ok"] and r["tone"] == 0 and r["tone_how"] == NO_TONE == words.NO_TONE.format(why=words.NO_GEMINI_KEY)
+    assert Path(r["file"]).read_text().splitlines()[2] == NO_TONE and "never take a line as said plainly" in words.TRANSCRIBED_NEXT
+    refused = transcribe.Failed("gemini-3.8-flash did not answer: HTTP 403: the key has no access to this model")
+    r, rows, _ = toned(tmp_path / "all", monkeypatch, {0: refused, 1: refused})
+    assert r["ok"] and r["segments"] == 3 and r["tone"] == 0 and not [e for e, u, n in rows if e.startswith("google/")]   # not billed
+    assert r["tone_how"] == "tone: none (chunk 1, 2 of 2 failed: " + str(refused) + ")" + NO_TONE.split(")", 1)[1]
+    r, rows, _ = toned(tmp_path / "one", monkeypatch, {0: notes({"n": 1, "tone": "laughs"}), 1: {"candidates": [{"finishReason": "SAFETY"}]}})
+    assert r["tone_how"] == ("tone: 1 of 3 lines have a note on how they were said, gemini-3.8-flash's read of the sound, so give it as a "
+                             "read; chunk 2 has none, since its read failed: its answer did not read as notes (SAFETY; its keys: candidates)")
+    assert sorted(n for e, u, n in rows if e.startswith("google/")) == ["tone, chunk 1 of 2", "tone, chunk 2 of 2"]   # answered: billed
+    r, rows, _ = toned(tmp_path / "gone", monkeypatch, {0: OSError("gone"), 1: notes()})                # a read never stops the call
+    assert r["ok"] and r["tone_how"].endswith("; chunk 1 has none, since its read failed: its chunk could not be read (OSError)")
+
+
+def test_the_gate_counts_the_tone_share_and_its_price_doubles_on_its_day(tmp_path, monkeypatch):
+    monkeypatch.setattr(transcribe, "TONE_CHANGE", "9999-12-31")
+    answers = {(e, i): {"segments": []} for e in ("openai", "groq") for i in range(7)}
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840] * 7, answers)
+    (tmp_path / transcribe.GEMINI_KEY).write_text("gemini-test-key-123456\n")
+    r = transcribe.run(audio, *keys, lambda *a: rows.append(a), gemini_key=tmp_path / transcribe.GEMINI_KEY)   # 98 min: 7 reads
+    assert r == {"ok": False, "error": words.OVER_GATE.format(minutes=98, usd=0.588 + 0.065333 + 7 * (840 * 37 * 0.75e-6 + 8192 * 3.75e-6))}
+    assert not calls and not rows and transcribe.run(audio, *keys, lambda *a: rows.append(a))["ok"]            # without it, US$0.65
+    monkeypatch.setattr(transcribe, "TONE_CHANGE", "2027-01-01")
+    assert transcribe.rates("2026-12-31") == (0.75e-6, 3.75e-6) and transcribe.rates("2027-01-01") == (1.5e-6, 7.5e-6)
+
+
+def test_a_gemini_request_has_its_shape_and_its_key_is_never_in_the_url_or_an_error(tmp_path, monkeypatch):
+    chunk = tmp_path / "c000.mp3"
+    chunk.write_bytes(b"ID3 audio")
+
+    def refuse(req, timeout):
+        body = json.loads(req.data)
+        assert req.full_url == transcribe.TONE[0] and "key=" not in req.full_url and req.get_header("X-goog-api-key") == "AIza-test-123456"
+        assert body["contents"][0]["parts"] == [{"inlineData": {"mimeType": "audio/mp3", "data": "SUQzIGF1ZGlv"}},
+                                                {"text": transcribe.ASK + "1. [00:00-00:02] Good morning."}]
+        assert body["generationConfig"] == {"responseMimeType": "application/json", "responseSchema": transcribe.SCHEMA,
+                                            "maxOutputTokens": 8192, "thinkingConfig": {"thinkingLevel": "low"}}
+        raise urllib.error.HTTPError(req.full_url, 400, "no", {}, io.BytesIO(b'{"error": "API key not valid: AIza-test-123456"}'))
+    monkeypatch.setattr(transcribe.urllib.request, "urlopen", refuse)
+    with pytest.raises(transcribe.Failed) as e:
+        transcribe.gemini("AIza-test-123456", chunk, "1. [00:00-00:02] Good morning.")
+    assert "HTTP 400" in str(e.value) and "<key>" in str(e.value) and "AIza-test" not in str(e.value)
 
 
 def test_a_voice_note_arrives_with_the_line_that_it_is_heard_only_through_the_tool():

@@ -18,10 +18,15 @@ are files in the private folder, the first line of each, read per call and never
 OpenAI's is the install's one ([memory] embeddings_key, default secrets/openai.key), Groq's is secrets/groq.key, Meta's
 secrets/meta.key. Every paid call is one spend row at the provider's list price (decision 32), and a recording whose
 estimate passes GATE_USD waits for the owner's yes. The estimate is the chunks' and the windows': a bridge is a fraction
-of a cent and cannot be known before the windows are in.
+of a cent and cannot be known before the windows are in. With a Gemini key (secrets/gemini.key), Gemini hears how each
+line was said (tone): each chunk's mp3 goes to it with that chunk's lines, numbered, and it answers the numbers of the lines
+whose delivery carries more than their words (a laugh, a joke, sarcasm, a stressed word) with a note each; a note goes on its
+line only when every word it stresses or quotes is in that line (mark), so the words and their times stay whisper-1's and a
+note naming words of its own is left out, counted. Its spend row is the tokens its answer says it used.
 """
 from __future__ import annotations
 
+import base64
 import difflib
 import json
 import math
@@ -67,7 +72,22 @@ LEAST, BACK, FAR = 1.5, 3, 30           # a clip under LEAST s is left out; a br
 SPACE = (0.2, 0.5)                      # seconds of silence in a splice after each piece, and more after each voice
 APART = 5                               # a window heard two letters as two voices when each spoke this long in it: now and then Muse
                                         # gives one voice a second letter for 2 or 3 s (2.1 and 2.6 s that day), and that is no second voice
-GROQ_KEY, META_KEY = "secrets/groq.key", "secrets/meta.key"
+GROQ_KEY, META_KEY, GEMINI_KEY = "secrets/groq.key", "secrets/meta.key", "secrets/gemini.key"
+TONE = ("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", "gemini-3.8-flash")
+TONE_RATES, TONE_CHANGE = ((0.75e-6, 3.75e-6), (1.5e-6, 7.5e-6)), "2027-01-01"   # US$ a token in (audio as text) and out
+                             # (thinking as output), read 2026-11-27 on its pricing page; the second from TONE_CHANGE on
+TONE_IN, TONE_OUT, TONE_WAIT = 37, 8192, 300   # tokens in a second (32 of audio, about 5 of lines), out at most, seconds a read waits
+TONE_CHARS = 80              # the most of a note kept on its line
+ASK = ("Listen to this recording. Below are its lines as a speech-to-text engine wrote them, numbered, each with its start "
+       "and end (MM:SS from the start of this audio). For each line whose delivery carries more than its words, give its "
+       "number and a short note in plain words on how it was said: a laugh (the speaker's, or another voice's over it), a "
+       "joke or teasing, sarcasm, a deadpan line meant as a joke, hesitation, anger, a sigh. Put each word said with stress, "
+       "as the line writes it, in `stress`. Leave out a line said plainly, never quote words a line does not have, and never "
+       "rewrite a line.\n\n")
+SCHEMA = {"type": "OBJECT", "required": ["lines"], "properties": {"lines": {"type": "ARRAY", "items": {
+    "type": "OBJECT", "required": ["n", "tone"], "properties": {"n": {"type": "INTEGER"}, "tone": {"type": "STRING"},
+                                                              "stress": {"type": "ARRAY", "items": {"type": "STRING"}}}}}}}
+QUOTED = re.compile(r'"([^"]+)(?:"|$)|\u201c([^\u201d]+)(?:\u201d|$)' r"|(?<!\w)'(.+?)(?:'(?!\w)|$)|\u2018(.+?)(?:\u2019(?!\w)|$)")
 RESULT_CHARS = 40_000        # the most of the text one result carries, under Claude Code's cap on a tool's answer
 WORD = re.compile(r"[a-z0-9']+")
 FILLERS = frozenset("um umm uh uhh uhm hmm mm erm".split())    # whisper-1 writes them, Groq's model leaves them out
@@ -143,13 +163,24 @@ def muse(secret: str, wav: Path, timeout: float = MUSE_WAIT) -> dict[str, Any]:
     return send(MUSE[0], MUSE[1], secret, edge, body, timeout)
 
 
-def send(url: str, model: str, secret: str, edge: str, body: bytes, timeout: float) -> dict[str, Any]:
-    """A multipart body to one provider, the key never in the error: three tries on a busy answer inside QUICK seconds, one
-    on a request that ran long (a timeout, or an error after QUICK), and the error says its code and seconds, never HTML."""
+def gemini(secret: str, chunk: Path, lines: str, timeout: float = TONE_WAIT) -> dict[str, Any]:
+    """One chunk's mp3 and its numbered lines to Gemini for how they were said, its answer JSON in SCHEMA's shape, at low
+    thinking; the key in its own header, never in the URL."""
+    body = json.dumps({"contents": [{"role": "user", "parts": [
+        {"inlineData": {"mimeType": "audio/mp3", "data": base64.b64encode(chunk.read_bytes()).decode()}}, {"text": ASK + lines}]}],
+        "generationConfig": {"responseMimeType": "application/json", "responseSchema": SCHEMA, "maxOutputTokens": TONE_OUT,
+                             "thinkingConfig": {"thinkingLevel": "low"}}}).encode()
+    return send(TONE[0], TONE[1], secret, "", body, timeout, {"x-goog-api-key": secret, "User-Agent": "yerk-ai", "Content-Type": "application/json"})
+
+
+def send(url: str, model: str, secret: str, edge: str, body: bytes, timeout: float, head: dict[str, str] | None = None) -> dict[str, Any]:
+    """A multipart body to one provider (or a body with its own `head`), the key never in the error: three tries on a busy
+    answer inside QUICK seconds, one on a request that ran long (a timeout, or an error after QUICK), and the error says
+    its code and seconds, never HTML."""
     last = ""
     for attempt in range(1, 4):
-        req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {secret}", "User-Agent": "yerk-ai",
-                                                              "Content-Type": f"multipart/form-data; boundary={edge}"})
+        req = urllib.request.Request(url, data=body, headers=head or {"Authorization": f"Bearer {secret}", "User-Agent": "yerk-ai",
+                                                                      "Content-Type": f"multipart/form-data; boundary={edge}"})
         began = time.monotonic()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -418,6 +449,79 @@ def bridge(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: li
     return join(found, tries, apart)
 
 
+def rates(day: str = "") -> tuple[float, float]:
+    """Gemini's list price a token in and out on `day` (YYYY-MM-DD, today when empty): TONE_RATES' second from TONE_CHANGE."""
+    return TONE_RATES[(day or time.strftime("%Y-%m-%d")) >= TONE_CHANGE]
+
+
+def listed(lines: list[dict[str, Any]], offset: float) -> str:
+    """A chunk's lines as Gemini reads them: `N. [MM:SS-MM:SS] words`, numbered from 1, the times from the chunk's start."""
+    def mmss(t: float) -> str:
+        return f"{max(0, int(t - offset)) // 60:02d}:{max(0, int(t - offset)) % 60:02d}"
+    return "\n".join(f"{n}. [{mmss(s['start'])}-{mmss(s['end'])}] {s['text']}" for n, s in enumerate(lines, 1))
+
+
+def notes(data: dict[str, Any]) -> list[Any]:
+    """A Gemini answer's notes, its first candidate's text read as SCHEMA's JSON; an answer that does not read so fails,
+    naming why (a block, a finish reason, or the shape it has), never read as a recording said plainly."""
+    try:
+        return list(json.loads("".join(str(x.get("text") or "") for x in data["candidates"][0]["content"]["parts"]
+                                       if not x.get("thought")))["lines"])
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError) as e:
+        first = (data.get("candidates") or [{}])[0] if isinstance(data.get("candidates"), list) else {}
+        why = (data.get("promptFeedback") or {}).get("blockReason") or (first.get("finishReason") if isinstance(first, dict) else "")
+        raise Failed(f"its answer did not read as notes ({why or type(e).__name__}; its keys: {', '.join(sorted(map(str, data)))})") from None
+
+
+def mark(lines: list[dict[str, Any]], said: list[Any]) -> int:
+    """Each note on the line its number names (1 is the first of `lines`) as `tone`: its words on one line, cut to TONE_CHARS,
+    then the words it says were stressed (a `stress` that is not a list is none). A note is left out when no line has its
+    number, it says nothing, or a word it stresses or quotes (QUOTED: double or single, straight or curly, one never closed
+    running to the end, read before the cut) is not in the line's words, since a read never says words of its own. Returns the count left out."""
+    out = 0
+    for x in said:
+        n = x.get("n") if isinstance(x, dict) else None
+        if not isinstance(n, int) or not 1 <= n <= len(lines):
+            out += 1
+            continue
+        have = {w for _, w in tokens(lines[n - 1]["text"])}
+        say = " ".join(str(x.get("tone") or "").split())
+        stress = [s for y in (x.get("stress") if isinstance(x.get("stress"), list) else []) if isinstance(y, str) and tokens(s := " ".join(y.split()))]
+        quoted, say = ["".join(q) for q in QUOTED.findall(say)], say[:TONE_CHARS].strip(" ;,.")
+        if not (say or stress) or any(not {k for _, k in tokens(w)} <= have for w in stress + quoted):
+            out += 1
+            continue
+        lines[n - 1]["tone"] = "; ".join(p for p in (say, words.TONE_STRESS.format(words=", ".join(stress)) if stress else "") if p)
+    return out
+
+
+def tone(parts: list[Path], per: list[list[dict[str, Any]]], secret: str, book: Book) -> tuple[int, list[int], str]:
+    """Each chunk's lines (`per`, the recording's times) read by Gemini for how they were said, in parallel, a chunk with no
+    line never sent, and its notes put on its lines (mark). Returns how many notes were left out, the chunks whose read
+    failed (from 1) and the first one's error. Each answer is one spend row for the tokens it says it used, else at its
+    estimate."""
+    def one(i: int) -> list[Any] | Failed | None:
+        if not per[i]:
+            return None
+        try:
+            data = gemini(secret, parts[i], listed(per[i], i * CHUNK))
+        except (Failed, OSError) as e:                 # a read never stops the call: its chunk's lines go without notes
+            return e if isinstance(e, Failed) else Failed(f"its chunk could not be read ({type(e).__name__})")
+        use, (cin, cout) = data.get("usageMetadata") or {}, rates()
+        spent = ((use.get("promptTokenCount") or 0) * cin + ((use.get("candidatesTokenCount") or 0) + (use.get("thoughtsTokenCount") or 0)) * cout
+                 if use.get("promptTokenCount") else (parts[i].stat().st_size / RATE * TONE_IN) * cin + TONE_OUT * cout)
+        book(f"google/{TONE[1]}", spent, f"tone, chunk {i + 1} of {len(parts)}")
+        try:
+            return notes(data)
+        except Failed as e:
+            return e
+    with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
+        got = list(pool.map(one, range(len(parts))))
+    left = sum(mark(per[i], g) for i, g in enumerate(got) if isinstance(g, list))
+    bad = [(i + 1, str(g)) for i, g in enumerate(got) if isinstance(g, Failed)]
+    return left, [i for i, _ in bad], bad[0][1] if bad else ""
+
+
 def hhmmss(t: float) -> str:
     s = max(0, int(t))
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
@@ -426,16 +530,19 @@ def hhmmss(t: float) -> str:
 def line(s: dict[str, Any]) -> str:
     said = (words.UNCERTAIN.format(first=s["text"], second=s["other"]) if "other" in s else
             words.SECOND_ONLY.format(text=s["text"]) if "second_only" in s else s["text"])
-    return f"[{hhmmss(s['start'])} -> {hhmmss(s['end'])}] {s['speaker'] + ': ' if s.get('speaker') else ''}{said}"
+    return (f"[{hhmmss(s['start'])} -> {hhmmss(s['end'])}] {s['speaker'] + ': ' if s.get('speaker') else ''}{said}"
+            + (words.TONE_NOTE.format(tone=s["tone"]) if s.get("tone") else ""))
 
 
-def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bool = False, meta_key: Path | None = None) -> dict[str, Any]:
+def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bool = False, meta_key: Path | None = None,
+        gemini_key: Path | None = None) -> dict[str, Any]:
     """The tool's whole call, blocking (the daemon runs it off the loop): {"ok": False, "error"} on any stop, else the
     transcript's file, text and counts. Pass 2 runs when the Groq key is there; a chunk it failed on stays unchecked.
     The speakers run when the Meta key is there; a window that failed leaves every line unlabelled, so no window starts
     after it, and the file says why. A voice given a new letter after a silence is joined back to its earlier one where
-    Muse says so (bridge); a bridge that fails joins nothing."""
-    secrets = {e: key(p) for e, p in (("openai", openai_key), ("groq", groq_key), ("meta", meta_key)) if p}
+    Muse says so (bridge); a bridge that fails joins nothing. The tone runs when the Gemini key is there, beside the
+    speakers' last steps; a chunk it failed on has no notes, and the file's tone line says why, as it does with no key."""
+    secrets = {e: key(p) for e, p in (("openai", openai_key), ("groq", groq_key), ("meta", meta_key), ("gemini", gemini_key)) if p}
     if not secrets["openai"]:
         return {"ok": False, "error": words.NO_SPEECH_KEY}
     engines, why = [e for e in PASSES if secrets[e]], "" if secrets.get("meta") else words.NO_META_KEY
@@ -447,6 +554,7 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
             wsecs = [min(WINDOW, sum(secs) - s) for s in at]
             usd = {e: [max(s, PASSES[e][3]) * PASSES[e][2] for s in secs] for e in engines}
             usd["meta"] = [max(s, MUSE[3]) * MUSE[2] for s in wsecs]
+            usd["gemini"] = [s * TONE_IN * rates()[0] + TONE_OUT * rates()[1] for s in secs] if secrets.get("gemini") else []
             if (est := sum(map(sum, usd.values()))) > GATE_USD and not owner_yes:
                 return {"ok": False, "error": words.OVER_GATE.format(minutes=round(sum(secs) / 60), usd=est)}
             wins: list[Path] = []
@@ -478,24 +586,28 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
                 unsent = sum(got[("meta", i)] is None for i in range(len(wins)))
                 why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
                        + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
-            try:                                       # with no window lost, every answer is there to read
-                heard, _, each = ([], 0, []) if why else reconcile(
-                    [turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
-            except Failed as e:
-                heard, each, why = [], [], str(e)
-            joins, unsure = bridge(heard, each, at, wins, Path(tmp), secrets["meta"], book) if each else ({}, [])    # while the WAVs are here
+            per: list[list[dict[str, Any]]] = []
+            unchecked = []
+            for i in range(len(parts)):
+                first = kept(r, i * CHUNK) if isinstance(r := got[("openai", i)], dict) else []
+                if isinstance(second := got.get(("groq", i)), dict):
+                    first, rest = fill(first, kept(second, i * CHUNK))
+                    check([s for s in first if "second_only" not in s], rest)
+                elif "groq" in engines:
+                    unchecked.append(str(i + 1))
+                per.append(first)
+            segs = [s for first in per for s in first]
+            with ThreadPoolExecutor(max_workers=1) as side:     # the tone beside the speakers' last steps, while the chunks are here
+                read = side.submit(tone, parts, per, secrets["gemini"], book) if secrets.get("gemini") else None
+                try:                                   # with no window lost, every answer is there to read
+                    heard, _, each = ([], 0, []) if why else reconcile(
+                        [turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
+                except Failed as e:
+                    heard, each, why = [], [], str(e)
+                joins, unsure = bridge(heard, each, at, wins, Path(tmp), secrets["meta"], book) if each else ({}, [])    # while the WAVs are here
+                left, failed, error = read.result() if read else (0, [], "")
     except (Failed, OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": str(e)}
-    segs: list[dict[str, Any]] = []
-    unchecked = []
-    for i in range(len(parts)):
-        first = kept(r, i * CHUNK) if isinstance(r := got[("openai", i)], dict) else []
-        if isinstance(second := got.get(("groq", i)), dict):
-            first, rest = fill(first, kept(second, i * CHUNK))
-            check([s for s in first if "second_only" not in s], rest)
-        elif "groq" in engines:
-            unchecked.append(str(i + 1))
-        segs += first
     heard = [dict(t, speaker=joins.get(t["speaker"], t["speaker"])) for t in heard]    # each turn in its group's earliest letter
     said = Counter[str]()
     for t in heard:
@@ -512,8 +624,13 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
            words.CHECKED.format(n=n, of=len(segs) - only)) + (words.SECOND_ONLY_HEAD.format(n=only) if only else "")
     head = words.TRANSCRIPT_HEAD.format(name=audio.name, minutes=round(sum(secs) / 60, 1), how=how)
     top = "" if talk == words.ONE_VOICE else f"{talk}\n"           # one voice: the file as it was before speakers
-    out = write_private(audio.with_name(f"{audio.stem}.transcript.txt"), f"{head}\n{top}{text}\n")
+    toned, chunk = sum(bool(s.get("tone")) for s in segs), ", ".join(map(str, failed))
+    feel = (words.NO_TONE.format(why=words.NO_GEMINI_KEY) if not read else       # every chunk with lines failed: none was read
+            words.NO_TONE.format(why=words.TONE_FAILED.format(chunks=chunk, of=len(parts), error=error)) if len(failed) == sum(map(bool, per)) > 0 else
+            words.TONE_READ.format(n=toned, of=len(segs), model=TONE[1]) + (words.TONE_DROPPED.format(n=left, s="s" * (left != 1)) if left else "")
+            + (words.TONE_PART.format(chunks=chunk, error=error) if failed else ""))
+    out = write_private(audio.with_name(f"{audio.stem}.transcript.txt"), f"{head}\n{top}{feel}\n{text}\n")
     shown = text if len(text) <= RESULT_CHARS else text[:text.rfind("\n", 0, RESULT_CHARS)] + "\n" + words.MORE_IN_FILE
     return {"ok": True, "file": str(out), "about": head, "uncertain": n, "segments": len(segs), "text": shown,
             "speakers": {k: round(v) for k, v in sorted(said.items())}, "speakers_how": talk, "speakers_joined": len(joins),
-            "next": words.TRANSCRIBED_NEXT}
+            "tone": toned, "tone_how": feel, "next": words.TRANSCRIBED_NEXT}
