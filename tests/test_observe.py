@@ -1072,6 +1072,7 @@ def test_the_morning_diff_reads_yesterday_from_the_ledger_and_says_unknown_when_
     assert f"{words.NOT_DONE} stalls yesterday: 1, longest 3.4 s" in lines
     assert f"{words.WORKING} shadow flag unread-figure: 1" in lines
     assert stamp["findings"] == ["stalls", "shadow unread-figure", "unknown curate"]   # no curate run; the doctor's never ran:
+    assert f"{words.PLAIN} {words.DOCTOR_NOT_YET}" in lines                               # a plain line, no finding
     empty = Ledger(state / "empty.sqlite")
     blind, _ = morning.build(priv, state, accounts, cool, empty, None, NOW)
     assert f"{words.NOT_DONE} stalls: unknown, yerkd not answering" in blind      # a blind detector says so
