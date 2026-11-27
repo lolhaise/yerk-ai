@@ -665,7 +665,7 @@ class Yerkd:
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
         was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, with who talks when on the Meta
-        key when it is there, each paid call a spend row."""
+        key and how each line was said on the Gemini key when they are there, each paid call a spend row."""
         p = Path(path).expanduser().resolve()
         if room not in self.rooms or not self.may_send(room, p):
             return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
@@ -673,7 +673,8 @@ class Yerkd:
             return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
         whole, paid = uncapped(self.budgets), list[float]()     # [limits] uncapped: no money gate, the cost in the result instead
         r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
-                                    self.booker(room, "transcribe", paid), owner_yes or whole, self.private / transcribe.META_KEY)
+                                    self.booker(room, "transcribe", paid), owner_yes or whole, self.private / transcribe.META_KEY,
+                                    self.private / transcribe.GEMINI_KEY)
         r = {**r, "usd": round(sum(paid), 4)} if whole else r
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
         return r
@@ -724,7 +725,7 @@ class Yerkd:
 
         def hear(video: Path) -> dict[str, Any]:
             return transcribe.run(video, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, self.booker(room, "watch"),
-                                  owner_yes, self.private / transcribe.META_KEY)
+                                  owner_yes, self.private / transcribe.META_KEY, self.private / transcribe.GEMINI_KEY)
         root = self.state / "rooms" / room / "work" / watch.FOLDER
         r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
         r = {**r, "note": "; ".join(x for x in (r["note"], more) if x)} if more and r["ok"] else r

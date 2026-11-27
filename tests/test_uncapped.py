@@ -256,7 +256,7 @@ def test_an_uncapped_install_lifts_the_money_gates_and_transcribes_result_carrie
     waits for owner_yes, every call still books its spend row, and transcribe's result says what it cost, as voice_note's does."""
     asked: list[bool] = []
 
-    def heard(audio, openai_key, groq_key, book, owner_yes=False, meta_key=None):
+    def heard(audio, openai_key, groq_key, book, owner_yes=False, meta_key=None, gemini_key=None):
         asked.append(owner_yes)
         book("openai/whisper-1", 0.25, "chunk 1 of 2")
         book("openai/whisper-1", 0.125, "chunk 2 of 2")

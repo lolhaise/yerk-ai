@@ -746,13 +746,31 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI, Groq for the second pass, and Meta for the speakers"
+provider = "OpenAI, Groq for the second pass, Meta for the speakers, and Gemini for the tone"
 model = "whisper-1, then whisper-large-v3-turbo, and muse-voice-transcribe-1.0 for the speakers"
-needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional; a Meta key at secrets/meta.key for the speaker letters, optional"
+needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional; a Meta key at secrets/meta.key for the speaker letters, optional; a Gemini key at secrets/gemini.key for the tone notes, optional"
 price = "US$0.006 a minute on OpenAI (its pricing page) and US$0.04 an hour on Groq, 10 s billed at least per call (its speech-to-text page), both read 2026-10-21; US$0.18 an hour of audio on Meta's Muse, no least (its speech-to-text page, read 2026-09-27), about 1.2 times the recording since the windows overlap: a 7-minute voice note is about 6.8 US cents with all three, a 70-minute meeting about 72"
-key = "put each key on the first line of its own file in the private folder's secrets/, 0600: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+key = "put each key on the first line of its own file in the private folder's secrets/, 0600: openai.key, and groq.key, meta.key and gemini.key, each optional; the next call reads it, no restart"
 free_path = "none: without the OpenAI key the room says the note could not be transcribed and answers from the message text"
 asked_as = ["transcribe", "transcription", "transcribe this", "what does this recording say"]
+
+[abilities.tone]
+state = "built"
+what = "How each line of a recording was said, in the transcribe tool's one file: with a Gemini key, a line said with more than its words (a laugh, a joke, sarcasm, a deadpan line, a stressed word) gets a note, (tone: deadpan, a joke; stressed: love), so a room reads a joke as a joke. The file's tone line says how many lines have one, or why none were read, so a room never takes a line as said plainly when nothing heard it."
+how = [
+  "Read: each 14-minute chunk's mp3 goes to Gemini with that chunk's whisper-1 lines, numbered, while the speakers are worked out, and it answers the numbers of the lines whose delivery carries more than their words, a note each, at low thinking.",
+  "Check: a note goes on its line only when every word it stresses or quotes is in that line, in double or single quotes, straight or curly, read in the whole note before it is cut to fit, so the words and their times stay whisper-1's; a note naming another line or a word of its own is left out and counted in the tone line.",
+  "Spend: each read is one spend row for the tokens its answer says it used, and its estimate joins the US$1 gate's; a read that fails leaves its chunk's lines without notes, and the tone line says why.",
+]
+tier = "key"
+keys = ["openai", "gemini"]
+provider = "Google's Gemini API"
+model = "gemini-3.8-flash"
+needs = "the transcribe ability, and a Gemini API key at secrets/gemini.key in the private folder"
+price = "US$0.75 a million tokens in and US$3.75 out to 2026-12-31, then US$1.50 and US$7.50 (its pricing page, read 2026-11-27); a second of audio is 32 tokens, so an hour of audio is about 9 US cents in now, and its notes out a few cents more"
+key = "put the key on the first line of secrets/gemini.key in the private folder, 0600; the next call reads it, no restart"
+free_path = "none: without the key the transcript has its words with no tone notes, and its tone line says so"
+asked_as = ["tone of a recording", "emotional pass", "laughs in a recording", "was it a joke", "hear the tone"]
 
 [abilities.voice_note]
 state = "built"
@@ -828,10 +846,10 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
+provider = "OpenAI for the transcript, with transcribe's Groq, Meta and Gemini keys if there"
 needs = "yt-dlp, ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
 price = "the download, the frames and a video's own captions are free; a video with no captions at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines, a 10-minute video about 10"
-key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key, meta.key and gemini.key, each optional; the next call reads it, no restart"
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
 
@@ -851,10 +869,10 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
+provider = "OpenAI for the transcript, with transcribe's Groq, Meta and Gemini keys if there"
 needs = "the browser ability with a video action in its plug-in, its browser signed in to Instagram on an account that may see the post; ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
 price = "the read, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines"
-key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key, meta.key and gemini.key, each optional; the next call reads it, no restart"
 free_path = "the frames come without a key; without the browser's video action the room says the video itself was not seen"
 upgrade = "watch"
 why_not = "Its read rides on the browser ability, a plug-in an install attaches, not code in this repo; an install whose browser plug-in carries the video action has it there, and a room whose watch call says Instagram shut the post saves it with that action on the post's link, then watches the path it names, never answering off the caption or a black frame of the playing tab."
@@ -873,10 +891,10 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
+provider = "OpenAI for the transcript, with transcribe's Groq, Meta and Gemini keys if there"
 needs = "ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
 price = "the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
-key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key, meta.key and gemini.key, each optional; the next call reads it, no restart"
 free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
 asked_as = ["the video i sent", "this video file", "the clip i sent", "what's in this video", "look at this video", "frames from a video", "contact sheet"]
 
@@ -892,10 +910,10 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
+provider = "OpenAI for the transcript, with transcribe's Groq, Meta and Gemini keys if there"
 needs = "the Discord adapter, its bot able to read the channel (View Channel and Read Message History); ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
 price = "reading the message, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
-key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key, meta.key and gemini.key, each optional; the next call reads it, no restart"
 free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
 asked_as = ["the video posted in the channel", "the mp4 in discord", "the video attached to that message", "watch the videos in the channel", "the discord video"]
 

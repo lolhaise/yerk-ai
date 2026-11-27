@@ -440,7 +440,9 @@ VIDEO_FILE = ("[video] {name} is a video. You see a video only as the still fram
 TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
                     "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong. A "
                     "letter before a line (A:) is a voice told apart by sound, so say which person each letter is as your guess "
-                    "from what they say, unless the owner said who is who.")
+                    "from what they say, unless the owner said who is who. A line's (tone: ...) note is how it was said, read "
+                    "from the sound (a laugh, a joke, sarcasm, a stressed word), so read the line as meant and give the tone as "
+                    "a read; where the tone line says none was read, a joke is not marked, so never take a line as said plainly.")
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
 SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
 SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
@@ -929,6 +931,13 @@ UNMATCHED, ONE_VOICE = ", {n} letter{s} could not be matched across windows, so 
 NO_SPEAKERS, NO_META_KEY, NO_TURNS = "speakers: none (Muse: {why})", "no Meta key at secrets/meta.key", "no speech turns in its answer"
 MUSE_FAILED = "window {windows} of {of} failed: {error}"
 MUSE_UNSENT = ", so {n} more were not sent"
+# how a line was said, read from the sound by Gemini (transcribe.tone): a line's note, and the line under the speakers line
+TONE_NOTE, TONE_STRESS = " (tone: {tone})", "stressed: {words}"
+TONE_READ = "tone: {n} of {of} lines have a note on how they were said, {model}'s read of the sound, so give it as a read"
+TONE_DROPPED = ", and {n} note{s} left out that named a line or a word the transcript does not have"
+TONE_PART = "; chunk {chunks} has none, since its read failed: {error}"
+NO_TONE = "tone: none ({why}), so a joke, a laugh or a stressed word is not marked: never take a line as said plainly"
+NO_GEMINI_KEY, TONE_FAILED = "no Gemini key at secrets/gemini.key", "chunk {chunks} of {of} failed: {error}"
 MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
 NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
 OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "

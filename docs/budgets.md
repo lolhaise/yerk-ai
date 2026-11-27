@@ -921,7 +921,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: the same change, found when its checks were run on a real install before it shipped, raised it by 31 more, not folded to fit: a walled check's process list is its own, so the recall there read a live yerk-index as gone, the bench skipped and every control the meaning half finds was missed; and the budget test could not read a room's newest transcript, in the home the wall hides, so it measured nothing of Claude Code's parts. The deploy now says the pid it saw alive and names each room's newest transcript for its tests' run (deploy.py 24: index_held, transcripts, the step), the recall takes that word for that pid alone (memory.py 2), and the check is given both by name, binds those files back read-only and no longer reads the state folder's own secrets/ (workers.py 5). 37,217: 37,186 plus 31.
 
-- `lines = 37217`
+2026-11-27: need-2026-11-27-138 raised it by 127, how each line of a recording was said (a laugh, a joke, sarcasm, a stressed word) read by Gemini into the one transcript, since a room read a joke in a transcript as a plain line with nothing in the file to say no tone was heard, not folded to fit (transcribe.py 117: the Gemini request and its key's own header in send, its price by the day it doubles, the numbered lines, the answer read or its failure named, mark's check that a note stresses or quotes only words its line has, the reads in parallel beside the speakers with their spend rows, the chunks' lines built while their mp3s are there, the gate's share, the tone line and the result's two keys, the docstring's sentences; words.py 9: the note, the tone line's forms and TRANSCRIBED_NEXT's sentence; daemon.py 1: the Gemini key's path for transcribe and watch). 37,344: 37,217 plus 127.
+
+- `lines = 37344`
 
 ## Uncapped
 
