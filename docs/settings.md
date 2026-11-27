@@ -1,8 +1,8 @@
 # Settings
 
-Written by `yerk docs own` from yerk_ai/config.py (ROOM_WORDS, DEFAULT_KEYS, YERKD_WORDS) and the tables beside the code that reads them (words.SETTINGS, memory.described, jobs.CONF, jobs.KEYS, retention.DAYS and CAP); change those and run it again, never this page.
-
 Every key the loaders take from the private folder's rooms.toml, yerkd.toml and jobs.toml, in plain words with its default. rooms.toml.example and yerkd.toml.example are commented copies with example values.
+
+Written by `yerk docs own` from yerk_ai/config.py (ROOM_WORDS, DEFAULT_KEYS, YERKD_WORDS) and the tables beside the code that reads them (words.SETTINGS, memory.described, jobs.CONF, jobs.KEYS, retention.DAYS and CAP); change those and run it again, never this page.
 
 ## rooms.toml
 

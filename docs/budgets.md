@@ -1,8 +1,8 @@
 # Budgets
 
-Written by `yerk docs own` from budgets.toml; change those and run it again, never this page.
+The size limits in budgets.toml, table by table, each line with the comments that say what it is.
 
-Every size limit Yerk AI enforces, table by table, each line with the comments that say what it is.
+Written by `yerk docs own` from budgets.toml; change those and run it again, never this page.
 
 Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics, [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here. The program only reads this file: you change a number by hand, together with the code that needs it, and add a dated note under its line that says why.
 

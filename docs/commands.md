@@ -1,8 +1,8 @@
 # Commands
 
-Written by `yerk docs own` from the parsers in yerk_ai/cli.py, yerk_ai/daemon.py, yerk_ai/memindex.py; change those and run it again, never this page.
-
 The commands pyproject.toml installs, each command and flag with the help its parser gives it.
+
+Written by `yerk docs own` from the parsers in yerk_ai/cli.py, yerk_ai/daemon.py, yerk_ai/memindex.py; change those and run it again, never this page.
 
 ## yerk
 

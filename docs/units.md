@@ -1,8 +1,8 @@
 # Units
 
-Written by `yerk docs own` from units/; change those and run it again, never this page.
-
 The systemd user units Yerk AI ships, each service with when it runs, then each file line by line; an Environment line shows its variable's name only. Copy a unit to ~/.config/systemd/user/ to install it.
+
+Written by `yerk docs own` from units/; change those and run it again, never this page.
 
 - yerk-backup.service: yerk-backup.timer, OnCalendar=*-*-* 04:10:00
 - yerk-curate.service: yerk-curate.timer, OnCalendar=*-*-* 05:00:00

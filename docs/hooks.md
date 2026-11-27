@@ -1,8 +1,8 @@
 # Hooks
 
-Written by `yerk docs own` from yerk_ai/hooks.py (EVENTS, settings_for); change those and run it again, never this page.
-
 The hooks block of a room's --settings file (written 0600): every event a command hook, curl posting the event's JSON to the daemon with the process's token as its secret header, read from `header` (the 0600 file the daemon writes beside it), never on curl's command line, which /proc shows every local user while a hook runs. Never `type: http`: Claude Code 2.1.301 sends those through a sandboxed room's network proxy, which refuses the daemon's loopback port with 403 (2026-10-19, 389 silent refusals in two rooms). Resume is out of SessionStart's matcher: no reset. PreToolUse is the gate, and a gate that cannot be asked refuses: Claude Code carries an action out when its hook fails unless the hook blocks, and on that day the 170 gate calls among those refusals each let its action through. So the gate's curl gives up at 8 s, inside the hook's 10, and any failure of it exits 2 with GATE_DOWN, which blocks the call and tells the model why; `onFailure: block` (Claude Code 2.1.295 on) blocks a hook that Claude Code itself had to end. No other event blocks on a failure: a lost message or a turn that cannot end is no gate.
+
+Written by `yerk docs own` from yerk_ai/hooks.py (EVENTS, settings_for); change those and run it again, never this page.
 
 ## UserPromptSubmit
 
