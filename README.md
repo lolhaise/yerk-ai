@@ -18,10 +18,9 @@ When a room cannot do what you asked, it files what it needed instead of buildin
 
 ```mermaid
 flowchart LR
-    need["A room files<br/>what it needed"] --> build["A builder writes it,<br/>with tests"]
-    build --> checks["The checks run"]
-    checks --> read["A fresh reviewer<br/>reads the change"]
-    read --> live["Merged, deployed,<br/>live in every room"]
+    need["A room files<br/>what it needed"] --> build["A builder<br/>writes it,<br/>with tests"]
+    build --> review["Checks run,<br/>a fresh worker<br/>reviews it"]
+    review --> live["Merged,<br/>deployed, live<br/>in every room"]
 ```
 
 No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer is never the one that wrote the change. A change to what can do the most harm (messages in your name, logins, deletes, the pipeline itself) waits for a person instead.
