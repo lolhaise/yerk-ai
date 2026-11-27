@@ -9,6 +9,12 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### changelog-numbers-2026-11-27 (the line that says whose pull request numbers are whose moves up two entries)
+
+- The line in this file that separates this repository's pull request numbers from the numbers of its earlier history
+  now sits above the entries marked #2 and #1. The repository was set up again on 2026-11-27 and counts its pull
+  requests from #1 once more, so those two numbers belong to the earlier history with the rest. Nothing else changes.
+
 ### changelog-plain-2026-11-27 (the changelog says what changed and why, never at which minute or in whose room)
 
 - This file's older entries no longer give an event's clock time, say which of the owner's rooms it happened in, or
@@ -194,6 +200,8 @@ runs the checks as before, as children of the deploy with its rights and environ
 
 ## 2026-11-26
 
+*Above this line a pull request number is this public repository's, counted from #1. Below it the numbers belong to the repository's earlier, private history, and open nothing here.*
+
 ### readme-front-page (#2)
 
 - README.md is written for a reader who has never met a harness or Claude Code: one line on what Yerk AI is, five things it does,
@@ -218,8 +226,6 @@ runs the checks as before, as children of the deploy with its rights and environ
   changed and why in the code's terms, never who asked, when, where or in which words, and a message a hook refuses is
   reworded, never sent with `--no-verify`. The cold read's: any of those in a test, comment, doc or commit message is
   `fix first`. `needs.py` keeps its line count.
-
-*Above this line a pull request number is this public repository's, counted from #1. Below it the numbers belong to the repository's earlier, private history, and open nothing here.*
 
 ### due-by-day-2026-11-26 (#145)
 
