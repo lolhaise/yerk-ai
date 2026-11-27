@@ -919,7 +919,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: deploy-step-walled-2026-11-27 raised it by 151, `yerk deploy`'s fast tests, each add-on's and the recall controls run behind a hidden worker's wall, one command in a unit of its own that the deploy waits for (build U1c of the owner's build list), not folded to fit (workers.py 77: check_props, check_env and checked with their docstrings, NoWall, the doors a hidden worker's unit shuts read from one place, doors; deploy.py 65: plain, index_held, step and check_step, the recall check's run, the docstring's sentence; cli.py 5: --check; config.py 3: [deploy] wall's words; words.py 1: the two card lines). 37,186: 37,035 plus 151.
 
-- `lines = 37186`
+2026-11-27: the same change, found when its checks were run on a real install before it shipped, raised it by 31 more, not folded to fit: a walled check's process list is its own, so the recall there read a live yerk-index as gone, the bench skipped and every control the meaning half finds was missed; and the budget test could not read a room's newest transcript, in the home the wall hides, so it measured nothing of Claude Code's parts. The deploy now says the pid it saw alive and names each room's newest transcript for its tests' run (deploy.py 24: index_held, transcripts, the step), the recall takes that word for that pid alone (memory.py 2), and the check is given both by name, binds those files back read-only and no longer reads the state folder's own secrets/ (workers.py 5). 37,217: 37,186 plus 31.
+
+- `lines = 37217`
 
 ## Uncapped
 

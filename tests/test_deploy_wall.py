@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import workers
+from yerk_ai import memory, workers
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO
 
 
@@ -46,6 +46,7 @@ def test_a_deploy_check_s_unit_hides_the_home_and_binds_back_read_only_what_the_
     assert binds(props) == [str(tree), sys.prefix, sys.base_prefix, str(private), str(state)]     # each once, read-only
     assert not [x for x in props if x.startswith(("BindPaths=", "ReadWritePaths="))]
     assert f"InaccessiblePaths=-{private / 'secrets'}" in props and not [x for x in props if "denylist" in x]
+    assert f"InaccessiblePaths=-{state / 'secrets'}" in props          # nor the state folder's own: the install's secret
     assert all(d in props for d in workers.doors()) and all(w in props for w in workers.WALLS)
     for p, _ in workers.DOORS:                                          # every door that is there, shut
         assert not p.exists() or [x for x in props if x.split("=", 1)[1].split(":")[0] == str(p)], p
@@ -57,6 +58,7 @@ def test_a_deploy_check_s_unit_hides_the_home_and_binds_back_read_only_what_the_
     home, tree, private, state = made_up(tmp_path / "b", monkeypatch, state_outside=True)
     props = workers.check_props(tree, private, state, tree)
     assert props[1:3] == [f"TemporaryFileSystem={home}:ro", f"TemporaryFileSystem={state}:ro"] and str(state) in binds(props)
+    assert f"InaccessiblePaths=-{state / 'secrets'}" in props
 
 
 def test_the_denylist_file_comes_back_alone_and_only_from_the_private_layer(tmp_path, monkeypatch):
@@ -74,6 +76,25 @@ def test_the_denylist_file_comes_back_alone_and_only_from_the_private_layer(tmp_
         assert f"InaccessiblePaths=-{secrets}" in props and not [x for x in binds(props) if x.startswith(str(secrets)) or x == str(outside)], named
 
 
+def test_a_file_its_caller_s_check_reads_comes_back_read_only_and_never_one_out_of_a_secrets_folder(tmp_path, monkeypatch):
+    """`reads`: the one more thing a check reads (a deploy's fast tests: each room's newest transcript, deploy.transcripts)."""
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    seen = home / "acct" / "projects" / "p" / "s.jsonl"
+    seen.parent.mkdir(parents=True)
+    seen.write_text("{}\n")
+    (state / "secrets").mkdir()
+    (state / "secrets" / "k").write_text("not a key\n")
+    hid = [private / "secrets" / "example.key", state / "secrets" / "k", seen.with_name("missing.jsonl"), seen.parent]
+    props = workers.check_props(tree, private, state, tree, "", [seen, *hid])
+    assert binds(props)[-1] == str(seen) and binds(props).count(str(seen)) == 1
+    assert not [b for b in binds(props) if b in map(str, hid)] and not [x for x in props if x.startswith("BindPaths=")]
+    assert binds(workers.check_props(tree, private, state, tree)) == binds(props)[:-1]      # none given: none bound
+    ran = []
+    workers.checked(["python"], cwd=tree, tree=tree, private=private, state=state, reads=[seen],
+                    run=lambda cmd, **_k: ran.append(cmd) or subprocess.CompletedProcess(cmd, 0, "", ""))
+    assert f"BindReadOnlyPaths={seen}" in ran[0]
+
+
 def test_a_wall_added_to_the_walls_is_in_the_check_with_no_other_change(tmp_path, monkeypatch):
     _, tree, private, state = made_up(tmp_path, monkeypatch)
     monkeypatch.setattr(workers, "WALLS", (*workers.WALLS, "ProtectHostname=yes"))
@@ -85,12 +106,33 @@ def test_the_check_s_environment_is_a_fixed_list_and_never_the_deploy_s_own(tmp_
     for k, v in {"USER": "someone", "LOGNAME": "someone", "LANG": "C.UTF-8", "PATH": "/usr/bin:/bin", "YERK_PLANTED_KEY": "k"}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.delenv("YERK_DENYLIST_FILE", raising=False)
+    monkeypatch.delenv(memory.INDEX_SEEN, raising=False)
     env = workers.check_env(tree, private, state)
     assert env == {"HOME": str(home), "USER": "someone", "LOGNAME": "someone", "LANG": "C.UTF-8", "PATH": "/usr/bin:/bin",
                    "TMPDIR": "/tmp", "YERK_PRIVATE": str(private), "YERK_STATE": str(state), "PYTHONPATH": str(tree),
                    "PYTHONDONTWRITEBYTECODE": "1"}
     monkeypatch.setenv("YERK_DENYLIST_FILE", str(private / "secrets" / "denylist.txt"))
     assert workers.check_env(tree, private, state) == {**env, "YERK_DENYLIST_FILE": str(private / "secrets" / "denylist.txt")}
+    monkeypatch.setenv(memory.INDEX_SEEN, "4242")                      # the pid the deploy saw the index alive under
+    assert workers.check_env(tree, private, state)[memory.INDEX_SEEN] == "4242"
+    assert workers.CHECK_ENV == ("HOME", "USER", "LOGNAME", "LANG", "PATH")   # the two lists whole: a name added is a door
+    assert workers.CHECK_PASS == ("YERK_DENYLIST_FILE", memory.INDEX_SEEN)
+
+
+def test_a_recall_behind_the_wall_takes_the_deploy_s_word_for_the_index_s_pid_and_for_no_other(tmp_path, monkeypatch):
+    """A walled check's process list is its own, so yerk-index's pid is never in it: the recall there reads the pid the deploy
+    saw alive (YERK_INDEX_SEEN) and skips its own look for that pid alone."""
+    s = memory.settings(EXAMPLE_PRIVATE, tmp_path)
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()                                                        # a pid this process cannot see, as behind the wall
+    s.index_status.parent.mkdir(parents=True, exist_ok=True)
+    s.index_status.write_text(json.dumps({"pid": gone.pid, "port": 1, "embeddings": {"key": True, "vectors": 3}}))
+    monkeypatch.delenv(memory.INDEX_SEEN, raising=False)
+    assert memory.meaning_state(s) == "no-index"
+    monkeypatch.setenv(memory.INDEX_SEEN, str(gone.pid + 1))           # the deploy saw another pid: not this one
+    assert memory.meaning_state(s) == "no-index"
+    monkeypatch.setenv(memory.INDEX_SEEN, str(gone.pid))
+    assert memory.meaning_state(s) == "ok"
 
 
 def test_checked_runs_one_command_in_a_unit_of_its_own_and_returns_what_subprocess_run_does(tmp_path, monkeypatch):
@@ -188,6 +230,11 @@ def tried(f):
         return False
 
 
+def meaning(private, state):
+    from yerk_ai import memory
+    return memory.meaning_state(memory.settings(private, state))
+
+
 def test_canary():
     """What this process can see, read and write, one JSON line on stdout."""
     home, tree, private, state = Path.home(), Path.cwd(), Path(os.environ["YERK_PRIVATE"]), Path(os.environ["YERK_STATE"])
@@ -197,6 +244,9 @@ def test_canary():
         "tree_read": tried(lambda: (tree / "f.txt").read_text()),
         "writes": [tried(lambda p=p: (p / "canary-wrote").write_text("x")) for p in (tree, private, state)],
         "secret": tried(lambda: (private / "secrets" / "example.key").read_text()),
+        "state_secret": tried(lambda: (state / "secrets" / "yerk-http.secret").read_text()),
+        "given": [tried(lambda n=n: (Path(__file__).parent.parent / "acct" / "projects" / "p" / n).read_text()) for n in ("s.jsonl", "other.jsonl")],
+        "meaning": meaning(private, state),
         "denylist": tried(lambda: Path(os.environ["YERK_DENYLIST_FILE"]).read_text()),
         "imports": tried(lambda: __import__("yerk_ai.words")) and Path(__import__("yerk_ai").__file__).is_relative_to(tree),
         "server": tried(lambda: socket.create_connection(("127.0.0.1", int((tree / "port").read_text())), timeout=5).close()),
@@ -217,19 +267,29 @@ def test_the_real_wall_hides_the_home_refuses_writes_and_keeps_the_loopback(tmp_
     (private / "secrets" / "example.key").write_text("not a key\n")
     (private / "secrets" / "denylist.txt").write_text("a-made-up-name\n")
     state.mkdir(mode=0o700)
+    (state / "secrets").mkdir()
+    (state / "secrets" / "yerk-http.secret").write_text("not a secret\n")
+    (state / "memory").mkdir()                                         # an index alive out here, under this test's own pid
+    (state / "memory" / "index.json").write_text(json.dumps({"pid": os.getpid(), "port": 1, "embeddings": {"key": True, "vectors": 3}}))
     (tree / "f.txt").write_text("the tree\n")
     (tree / "test_canary.py").write_text(CANARY)
     (tmp_path / "planted.key").write_text("not a key either\n")        # beside the tree, never bound back
+    (said := tmp_path / "acct" / "projects" / "p" / "s.jsonl").parent.mkdir(parents=True)
+    said.write_text("{}\n")                                            # a room's transcript: the one file given to read
+    said.with_name("other.jsonl").write_text("{}\n")                   # its neighbour: not given
     monkeypatch.setenv("YERK_DENYLIST_FILE", str(private / "secrets" / "denylist.txt"))
     monkeypatch.setenv("YERK_PLANTED_KEY", "k")                       # the deploy's own environment: never the unit's
+    monkeypatch.setenv(memory.INDEX_SEEN, str(os.getpid()))           # as the deploy's hold says it (deploy.index_held)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     (tree / "port").write_text(str(server.server_address[1]))
     argv = [sys.executable, "-m", "pytest", "-q", "-s", "test_canary.py"]
     before = set(workers.systemctl("list-units", f"{workers.CHECK_UNIT}*", "--all", "--plain", "--no-legend").stdout.split())
     try:
-        walled = workers.checked(argv, cwd=tree, tree=tree, private=private, state=state, timeout=120)
+        walled = workers.checked(argv, cwd=tree, tree=tree, private=private, state=state, timeout=120, reads=[said])
         wrote = [p.name for p in (tree, private, state) if (p / "canary-wrote").exists()]
+        monkeypatch.delenv(memory.INDEX_SEEN)                           # with no word from the deploy: the index reads as gone
+        blind = workers.checked(argv, cwd=tree, tree=tree, private=private, state=state, timeout=120)
         plain = subprocess.run(argv, cwd=tree, capture_output=True, text=True, timeout=120,
                                env={**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state), "PYTHONPATH": str(tree)})
     finally:
@@ -237,11 +297,14 @@ def test_the_real_wall_hides_the_home_refuses_writes_and_keeps_the_loopback(tmp_
         for u in set(workers.systemctl("list-units", f"{workers.CHECK_UNIT}*", "--all", "--plain", "--no-legend").stdout.split()) - before:
             if u.startswith(workers.CHECK_UNIT):
                 workers.systemctl("stop", u)
-    inside, outside = (json.loads(next(x for x in r.stdout.splitlines() if x.startswith("CANARY "))[7:]) for r in (walled, plain))
+    inside, outside, unseen = (json.loads(next(x for x in r.stdout.splitlines() if x.startswith("CANARY "))[7:]) for r in (walled, plain, blind))
     home = sorted(os.listdir(Path.home()))
     assert walled.returncode == 0 and outside["home"] == home and outside["planted"]        # plainly: the whole home, the file
     assert len(inside["home"]) < len(home), f"{len(inside['home'])} of {len(home)} home entries seen behind the wall"
     assert not inside["planted"] and inside["writes"] == [False, False, False] and not inside["secret"]
+    assert not inside["state_secret"] and outside["state_secret"]      # the install's own secret: gone behind the wall
+    assert (inside["given"], unseen["given"], outside["given"]) == ([True, False], [False, False], [True, True])   # the file given, alone
+    assert (inside["meaning"], unseen["meaning"], outside["meaning"]) == ("ok", "no-index", "ok")   # its pid: by the deploy's word
     assert inside["denylist"] and inside["tree_read"] and inside["imports"] and inside["server"]
     assert set(workers.check_env(tree, private, state)) <= set(inside["env"]) and wrote == []
     assert "YERK_PLANTED_KEY" not in inside["env"] and "YERK_PLANTED_KEY" in outside["env"] and outside["writes"] == [True] * 3

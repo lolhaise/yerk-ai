@@ -1203,6 +1203,7 @@ SHARE = 0.4          # the keyword rank's part of the fused score, the meaning r
 RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
                      # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
+INDEX_SEEN = "YERK_INDEX_SEEN"   # the pid a deploy saw yerk-index alive under, for its walled checks (deploy.index_held)
 READ_ON = 2000       # a room that may not read everything reads on at most this many keyword rows past the pool (memindex.search), past the
                      # first own chunk of each name a sealed room was measured on, live, Nov 12 (rank 494 at most). Its filter costs 50 to 400
                      # microseconds a row, the most outside the day logs with many rooms (file_class walks every room's inbox): 0.12 to 0.9 s at
@@ -1264,7 +1265,8 @@ def meaning_state(s: Settings) -> str:
     if not st or not st.get("port"):
         return "no-index"
     try:
-        os.kill(int(st.get("pid", 0)), 0)
+        if os.environ.get(INDEX_SEEN) != str(st.get("pid")):   # a walled check's process list is its own: the deploy saw it
+            os.kill(int(st.get("pid", 0)), 0)
     except (OSError, ValueError):
         return "no-index"
     if not emb.get("key"):

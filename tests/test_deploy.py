@@ -1359,6 +1359,58 @@ def test_the_live_index_is_held_open_while_the_checks_run(tmp_path, capsys):
     assert held == [True, True]
 
 
+def test_the_hold_says_the_pid_it_saw_the_index_alive_under_and_takes_it_back(tmp_path, monkeypatch):
+    """A walled check cannot see yerk-index's pid (its process list is its own), so the deploy's hold says it in
+    YERK_INDEX_SEEN while the checks run: only a pid alive out here, gone again after, a caller's own value put back."""
+    (state := tmp_path / "state" / "memory").mkdir(parents=True)
+    monkeypatch.delenv(memory.INDEX_SEEN, raising=False)
+    with deploy.index_held(state.parent):                              # no status file: nothing said
+        assert memory.INDEX_SEEN not in os.environ
+    (state / "index.json").write_text(json.dumps({"pid": os.getpid(), "port": 1}))
+    with deploy.index_held(state.parent):
+        assert os.environ[memory.INDEX_SEEN] == str(os.getpid())
+    assert memory.INDEX_SEEN not in os.environ
+    gone = subprocess.Popen([deploy.sys.executable, "-c", "pass"])
+    gone.wait()
+    (state / "index.json").write_text(json.dumps({"pid": gone.pid, "port": 1}))
+    with deploy.index_held(state.parent):                              # a pid that is gone: never vouched for
+        assert memory.INDEX_SEEN not in os.environ
+    monkeypatch.setenv(memory.INDEX_SEEN, "7")                         # one its caller set: as it was, after
+    (state / "index.json").write_text(json.dumps({"pid": os.getpid(), "port": 1}))
+    with deploy.index_held(state.parent):
+        assert os.environ[memory.INDEX_SEEN] == str(os.getpid())
+    assert os.environ[memory.INDEX_SEEN] == "7"
+
+
+def test_the_walled_tests_are_given_each_room_s_newest_transcript_and_nothing_else_of_the_home(tmp_path):
+    """The budget test reads Claude Code's parts as each room last sent them, from its newest transcript, in an account's
+    folder in the home the wall hides: unread, each part counts at its line and nothing is measured. The deploy names
+    those files for its tests' run, and only a file that lies in an account's projects folder."""
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    acct = tmp_path / "acct"
+    (priv / "accounts.toml").write_text(f'[accounts.one]\nconfig_dir = "{acct}"\n')
+    (said := acct / "projects" / "p" / "s.jsonl").parent.mkdir(parents=True)
+    said.write_text("{}\n")
+    (key := acct / ".credentials.json").write_text("not a key\n")     # the account's own login, beside its projects folder
+    (state / "sessions.json").write_text(json.dumps({"example-room": {"transcript": str(said)}, "example-quiet": {"transcript": str(key)}}))
+    assert deploy.transcripts(priv, state) == [said]                   # never a file outside an account's projects folder
+    (said.parent / "link.jsonl").symlink_to(key)                       # nor one in it that leads out
+    (state / "sessions.json").write_text(json.dumps({"example-room": {"transcript": str(said)}, "example-quiet": {"transcript": str(said.parent / "link.jsonl")}}))
+    assert deploy.transcripts(priv, state) == [said]
+    f, seen = Fake(tree), []
+
+    def wall(argv, **k):
+        seen.append((argv, k.get("reads")))
+        return f.wall(argv, **k)
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=wall) == 0
+    assert [r for a, r in seen if "pytest" in a] == [[said]] and [r for a, r in seen if "recall-bench" in a] == [None]
+    (state / "sessions.json").unlink()
+    assert deploy.transcripts(priv, state) == [] and deploy.transcripts(tmp_path / "none", state) == []
+
+
 def test_check_runs_the_step_alone_and_touches_nothing(tmp_path, capsys, monkeypatch):
     """`yerk deploy --check`: the step as a deploy runs it, on the checkout as it stands; nothing moved or restarted, no
     ledger row; 0 when all held, 1 when not."""

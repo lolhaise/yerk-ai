@@ -302,7 +302,8 @@ def indexed(state: Path) -> str:
         return ""
 
 
-def plain(argv: list[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
+def plain(argv: list[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None,
+          reads: Any = ()) -> subprocess.CompletedProcess[str]:
     """[deploy] wall = false: a check as before the wall, a child of the deploy with its rights and its whole environment, a
     pytest run's with the layer and the tree on its path (the budget test reads the real rooms), the controls' as it is."""
     env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state), "PYTHONPATH": str(tree)} if argv[1:3] == ["-m", "pytest"] else None
@@ -323,20 +324,42 @@ def recall_check(tree: Path, private: Path, state: Path, go: Check = plain) -> d
         return {"broke": True}
 
 
+def transcripts(private: Path, state: Path) -> list[Path]:
+    """Each room's newest Claude Code transcript (context.transcript): the one thing of the home the fast tests read (the
+    budget test, Claude Code's parts as the room last sent them; unread, each part counts at its line and nothing is
+    measured), so what a walled check is given to read beside the tree, the layer and the state. Only a file that lies in an
+    account's projects folder; a layer that cannot be read gives none."""
+    from . import context
+    from .accounts import load_accounts
+    with contextlib.suppress(Exception):
+        homes = [a.config_dir.resolve() / "projects" for a in load_accounts(private / "accounts.toml")]
+        found = (context.transcript(private, state, r) for r in rooms(private))
+        return sorted({t for t in found if t and any(t.resolve().is_relative_to(h) for h in homes)})
+    return []
+
+
 @contextlib.contextmanager
 def index_held(state: Path) -> Iterator[None]:
     """The live memory index open read-only out here while the checks run: behind the wall the state folder is read-only, and a
     WAL file's reader there needs its -shm, which a reader out here makes; with none (an index its last writer closed) every
-    control would miss. A hold that fails is no hold; the checks run as they would."""
-    from . import memindex
-    conn = None
+    control would miss. A hold that fails is no hold; the checks run as they would. And the pid yerk-index is alive under,
+    seen from out here, in YERK_INDEX_SEEN meanwhile: a walled check's process list is its own, so the recall there would
+    read a live index as gone (memory.meaning_state), the bench skipping and every control the meaning half finds missed."""
+    from . import memindex, memory
+    conn, was = None, os.environ.get(memory.INDEX_SEEN)
     with contextlib.suppress(Exception):
         if (db := memindex.live(state / "memory" / "index.sqlite")).is_file():
             conn = memindex.connect(db, readonly=True)
             conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        os.kill(pid := int(json.loads((state / "memory" / "index.json").read_text())["pid"]), 0)
+        os.environ[memory.INDEX_SEEN] = str(pid)
     try:
         yield
     finally:
+        os.environ.pop(memory.INDEX_SEEN, None)
+        if was is not None:
+            os.environ[memory.INDEX_SEEN] = was
         if conn is not None:
             conn.close()
 
@@ -345,16 +368,17 @@ def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check
          check: Callable[[Path, Path, Path], dict[str, Any]] | None = None) -> tuple[str, list[str]]:
     """The deploy's checks on the tree as it stands: the core's fast tests ([deploy] tests, else FAST) in the tree, each
     installed add-on's in its folder, then the recall controls, each behind the wall (workers.checked) unless [deploy] wall =
-    false (plain, and the card says so) or `go` stands in, the live index held open meanwhile (index_held). Returns the
+    false (plain, and the card says so) or `go` stands in, the live index held open meanwhile (index_held) and the tests
+    given each room's newest transcript to read (transcripts). Returns the
     outcome a failure ledgers ("" when all held) and the card's lines; no wall to run behind runs nothing more."""
     W, walled = words, conf.get("wall", True) is not False
     go = go or (workers.checked if walled else plain)
-    off = [] if walled else [W.line(f"{W.PLAIN} {W.WALL_OFF}")]
+    off, reads = [] if walled else [W.line(f"{W.PLAIN} {W.WALL_OFF}")], transcripts(private, state)
     with index_held(state):
         try:
             for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)]:   # each add-on's too
                 if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
-                            private=private, state=state)).returncode:
+                            private=private, state=state, reads=reads)).returncode:
                     why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words
                     return "tests failed", [W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, *off]
             held, rec = recalled((check or functools.partial(recall_check, go=go))(tree, private, state))   # the layer the daemon serves

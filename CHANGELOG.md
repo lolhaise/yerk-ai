@@ -23,6 +23,13 @@ files into pieces changes.
   written to the ledger; it prints the step's card lines and ends 0 when all held, 1 when not.
 - While the checks run the deploy holds the memory index open read-only, so a reader behind the read-only wall finds the
   shared-memory file a WAL database's readers need, also when the index's last writer has closed it.
+- A walled check has a process list of its own, so it cannot see whether yerk-index is alive. The deploy looks from outside
+  and tells its checks the pid it saw (`YERK_INDEX_SEEN`); the recall there takes that word for that pid alone. Without it
+  the recall bench skipped and every control the meaning half finds was missed, on every deploy.
+- The budget test reads Claude Code's parts as each room last sent them, from the room's newest transcript in an account's
+  folder, which the wall hides with the home. The deploy names those files for its tests' run and they come back read-only;
+  unread, each part counted at its line and nothing was measured.
+- The state folder's own `secrets/` (the install's secret, the workers') is not there behind the wall either.
 - The card's lines for a pass and a failure are as before.
 
 **Upgrading**: yerkd.toml `[deploy] wall` is new and defaults to true. Where the deploy cannot start a user unit, `wall = false`

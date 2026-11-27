@@ -125,6 +125,7 @@ WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "ProtectSystem=strict", "ProtectCo
          "LockPersonality=yes", f"RestrictAddressFamilies={FAMILIES}", "SystemCallArchitectures=native", f"SystemCallFilter={NO_CALLS}",
          "SystemCallErrorNumber=ENOSYS")
 CHECK_UNIT, CHECK_ENV = "yerk-deploy-check-", ("HOME", "USER", "LOGNAME", "LANG", "PATH")   # a deploy's walled check (checked)
+CHECK_PASS = ("YERK_DENYLIST_FILE", "YERK_INDEX_SEEN")   # the two of the deploy's own variables its check is given, when set
 OWN_CONFIG = ".claude-home"     # a hidden worker's Claude config folder, in its own folder (Systemd.own)
 UNIT_GIT = ".git-unit"          # a hidden worker's worktree's .git from its end on (needs.tidy): out here it names another's record
 
@@ -563,12 +564,14 @@ class NoWall(OSError):
     """A deploy check with no wall to run behind (checked): it ran nowhere, and the deploy deploys nothing."""
 
 
-def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str = "") -> list[str]:
+def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str = "", reads: Sequence[Path] = ()) -> list[str]:
     """A deploy check's unit (checked) from a hidden worker's parts: each root hidden as walled hides it (_roots); bound back
     read-only, each once (not inside another) when it is there and the unit hides it (a root, its own /tmp, a door), the tree, the
     interpreter (sys.prefix and sys.base_prefix, what it needs, found by running it), the private layer, the state
     folder and the folder the command runs in; the private layer's secrets/ not there, or an empty read-only filesystem with one
-    file back when `denylist` (the deploy's YERK_DENYLIST_FILE) is a file in it, never one outside the private layer; then the
+    file back when `denylist` (the deploy's YERK_DENYLIST_FILE) is a file in it, never one outside the private layer; the state
+    folder's own secrets/ (the install's secret, the workers') not there; each file of `reads` back read-only too, when it
+    lies in none of those (so never one out of a secrets/): the one more thing its caller's check reads; then the
     DOORS and the WALLS. No PrivateNetwork: the controls and the bench ask yerk-index on this machine, so that door is the
     deploy's own (the network slice, not built)."""
     roots, priv = Systemd(state)._roots(), Path(os.path.abspath(private))
@@ -578,23 +581,25 @@ def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str
             back.append(p)
     deny = Path(os.path.abspath(denylist)) if denylist else None
     mine = bool(deny and deny.is_relative_to(priv / "secrets") and deny.is_file() and deny.resolve().is_relative_to(priv.resolve()))
-    props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots), *(f"BindReadOnlyPaths={p}" for p in back)]
+    more = [p for p in (Path(os.path.abspath(x)) for x in reads) if p.is_file() and not any(p.is_relative_to(q) for q in back)]
+    props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots), *(f"BindReadOnlyPaths={p}" for p in [*back, *more])]
     props += [f"TemporaryFileSystem={priv / 'secrets'}:ro", f"BindReadOnlyPaths={deny}"] if mine else [f"InaccessiblePaths=-{priv / 'secrets'}"]
-    return [*props, *doors(), *WALLS]
+    return [*props, f"InaccessiblePaths=-{Path(os.path.abspath(state)) / 'secrets'}", *doors(), *WALLS]   # nor the install's own secrets
 
 
 def check_env(tree: Path, private: Path, state: Path) -> dict[str, str]:
     """A deploy check's environment, a short fixed list and never the deploy's own: HOME, USER, LOGNAME, LANG and PATH as the
     deploy has them, TMPDIR the unit's own /tmp, the layer and the tree (YERK_PRIVATE, YERK_STATE, PYTHONPATH), no bytecode
-    written, and YERK_DENYLIST_FILE when the deploy has it (its file comes back only from the private layer: check_props)."""
+    written, and when the deploy has them (CHECK_PASS) YERK_DENYLIST_FILE (its file comes back only from the private layer:
+    check_props) and YERK_INDEX_SEEN (the pid the deploy saw yerk-index alive under: the unit's process list is its own)."""
     env = {k: os.environ[k] for k in CHECK_ENV if os.environ.get(k)}
     env.update(HOME=str(Path.home()), TMPDIR="/tmp", YERK_PRIVATE=os.path.abspath(private), YERK_STATE=os.path.abspath(state),
                PYTHONPATH=os.path.abspath(tree), PYTHONDONTWRITEBYTECODE="1")
-    return env | ({"YERK_DENYLIST_FILE": os.environ["YERK_DENYLIST_FILE"]} if os.environ.get("YERK_DENYLIST_FILE") else {})
+    return env | {k: os.environ[k] for k in CHECK_PASS if os.environ.get(k)}
 
 
 def checked(argv: Sequence[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None,
-            run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run) -> subprocess.CompletedProcess[str]:
+            run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run, reads: Sequence[Path] = ()) -> subprocess.CompletedProcess[str]:
     """One command of a deploy's checks behind the wall (check_props, check_env), waited for; what subprocess.run(...,
     capture_output=True, text=True) returns, so its caller reads it as before. A unit of its own (yerk-deploy-check-<pid>-<n>,
     never a worker's name) that systemd stops at `timeout` (CHECK_SECONDS when None), held to the workers' memory ceiling; a
@@ -607,7 +612,7 @@ def checked(argv: Sequence[str], cwd: Path, tree: Path, private: Path, state: Pa
     cmd = ["systemd-run", "--user", "--wait", "--pipe", "--collect", "--quiet", f"--unit={unit}", "--description",
            "Yerk AI deploy check", f"--working-directory={os.path.abspath(cwd)}", "-p", f"RuntimeMaxSec={cap}", "-p",
            "TimeoutStopSec=10", "-p", f"MemoryMax={MEMORY_MAX}", "-p", "MemorySwapMax=0",
-           *(x for p in check_props(tree, private, state, cwd, os.environ.get("YERK_DENYLIST_FILE", "")) for x in ("-p", p)),
+           *(x for p in check_props(tree, private, state, cwd, os.environ.get("YERK_DENYLIST_FILE", ""), reads) for x in ("-p", p)),
            *(f"--setenv={k}={v}" for k, v in check_env(tree, private, state).items()), "--", *argv]
     try:
         p = run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=cap + 60)
