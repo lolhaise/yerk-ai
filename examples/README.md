@@ -4,7 +4,6 @@ Example files to copy or read: a fake private folder, room templates, an example
 
 - `abilities/`: example write-ups of three abilities and of the question new users ask most, in the shape `yerk explain` answers:
   - `browser.md`: a browser on its own profile that never takes the mouse (described, not built).
-  
   - `morning-brief.md`: the morning brief (half built).
   - `text-as-you.md`: texting as you, with a preview and a veto (built).
   - `what-can-you-do.md`: how a room answers "what can you do?" from abilities.toml.

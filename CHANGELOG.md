@@ -9,6 +9,13 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### abilities-trim (two described abilities and their example leave)
+
+- abilities.toml no longer lists `job-search` and `job-applications`, two abilities that were described and never built: 139
+  abilities, 76 built and 63 described. A room asked for either now says it has no such ability, and files a need if you want one.
+- examples/abilities/job-applications.md is gone with them; examples/README.md, the sample answer in
+  examples/abilities/what-can-you-do.md, the counts in docs/GUIDE.md and the browser entry's last sentence follow.
+
 ### comments-plain (comments and docstrings say what the code guards, never when it happened to whom)
 
 - Comments and docstrings no longer tell a real event with its date and minute, name the owner's own rooms or machines, or quote
