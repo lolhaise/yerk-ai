@@ -332,6 +332,9 @@ YERKD_WORDS = {
     "deploy": {"unit": "the systemd unit `yerk deploy` restarts (default: the one the running yerkd is in)",
                "tree": "the daemon's checkout (default: the unit's working folder)",
                "tests": "the fast tests run before a restart (default test_scrub, test_budget, test_card and test_style)",
+               "wall": "the fast tests, each add-on's and the recall controls run behind a hidden worker's wall, the tree, the layer "
+                       "and the state read-only, the network open, the network slice's to close (not built; default true); false "
+                       "runs them as plain children of the deploy, with its rights and environment, and the card says so",
                "quiet_seconds": "how long every room must have had no message either way, a person's or its own, before the restart (default 240)",
                "copy_seconds": "how long the restart waits for a room's copy that is compacting, which a restart drops (default 300; 0 never waits)",
                "cap_minutes": "the longest a deploy waits for that quiet (default 60)", "proof_seconds": "how long the proof may take (default 60)"},

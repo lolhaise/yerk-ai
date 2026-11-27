@@ -300,8 +300,8 @@ def indexed(state: Path) -> str:
 
 
 def plain(argv: list[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
-    """A check as before the wall, a child of the deploy with its rights and its whole environment, a pytest run's with the
-    layer and the tree on its path (the budget test reads the real rooms), the controls' as it is."""
+    """[deploy] wall = false: a check as before the wall, a child of the deploy with its rights and its whole environment, a
+    pytest run's with the layer and the tree on its path (the budget test reads the real rooms), the controls' as it is."""
     env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state), "PYTHONPATH": str(tree)} if argv[1:3] == ["-m", "pytest"] else None
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env, timeout=timeout)
 
@@ -309,11 +309,13 @@ def plain(argv: list[str], cwd: Path, tree: Path, private: Path, state: Path, ti
 def recall_check(tree: Path, private: Path, state: Path, go: Check = plain) -> dict[str, Any]:
     """The layer's recall controls on the code under test, run in the tree as the fast tests are (memory.controls, through
     `yerk recall-bench --controls`, which writes nothing) by `go`; a check that did not run or printed no result is
-    {"broke": True}."""
+    {"broke": True}, and one with no wall to run behind raises workers.NoWall."""
     try:
         t = go([sys.executable, "-m", "yerk_ai.cli", "recall-bench", "--controls", "--private", str(private), "--state", str(state)],
                cwd=tree, tree=tree, private=private, state=state, timeout=180)
         return dict(json.loads(t.stdout.splitlines()[-1]))
+    except workers.NoWall:
+        raise
     except (OSError, ValueError, TypeError, IndexError, subprocess.SubprocessError):
         return {"broke": True}
 
@@ -339,18 +341,23 @@ def index_held(state: Path) -> Iterator[None]:
 def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check | None = None,
          check: Callable[[Path, Path, Path], dict[str, Any]] | None = None) -> tuple[str, list[str]]:
     """The deploy's checks on the tree as it stands: the core's fast tests ([deploy] tests, else FAST) in the tree, each
-    installed add-on's in its folder, then the recall controls, each behind the wall (workers.checked) unless `go` stands in,
-    the live index held open meanwhile (index_held). Returns the outcome a failure ledgers ("" when all held) and the card's
-    lines."""
-    W, go = words, go or workers.checked
+    installed add-on's in its folder, then the recall controls, each behind the wall (workers.checked) unless [deploy] wall =
+    false (plain, and the card says so) or `go` stands in, the live index held open meanwhile (index_held). Returns the
+    outcome a failure ledgers ("" when all held) and the card's lines; no wall to run behind runs nothing more."""
+    W, walled = words, conf.get("wall", True) is not False
+    go = go or (workers.checked if walled else plain)
+    off = [] if walled else [W.line(f"{W.PLAIN} {W.WALL_OFF}")]
     with index_held(state):
-        for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)]:   # each add-on's too
-            if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
-                        private=private, state=state)).returncode:
-                why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words
-                return "tests failed", [W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why]
-        held, rec = recalled((check or functools.partial(recall_check, go=go))(tree, private, state))   # the layer the daemon serves
-    return "" if held else "recall failed", [W.line(f"{W.DONE} {W.TESTS_PASSED}"), *rec]
+        try:
+            for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)]:   # each add-on's too
+                if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
+                            private=private, state=state)).returncode:
+                    why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words
+                    return "tests failed", [W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, *off]
+            held, rec = recalled((check or functools.partial(recall_check, go=go))(tree, private, state))   # the layer the daemon serves
+        except workers.NoWall as e:
+            return "no wall", [W.line(f"{W.PLAIN} {W.NO_WALL}"), W.line(f"{W.PLAIN} {W.no_paths(str(e))}")]
+    return "" if held else "recall failed", [W.line(f"{W.DONE} {W.TESTS_PASSED}"), *off, *rec]
 
 
 def recalled(r: dict[str, Any]) -> tuple[bool, list[str]]:

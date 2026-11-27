@@ -1291,6 +1291,45 @@ def test_a_check_that_fails_behind_the_wall_deploys_nothing_and_the_card_is_toda
     assert [r[3] for r in rows(state)] == ["tests failed", "tests failed"]
 
 
+def test_wall_false_runs_the_three_plainly_and_the_card_says_so(tmp_path, capsys):
+    """[deploy] wall = false: the checks as before the wall, children of the deploy (the wall's own run is refused in this
+    file, so a walled one fails the test), and a line on the card, on a pass and on a failure."""
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    assert open('f.txt').read() != '1\\n'\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"], wall=False)
+    f = Fake(tree)
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[:2] == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} the fast tests failed"] and out[-1] == f"{words.PLAIN} {words.WALL_OFF}"
+    assert deploy.run(priv, state, ids[2], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[1:4] == [f"{words.DONE} fast tests passed", f"{words.PLAIN} {words.WALL_OFF}", f"{words.PLAIN} recall: not checked, no index"]
+    assert all(words.width(x) <= words.PHONE for x in out)
+
+
+def test_a_wall_that_cannot_be_built_deploys_nothing_and_names_the_setting(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    f = Fake(tree)
+
+    def wall(at):
+        def go(argv, **k):
+            if at in argv:
+                raise workers.NoWall("systemd-run exited 1: Failed to connect to bus: No medium found /run/user/1000/bus")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return go
+    for at in ("tests/test_x.py", "recall-bench"):                     # the tests' unit, or the controls'
+        assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=wall(at)) == 1
+        out = capsys.readouterr().out.splitlines()
+        assert out[:2] == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} {words.NO_WALL}"]
+        assert out[2].startswith(f"{words.PLAIN} systemd-run exited 1: Failed") and "/" not in out[2] and len(out) == 3
+        assert f.restarts == [] and where(tree) == ("main", ids[0])
+    assert [r[3] for r in rows(state)] == ["no wall", "no wall"]
+
+
 def test_the_live_index_is_held_open_while_the_checks_run(tmp_path, capsys):
     """Behind the wall the state folder is read-only and a WAL index's reader there needs its -shm, which a closed index has
     not: the deploy holds the index open read-only out here meanwhile, and closes it after."""
