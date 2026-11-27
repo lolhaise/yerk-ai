@@ -666,7 +666,6 @@ reply = 1500
 # file a room loads may hold before the doctor says so, and how many topics the install may say in two files one room
 # loads. `yerk docs shape --rules` prints each count's exact rule. Zero is the prompting guide's shape: what to do and its
 # why, examples inside <example> tags, each thing said once, calm words (2026-10-21: Yerk an expert on its own harness). A count at or under its number is in the report, not a finding.
-
 negatives_without_why = 0
 shouted = 0
 untagged_examples = 0
@@ -732,7 +731,6 @@ secs = 60
 # 2026-10-22: person-claim-rule raised it by 65, the person and quote shadow rules and their call (the owner's ask), not
 # folded to fit.
 # 2026-10-22: people-card raised it by 56, the people room's card, the board bounce and the note burst (the owner asked why it took so long), not folded to fit.
-
 # 2026-10-22: figure-noise raised it by 90, the figure rule's same-thing test (label words, unit, the reply's own copy, a
 # number's written forms) and its lookup in memory.on_file (the owner's ask), not folded to fit.
 # 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
@@ -744,8 +742,7 @@ secs = 60
 # hearing it, and the room's 10-minute tool timeout that lets a long recording's call finish).
 # 2026-10-22: voice_note raised it by 414, the voice_note tool (voice_note.py, 309: the box's recipe, both voices, the
 # assembly, the probe and the waveform), Discord's voice message path in send_file (45), the daemon's tool and the spend
-# the next run starts the (00), example note (00), says The sample (00) item moved to the next (0) (step and
-
+# writer it shares with transcribe (27), its words (16), the MCP tool (11) and the ability's key check (6) (the owner's ask: give it everything there is), not folded to fit.
 # 2026-10-22: paste-check raised it by 118: the fenced-block view (memory.py, 42: fenced(), earlier_blocks() and
 # room_lines' `first`), the daemon's view kept for the day, its call off the loop, the send refusal and the Stop
 # hook's fifth rule (33), Room.paste_check and its flag (20), the card's row for a refused send (18) and the words (5),
@@ -789,7 +786,6 @@ secs = 60
 # 2026-10-23: deploy-private raised it by 28, `yerk deploy` with no --private taking the private and state folders from the
 # running yerkd's unit, and refusing when there are none (deploy 26, cli 1, words 1), not folded to fit.
 # 2026-10-23: pictures-seen raised it by 224: a picture sent to an owner room is filed beside it and recalled (the owner asked for their pictures to be indexed), not folded to fit: pictures.py (74: the sidecar, its header by code,
-
 # the pending list, the backfill brief), daemon.py (79: the seen tool, the backfill a batch at a time, one chain a room,
 # its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9),
 # words.py (10), workers.py (4: `bind`, `more`), memindex.py (1). 18,544 merged on deploy-private (#95), no line shared.
@@ -820,8 +816,7 @@ secs = 60
 # the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
 # Yerk the same, with every account), not folded to fit.
 # 18,843 merged on model-account-pin (#103), no line shared.
-# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
-
+# 2026-10-23: status-card raised it by 255: `yerk status` and the room's /status in the box card's shape, live (the owner's ask: the same card as the box's, and the reset after the next one), not folded to fit. usage.py 128 (Claude Code's own
 # `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
 # not ask never waiting on one that does), status.py 85 (two
 # lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
@@ -838,8 +833,7 @@ secs = 60
 # (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed)
 # and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account
 # (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key
-# (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
-
+# (config.py, 1) and the morning count by verdict (ledger.py, 1), so no reply costs a judge call. Not folded to fit (the owner left PR 93 to the builder's judgment). Its cold read raised it by 1: a reply the row keeps
 # outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
 # 19,462 merged on room-defaults (#111), no line shared.
 # 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
@@ -851,7 +845,6 @@ secs = 60
 # daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
 # 19,462 merged on taste-eval (#106), no line shared.
 # 2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the
-
 # places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line
 # replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read
 # at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit.
@@ -1298,7 +1291,6 @@ secs = 60
 # the home joins its roots in the same line). 24,569: main d76fadf's 24,568 plus 1.
 # 2026-11-03: card-steps raised it by 3, a room with people showing an owner room's progress card, a row per step, when
 # its block says card = "steps" (the owner preferred it shown in one room with people; every other room with people keeps the 2026-10-21 card), not folded to fit: config.py 2 (`card` in ROOM_WORDS), card.py
-
 # 1 (the docstring's line on it), room.py 0 (_new_card's people line reads it). 24,571: main d76fadf's 24,568 plus 3.
 # 2026-11-03: card-steps merged with main 8c0eb0d (#180): main's 24,569 plus this PR's 3 is 24,572, counted on the
 # merged tree; this PR's config.py, card.py and room.py and #180's daemon.py, no file changed on both sides, merged
@@ -1552,13 +1544,11 @@ secs = 60
 # 12 (the tool's sentence), words.py 11 (the refusals, the box's words, the [attachment] clause, the card's row),
 # channels/discord.py 7 (the [attachment] line's clause on a picture past 2000 px). 27,355.
 # 2026-11-09: memory-docs-shape raised it by 325 on the owner's word (redo the whole harness if that is what it takes), the rules written the way the Claude docs say, gated and checked daily;
-
 # not folded to fit: shape.py 190 (the docs' pinned sentences, the six lesson checks, the store's score and report),
 # doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire),
 # room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call,
 # the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
 # 2026-11-09: fable-5-2 raised it by 230 on the owner's word (everything in Yerk the way Claude Fable 5.2's docs say, and kept that way), not folded to fit: shape.py 152 (the model mapping, the 5.2 page's
-
 # pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id),
 # doctor.py 12 (the rooms' models read, a need per kind), words.py 10 (each new check's name and fix), context.py 6 (news
 # from a kept start), memory.py 6 (the gate's pages), config.py 4, mcp_server.py 2, daemon.py 1. 27,910.

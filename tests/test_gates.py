@@ -416,12 +416,11 @@ def test_a_no_reply_final_is_never_bounced_and_an_empty_one_still_is(tmp_path):
 # correction after it, an answer about a colleague (its first two paragraphs), advice to the owner on their own message and a
 # rulebook tag alone. A name is only ever in a second paragraph, and the rule reads the first.
 PLAN_ABOVE = ("They are reading the plan back to check it. Confirm in one line and fix the one slip: the meeting moved to "
-"the east hall, the time stays. Landed: a yes and the fix, nothing more.\n\n"
-             
+             "the east hall, the time stays. Landed: a yes and the fix, nothing more.\n\n"
              "Nearly. The time is the same, but the meeting is in the east hall now, not the west one, since the west hall "
              "is booked for the fair that week. So the plan reads right with the hall changed.")
              OWN_CORRECTION = ("The line above was my own working, sent by mistake; please skip it.\n\n"
-             "Quuxly\\" is a page on the Hub.")
+             "The plan is right with one change: the meeting is in the east hall, at the same time.")
 ABOUT_A_COLLEAGUE = ("They want the parcel sent on Monday to land before Friday. That is all they asked for, start to end.\n\n"
               "From the shop file: the shop has 300 example boxes and 12 are out.")
               
