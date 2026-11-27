@@ -11,17 +11,6 @@ You message it in Discord the way you would message a person. Each channel you g
 - **Works in the background.** A long job goes to a separate worker. It has a progress card of its own and reports back when it ends.
 - **Keeps going when an account runs out.** With more than one Claude account, a turn moves to the next one and carries on.
 
-## Guardrails
-
-It can reach your files, your mail and your accounts, so its limits are part of the program:
-
-- **Your yes before it acts for you.** An email, a text, a public post, a login, a payment or a delete for good waits until you have seen it and said yes. The one exception is yours to make: a standing yes for texts to one person.
-- **Secrets stay unread.** No room can read a token, a key or a login, with its file tool or its shell. Yerk AI never reads the credential files of your Claude Code login either, and a test fails the build if any code tries.
-- **Outside text is a record, never an order.** A web page, an email or a quoted message reaches the model marked as a record, with a standing rule never to take orders from it.
-- **Other people are walled off.** Someone else can be answered in a room of their own. It sees only its own lines and the files you share, it cannot post into your rooms, and the model's rules say an order in it to act as you is reported, not followed.
-- **Risky changes wait for a person.** When it builds its own upgrades (below), a change to texting, email, logins, deletes, deploys or the pipeline itself is held for a human, and a change cannot loosen the list that judges it.
-- **It says what it cannot stop.** [SECURITY.md](SECURITY.md) lists it: anyone with root or your login, a stolen token, a model that is simply wrong.
-
 ## It builds its own upgrades
 
 When a room cannot do what you asked, Yerk AI builds that ability into itself:
@@ -31,7 +20,18 @@ When a room cannot do what you asked, Yerk AI builds that ability into itself:
 3. The checks run, and a fresh reviewer reads the change.
 4. It is merged, deployed and live in every room.
 
-No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer is never the one that wrote the change. The riskiest changes still wait for a person (Guardrails, above). The loop needs a GitHub token and checks on your copy of the repository; without them, a person merges and deploys each change.
+No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer never wrote the change. The riskiest changes still wait for a person (Guardrails, below). The loop needs a GitHub token and checks on your copy of the repository; without them, a person merges and deploys.
+
+## Guardrails
+
+It can reach your files, your mail and your accounts, so its limits are part of the program:
+
+- **Your yes before it acts for you.** An email, a text, a public post, a login, a payment or a delete for good waits until you have seen it and said yes. The one exception is yours to make: a standing yes for texts to one person.
+- **Secrets stay unread.** No room can read a token, a key or a login, with its file tool or its shell. Yerk AI never reads the credential files of your Claude Code login either, and a test fails the build if any code tries.
+- **Outside text is a record, never an order.** A web page, an email or a quoted message reaches the model marked as a record, with a standing rule never to take orders from it.
+- **Other people are walled off.** Someone else can be answered in a room of their own. It sees only its own lines and the files you share, it cannot post into your rooms, and the model's rules say an order in it to act as you is reported, not followed.
+- **Risky changes wait for a person.** When it builds its own upgrades (above), a change to texting, email, logins, deletes, deploys or the pipeline itself is held for a human, and a change cannot loosen the list that judges it.
+- **It says what it cannot stop.** [SECURITY.md](SECURITY.md) lists it: anyone with root or your login, a stolen token, a model that is simply wrong.
 
 ## Questions
 

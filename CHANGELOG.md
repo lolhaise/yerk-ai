@@ -11,8 +11,8 @@ version changes.
 ### readme-front-page (#2)
 
 - README.md is written for a reader who has never met a harness or Claude Code: one line on what Yerk AI is, five things it does,
-  its guardrails (your yes before anything leaves, secrets unread, outside text a record, other people walled off, risky changes
-  held for a person, what it cannot stop), how it builds its own abilities (four numbered steps), and seven questions a reader
+  how it builds its own abilities (four numbered steps), its guardrails (your yes before anything leaves, secrets unread, outside
+  text a record, other people walled off, risky changes held for a person, what it cannot stop), and seven questions a reader
   asks, each answered in a line or two (is it a chatbot, what it needs and costs, where the data lives, who it is for, how big
   and how tested it is, the catch, contributing). Install, The private folder, The docs and License are as they were.
 - What left the README is in the long pages, whole: the trust list ("What it is, and what it is not") in SECURITY.md, a turn in one
