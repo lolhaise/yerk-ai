@@ -386,6 +386,7 @@ a commit onto the running yerkd: fast-forward only, fast tests, a quiet room, th
 - `--no-tests`: skip the fast tests and the recall check (the card says so)
 - `--unit`: also move a systemd-run daemon onto units/yerkd.service
 - `--timers`: only install and turn on each timer in units/ not installed yet
+- `--check`: only the fast tests, each add-on's and the recall controls, as a deploy runs them, on the checkout as it stands: nothing moved, restarted or ledgered; 0 when all held
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the running yerkd's own, from its unit)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 

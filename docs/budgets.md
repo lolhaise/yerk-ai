@@ -917,7 +917,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-26: due-by-day-2026-11-26 raised it by 41, a `recall` range that reaches past today also returns what is due in it and the due part says so when everything open is further out (build 1c of the owner's build list of Wed Nov 25), not folded to fit (due.py 26: ahead, ranged and asked, the asked list's cap, the part's one line and its docstring, MORE's words; daemon.py 7: tool_recall's list before the hits in the search's thread, its docstring and the journal's count; words.py 5: the three lines of due_line; mcp_server.py 3: the description's sentence). 37,035: 36,994 plus 41.
 
-- `lines = 37035`
+2026-11-27: deploy-step-walled-2026-11-27 raised it by 151, `yerk deploy`'s fast tests, each add-on's and the recall controls run behind a hidden worker's wall, one command in a unit of its own that the deploy waits for (build U1c of the owner's build list), not folded to fit (workers.py 77: check_props, check_env and checked with their docstrings, NoWall, the doors a hidden worker's unit shuts read from one place, doors; deploy.py 65: plain, index_held, step and check_step, the recall check's run, the docstring's sentence; cli.py 5: --check; config.py 3: [deploy] wall's words; words.py 1: the two card lines). 37,186: 37,035 plus 151.
+
+- `lines = 37186`
 
 ## Uncapped
 

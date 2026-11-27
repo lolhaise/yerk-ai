@@ -1,9 +1,12 @@
 """`yerk deploy [REF]`: moves the running daemon onto a commit and proves it is up; when the proof fails, it
 moves the daemon back to the commit it ran and proves that. REF must fast-forward from the running commit and
 from the branch checked out in the daemon's tree, which moves to it by `merge --ff-only` (a rollback moves it
-back with `reset --keep`; a detached tree stays detached); the fast tests run there, then the layer's recall
-controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing); the
-restart waits until no person's turn runs, no room's copy (its compaction off to the side) is younger than
+back with `reset --keep`; a detached tree stays detached); the fast tests run there, each add-on's, then the layer's
+recall controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing), each
+behind a hidden worker's wall in a unit of its own (workers.checked: the home hidden, the tree, the interpreter, the layer
+and the state read-only, secrets/ gone but the denylist file, the doors shut; the network stays the deploy's own, the
+network slice's, not built), a wall that cannot be built deploying nothing ([deploy] wall = false runs them plain, the card
+says so; `--check` runs the step alone, touching nothing); the restart waits until no person's turn runs, no room's copy (its compaction off to the side) is younger than
 [deploy] copy_seconds, no room has had a message either way (a person's or its own post) for [deploy]
 quiet_seconds and the memory index is not rebuilding, and gives up after cap_minutes, the checkout as it was
 found. The proof: the unit active, the channel connected, /status answering under the install's secret with the
