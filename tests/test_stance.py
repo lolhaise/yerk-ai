@@ -16,12 +16,12 @@ from yerk_ai.ledger import Ledger
 
 ASKED = "wow, the example bot did more on the tracker in the past 2 days than in the past 7 months"     # no pushback
 CLAIM = ("The export doesn't back that up. The example bot has been active on the tracker since August. What's new is that "
-        "this time it's in your lane.\n- **Its comments by month:** March 3, July 7, August 21, September 54, and 36 so far "
-        "in October.\n- **The last two days:** 3 comments, 1 new ticket (EX-13), and 7 of its own tickets touched.\n"
-        "- **What's different:** EX-13 is a full write-up of how the release script works, with two builds' steps side "
-        "by side. That's the work you've been testing for a week.\nMy read: with the old repository archived, and the ticket "
-        "counts from the split already on the dashboard, the tracker is where its work gets seen now. EX-13 also puts its "
-        "name on the packaging work before yours.")
+         "this time it's in your lane.\n- **Its comments by month:** March 3, July 7, August 21, September 54, and 36 so far "
+         "in October.\n- **The last two days:** 3 comments, 1 new ticket (EX-13), and 7 of its own tickets touched.\n"
+         "- **What's different:** EX-13 is a full write-up of how the release script works, with two builds' steps side "
+         "by side. That's the work you've been testing for a week.\nMy read: with the old repository archived, and the ticket "
+         "counts from the split already on the dashboard, the tracker is where its work gets seen now. EX-13 also puts its "
+         "name on the packaging work before yours.")
 PUSHBACK = ("Nah that's the new repo effect. For seven months the bot had nothing to be compared to. Now there's a second one "
             "next to it actually shipping, so the board has to look alive. Two of yesterday's \"updates\" were just dragging "
             "August and September due dates out to Oct 30 \N{LOUDLY CRYING FACE}")
