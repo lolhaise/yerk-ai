@@ -1,6 +1,6 @@
 """Checks texting's reply list, the people a room may answer by text for you: yours only, handles in one form, a handle on one
 person only. Each person's sheet beside it (run 2), read by code and checked, and changed only through the report room's `texting`
-of this turn, each change one line of sheets.log. Every person and number here is made up."""
+tool on the owner's own words of this turn, each change one line of sheets.log. Every person and number here is made up."""
 from __future__ import annotations
 
 import json

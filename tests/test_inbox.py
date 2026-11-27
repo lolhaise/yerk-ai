@@ -6,7 +6,7 @@ answers from the last copy and says that copy's time. Nothing here keeps the Mac
 sends. Need 2026-11-09-83: a room asked to confirm the words of a text the owner had just sent found its text field
 empty, as a sent text's can be, while a received one carried its words; Messages kept those words only in the
 message's attributedBody, which the read now brings and reads, and a message with no words anywhere says why. No real Mac
-placeholder."""
+is reached: a fake runner stands in for ssh, and every number and address is a placeholder."""
 from __future__ import annotations
 
 import asyncio

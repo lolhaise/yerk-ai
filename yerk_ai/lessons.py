@@ -1,6 +1,6 @@
 """Keeps the standing rules a room is given as lessons, one file per lesson in memory/rules/ that opens with a one-line summary, and their index,
 rules.md, which a room loads when its session starts. It follows the Claude docs' lesson shape (2026-11-10): "Store one lesson per file with a
-(code-memory). Each lesson is `<memory>/rules/<slug>.md`: front matter first, `class:` its first key and the block under
+one-line summary at the top" (prompting-fable-5) and an index a session start loads, kept concise "by moving detailed notes into separate topic
 files" (code-memory). Each lesson is `<memory>/rules/<slug>.md`: front matter first, `class:` its first key and the block under FRONT_MAX
 characters, since memory.file_class reads that much of a file and a file with no class is private, hidden from every room that is not the owner's;
 then the summary, one imperative line a room can follow with the body unread; then the body, its reason and its cited examples. rules.md is the
@@ -8,7 +8,7 @@ index: one line per job, the job and its lessons' files, in the order filed, no 
 stays under code-memory's limits (a capped start loads it). A lesson is replaced in place ("update an existing note rather than creating a
 duplicate") and its slug never changes; a retired one's file is deleted and a row goes to RETIRED (slug, day, replaced by), so a cite to it still
 leads to the lesson that replaced it, and CITES, written by the conversion (curate.lessons), maps every rules.md:N and rules-topics.md:N cite from
-lesson its rule became. An install with no rules/ folder has not converted and keeps the one-line-per-rule files (memory.rule)."""
+before it to the lesson its rule became. An install with no rules/ folder has not converted and keeps the one-line-per-rule files (memory.rule)."""
 from __future__ import annotations
 
 import hashlib

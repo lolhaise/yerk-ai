@@ -2,7 +2,7 @@
 written. First its line in the prompting guide's shape, by the doctor's own per-line counts with its examples out
 (shape.filing), then the live lines of other jobs on the same thing in the files the owner rooms load (curate.same), each
 settled on the room's next call, superseded or kept with a one-clause reason in its day log; a hand-kept file's line goes
-is a placeholder."""
+to its keeper as one machine-room notice. Every value here is a placeholder."""
 import json
 import shutil
 

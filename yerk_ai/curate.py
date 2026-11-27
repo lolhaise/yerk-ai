@@ -9,7 +9,7 @@ of the pack, and the lines land, appended with a backup, only when the bench doe
 only ever proposed, in the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts,
 condensations, moves to the topic rules, promotions and gates proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule
 file changes only by the owner's `--apply DAY N[,N...]`, backed up first and fitted to its line in budgets.toml, its lines
-none written that a rule's filing would turn back (shape.filing)."""
+blanked rather than cut, and none written that a rule's filing would turn back (shape.filing)."""
 from __future__ import annotations
 
 import difflib

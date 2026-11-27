@@ -6,7 +6,7 @@ by fake_worker_claude.py (fake_claude.py for a room and the meters), Discord's c
 tests' (test_discord.Chan, test_slash.Bot and It), systemd by the worker tests' Units, a notify socket of the run's own
 and stand-ins on PATH for systemctl, systemd-run and ssh, no bwrap for a meter reading, and no network (a connect past
 loopback is refused and counted). It drives the daemon the way a person or a program does, prints one line a check,
-recipe around it.
+state first, and exits 0 only when every check passed. `.claude/skills/verify/SKILL.md` is the recipe around it.
 
     uv run python tests/verify_daemon.py                  # the fixed checks
     uv run python tests/verify_daemon.py --drive FILE.py  # and FILE's drive(run) before the stop (one changed feature)

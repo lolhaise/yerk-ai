@@ -3,7 +3,7 @@ The cases: the three schedule kinds compute the right next fire, sync is idempot
 diff, a removed job is cleaned, a script job's three exit cases deliver, stay silent and alert, an agent
 job becomes a worker with the right account and cap and relays, NO_REPLY is silent, a note is told by
 its room's own session (late after a restart, never twice), the schedule tool round-trips through the
-owner's keeps its own notes and nothing else, under its caps."""
+file, and a room that is not the owner's keeps its own notes and nothing else, under its caps."""
 import asyncio
 import dataclasses
 import hashlib

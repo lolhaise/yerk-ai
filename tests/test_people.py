@@ -3,7 +3,7 @@
 who wrote in the same channel, whose message was filed as "other" and got no reply; the room's `people` lives in rooms.toml,
 which no room reads or writes, and no tool changed who a room answers. Now the owner's own words of the turn add a person by
 one of their messages there, answered from their next message on and at every start after, kept in the daemon's override
-refused wherever rooms.toml's `people` is. Every value here is a placeholder (decision 22)."""
+(rooms.toml never written), refused wherever rooms.toml's `people` is. Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
 import asyncio

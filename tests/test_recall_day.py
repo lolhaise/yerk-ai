@@ -1,6 +1,6 @@
 """Checks searching memory by day: the `recall` tool's `since` and `until` keep a search to the files named for a day in that range.
 The range is applied before either half of the search (keywords and meaning) cuts its pool, an empty range is searched once more
-is a placeholder."""
+without it and says so, and a room reads no more with a range than without one. Every value here is a placeholder."""
 import asyncio
 import json
 import os

@@ -1,7 +1,7 @@
 """Checks texting's sender and its hands, the step that passes a text to the Mac: a text that may go waits a time drawn for it, is
 checked against the thread read again at that moment, and is handed once, dry as a job file, live as one job on ssh's stdin into
 the Mac runner's outbox. Built in run 6. Nothing here reaches a Mac: the thread is the tests' own, and "ssh" is a fake command
-test's tmp folder and prints `queued:<id>`. Time is the tests' own clock, never a sleep."""
+that writes its stdin into the test's tmp folder and prints `queued:<id>`. Time is the tests' own clock, never a sleep."""
 from __future__ import annotations
 
 import asyncio

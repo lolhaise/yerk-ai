@@ -1,5 +1,5 @@
 """Checks `yerk deploy`, which moves the running yerkd onto new code, restarts it at a quiet moment and rolls back if
-the move onto units/yerkd.service, READY=1 only once the port listens, the stall row's hold, dead
+the proof after fails. The cases: the deploy itself (the quiet wait, the proof, the rollback, the ledger rows, the
 card), the move onto units/yerkd.service, READY=1 only once the port listens, the stall row's hold, dead turns found
 from the message, the card that cuts the name and never the fact, job alerts to the machine room, and the upgrade drill.
 systemd, the channel and the daemon's /status are fakes; git is a real repository in tmp_path. Layer 7, run 2."""

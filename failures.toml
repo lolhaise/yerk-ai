@@ -1,4 +1,6 @@
 # What Yerk AI does when a turn, the model's run from a new message to its reply, fails: run it again, shrink the
+# session, move to the next account, or stop and say so. One table, a test per string (tests/test_failures.py). yerkd
+# reads it when it starts and never writes it; you change it by hand when Claude Code fails in a way it does not know.
 #
 # Order, first match wins:
 # 1. Claude Code's own error type: the `error` field on an assistant message, the same twelve

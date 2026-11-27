@@ -1,6 +1,6 @@
 """Checks taste (taste.py), the record of your verdicts on a room's replies: a message of yours that rates its last reply. The old box's classifier
 on its own known cases, the part rendered as the box renders it and inside its budget, no part and no row in a room that is not the owner's or
-per reply per sign, and the capture where the owner's message lands. Every value is a placeholder."""
+whose layer keeps no taste.jsonl, one row per reply per sign, and the capture where the owner's message lands. Every value is a placeholder."""
 import json
 import re
 import shutil

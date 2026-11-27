@@ -1,5 +1,5 @@
 """Checks the texting check (texting/check.py), the step between drafting a text and sending it, which holds a draft it cannot confirm and
-tests/fake_claude.py; nothing here runs a real `claude`, reaches a Mac or posts anywhere."""
+reaches nothing of your memory. The model is tests/fake_claude.py; nothing here runs a real `claude`, reaches a Mac or posts anywhere."""
 from __future__ import annotations
 
 import asyncio

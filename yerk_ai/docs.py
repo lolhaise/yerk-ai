@@ -3,11 +3,11 @@
 pages of the models in models.toml, the Claude Code pages a room's harness leans on) into <state>/docs/claude/<slug>.md, headed
 by its source, fetch time and content hash, class shared. memory.settings adds <state>/docs to every install's memory roots, so
 a room's own recall finds a page in every room, below the owner's notes, and cites it as docs/claude/<slug>.md:line; what a room
-per message leaves the docs out (memory.ranked). The sites answer `Accept: text/markdown` with the page as Markdown
-(checked 2026-10-21 with a plain GET); anything else is refused and the page's old file kept. `yerk doctor` fetches them
+is handed per message leaves the docs out (memory.ranked). The sites answer `Accept: text/markdown` with the page as Markdown
+(checked 2026-10-21 with a plain GET); anything else is refused and the page's old file kept. `yerk doctor` fetches them once
 [docs] refresh_days (1, daily since 2026-11-09, since shape.PINS reads its sentences from them) have passed since the last clean
 refresh, unless [docs] fetch = false (`yerk docs refresh` still fetches when run), and a page whose hash moved is a line in the
-rules may be stale against it."""
+next morning diff, since a changed guide means the rules may be stale against it."""
 from __future__ import annotations
 
 import hashlib

@@ -1,5 +1,5 @@
 """Makes a picture sent to a room findable later, the way its uploads and recordings are, and lets a room zoom in on part of one. The room reads
-turn it arrives (Read on an image is vision, so its content is in context at no extra cost) and files what it read with the
+it in the turn it arrives (Read on an image is vision, so its content is in context at no extra cost) and files what it read with the `seen` tool:
 NAME.seen.txt beside the picture in <inbox>/<message id>/, its first line the header this module writes (room, message id, the local time it was
 saved, its name), then every word on the picture verbatim in reading order, then one or two lines of what it shows. A password, a passphrase, a
 key or a token the picture shows is written [left out] in its place, never its value (words.SEEN_LEFT_OUT, the tool's description and the

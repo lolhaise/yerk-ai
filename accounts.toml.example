@@ -1,4 +1,5 @@
 # An example accounts.toml, the file that names the Claude Code accounts Yerk AI may use: copy it to your private
+# folder as accounts.toml and edit it there (it matches examples/private/accounts.toml). The program never writes it.
 # One line per account: its name, its Claude Code config folder, its order (lower is tried
 # first), and optionally its one-year token file (relative to this folder; the default is
 # secrets/claude-<name>.token, written by `yerk accounts token NAME`). Adding or removing an

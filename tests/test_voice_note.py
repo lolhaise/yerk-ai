@@ -1,8 +1,8 @@
 """Checks the voice_note tool (voice_note.py), which turns a script a room writes into a spoken voice note sent as a Discord
+voice message. Offline: the sections and the markup Fish (the text-to-speech service) gets, the probe's match, a whole note
 against a fake Fish on a local port (all or nothing, the spend rows, the gate, the keys), the loudness and opus step on
-synthetic tones, the probe failing a note, the Discord voice message's payload and its plain-file fallback, `send` taking a
+synthetic tones, the probe failing a note, the Discord voice message's payload and its plain-file fallback, `send` taking a note
 as voice, and the ability's entry. One test makes a real note, behind YERK_VOICE_LIVE=1 with keys in $YERK_PRIVATE/secrets/."""
-$YERK_PRIVATE/secrets/."""
 from __future__ import annotations
 
 import asyncio

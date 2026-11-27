@@ -1,7 +1,7 @@
 """Checks the `remember` tool, with which a room files a new fact, decision or correction into
 Yerk's own memory tree in the same turn. A correction marks every old line it names, recall never
 puts a superseded line above its replacement, and a room that is not an owner room writes its own
-placeholder."""
+class only. Every value here is a placeholder."""
 import asyncio
 import json
 import re

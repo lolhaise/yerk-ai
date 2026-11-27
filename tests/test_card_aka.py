@@ -2,7 +2,7 @@
 front matter may say `aka: name, name`, the other names it answers to, each one mentions.key_of takes (memory.card_names). The
 mention index keys the card by each as by its own name, after a card whose own name it is; `remember` files under the one card
 whose aka its `about` is; a new card started beside one that shares its first word says so (`near`); the night's promotion
-made up."""
+reads a card's pack by its aka too. Every name here is made up."""
 from __future__ import annotations
 
 import asyncio

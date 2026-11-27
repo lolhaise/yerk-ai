@@ -1,6 +1,6 @@
 """Checks that a `recall` search that names no number of hits gives twelve: the six a search for six gives, exactly as they are, then six more
 as one line each. Those come first from the keyword half's own top six the fusion left out, then the fused order's next, none of them twice
-is handed, and the weekly bench's number, stay at six. Every value here is a placeholder."""
+and none a room may not read. What a message is handed, and the weekly bench's number, stay at six. Every value here is a placeholder."""
 import asyncio
 import json
 import sqlite3

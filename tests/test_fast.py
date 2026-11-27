@@ -1,6 +1,6 @@
 """Checks how the engine, the only code that talks to Claude Code, turns on fast mode (Claude Code's `/fast`): fast mode reaches a room's Claude
 Code only when the room asked for it AND runs on Fable 5.2 by its full id. Such a process launches with "fastMode" in its --settings file and is
-line, read to the end of its result and never recorded; every other process launches exactly as before."""
+given `/fast on` before its first line, read to the end of its result and never recorded; every other process launches exactly as before."""
 import asyncio
 import json
 import logging

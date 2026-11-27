@@ -1,5 +1,5 @@
 """Checks the live progress card a room shows while it works, built from Claude Code's streamed events: narration as it streams,
-target in plain words, ticked or crossed, the thinking line only where a room turns it on."""
+one row per tool call with its target in plain words, ticked or crossed, the thinking line only where a room turns it on."""
 import json
 from types import SimpleNamespace as NS
 

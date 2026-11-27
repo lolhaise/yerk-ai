@@ -3,7 +3,7 @@ its daily check, with Claude Code's Read, Grep and Glob tools, and that other ro
 124), a room asked to check a worker's re-pinned docs sentences against the fetched page, with that day's doctor findings
 read first, Grepped the page and doctor.json, Claude Code refused both reads, and the pins were checked against another log's
 quotes. The daemon writes the docs root and doctor.json into every owner room's settings (a sealed room's: the fetched pages
-harness from the files."""
+alone), never as an --add-dir, and the mechanics say where they are, so every room answers on its harness from the files."""
 import json
 from pathlib import Path
 

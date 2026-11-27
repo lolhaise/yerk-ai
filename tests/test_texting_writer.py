@@ -1,5 +1,5 @@
 """Checks texting's writer, which drafts the answer to a burst of texts: one decision per burst, in dry mode, every statement about you with its
-goes through fake_claude.py, which records the argv and the stdin it was handed; no account is touched."""
+source. Built in run 3; every call goes through fake_claude.py, which records the argv and the stdin it was handed; no account is touched."""
 from __future__ import annotations
 
 import asyncio

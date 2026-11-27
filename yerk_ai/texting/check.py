@@ -1,5 +1,5 @@
 """The check: each drafted reply or tapback (a `decided` row whose decision is reply or react) is read once, before it may go, by a
-that can reach nothing of the owner's memory. The code's own pre-check runs first, with no model call: one hit holds the draft
+pass that can reach nothing of the owner's memory. The code's own pre-check runs first, with no model call: one hit holds the draft
 with its reason. Then one `claude -p` with no tool, no MCP server, no settings and an empty folder is handed on stdin the
 thread, the person's sheet as it is on disk now, their texts and the draft with its numbered statements, each fenced. The code
 reads its answer and releases only what it can confirm itself: the model said release, failed nothing, left nothing out, and

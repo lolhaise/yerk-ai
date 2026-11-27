@@ -2,7 +2,7 @@
 falls short. The cases (DESIGN 8, decision 18): each gate's control set passes untouched and its blocked case is blocked; the parser
 reads quotes and heredocs the way the shell does; the approval gate holds and releases once; the tamper row; the silent-ending
 bounce once and only once; the stub bounce on both of 2026-10-21's filed-instead-of-answered turns; the note bounce on 2026-10-29's
-reply; the decision 25 rule's fixture; the hooks' own time measured over a real local HTTP round trip."""
+plan-before-the-answer reply; the decision 25 rule's fixture; the hooks' own time measured over a real local HTTP round trip."""
 import asyncio
 import json
 import re

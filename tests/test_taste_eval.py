@@ -1,6 +1,6 @@
 """Checks the taste eval runner (evals/taste/run.py), where a judge model reads a room's reply and says whether you would
 complain about it: the judge never sees what you wrote after the reply, the reply is marked in the prompt, every row gets one
-true when the reply carries a marker word)."""
+call, and the table's numbers follow from the calls (a fake claude answers true when the reply carries a marker word)."""
 import importlib.util
 import json
 import os

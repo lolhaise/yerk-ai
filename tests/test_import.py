@@ -2,7 +2,7 @@
 private layer. The cases: one chat's whole history filed under discord:<id> with no room made (its label, its class, a second run
 only tops up), --dry-run writing nothing and printing every line it would file, attachments named with their size and saved only
 with --files, the server's inventory (every chat, a covered one marked, one the bot cannot read and its threads not asked for)
-of every chat no room covers past one that fails, and a person's old channel filed behind her room's wall."""
+and the import of every chat no room covers past one that fails, and a person's old channel filed behind her room's wall."""
 import json
 from datetime import datetime, timedelta, timezone
 

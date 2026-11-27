@@ -1,6 +1,6 @@
 """Checks the memory, the day logs and the search index over them. The cases: the day's log (capture, dedupe),
 the index (per-chunk updates, scope, freshness against the disk, timeout apart from failure), recall ranking on
-recall bench and the manifest. Every value here is a placeholder."""
+a fixture, read_memory's confinement, the recall bench and the manifest. Every value here is a placeholder."""
 import json
 import os
 import re

@@ -2,7 +2,7 @@
 stop mid-turn leaves the turn's messages for the next start and nothing else, a turn that crashes is said in the room, a stream
 log that cannot be written never stalls a turn, a message the ledger (the database of what ran) could not take is read again once
 it can, a ready after a lost gateway session catches the channel up, a ledger newer than the code is refused untouched, a second
-names the version and the commit, as text and as one JSON document."""
+daemon on one state folder is refused, and `yerk status` names the version and the commit, as text and as one JSON document."""
 import asyncio
 import json
 import logging

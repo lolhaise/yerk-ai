@@ -99,10 +99,6 @@ Past Claude Code's own tools and Yerk AI's own ([docs/tools.md](docs/tools.md)),
 - [docs/GUIDE.md](docs/GUIDE.md): the long guide: running it, and how each part works inside
 - Six reference pages that `yerk docs own` writes from the code: [commands](docs/commands.md), [tools](docs/tools.md), [settings](docs/settings.md), [budgets](docs/budgets.md), [hooks](docs/hooks.md), [units](docs/units.md)
 - [docs/STATUS.md](docs/STATUS.md): how it was built, stage by stage; not checked against today's code
-
-
-
-
 - [CHANGELOG.md](CHANGELOG.md) says what each merge changes, [STYLE.md](STYLE.md) how every card and notice reads, and [NOTICE](NOTICE) where the lifted code comes from.
 
 Every folder has a README.md that says what is in it.

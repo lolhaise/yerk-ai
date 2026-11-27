@@ -7,9 +7,9 @@
 """yerk-index, the memory search program: in its own process it keeps a keyword index of the memory folder, and a meaning index when an embeddings key is set.
 
 One SQLite file in the state folder (DESIGN 5; L47) holds an FTS5 keyword index over the private memory
-the daily logs, fact files, the curated file and open loops, plus any read-only roots the private
+tree: the daily logs, fact files, the curated file and open loops, plus any read-only roots the private
 yerkd.toml adds. The process stats the tree when inotify says a file in it moved; a file whose size or mtime
-moved is chunked again and only the chunks whose text changed are written, one short transaction
+moved is chunked again and only the chunks whose text changed are written, one short transaction per file,
 so a line appended to a day's log rewrites one chunk (L48, L49). A full rebuild runs only on `--rebuild`.
 `--check` compares the index with the disk, never with the index's own report (L53), and a timeout reads
 differently from a failure (L54). The daemon only reads the file.

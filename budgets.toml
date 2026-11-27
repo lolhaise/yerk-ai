@@ -2,7 +2,8 @@
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
 # the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics,
 # [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build
-# when a part or a total passes its number here.
+# when a part or a total passes its number here. The program only reads this file: you change a number by hand,
+# together with the code that needs it, and add a dated note under its line that says why.
 
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
@@ -237,7 +238,7 @@ total = 137218
 # 2026-11-10, need-2026-11-10-82: the `page` tool's `screen` (the PC monitor the owner names, the page maximized there in a
 # window of its own, the screen woken with no click and said painted only once the tab says so, since a scheduled check
 # told to open the page on the owner's middle monitor heard "opened on the owner's screen" while the browser had put it on
-# the left one, unpainted on a screen asleep, and only a click, which needs the owner's word, would wake it; filed 2026-11-10
+# the left one, unpainted on a screen asleep, and only a click, which needs the owner's word, would wake it; filed 2026-11-10)
 # takes the tool from 2,202 to 2,524 as this tree builds it, all 23 from 25,338 to 25,660 (322 more, measured on
 # main 4e7a617 and on this tree the same way), about 26,373 as sent (713 over the build, as on need 79's tree), 273 over
 # the line; so 26,400, no part could pay, the total rose by the 300 (to 129,471 on main's 129,171).

@@ -2,7 +2,7 @@
 hits a wall files what it needed (the `need` tool: one line, a proposal of kind `need` on the day's rules-proposals page,
 numbered with curate's, and one line in the machine room); the same ability filed again is folded into the open need, never
 a second builder; `yerk needs build DAY N` turns it into a builder worker's brief on [needs] account; `yerk needs list` says
-is a placeholder (decision 22)."""
+each one's state and `yerk needs done DAY N PR` marks it merged. Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
 import asyncio

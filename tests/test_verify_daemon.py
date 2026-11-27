@@ -1,7 +1,7 @@
 """Checks that the real daemon runs offline and that every task it starts does its first piece of work. tests/verify_daemon.py (the /verify
 recipe's run) starts yerkd's own main() once on a scratch copy of the example layer with only the outside world replaced, each long-lived
 task run_discord starts seen doing its first piece of work, driven from outside as a person or a program does. A unit test that swaps the
-ones that return at once passed with the meters' keeper never started (2026-11-17); this one fails, naming the step."""
+daemon's tasks for ones that return at once passed with the meters' keeper never started (2026-11-17); this one fails, naming the step."""
 import os
 import subprocess
 import sys

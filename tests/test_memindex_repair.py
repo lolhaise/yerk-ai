@@ -1,6 +1,6 @@
 """Checks that yerk-index, the program that keeps the memory's search index, heals itself: a recovered index file whose
 keyword table lost its virtual table but kept the shadow tables starts again and finds what it found before, and a Python
-FTS5 is told so in one line instead of a stack trace. Everything is under pytest's tmp_path."""
+whose SQLite has no FTS5 is told so in one line instead of a stack trace. Everything is under pytest's tmp_path."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """Checks that a `recall` search whose day range reaches past today also returns the still-open lines filed with a due date in that
 range, complete, with no ranking and no model (due.ahead, due.ranged, due.asked), while every other call answers as before, byte for
 byte. This is what is due on a day past the week (build 1c of the owner's build list of Wed Nov 25). Every name, line and day is made up,
-off any day the suite runs on, at an hour where UTC is already on the next day."""
+from the example layer; every clock is stopped, years off any day the suite runs on, at an hour where UTC is already on the next day."""
 from __future__ import annotations
 
 import asyncio

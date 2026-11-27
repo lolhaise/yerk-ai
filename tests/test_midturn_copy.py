@@ -2,7 +2,7 @@
 background that becomes the room's session once it is ready. A room learns its session's size only as a turn ends, so one turn that starts under
 the copy's band and grows across it ends in the held compaction, and a message then waits about two minutes (in 96 hours measured: 7
 of 1,189 turns grew over 100,000, one ended 7,544 under the held line). On, the copy starts at the call whose message_start first reaches the
-GROW turn of the fake (tests/fake_claude.py), its calls held after each message_start until the test lets them go on."""
+band. Every test drives a GROW turn of the fake (tests/fake_claude.py), its calls held after each message_start until the test lets them go on."""
 import json
 import logging
 import threading

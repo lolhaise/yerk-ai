@@ -1,6 +1,6 @@
 """Checks a worker's life on a fake launcher in place of systemd: start, its progress card from
 TASKS.md at most once a second, completion and the relay of its report or the skip, death, timeout
-against the ledger, and the environment a worker gets."""
+and stop, re-attach after a restart, status against the ledger, and the environment a worker gets."""
 import asyncio
 import json
 import re

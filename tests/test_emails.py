@@ -4,7 +4,7 @@ email address had a mail tool that reads only, a text tool that reaches phone nu
 owner's Gmail, so it handed the owner a block to paste into an email themselves. An email in the owner's name goes from the owner's own Gmail with
 the room's files attached, held first with who it goes to, its subject, its files and its words shown in the room, then sent once on the owner's
 word, and never from a person's room, from a worker, past a rule turned off or a hook that failed open. An email that did not go is told apart
-have. A fake Gmail here stands in for the real one: nothing leaves the machine, and every address and name is a placeholder."""
+from one that may have. A fake Gmail here stands in for the real one: nothing leaves the machine, and every address and name is a placeholder."""
 from __future__ import annotations
 
 import asyncio

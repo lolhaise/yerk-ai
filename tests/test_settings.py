@@ -1,6 +1,6 @@
 """Checks the settings tool, with which a room's model, thinking level and account are changed from the room
 itself. Owner rooms only, listed models, levels and accounts, the daemon's override over rooms.toml, applied once
-session resumed; and the relay of a worker that left no report."""
+the running turn ends with the same session resumed; and the relay of a worker that left no report."""
 import asyncio
 import json
 import logging

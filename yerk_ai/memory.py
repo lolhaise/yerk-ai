@@ -3,7 +3,7 @@
 Files are the truth (DESIGN 5). The tree lives in the private layer: `[memory] root` in yerkd.toml
 (default `memory/` beside it) holds `daily/YYYY-MM-DD.md`, where every message of every room is
 written as it lands (L55), and the fact files, the curated file and open loops. `[memory] also` names
-roots the index reads but nothing here writes. The index itself is yerk-index (memindex.py).
+more roots the index reads but nothing here writes. The index itself is yerk-index (memindex.py).
 """
 from __future__ import annotations
 

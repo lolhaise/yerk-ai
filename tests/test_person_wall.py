@@ -2,7 +2,7 @@
 rooms only. From the person-room-parity cold read (2026-10-23): an owner room's picture sidecar, an upload there that says it is shared, its day-log line
 and its fact file hold one placeholder word; a person's room asking for it through recall (keywords, and a meaning half that hands back every chunk), the
 per-message recall, the pack, read_memory and `seen` gets nothing of it, while the owner's rooms find it. A person's room's own sidecar is found by it
-other person's room, whatever class rooms.toml gives that room's lines. Every value here is a placeholder (decision 22)."""
+and by the owner's rooms, and by no other person's room, whatever class rooms.toml gives that room's lines. Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
 import asyncio

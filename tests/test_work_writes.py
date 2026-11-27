@@ -1,7 +1,7 @@
 """Checks that every room writes a text file in its own work folder without Claude Code asking for approval, and is still asked outside it. The case
 behind it (need 38 of 2026-11-02): an owner room asked to write a sheet in its work folder before a hand-over ran `printf ... > <work folder>/sheet.md`
 three times, and each came back "Output redirection to '...' needs approval" from Claude Code's own check, with nobody at the keyboard; its Write tool
-way. Claude Code 2.1.316 auto-allows a sandboxed command, but a command its sandbox does not auto-allow, and every Write and
+asked the same way. Claude Code 2.1.316 auto-allows a sandboxed command, but a command its sandbox does not auto-allow, and every Write and
 Edit, is asked in a room's default mode unless an Edit rule covers the path (a scratch probe on 2.1.316, 2026-11-02: the
 redirect and the Write tool asked inside the working folder without the rule, landed with it, and asked outside it either
 way). The daemon writes that one rule, on the room's own work folder, into every room's settings."""

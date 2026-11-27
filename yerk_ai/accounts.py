@@ -1,5 +1,5 @@
 """Loads the Claude Code accounts a room can run on, rests one that fails and picks the next. Each account is one line in
-optionally a one-year token file. One code path for every account; nothing else names one."""
+accounts.toml: a name, a Claude Code config folder, an order, and optionally a one-year token file. One code path for every account; nothing else names one."""
 from __future__ import annotations
 
 import json

@@ -1,6 +1,6 @@
 """Workers: a heavy job moves out of the room into a worker, a separate Claude Code run with its own progress
 card that reports back when it ends. A worker is a headless `claude -p` run owned by Yerk AI (DESIGN 6,
-daemon restarts.
+decision 5), one systemd transient unit `yerk-worker-<id>` each, so it outlives turns and daemon restarts.
 
 - Start: a staging folder <root>/<id> (BRIEF.md, PROMPT.md, worker.json, TASKS.md when the call
   gives the items), a `workers` ledger row, the card in the room, then the unit: `claude -p` under one

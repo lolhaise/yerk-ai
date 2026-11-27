@@ -14,8 +14,8 @@ puts the transient unit back. The unit is [deploy] unit, else the user service w
 yerkd's pid (the card names it), else nothing is touched; yerk-index's unit, found from its pid, restarts after
 it and the proof wants it on the commit too. Each row is written before its restart. A fault, Ctrl-C, SIGTERM or
 SIGHUP from the quiet wait to the proof is never a traceback: once the daemon was stopped or moved it is a
-proof and the rollback runs; before that, a refusal with the daemon as it was. With no --private and no
-$YERK_PRIVATE the private and state folders are the daemon's own, from its unit's command line (the card
+failed proof and the rollback runs; before that, a refusal with the daemon as it was. With no --private and no
+$YERK_PRIVATE the private and state folders are the daemon's own, from its unit's command line (the card says
 so), else it refuses: the fast tests never read the example layer. Its design: DESIGN 11, L153, L203, L226."""
 from __future__ import annotations
 

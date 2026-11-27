@@ -3,7 +3,7 @@ through yerkd's Discord bot, so a room asked to post a file again gets it back a
 Before the tool (need 69 of 2026-11-06), the room's history listing gave the file's name and no address, its shell had no
 network, and the copy another program kept on the box was outside what a room may read. The message is named by its id (the
 room's own channel, then the one it watches), by its link (an owner's room anywhere in its own server), or with a file's name
-the room posted that file in, from the ledger. Every id, name and file here is a placeholder."""
+alone, the newest message the room posted that file in, from the ledger. Every id, name and file here is a placeholder."""
 from __future__ import annotations
 
 import asyncio

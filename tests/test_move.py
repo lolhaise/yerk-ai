@@ -1,7 +1,7 @@
 """Checks `yerk room add`, which moves a Discord chat in as a new room, against a fake Discord REST client and a fixture
 private layer. The cases: the channel (its overwrites copied from the room it is made like), the voice, the block (loaded and
 through the people guard before anything changes), the one history import (roles, attachments, a second run only tops up),
-room's own layer behind the wall; and --dry-run writing and sending nothing."""
+the webhook and the lines it prints; a person room's own layer behind the wall; and --dry-run writing and sending nothing."""
 import json
 import os
 import tomllib

@@ -1,9 +1,9 @@
 """Checks the walls: the approval, restart and worker rules read a shell command as what would really run, whatever its shape.
 
-G1: the approval and restart rules read a shell command the way the delete rules do, as what would really run (unwrap):
+From the walls review of 2026-11-09 (mission 7): each test here failed on main da8bfd8 and passes with its patch.
 G1: the approval and restart rules read a shell command the way the delete rules do, as what would really run (unwrap): a held command stays held behind
 a wrapper, in a nested shell, after a shell keyword, behind xargs or by its full path, and the control set still passes untouched. The live case: worker
-need-2026-10-28-24` past the worker gate; the missing GitHub login was what stopped it.
+00c67e ran `timeout 60 git push -u origin need-2026-10-28-24` past the worker gate; the missing GitHub login was what stopped it.
 """
 from pathlib import Path
 

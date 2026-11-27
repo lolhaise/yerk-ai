@@ -1,7 +1,7 @@
 """Checks that a rule told once is known in every room. `remember` with a `job` files how a job is done from now on
 into the install's one rules file, from an owner's room only; every running room hears what changed on its next
 message, once per version, and a session that starts after the change has it in its start file and hears nothing
-is a placeholder."""
+(decision 15). Every value here is a placeholder."""
 import asyncio
 import json
 import shutil

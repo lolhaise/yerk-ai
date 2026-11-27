@@ -1,7 +1,7 @@
 """Checks the rule-shape check (shape.py), which scores the rule files a room loads on five counts: a "do not" with no reason, a shouted word, an
 example outside example tags, an alarm mark, one topic in two files. Each count on a fixture file of its own (tests/fixtures/shape/), each exemption
 its rule names, the thresholds in budgets.toml [shape], the doctor's findings and each room's report of its class, a rule filed in the last day named
-and the shipped mechanics and example layer clean, so a stranger's install starts in the shape."""
+by its cite, the morning line with the totals, and the shipped mechanics and example layer clean, so a stranger's install starts in the shape."""
 import json
 import time
 from datetime import datetime, timezone

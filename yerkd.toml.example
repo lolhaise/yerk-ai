@@ -1,5 +1,7 @@
 # An example yerkd.toml, the settings of yerkd, the program that stays running, carries every room's messages and runs
-# is a placeholder.
+# its workers. Your own copy lives in the private folder beside rooms.toml (docs/GUIDE.md: The private folder), and
+# docs/settings.md lists every key with its default. Its values are placeholders and examples, not a working file:
+# start your own copy from the [discord] lines the front page (README.md, Install) gives.
 
 [discord]
 token_file = "secrets/discord.token"     # the bot's token, a file only you can read (0600)

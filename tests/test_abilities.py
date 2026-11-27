@@ -1,5 +1,5 @@
 """Checks abilities.toml, the manifest of every ability Yerk AI has and every one it knows how to build but does not ship. The cases: every
-described one carries what, how, tier, needs, price, free path and why it is not built, none holds the
+entry says built or described, every described one carries what, how, tier, needs, price, free path and why it is not built, none holds the
 shape of a piece of anyone's life (patterns, never names), `yerk abilities` stays one phone-width line per ability, `yerk explain` answers
 every described one from its entry, and a room that names one, or asks "what can you do", gets the manifest's answer whole within the
 recall cap, the size limit on the notes a message arrives with. The described entries are decision 26, the patterns rule decision 22."""

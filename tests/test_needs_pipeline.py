@@ -1,7 +1,7 @@
 """Checks the needs pipeline (pipeline.py), which takes an ability a room filed as missing from build to live with no person. A filed
 need goes built, checked, read cold, merged, deployed and live, one need at a time and the rest queued; [needs] auto off is the hand
 road. GitHub is a fake `github.api` (routes to answers, every call recorded), the deploy unit a fake systemd-run, the workers the fake
-real token file, GitHub or systemd. Every value here is a placeholder (decision 22)."""
+units of test_pictures; no test reads the real token file, GitHub or systemd. Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
 import asyncio

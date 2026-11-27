@@ -1,7 +1,7 @@
 """Checks that an outside action held for your yes, such as a post or a text, shows you its exact text
 before your yes is asked for: inline when it fits one message, as a file right after the line when it does
 not, and a code fence inside the text cannot close the block it is shown in; a room with people is shown
-never its JSON. Nothing here runs a command or posts anywhere."""
+the call's content in plain words, never its JSON. Nothing here runs a command or posts anywhere."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """Checks `yerk backup` and `yerk restore` (backup.py), which keep in one dated archive what one bad disk would take, and put it back. The cases, on a copy
 of the example layer (examples/private, the fake private folder the tests use) with example values only: the archive restores into an empty folder byte for
 byte with every mode kept, a secret's 0600 too; an archive with one byte changed or cut short is refused before anything is written, and without the manifest
-restore (the mutation); the last N stay; the layer is restored over only with --force, after a backup of it, what it
+check the changed one would restore (the mutation); the last N stay; the layer is restored over only with --force, after a backup of it, what it replaces
 moved to the trash; never under a running yerkd unless --force; the card and the doctor say the newest's age. Example values only is decision 22."""
 from __future__ import annotations
 

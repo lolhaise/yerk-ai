@@ -3,7 +3,7 @@ text is held first with its words and who it goes to shown in the room, then sen
 person's room, from a worker, past a rule turned off or a hook that failed open. The case behind it (need 1 of 2026-10-24):
 a room asked to text a person for the owner had no tool to send one, the Mac's Messages would not answer over plain ssh,
 and the room wrote the line for the owner to paste and send. A text that did not go is told apart from one that may have. A
-nothing leaves the machine, and every number and address is a placeholder."""
+fake bridge here stands in for the Mac: nothing leaves the machine, and every number and address is a placeholder."""
 from __future__ import annotations
 
 import asyncio

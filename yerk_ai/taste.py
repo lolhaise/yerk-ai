@@ -1,12 +1,12 @@
 """Your ratings of a room's replies: a message of yours that praises or faults the room's last reply is kept as one
 row in taste.jsonl, and every message to one of your own rooms carries the rated replies, your words beside what
 the room had said. The format is the one an earlier setup of the maintainer's used, so replies rated there carry
-the owner's files).
+over as they are.
 
 The classifier is that setup's too, its three lists unchanged: a verdict is a phrase about the reply (praise, its length, a
 repeat, the wrong register), never about the room (an insult aimed at the room, even seconds after praise for its reply, rates
 nothing), praise with a complaint is the complaint, and anything else rates nothing. The file is the switch: a layer without
-no row and no part, and a room that is not the owner's gets neither.
+taste.jsonl gets no row and no part, and a room that is not the owner's gets neither.
 """
 from __future__ import annotations
 

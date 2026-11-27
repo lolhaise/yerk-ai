@@ -2,7 +2,7 @@
 be found later. The room writes it with the `seen` tool (the room's own read is the engine, the header and path are code); a person's room files its
 own (person-room-parity); the index takes the sidecar as an inbox text kind in its room's class, and recall and read_memory show its lines behind
 their mark, never as anyone's words; `yerk pictures backfill` files the older ones through Yerk workers, a batch of 20 at a time (pictures-seen,
-placeholder (decision 22)."""
+2026-10-23). Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
 import asyncio

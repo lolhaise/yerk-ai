@@ -1,6 +1,6 @@
 """Checks that a room that may not read everything (a room for another person, a sealed room, a room with its own `also`) searches
 only the chunks of memory it may read: where your notes name a person in many chunks, the room's own lines on that person still reach
-search, and nothing it may not read reaches it. An owner room's search is the one it was. Every value here is a placeholder."""
+its search, and nothing it may not read reaches it. An owner room's search is the one it was. Every value here is a placeholder."""
 import time
 from datetime import datetime, timezone
 

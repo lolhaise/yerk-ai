@@ -1,6 +1,6 @@
 """One long-lived, read-only connection to the bridge app on your Mac, through which texting reads your Messages threads (imsg's JSON-RPC, one request
 or notification a line). It is adapted from an earlier iMessage channel of this project, which is not in the repository. Read-only, with no switch to make it
-method but the three reads is refused here before a byte is written, so it can never send, react or change anything on the Mac."""
+otherwise: every method but the three reads is refused here before a byte is written, so it can never send, react or change anything on the Mac."""
 from __future__ import annotations
 
 import asyncio

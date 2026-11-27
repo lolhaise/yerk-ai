@@ -1,7 +1,7 @@
 """Checks where the web plug-in (plugins/web, the add-on that ships here) meets the harness. Its spend rows reach the
 morning diff (the daily 06:30 report), `yerk explain web` answers from the abilities file, the rooms template attaches it
 by its command line, and the shipped mechanics send a picture on the web to its web_image. The spend rows follow
-tests: `npm test` in its folder."""
+decision 32. The plug-in itself (plugins/web, JavaScript, outside the code count) has its own tests: `npm test` in its folder."""
 import json
 import re
 import tomllib

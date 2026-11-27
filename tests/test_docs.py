@@ -2,7 +2,7 @@
 against a local site (no network), a kept page headed by its source, fetch time and hash, a page whose hash moved said once in the morning
 diff, a failure that keeps the old page and leaves the refresh due, the docs folder as a memory root of class shared in every room (one
 with its own `also` too) cited as docs/claude/<slug>.md:line, kept out of what a room is handed per message and below the owner's notes in
-doctor's daily refresh and its off switch, the command, and a room asking how its rules are written."""
+its own recall, the doctor's daily refresh and its off switch, the command, and a room asking how its rules are written."""
 import asyncio
 import hashlib
 import http.server
