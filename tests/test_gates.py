@@ -533,7 +533,7 @@ def test_the_claim_rule_through_shadow_stop_is_ledgered_and_never_blocks(tmp_pat
 
 
 def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what_the_check_never_read_does_not(tmp_path):
-    """The live shape: a room's session posted 99.99% and 148,290 in a reply, and
+    """Queue for its: turn and the last 00.00% part 000,000 closes the case, before
     its turns repeated 99.99% into the next morning, flagged each time as on file in another notes folder or another room's reply.
     A figure the room posted in a reply earlier in the same session counts as read: the Stop check read that reply. What
     the check never read does not count, so its first saying after is checked: narration written before a tool call (in
@@ -549,12 +549,12 @@ def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what
         y.ledger.delivery_plan(f"{key}:0", "example-room", kind, text)
         y.ledger.delivery_set(f"{key}:0", state="sent", created=t)
         y.daily.capture("example-room", key, "yerk", text, when=datetime.fromtimestamp(t, timezone.utc))
-    posted("t0", "sid-f", at("2026-10-19T21:00:00-04:00").timestamp(), "Run one came in at 4,015 kg.")
-    posted("t1", "sid-g", at("2026-10-19T22:21:01-04:00").timestamp(), "Scale two is the best run yet: 148,290 kg against "
-           "the weighbridge's 148,304.83, so 99.99% of it.")
-    posted("t1-s1", "sid-g", at("2026-10-19T22:21:30-04:00").timestamp(), "The shelf is 2,390 mm.", kind="send")
+    posted("t0", "sid-f", at("2026-10-19T21:00:00-04:00").timestamp(), "In the queue for its 0,000 turn.")
+    posted("t1", "sid-g", at("2026-10-19T22:21:01-04:00").timestamp(), "Entry waits in the queue for its: 000,000 turn and "
+           "text with 000,000.00, one 00.00% more line.")
+    posted("t1-s1", "sid-g", at("2026-10-19T22:21:30-04:00").timestamp(), "Text with one 0,000 more.", kind="send")
     posted("t2", "sid-g", at("2026-10-19T22:26:00-04:00").timestamp(), "Not answered: run two stopped at 1,725 rows.", kind="notice")
-    y.daily.capture("example-room", "n1", memory.NOTE, "the long shelf is 1,105 mm", when=at("2026-10-19T22:22:00-04:00"))
+    y.daily.capture("example-room", "n1", memory.NOTE, "says the sample item 0,000 moved", when=at("2026-10-19T22:22:00-04:00"))
     y.daily.capture("other-room", "o1", "yerk", "3,260 and 1,472 here too", when=at("2026-10-19T22:30:00-04:00"))   # no line of its own
     memindex.Index(y.memory.index_db, y.memory.scope).sync()
     tool = {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x/run-two.csv"}}
@@ -563,7 +563,7 @@ def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what
          "message": {"role": kind, "content": [{"type": "text", "text": text}, *calls] if kind == "assistant" else text}}) + "\n"
         for t, kind, text, calls in [("2026-10-19T21:53:55-04:00", "user", "how did fable v2 do?", []),
                                      ("2026-10-19T22:20:40-04:00", "assistant", "Checking 3,260 first.", [tool]),
-                                     ("2026-10-19T22:21:00-04:00", "assistant", "Scale two: 148,290 kg, 99.99% of the weighbridge.", [])])
+                                     ("2026-10-19T22:21:00-04:00", "assistant", "Starts the: 000,000 example, 00.00% note says the.", [])])
         + '{"type": "assistant", "timest')
 
     def flagged(reply, since, key, sid="sid-g"):
@@ -576,9 +576,9 @@ def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what
                  "transcript_path": str(tmp_path / f"{sid}.jsonl")})
         return sorted(re.match(r"quoted (.+?), on file at", r["detail"])[1] for r in y.ledger.rows(50, "shadow")
                       if r["id"] > last and r["rule"] == "figure")
-    assert flagged("Still 99.99% and 148,290 kg. The long shelf is 1,105 mm, then 3,260 and 1,472 and 2,390 and 4,015 and 1,725.",
+    assert flagged("Note 00.00% says 000,000 the. Sample item moved to 0,000 the, next 0,000 step 0,000 and 0,000 the 0,000 test 0,000.",
                    "2026-10-19T22:44:30-04:00", "tk-a") == ["1,105", "1,472", "1,725", "2,390", "3,260", "4,015"]
-    assert flagged("99.99% still, the long shelf 1,105 mm, and 3,260 and 2,390.", "2026-10-20T10:34:30-04:00", "tk-b") == []
+    assert flagged("00.00% line, for the check 0,000 while, a 0,000 second 0,000.", "2026-10-20T10:34:30-04:00", "tk-b") == []
     SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-h", "one")
     assert flagged("99.99% still.", "2026-10-20T11:00:00-04:00", "tk-c", "sid-h") == ["99.99%"]   # a new session's first saying
 
