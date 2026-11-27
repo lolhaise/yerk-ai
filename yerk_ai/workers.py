@@ -124,6 +124,7 @@ WALLS = ("PrivateTmp=yes", "PrivatePIDs=yes", "ProtectSystem=strict", "ProtectCo
          "ProtectKernelTunables=yes", "ProtectKernelLogs=yes", "NoNewPrivileges=yes", "RestrictSUIDSGID=yes",
          "LockPersonality=yes", f"RestrictAddressFamilies={FAMILIES}", "SystemCallArchitectures=native", f"SystemCallFilter={NO_CALLS}",
          "SystemCallErrorNumber=ENOSYS")
+CHECK_UNIT, CHECK_ENV = "yerk-deploy-check-", ("HOME", "USER", "LOGNAME", "LANG", "PATH")   # a deploy's walled check (checked)
 OWN_CONFIG = ".claude-home"     # a hidden worker's Claude config folder, in its own folder (Systemd.own)
 UNIT_GIT = ".git-unit"          # a hidden worker's worktree's .git from its end on (needs.tidy): out here it names another's record
 
@@ -193,6 +194,13 @@ def resolver(at: Path = Path("/etc/resolv.conf")) -> list[Path]:
     back read-only, or a hidden worker finds no host."""
     real = at.resolve()
     return [real] if real.is_file() and any(real.is_relative_to(p) for p, _ in DOORS) else []
+
+
+def doors() -> list[str]:
+    """Each of the DOORS that is there shut as its kind says, then the resolver's file back: a hidden unit's (walled) and a
+    deploy check's (check_props)."""
+    shut = {"own": "TemporaryFileSystem={}:mode=0700", "gone": "InaccessiblePaths={}", "empty": "TemporaryFileSystem={}:ro"}
+    return [*(shut[how].format(p) for p, how in DOORS if p.exists()), *(f"BindReadOnlyPaths={p}" for p in resolver())]
 
 
 def memory_max(conf: dict[str, Any]) -> str:
@@ -407,8 +415,7 @@ class Systemd:
         for p in (h for h in self.hidden if not any(h.is_relative_to(r) for r in roots)):
             mine = bool(token) and Path(token).is_relative_to(p)
             props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"] if mine else [f"InaccessiblePaths=-{p}"]
-        shut = {"own": "TemporaryFileSystem={}:mode=0700", "gone": "InaccessiblePaths={}", "empty": "TemporaryFileSystem={}:ro"}
-        return [*props, *(shut[how].format(p) for p, how in DOORS if p.exists()), *(f"BindReadOnlyPaths={p}" for p in resolver()), *WALLS]
+        return [*props, *doors(), *WALLS]
 
     def back(self, spec: dict[str, Any], folder: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
         """What a hidden home binds back, as (path, "rw" | "ro" | "repo", "-" after one the daemon names that may be missing),
@@ -543,6 +550,76 @@ class Systemd:
         p = systemctl("list-units", f"{UNIT}*", "--all", "--plain", "--no-legend", "--no-pager", check="list-units")
         rows = [x.split() for x in p.stdout.splitlines() if x.strip()]
         return {r[0].removesuffix(".service") for r in rows if len(r) > 2 and r[2] not in ("inactive", "failed")}
+
+
+# a deploy's checks behind the wall (deploy.py: the fast tests, each add-on's, the recall controls): one command in a unit of
+# its own, waited for, built from a hidden worker's parts, so a wall added to them is in it with no other change
+CHECK_SECONDS, PYTEST_WALLED = 900, ("-p", "no:cacheprovider", "--basetemp=/tmp/pytest")   # pytest writes only the unit's /tmp
+NO_START = re.compile(r"(?m)^(Failed to |Unknown assignment)")     # systemd-run's own words when no unit started
+_checks = iter(range(1, 1 << 62))
+
+
+class NoWall(OSError):
+    """A deploy check with no wall to run behind (checked): it ran nowhere, and the deploy deploys nothing."""
+
+
+def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str = "") -> list[str]:
+    """A deploy check's unit (checked) from a hidden worker's parts: each root hidden as walled hides it (_roots); bound back
+    read-only, each once (not inside another) when it is there and the unit hides it (a root, its own /tmp, a door), the tree, the
+    interpreter (sys.prefix and sys.base_prefix, what it needs, found by running it), the private layer, the state
+    folder and the folder the command runs in; the private layer's secrets/ not there, or an empty read-only filesystem with one
+    file back when `denylist` (the deploy's YERK_DENYLIST_FILE) is a file in it, never one outside the private layer; then the
+    DOORS and the WALLS. No PrivateNetwork: the controls and the bench ask yerk-index on this machine, so that door is the
+    deploy's own (the network slice, not built)."""
+    roots, priv = Systemd(state)._roots(), Path(os.path.abspath(private))
+    hidden, back = [*roots, Path("/tmp"), Path("/var/tmp"), *(d for d, _ in DOORS)], list[Path]()
+    for p in (Path(os.path.abspath(x)) for x in (tree, sys.prefix, sys.base_prefix, private, state, cwd)):
+        if not any(p.is_relative_to(q) for q in back) and p.exists() and any(p.is_relative_to(r) for r in hidden):
+            back.append(p)
+    deny = Path(os.path.abspath(denylist)) if denylist else None
+    mine = bool(deny and deny.is_relative_to(priv / "secrets") and deny.is_file() and deny.resolve().is_relative_to(priv.resolve()))
+    props = ["PrivateUsers=yes", *(f"TemporaryFileSystem={r}:ro" for r in roots), *(f"BindReadOnlyPaths={p}" for p in back)]
+    props += [f"TemporaryFileSystem={priv / 'secrets'}:ro", f"BindReadOnlyPaths={deny}"] if mine else [f"InaccessiblePaths=-{priv / 'secrets'}"]
+    return [*props, *doors(), *WALLS]
+
+
+def check_env(tree: Path, private: Path, state: Path) -> dict[str, str]:
+    """A deploy check's environment, a short fixed list and never the deploy's own: HOME, USER, LOGNAME, LANG and PATH as the
+    deploy has them, TMPDIR the unit's own /tmp, the layer and the tree (YERK_PRIVATE, YERK_STATE, PYTHONPATH), no bytecode
+    written, and YERK_DENYLIST_FILE when the deploy has it (its file comes back only from the private layer: check_props)."""
+    env = {k: os.environ[k] for k in CHECK_ENV if os.environ.get(k)}
+    env.update(HOME=str(Path.home()), TMPDIR="/tmp", YERK_PRIVATE=os.path.abspath(private), YERK_STATE=os.path.abspath(state),
+               PYTHONPATH=os.path.abspath(tree), PYTHONDONTWRITEBYTECODE="1")
+    return env | ({"YERK_DENYLIST_FILE": os.environ["YERK_DENYLIST_FILE"]} if os.environ.get("YERK_DENYLIST_FILE") else {})
+
+
+def checked(argv: Sequence[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None,
+            run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run) -> subprocess.CompletedProcess[str]:
+    """One command of a deploy's checks behind the wall (check_props, check_env), waited for; what subprocess.run(...,
+    capture_output=True, text=True) returns, so its caller reads it as before. A unit of its own (yerk-deploy-check-<pid>-<n>,
+    never a worker's name) that systemd stops at `timeout` (CHECK_SECONDS when None), held to the workers' memory ceiling; a
+    pytest run writes no cache and keeps its temp folders in the unit's /tmp. NoWall with systemd's words when no wall was
+    built (no user bus, a property refused, no systemd-run, the unit's own start step failed: its codes are 200 and up), never
+    a run outside it; a unit a fault or Ctrl-C left is stopped."""
+    argv, cap = list(argv), max(1, int(timeout or CHECK_SECONDS))
+    argv[3:3] = PYTEST_WALLED if argv[1:3] == ["-m", "pytest"] else ()
+    unit = f"{CHECK_UNIT}{os.getpid()}-{next(_checks)}"
+    cmd = ["systemd-run", "--user", "--wait", "--pipe", "--collect", "--quiet", f"--unit={unit}", "--description",
+           "Yerk AI deploy check", f"--working-directory={os.path.abspath(cwd)}", "-p", f"RuntimeMaxSec={cap}", "-p",
+           "TimeoutStopSec=10", "-p", f"MemoryMax={MEMORY_MAX}", "-p", "MemorySwapMax=0",
+           *(x for p in check_props(tree, private, state, cwd, os.environ.get("YERK_DENYLIST_FILE", "")) for x in ("-p", p)),
+           *(f"--setenv={k}={v}" for k, v in check_env(tree, private, state).items()), "--", *argv]
+    try:
+        p = run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=cap + 60)
+    except BaseException as e:
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            systemctl("stop", f"{unit}.service", timeout=30)
+        if isinstance(e, (OSError, subprocess.SubprocessError)):
+            raise NoWall(f"systemd-run: {type(e).__name__}: {e}"[:300]) from e
+        raise
+    if p.returncode >= 200 or p.returncode and not p.stdout.strip() and NO_START.search(p.stderr):
+        raise NoWall(f"systemd-run exited {p.returncode}: {' '.join(p.stderr.split())[:300]}")
+    return subprocess.CompletedProcess(argv, p.returncode, p.stdout, p.stderr)
 
 
 def run(spec_path: Path) -> int:
