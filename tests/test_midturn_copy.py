@@ -426,6 +426,7 @@ def test_the_key_reads_from_rooms_toml_over_budgets_session_and_a_bad_value_is_o
         say(y, room, "1", "GROW:150000,195000,200000 CONTEXT:201000 the long job")
         wait_idle(room)
     assert not lines(caplog, "mid-turn") and len(lines(caplog, "precompact_midturn")) == 1
+    until(lambda: room.fork is None and compactions(tmp_path) == 1)   # the turn's end is in the band: its copy ends before the close
     room.rp.close()
 
 

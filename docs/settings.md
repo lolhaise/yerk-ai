@@ -1,8 +1,8 @@
 # Settings
 
-Written by `yerk docs own` from yerk_ai/config.py (ROOM_WORDS, DEFAULT_KEYS, YERKD_WORDS) and the tables beside the code that reads them (words.SETTINGS, memory.described, jobs.CONF, jobs.KEYS, retention.DAYS and CAP); change those and run it again, never this page.
-
 Every key the loaders take from the private folder's rooms.toml, yerkd.toml and jobs.toml, in plain words with its default. rooms.toml.example and yerkd.toml.example are commented copies with example values.
+
+Written by `yerk docs own` from yerk_ai/config.py (ROOM_WORDS, DEFAULT_KEYS, YERKD_WORDS) and the tables beside the code that reads them (words.SETTINGS, memory.described, jobs.CONF, jobs.KEYS, retention.DAYS and CAP); change those and run it again, never this page.
 
 ## rooms.toml
 
@@ -214,6 +214,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `model`: the model its worker calls run on, the conversion's too (default opus)
 - `cap_minutes`: the minutes one worker call may run (default 45)
 - `owner_words`: the pronouns the owner's rules use for them, a list: with the owner, owner_names and "in reply to", the words that give a quote of a rule as theirs to the conversion's picker (default ["he", "him", "his"]; rules that say she or they set theirs)
+- `owner_names`: the names the owner goes by in their rules, a list, read beside owner_words (default none)
 
 ### [docs]
 

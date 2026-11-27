@@ -1146,6 +1146,7 @@ SWEPT_NOTE = ("# What the nightly sweep took\n\nThe sweep of {at} moved these ou
               "in the state folder:\n\n{moved}\n\nThe trash keeps them {days} after that day, then a sweep deletes them for good.\n")
 NEVER_SWEPT = "A folder under work/ with a file named KEEP is never swept."   # RETENTION.md's last line, in a swept room's work/
 DOCTOR_OK, DOCTOR, NO_RUN = "doctor: clean", "doctor: {n} found, {first}", "no run in 24h"  # the daily check (doctor.py)
+DOCTOR_NOT_YET = "doctor: not run yet, runs each night"     # no full run ever (a new install's first start): not a fault
 # its secret scan (doctor.leaks): a key, a password or a token in a file is out, so it is changed; a one-time code works once
 SECRET_LINES = "secret-shaped lines: {n} in {files}, first {first} ({kind}); `yerk doctor --scrub`, then rotate the key"
 ONE_TIME_CODES = ("one-time codes: {n} in {files}, first {first}; a code works once and soon expires, so there is nothing to "

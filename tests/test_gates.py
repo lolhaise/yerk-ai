@@ -336,15 +336,13 @@ def test_a_silent_working_turn_bounces_once_and_only_once_and_a_landed_reply_is_
 # and ends on "Filed." (what it worked out never reaches the room); then, asked why, it writes the answer above the call,
 # files the rule and ends on the rule line.
 REPORT_STEPS = [("say", "The export is back with two rows fewer than last week's. Looking at which two before saying more."),
-                      ("call", "Read"), ("call", "Bash"), ("call", "Bash"), ("call", "mcp__yerk__remember")]
+                ("call", "Read"), ("call", "Bash"), ("call", "Bash"), ("call", "mcp__yerk__remember")]
 FILED_ONLY = "Filed. The rest is done too: the invite is sent, the slides are drafted, and only the export job is still running."
-              ANSWER_ABOVE = [("say", "Because the summary came first and the table never did. Both times the full table was open, and both "
-"times a line on what it meant went out in its place, and that line missed the column that mattered. "
-                      "The table was the answer, and it took a second ask to get it.\n\nFrom here a result goes out as its "
-                      "table first, then one line on it if it needs one. Filing that as the rule."), ("call", "mcp__yerk__remember")]
-                      RULE_LINE = "From now on every room puts the table first and its reading after, in one line."
-                      
-
+ANSWER_ABOVE = [("say", "Because the summary came first and the table never did. Both times the full table was open, and both "
+                        "times a line on what it meant went out in its place, and that line missed the column that mattered. "
+                        "The table was the answer, and it took a second ask to get it.\n\nFrom here a result goes out as its "
+                        "table first, then one line on it if it needs one. Filing that as the rule."), ("call", "mcp__yerk__remember")]
+RULE_LINE = "From now on every room puts the table first and its reading after, in one line."
 
 
 def stream(room, *steps):
@@ -416,16 +414,13 @@ def test_a_no_reply_final_is_never_bounced_and_an_empty_one_still_is(tmp_path):
 # correction after it, an answer about a colleague (its first two paragraphs), advice to the owner on their own message and a
 # rulebook tag alone. A name is only ever in a second paragraph, and the rule reads the first.
 PLAN_ABOVE = ("They are reading the plan back to check it. Confirm in one line and fix the one slip: the meeting moved to "
-             "the east hall, the time stays. Landed: a yes and the fix, nothing more.\n\n"
-             "Nearly. The time is the same, but the meeting is in the east hall now, not the west one, since the west hall "
-             "is booked for the fair that week. So the plan reads right with the hall changed.")
-             OWN_CORRECTION = ("The line above was my own working, sent by mistake; please skip it.\n\n"
-             "The plan is right with one change: the meeting is in the east hall, at the same time.")
+              "the east hall, the time stays. Landed: a yes and the fix, nothing more.\n\n"
+              "Nearly. The time is the same, but the meeting is in the east hall now, not the west one, since the west hall "
+              "is booked for the fair that week. So the plan reads right with the hall changed.")
+OWN_CORRECTION = ("The line above was my own working, sent by mistake; please skip it.\n\n"
+                  "The plan is right with one change: the meeting is in the east hall, at the same time.")
 ABOUT_A_COLLEAGUE = ("They want the parcel sent on Monday to land before Friday. That is all they asked for, start to end.\n\n"
-              "From the shop file: the shop has 300 example boxes and 12 are out.")
-              
-
-                   
+                     "From the shop file: the shop has 300 example boxes and 12 are out.")
 ADVICE_FINAL = "Keep your reply to two lines: the date and the ask, then stop.\n\nHe reads it on his phone between meetings."
 TAG_FINAL = "\"Landed: 'Yes. Save.'\" style: confirm and move."
 

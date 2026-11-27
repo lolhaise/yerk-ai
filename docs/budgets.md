@@ -1,8 +1,8 @@
 # Budgets
 
-Written by `yerk docs own` from budgets.toml; change those and run it again, never this page.
+The size limits in budgets.toml, table by table, each line with the comments that say what it is.
 
-Every size limit Yerk AI enforces, table by table, each line with the comments that say what it is.
+Written by `yerk docs own` from budgets.toml; change those and run it again, never this page.
 
 Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics, [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here. The program only reads this file: you change a number by hand, together with the code that needs it, and add a dated note under its line that says why.
 
@@ -929,7 +929,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: due-in-words-2026-11-27 raised it by 68, a `due` whose day the filing's words do not name, or whose time they do not give, is refused before anything is written and counted in the journal (build 1d of the owner's build list of Wed Nov 25), not folded to fit (memory.py 61: DAY_MONTH and days_in, the day reader beside days_named, CLOCK, TIME_FORM and times_in, the time reader, due_unsaid, the check and its journal lines in remember, their comments and docstrings, remember's own among them; mcp_server.py 4: the description's longer `due` part; words.py 3: the two refusals). 37,697: 37,629 plus 68, the picture tool's 285 and main's 127 of the same day merged in under it.
 
-- `lines = 37697`
+2026-11-27: owner-in-neutral-words-2026-11-27 raised it by 18, a doctor that never ran said with the plain mark, not a fault, and the pronouns the owner's rules use for them a setting of the conversion's picker, not folded to fit: conversion.py 13 (OWNER_WORDS, owner_words, said_as and each rule's said_by), doctor.py 3 (the never-ran line, held to an install's first two days), words.py 1 (DOCTOR_NOT_YET), config.py 1 (owner_words in YERKD_WORDS). No other size moved: no tool's description changed, the texting block's part has no line of its own, and the taste head's 8 characters stay inside the taste part's 1,500. 37,715: main's 37,697 (page-to-picture-2026-11-27 and due-in-words-2026-11-27 merged in under it) plus 18.
+
+- `lines = 37715`
 
 ## Uncapped
 

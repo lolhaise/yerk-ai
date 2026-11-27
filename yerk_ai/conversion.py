@@ -72,6 +72,7 @@ NAMED = re.compile(r"\b(?:(\d{4})-(\d{2})-(\d{2})|(Jan|Feb|Mar|Apr|May|Jun|Jul|A
                    r"(?:,? (?:at )?(\d{1,2}):(\d)([\dx]))?\b", re.I)        # a day a passage names, and its time: Nov 9 2026 14:05, Oct 28
 HIS = ("he", "him", "his")               # [curate] OWNER_WORDS unset: the rules' pronouns for the owner, read with "the owner" and their names
 OWNER_WORDS = "owner_words"        # [curate] in yerkd.toml: the pronouns the rules use for the owner, in HIS's place (unset: HIS)
+OWNER_NAMES = "owner_names"        # [curate] in yerkd.toml: the names the private layer gives for the owner, read beside OWNER_WORDS (unset: those alone)
 FILING = 120                       # seconds after a rule's trailer time that a day-log line may be stamped and count as its filing's
 NO_DAY = "no such day"             # the day `named` gives for one that is none (Nov 31): it names no line, so it cites nothing
 CLOCK = re.compile(r"^- (\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}) ")
@@ -220,7 +221,7 @@ def pick(words: str, daily: Path, filed: str = "", his: bool = False, when: str 
 @lru_cache(maxsize=16)
 def his_words(names: tuple[str, ...] = (), said_by: tuple[str, ...] = HIS) -> re.Pattern[str]:
     """The words that give a quote as the owner's, a few words before it in its sentence: `said_by` (OWNER_WORDS, else HIS), the
-    (OWNER_NAMES), or "in reply to"."""
+    owner, each of their names the install gives (OWNER_NAMES), or "in reply to"."""
     said = "|".join(re.escape(" ".join(w.split())) for w in (*said_by, "the owner", *names) if w.strip())
     return re.compile(rf"(?:\b(?:{said})(?:['’]s)?\b(?:\W+\w+){{0,3}}|\bin reply to)\W*$", re.I)
 
@@ -233,8 +234,19 @@ def owner_names(conf: dict[str, Any]) -> tuple[str, ...]:
 
 def owner_words(conf: dict[str, Any]) -> tuple[str, ...]:
     """[curate] OWNER_WORDS of a yerkd.toml: the pronouns the rules use for the owner, a list or one word; HIS when unset."""
-    sentence, or "in reply to"."""
+    v = dict(conf.get("curate") or {}).get(OWNER_WORDS, HIS)
     return tuple(str(x).strip() for x in ([v] if isinstance(v, str) else v) if str(x).strip())
+
+
+def given_his(before: str, names: tuple[str, ...] = (), said_by: tuple[str, ...] = HIS) -> bool:
+    """Words given as the owner's: their pronouns (`said_by`, OWNER_WORDS, else HIS), the owner or a name of theirs (`names`, OWNER_NAMES)
+    a few words before them in their sentence, or "in reply to"."""
+    return bool(his_words(tuple(names), tuple(said_by)).search(re.split(r"[.!?]\s", before)[-1][-48:]))
+
+
+def said_as(rule: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """A rule's names for the owner and the pronouns its words use for them, as given_his takes them (yerkd.toml's, set on the rule)."""
+    return tuple(rule.get("his") or ()), tuple(rule.get("said_by", HIS))
 
 
 def words_of(text: str) -> str:
@@ -903,6 +915,7 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     supplied, weights, rows = supplied_reasons(s), memory.rarities([r["text"] for r in rules]), reason_rows(s)
     for r in rules:
         r["keeps"], r["his"], r["on_file"] = keeps(r["text"], weights), owner_names(conf), [w for _, w in supplied.get(r["cite"], [])]
+        r["said_by"] = owner_words(conf)
     found, redone = finding_rows(s), dict[str, list[str]]()
     kept = carried(s, rules, earlier, lambda x: (memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, read,
                                                                  seen) or {}).get("fix", []), rows, found, read, redone, seen, set(redo)) if earlier else {}

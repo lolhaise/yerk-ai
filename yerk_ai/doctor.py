@@ -635,6 +635,7 @@ def load(state: Path) -> dict[str, Any]:
 def save(state: Path, now: float, repaired: list[str], full: dict[str, Any] | None = None) -> None:
     """doctor.json: the last full run (time, findings, sizes), and the repairs of the last day, from any run."""
     d = {**load(state), **(full or {})}
+    d.setdefault("since", now)                              # when this install's doctor.json was first written (line)
     d["repaired"] = [r for r in d.get("repaired", []) if now - r["at"] <= DAY] + [{"at": now, "line": x} for x in repaired]
     write_private(state / LAST, json.dumps(d))
 
@@ -683,6 +684,8 @@ def line(state: Path, now: float) -> tuple[str, str]:
     """The morning diff's (finding key, line): the last full run's findings and the last day's repairs, the count and
     the first; not run yet, a plain line, in an install's first two days with no full run; unknown after them or with none in the last day."""
     d = load(state)
+    if not d.get("at") and now - float(d.get("since", now)) <= 2 * DAY:    # a new install's first two days: not run yet, no fault
+        return "", words.line(f"{words.PLAIN} {words.DOCTOR_NOT_YET}")
     if now - float(d.get("at", 0)) > DAY:
         return "unknown doctor", words.line(f"{words.NOT_DONE} " + words.UNKNOWN.format(what="doctor", why=words.NO_RUN))
     found = [*(r["line"] for r in d.get("repaired", []) if now - r["at"] <= DAY), *d.get("findings", [])]
