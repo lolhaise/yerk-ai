@@ -7,9 +7,9 @@ You message it in Discord the way you would message a person. Each channel you g
 ## What it does
 
 - **Answers where you already talk.** Message a room and it shows a live progress card while it works; the reply replaces the card.
-- **Remembers.** Every line is kept in a day log on your disk. Each new message arrives with the earlier notes that bear on it, and a room can search the rest.
+- **Remembers.** Every message is kept in a day log on your disk. Each new message arrives with the earlier notes that bear on it, and a room can search the rest.
 - **Works in the background.** A long job goes to a separate worker with its own progress card, which reports back when it ends.
-- **Asks before it acts for you.** An email, a text, a public post, a login, a payment or a delete for good waits until you have seen it and said yes.
+- **Asks before it acts for you.** An email, a text, a public post, a login, a payment or a delete for good waits until you have seen it and said yes. The one exception is yours to make: a standing yes for texts to one person.
 - **Keeps going when an account runs out.** With more than one Claude account, a turn moves to the next one and carries on.
 
 ## It builds its own upgrades
@@ -21,21 +21,21 @@ When a room cannot do what you asked, Yerk AI builds that ability into itself:
 3. The checks run, and a fresh reviewer reads the change.
 4. It is merged, deployed and live in every room.
 
-No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer is never the one that wrote the change. A change to what can do the most harm (messages in your name, logins, deletes, the pipeline itself) waits for a person instead.
+No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer is never the one that wrote the change. A change to what can do the most harm (messages in your name, logins, deletes, the pipeline itself) waits for a person instead. The loop needs a GitHub token and checks on your copy of the repository; without them, a person merges and deploys each change.
 
 ## Questions
 
-**Is this a chatbot?** No. A chatbot answers; this also acts. A room can read and write files in its own folder, run commands in a sandbox, search the web, read PDF and Word files, and email or text as you (texting needs a Mac) once you approve each one. You choose which of these each room gets.
+**Is this a chatbot?** No. A chatbot answers; this also acts. A room can read and write files in its own folder, run commands in a sandbox, search the web, read PDF and Word files, and, with your approval, email or text as you (texting needs a Mac). You choose which of these each room gets.
 
-**What do I need, and what does it cost?** A Linux machine with systemd, Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code logged in, and a Discord bot you create ([Install](#install)). Yerk AI itself is free under the MIT license and runs on the Claude Code login you already have. A few optional abilities need a provider key or a paid service of your own; `yerk abilities` names them.
+**What do I need, and what does it cost?** A Linux machine with systemd, Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code logged in, and a Discord bot you create ([Install](#install)). Yerk AI itself is free under the MIT license and runs on your own Claude Code login, so the model use comes out of your Claude plan. A few optional abilities need a provider key or a paid service of your own; `yerk abilities` names them.
 
-**Where does my data live?** On your disk: settings, persona, memory and secrets sit in one private folder outside this repository, and nothing is stored for anyone else. Your messages still pass through Discord and, through Claude Code, to Anthropic's models, as they would without Yerk AI.
+**Where does my data live?** On your disk: settings, persona, memory and secrets sit in one private folder outside this repository, and nothing is stored for anyone else. Your messages still pass through Discord and, through Claude Code, to Anthropic's models, as they would without Yerk AI. If you add a provider key for search by meaning, your notes are sent to that provider to be indexed.
 
-**Is it safe to let it near my machine?** It never reads the credential files of your Claude Code login (a test searches the code for any such read), no room can read a secret, and no credential is printed or logged. What anyone but you writes (a mail, a web page, a quoted message) reaches the model marked as a record, never as an instruction. [SECURITY.md](SECURITY.md) says what it defends against and what it does not.
+**Is it safe to let it near my machine?** It never reads the credential files of your Claude Code login (a test searches the code for any such read), no room can read a secret, and it is built never to print or log a credential. What anyone but you writes (a mail, a web page, a quoted message) reaches the model marked as a record, with a standing rule never to take orders from it. [SECURITY.md](SECURITY.md) says what it defends against and what it does not.
 
-**Who is it for?** One person per install. Other people can be answered in a room of their own, never trusted with your memory or your machine.
+**Who is it for?** One person per install. Other people can be answered in a room of their own, walled off from your memory, with a shell on your machine only if you give them one.
 
-**How big is it, and how do I know it works?** About 37,000 lines of Python, held under a ceiling a test enforces. More than 2,700 tests run on Python 3.12, 3.13 and 3.14 for every change, beside lint, type and dependency checks: the green checks on each commit. The context a room is given is built to sizes declared in `budgets.toml`, and the reference docs are written from the code: a test fails a stale page.
+**How big is it, and how do I know it works?** About 37,000 lines of Python, held under a ceiling a test enforces. More than 2,700 tests run on Python 3.12, 3.13 and 3.14 for every change, beside lint, type and dependency checks: the green checks on each commit. Every part Yerk AI builds for the model, at a session's start and with each message, has a declared size limit in `budgets.toml`, and the reference docs are written from the code: a test fails a stale page.
 
 **What is the catch?** It is one person's tool, built in the open: Discord only, Linux only, version 0.1, and you set it up in a terminal. There is no hosted version.
 
@@ -83,7 +83,7 @@ Everything of yours lives in one folder outside the repository, named by `--priv
 
 ## Add-ons
 
-What a room does past Claude Code's own tools comes from add-ons: MCP servers (the standard way to hand a model new tools) named in rooms.toml. One ships here, `plugins/web`: web pages, PDF and Word files, search and research. `examples/addons/hello` is a small one to copy, and [docs/GUIDE.md](docs/GUIDE.md), Add-ons, has the rest.
+Past Claude Code's own tools and Yerk AI's own ([docs/tools.md](docs/tools.md)), a room's abilities come from add-ons: MCP servers (the standard way to hand a model new tools) named in rooms.toml. One ships here, `plugins/web`: web pages, PDF and Word files, search and research. `examples/addons/hello` is a small one to copy, and [docs/GUIDE.md](docs/GUIDE.md), Add-ons, has the rest.
 
 ## The docs
 
