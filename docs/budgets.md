@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 137218`
+- `total = 137644`
 
 ## [session_start.claude_code]
 
@@ -158,9 +158,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-26, due-by-day-2026-11-26 (build 1c of the owner's build list of Wed Nov 25): a `recall` range that reaches past today also returns the open dated lines due in it, and the tool's words say so, one sentence after "leave them out when it names no time." (a room asked about a day past the week was answered from a list that never held it): recall's description 786 to 1,073 characters as Claude Code counts them, its entry 1,174 to 1,468 (294 more, the sentence and its JSON escapes), each measured on main b111ab1d and on this tree the same way, the entry's name, description and input schema as JSON (json.dumps, and compact the same 294), all 25 from 29,929 to 30,223; so about 31,657 on the 31,363 above. The line is that count, no part could pay, the total rose by the 294 (to 137,218 on main's 136,924). The worker's own `recall` carries the same words.
 
+2026-11-27, due-in-words-2026-11-27 (build 1d of the owner's build list of Wed Nov 25): the `remember` tool's words on a due's day and time, in place of the sentence "Give a date only when the words give one or the clock line lets you work it out, never as a guess." (write a day worked out in the line, since a due whose day the line does not name is refused; a time only when the words give the hour, a minute of the room's own choosing never; what might happen is no thing due; the room's own plan to act at a set time a `schedule` job), since in the day after build 1b six of the fifteen dated lines filed carried a day or a minute no one's words gave: remember's description 3,141 to 3,561 characters as Claude Code counts them, its entry 4,116 to 4,542 (426 more, the words and their JSON escapes), each measured on main a37115c2 and on this tree the same way, the entry's name, description and input schema as JSON (json.dumps, and compact the same 426), all 25 from 29,948 to 30,374; so about 32,083 on the 31,657 above. The line is that count, no part could pay, the total rose by the 426 (to 137,644 on main's 137,218).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 31657`
+- `yerk_tools = 32083`
 - `deferred_tool_names = 4380`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -921,7 +923,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: the same change, found when its checks were run on a real install before it shipped, raised it by 31 more, not folded to fit: a walled check's process list is its own, so the recall there read a live yerk-index as gone, the bench skipped and every control the meaning half finds was missed; and the budget test could not read a room's newest transcript, in the home the wall hides, so it measured nothing of Claude Code's parts. The deploy now says the pid it saw alive and names each room's newest transcript for its tests' run (deploy.py 24: index_held, transcripts, the step), the recall takes that word for that pid alone (memory.py 2), and the check is given both by name, binds those files back read-only and no longer reads the state folder's own secrets/ (workers.py 5). 37,217: 37,186 plus 31.
 
-- `lines = 37217`
+2026-11-27: due-in-words-2026-11-27 raised it by 67, a `due` whose day the filing's words do not name, or whose time they do not give, is refused before anything is written and counted in the journal (build 1d of the owner's build list of Wed Nov 25), not folded to fit (memory.py 60: DAY_MONTH and days_in, the day reader beside days_named, CLOCK, TIME_FORM and times_in, the time reader, due_unsaid, the check and its journal lines in remember, their comments and docstrings; mcp_server.py 4: the description's longer `due` part; words.py 3: the two refusals). 37,284: 37,217 plus 67.
+
+- `lines = 37284`
 
 ## Uncapped
 
