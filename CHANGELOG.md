@@ -9,6 +9,16 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### web-plugin-deps-2026-11-27 (the web plug-in's packages at their patched versions)
+
+- `plugins/web` pins `@modelcontextprotocol/sdk` 1.32.0 (it was 1.30.0), and its lock file moves the three packages that
+  come with it to patched versions too: `hono` 4.13.23, `@hono/node-server` 2.1.11 and `body-parser` 2.4.0. Fourteen published
+  advisories named the older versions, all in the SDK's HTTP transports and what they are built on. The plug-in speaks to a
+  room over stdio and starts no HTTP server, so none was reachable through it; the lock file no longer lists them.
+- The server answers as before: the same five tools, word for word, and its own tests pass on the new packages.
+
+**Upgrading**: run `npm ci` in `plugins/web` after the pull, so the installed packages match the lock file.
+
 ### deploy-step-walled-2026-11-27 (the deploy's fast tests and recall controls run behind the wall)
 
 - `yerk deploy` runs the new commit's fast tests, each installed add-on's and the recall controls behind the wall a hidden
