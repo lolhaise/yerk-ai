@@ -708,6 +708,31 @@ def days_named(text: str, today: date) -> list[str]:
     return sorted(days)[:3]
 
 
+# the day then the month's name (days_in, beside DAY_FORM's forms): "30 Nov", "30th of November, 2026", its number never right
+# behind a clock time's colon or dot ("9:30 Dec 2" is Dec 2) or inside a longer token, the month's name a whole word
+DAY_MONTH = re.compile(r"(?<![\w./\\:#@+=-])([0-9]{1,2})(?:st|nd|rd|th)? +(?:of +)?(" + "|".join(MONTH_OF) + r")\b(?:,? +([0-9]{4})(?![0-9]))?")
+
+
+def days_in(text: str, today: date) -> set[str]:
+    """Every real day `text` names in an explicit form (DAY_FORM, DAY_MONTH), today and a past day too, as ISO days: a form with
+    no year is the nearest such day to `today`, the coming one on a tie. Never a weekday alone, a relative word or 12/02."""
+    found = [(m[1], int(m[2]), int(m[3])) if m[1] else (m[6], MONTH_OF[m[4]], int(m[5])) for m in DAY_FORM.finditer(text)]
+    days = set()
+    for y, mo, d in found + [(m[3], MONTH_OF[m[2]], int(m[1])) for m in DAY_MONTH.finditer(text)]:
+        near = []
+        for year in [int(y)] if y else [today.year - 1, today.year, today.year + 1]:
+            with suppress(ValueError):
+                near.append(date(year, mo, d))
+        days |= {min(near, key=lambda x: (abs(x - today), x < today)).isoformat()} if near else set()
+    return days
+
+
+def due_unsaid(due: str, text: str, today: date) -> str:
+    """What of a well-formed `due` the filing's `text` leaves out, read on `today`: "day" when its words name no such day
+    (days_in), else "". Nothing is dated by code: a day the room worked out goes into the line's words."""
+    return "day" if due[:10] not in days_in(text, today) else ""
+
+
 def due_of(raw: str, day: str = "") -> dict[str, str] | None:
     """What a dated line says, None for any other line, whatever characters its words hold: the date, the time ("" for a day),
     `owes`, its words (no source, no mark), its role (note or said), and when it was filed; a fact file's line, or with `day` a
@@ -790,9 +815,12 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     if who and not source:
         return {"ok": False, "error": "said needs source: the message id, file path or transcript line holding those words"}
     tag, why = due_mark(due, owes)
+    today = local_day(s, now)
+    if tag and (gap := due_unsaid(due, body, today)):       # a due the words never gave: refused, before anything is written
+        why = words.DUE_DAY_UNSAID.format(day=due[:10])
     if why:
         return {"ok": False, "error": why}
-    end, why = until_mark(until, body, today := local_day(s, now), bool(who))
+    end, why = until_mark(until, body, today, bool(who))
     if why:
         return {"ok": False, "error": why}
     rid, cls = log.rooms.get(room, (room, "private"))

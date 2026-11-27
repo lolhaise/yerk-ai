@@ -428,9 +428,9 @@ def test_a_correction_takes_a_dated_line_off_the_list_by_its_mark_or_by_the_late
     def open_() -> list[str]:
         return [x["cite"] for x in listing(s, b, datetime.now(UTC))]
     when = (datetime.now(UTC).astimezone(s.tz) + timedelta(days=2)).date().isoformat()
-    fact_, mine, shared = (asyncio.run(y.tool_remember("example-room", t, about, [], due=when)) for t, about in (
+    fact_, mine, shared = (asyncio.run(y.tool_remember("example-room", f"{t} Due {when}.", about, [], due=when)) for t, about in (
         ("Example boiler: the yearly check.", "example boiler"), ("Send the example form back.", ""), ("Bring the example ladder back.", "")))
-    hers = asyncio.run(y.tool_remember("family-room", "Pay the example fee.", "", [], due=when))
+    hers = asyncio.run(y.tool_remember("family-room", f"Pay the example fee by {when}.", "", [], due=when))
     assert sorted(open_()) == sorted([fact_["cite"], mine["cite"], shared["cite"], hers["cite"]])
     asyncio.run(y.tool_remember("example-room", "Example boiler: checked.", "example boiler", [fact_["cite"], mine["cite"]]))
     assert sorted(open_()) == sorted([shared["cite"], hers["cite"]])                  # marked superseded where they stand
