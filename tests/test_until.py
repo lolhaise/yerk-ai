@@ -73,13 +73,13 @@ def test_until_ends_a_fact_files_words_before_the_stamp_reads_as_the_rooms_note_
 def test_until_with_due_keeps_the_line_dated_as_before_and_the_due_view_lists_it_by_its_due_date(tmp_path, monkeypatch):
     s, log = install(tmp_path)
     clock(monkeypatch, TODAY)
-    r = file(s, log, "Example Neighbour returns the ladder.", "example neighbour", due="2026-11-28", owes="Example Neighbour", until=LAST)
+    r = file(s, log, "Example Neighbour returns the ladder on Nov 28.", "example neighbour", due="2026-11-28", owes="Example Neighbour", until=LAST)
     assert (r["due"], r["owes"], r["until"]) == ("2026-11-28", "Example Neighbour", LAST)
     line = line_at(s, r["cite"])
-    assert re.fullmatch(r"- Example Neighbour returns the ladder\. \[until 2026-11-30\] " + SRC + r" \[due 2026-11-28 owes Example Neighbour\] \[m:m-1\]", line)
+    assert re.fullmatch(r"- Example Neighbour returns the ladder on Nov 28\. \[until 2026-11-30\] " + SRC + r" \[due 2026-11-28 owes Example Neighbour\] \[m:m-1\]", line)
     got = memory.due_of(line)
     assert got and {k: got[k] for k in ("date", "time", "owes", "text", "role")} == {
-        "date": "2026-11-28", "time": "", "owes": "Example Neighbour", "text": "Example Neighbour returns the ladder. [until 2026-11-30]", "role": "note"}
+        "date": "2026-11-28", "time": "", "owes": "Example Neighbour", "text": "Example Neighbour returns the ladder on Nov 28. [until 2026-11-30]", "role": "note"}
     items = due.items_of(s.root / "facts" / "example-neighbour.md", "facts/example-neighbour.md")
     assert [(x["date"], x["cite"]) for x in items] == [("2026-11-28", "facts/example-neighbour.md:3")]
     assert due.is_open(line, date(2026, 12, 12)) and not due.is_open(line, date(2026, 12, 13))        # open: by its due mark alone
@@ -99,13 +99,13 @@ def test_a_day_log_note_with_until_ends_its_words_with_the_mark_and_the_due_mark
     s, log = install(tmp_path)
     clock(monkeypatch, TODAY)
     plain = file(s, log, "Send the example form back.", until=LAST)
-    dated = file(s, log, "Send the example quote back.", "", "m-2", due="2026-11-28", until=LAST)
+    dated = file(s, log, "Send the example quote back by Nov 28.", "", "m-2", due="2026-11-28", until=LAST)
     head = r"- 12:00:00-05:00 owner-room note: "
     assert re.fullmatch(head + r"Send the example form back\. \[until 2026-11-30\] \[c:private\] \[m:m-1\.n[0-9a-f]{8}\]", line_at(s, plain["cite"]))
-    assert re.fullmatch(head + r"Send the example quote back\. \[until 2026-11-30\] \[due 2026-11-28\] \[c:private\] \[m:m-2\.d[0-9a-f]{8}\]",
+    assert re.fullmatch(head + r"Send the example quote back by Nov 28\. \[until 2026-11-30\] \[due 2026-11-28\] \[c:private\] \[m:m-2\.d[0-9a-f]{8}\]",
                         line_at(s, dated["cite"]))
     assert plain["until"] == dated["until"] == LAST and memory.parse_line(line_at(s, plain["cite"])).role == memory.NOTE
-    assert memory.due_of(line_at(s, dated["cite"]), "2026-11-25")["text"] == "Send the example quote back. [until 2026-11-30]"
+    assert memory.due_of(line_at(s, dated["cite"]), "2026-11-25")["text"] == "Send the example quote back by Nov 28. [until 2026-11-30]"
     assert file(s, log, "Send the example form back.", until=LAST)["cite"] == plain["cite"]                  # a retry: one line
     assert file(s, log, "Send the example form back.", until="2026-12-01")["cite"] != plain["cite"]
 
@@ -178,7 +178,7 @@ def test_the_sweep_blanks_a_line_remember_filed_the_day_after_its_day_never_on_i
     s, log = install(tmp_path)
     clock(monkeypatch, TODAY)
     away = file(s, log, "Example Neighbour is away at the lake.", "example neighbour", until=LAST)
-    owed = file(s, log, "Example Neighbour returns the ladder.", "example neighbour", "m-2", due="2026-11-28", until=LAST)
+    owed = file(s, log, "Example Neighbour returns the ladder on Nov 28.", "example neighbour", "m-2", due="2026-11-28", until=LAST)
     card = s.root / "facts" / "example-neighbour.md"
     before = card.read_text()
     for n, today in enumerate((date(2026, 11, 30), date(2026, 12, 1), date(2026, 12, 12), date(2026, 12, 13))):

@@ -708,6 +708,61 @@ def days_named(text: str, today: date) -> list[str]:
     return sorted(days)[:3]
 
 
+# the day then the month's name (days_in, beside DAY_FORM's forms): "30 Nov", "30th of November, 2026", its number never right
+# behind a clock time's colon or dot ("9:30 Dec 2" is Dec 2) or inside a longer token, the month's name a whole word
+DAY_MONTH = re.compile(r"(?<![\w./\\:#@+=-])([0-9]{1,2})(?:st|nd|rd|th)? +(?:of +)?(" + "|".join(MONTH_OF) + r")\b(?:,? +([0-9]{4})(?![0-9]))?")
+
+
+def days_in(text: str, today: date) -> set[str]:
+    """Every real day `text` names in an explicit form (DAY_FORM, DAY_MONTH), today and a past day too, as ISO days: a form with
+    no year is the nearest such day to `today`, the coming one on a tie. Never a weekday alone, a relative word or 12/02."""
+    found = [(m[1], int(m[2]), int(m[3])) if m[1] else (m[6], MONTH_OF[m[4]], int(m[5])) for m in DAY_FORM.finditer(text)]
+    days = set()
+    for y, mo, d in found + [(m[3], MONTH_OF[m[2]], int(m[1])) for m in DAY_MONTH.finditer(text)]:
+        near = []
+        for year in [int(y)] if y else [today.year - 1, today.year, today.year + 1]:
+            with suppress(ValueError):
+                near.append(date(year, mo, d))
+        days |= {min(near, key=lambda x: (abs(x - today), x < today)).isoformat()} if near else set()
+    return days
+
+
+# the clock times a filing's words name (times_in): noon, midnight, H:MM or HH:MM, an hour with AM or PM (either case, a space and
+# dots or none: "3pm", "3 p.m."), then maybe a range's second end after a dash, "to", "till", "until", "and" or "or"; never inside a
+# longer token (a file name, a path, an id) nor a timestamp's seconds
+CLOCK = r"(?:\b(noon|midnight)\b|([0-9]{1,2})(?::([0-9]{2}))?(?: ?([ap])\.?m(?![a-z0-9])\.?)?)"
+TIME_FORM = re.compile(r"(?<![\w./\\:#@+=])(?<!\w-)" + CLOCK + r"(?:(?: *[-\u2013\u2014] *| +(?:to|till|until|and|or) +)" + CLOCK + r")?"
+                       r"(?![\w/\\#@+=-]|[.:][\w/\\])", re.I)
+
+
+def times_in(text: str) -> set[str]:
+    """Every clock time `text` names (TIME_FORM), as HH:MM: an hour 1 to 12 with no AM or PM in both halves of the day, a range's
+    two ends, a bare hour that starts a range in the half of the end after it (the other half when it is later on the clock:
+    "11 to 1 PM" is 11 AM to 1 PM). Never a bare number alone."""
+    out = set()
+    for m in TIME_FORM.finditer(text):
+        (w, h, mm, half), end = m.group(1, 2, 3, 4), m.group(5, 6, 7, 8)
+        if h and not (mm or half) and end[1] and end[3]:            # "9 to 11 AM": the bare start takes the end's half
+            later = int(h) % 12 * 60 > int(end[1]) % 12 * 60 + int(end[2] or 0)
+            half = "ap"[end[3].lower() == "a"] if later else end[3]
+        for w, h, mm, half in ((w, h, mm, half), end):
+            hour, minute = int(h or 0), int(mm or 0)
+            if w:
+                out.add("12:00" if w.lower() == "noon" else "00:00")
+            elif half and 1 <= hour <= 12 and minute < 60:
+                out.add(f"{hour % 12 + 12 * (half.lower() == 'p'):02d}:{minute:02d}")
+            elif mm and not half and hour < 24 and minute < 60:
+                out |= {f"{x:02d}:{minute:02d}" for x in ({hour % 12, hour % 12 + 12} if 1 <= hour <= 12 else {hour})}
+    return out
+
+
+def due_unsaid(due: str, text: str, today: date) -> str:
+    """What of a well-formed `due` the filing's `text` leaves out, read on `today`: "day" when its words name no such day
+    (days_in), else "time" when it carries a time they hold no such clock time for (times_in), else "". Nothing is dated by code:
+    a day the room worked out goes into the line's words, and a thing with a day and no hour is filed by its day."""
+    return "day" if due[:10] not in days_in(text, today) else "time" if "T" in due and due[11:] not in times_in(text) else ""
+
+
 def due_of(raw: str, day: str = "") -> dict[str, str] | None:
     """What a dated line says, None for any other line, whatever characters its words hold: the date, the time ("" for a day),
     `owes`, its words (no source, no mark), its role (note or said), and when it was filed; a fact file's line, or with `day` a
@@ -780,6 +835,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     may read it, else in LATER as a line it may only read is; a heading or a blank is refused. With `who` (the tool's `said`)
     and `source` (where their words are), `text` is their words: a `said` line in the day log, word for word, never a fact file's note.
     With `due` (and `owes`) the line carries its date as a mark (due_mark); the same words with another date are another line.
+    A `due` whose day `text` does not name, or whose time it does not give (due_unsaid), is refused before anything is written.
     With `until`, the last day it holds, its words end with UNTIL's mark (until_mark), before any supersedes clause and due mark:
     from the day after, the readers of a line per message leave it out (ended), and the sweep blanks a card's. With neither, words
     that name a day still to come (days_named, today in the install's zone, or `now`'s day) gain `day` in the answer, after `cite`
@@ -790,9 +846,14 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     if who and not source:
         return {"ok": False, "error": "said needs source: the message id, file path or transcript line holding those words"}
     tag, why = due_mark(due, owes)
+    today = local_day(s, now)
+    if tag and (gap := due_unsaid(due, body, today)):       # a due the words never gave: refused, before anything is written
+        why = (words.DUE_DAY_UNSAID if gap == "day" else words.DUE_TIME_UNSAID).format(day=due[:10], time=due[11:])
+        logging.getLogger("yerk.memory").info("remember: a due in %s refused, its day not in the words" if gap == "day" else
+                                              "remember: a due in %s refused, its time not in the words", room)   # never a word of the text
     if why:
         return {"ok": False, "error": why}
-    end, why = until_mark(until, body, today := local_day(s, now), bool(who))
+    end, why = until_mark(until, body, today, bool(who))
     if why:
         return {"ok": False, "error": why}
     rid, cls = log.rooms.get(room, (room, "private"))

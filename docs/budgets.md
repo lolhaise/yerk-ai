@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 137218`
+- `total = 137644`
 
 ## [session_start.claude_code]
 
@@ -158,9 +158,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-26, due-by-day-2026-11-26 (build 1c of the owner's build list of Wed Nov 25): a `recall` range that reaches past today also returns the open dated lines due in it, and the tool's words say so, one sentence after "leave them out when it names no time." (a room asked about a day past the week was answered from a list that never held it): recall's description 786 to 1,073 characters as Claude Code counts them, its entry 1,174 to 1,468 (294 more, the sentence and its JSON escapes), each measured on main b111ab1d and on this tree the same way, the entry's name, description and input schema as JSON (json.dumps, and compact the same 294), all 25 from 29,929 to 30,223; so about 31,657 on the 31,363 above. The line is that count, no part could pay, the total rose by the 294 (to 137,218 on main's 136,924). The worker's own `recall` carries the same words.
 
+2026-11-27, due-in-words-2026-11-27 (build 1d of the owner's build list of Wed Nov 25): the `remember` tool's words on a due's day and time, in place of the sentence "Give a date only when the words give one or the clock line lets you work it out, never as a guess." (write a day worked out in the line, since a due whose day the line does not name is refused; a time only when the words give the hour, a minute of the room's own choosing never; what might happen is no thing due; the room's own plan to act at a set time a `schedule` job), since in the day after build 1b six of the fifteen dated lines filed carried a day or a minute no one's words gave: remember's description 3,141 to 3,561 characters as Claude Code counts them, its entry 4,116 to 4,542 (426 more, the words and their JSON escapes), each measured on main a37115c2 and on this tree the same way, the entry's name, description and input schema as JSON (json.dumps, and compact the same 426), all 25 from 29,948 to 30,374; so about 32,083 on the 31,657 above. The line is that count, no part could pay, the total rose by the 426 (to 137,644 on main's 137,218).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 31657`
+- `yerk_tools = 32083`
 - `deferred_tool_names = 4380`
 - `mcp__hands__ = 10970`
 - `mcp__web-ladder__web_image = 913`
@@ -925,9 +927,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: page-to-picture-2026-11-27 raised it by 285, the render tool's page kind (the owner's ask), not folded to fit: an .html or .htm drawn whole as a PNG by a headless Chromium in the .tex run's kind of box, the box's walls now shared by the two (render.py 237: the finder, the walls, the DevTools pipe, the settle and measure, the picture written beside the page), the plain lines (words.py 18), the tool's width and scale, its work-folder rule and its two journal lines (daemon.py 9, mcp_server.py 6) and the [render] chromium setting (config.py 4); and, added at its judging the same day, the picture's two caps, the most device pixels one picture holds in all and the most one answer over the pipe may weigh, since the widest and sharpest page the first bounds allowed took a minute and a half and more than a gigabyte to take in (render.py 7, words.py 4). 37,629: 37,344 plus 285, main's 127 of the same day (need-2026-11-27-138) merged in under it.
 
-2026-11-27: owner-in-neutral-words-2026-11-27 raised it by 17, a doctor that never ran said with the plain mark, not a fault, and the pronouns the owner's rules use for them a setting of the conversion's picker, not folded to fit: conversion.py 13 (OWNER_WORDS, owner_words, said_as and each rule's said_by), doctor.py 2 (the never-ran line), words.py 1 (DOCTOR_NOT_YET), config.py 1 (owner_words in YERKD_WORDS). No other size moved: no tool's description changed, the texting block's part has no line of its own, and the taste head's 8 characters stay inside the taste part's 1,500. 37,646: main's 37,629 (page-to-picture-2026-11-27 merged in under it) plus 17.
+2026-11-27: due-in-words-2026-11-27 raised it by 68, a `due` whose day the filing's words do not name, or whose time they do not give, is refused before anything is written and counted in the journal (build 1d of the owner's build list of Wed Nov 25), not folded to fit (memory.py 61: DAY_MONTH and days_in, the day reader beside days_named, CLOCK, TIME_FORM and times_in, the time reader, due_unsaid, the check and its journal lines in remember, their comments and docstrings, remember's own among them; mcp_server.py 4: the description's longer `due` part; words.py 3: the two refusals). 37,697: 37,629 plus 68, the picture tool's 285 and main's 127 of the same day merged in under it.
 
-- `lines = 37646`
+2026-11-27: owner-in-neutral-words-2026-11-27 raised it by 17, a doctor that never ran said with the plain mark, not a fault, and the pronouns the owner's rules use for them a setting of the conversion's picker, not folded to fit: conversion.py 13 (OWNER_WORDS, owner_words, said_as and each rule's said_by), doctor.py 2 (the never-ran line), words.py 1 (DOCTOR_NOT_YET), config.py 1 (owner_words in YERKD_WORDS). No other size moved: no tool's description changed, the texting block's part has no line of its own, and the taste head's 8 characters stay inside the taste part's 1,500. 37,714: main's 37,697 (page-to-picture-2026-11-27 and due-in-words-2026-11-27 merged in under it) plus 17.
+
+- `lines = 37714`
 
 ## Uncapped
 
