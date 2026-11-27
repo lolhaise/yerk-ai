@@ -9,6 +9,32 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### deploy-step-walled-2026-11-27 (the deploy's fast tests and recall controls run behind the wall)
+
+- `yerk deploy` runs the new commit's fast tests, each installed add-on's and the recall controls behind the wall a hidden
+  worker has, each in a user unit of its own that the deploy waits for (`yerk-deploy-check-<pid>-<n>`): the home hidden; the
+  tree, the interpreter, the private layer and the state folder read-only; the private layer's `secrets/` not there, but for the
+  file `YERK_DENYLIST_FILE` names when it lies in it; the doors and walls of a hidden worker's unit; a short fixed environment;
+  nothing written but the unit's own `/tmp`. The network stays the deploy's own: the recall bench and the controls ask
+  yerk-index on this machine, and closing that door is the network slice's, not built.
+- A wall that cannot be built (no user bus, a property systemd refuses, no systemd-run) deploys nothing: the checkout goes back,
+  the ledger row says `no wall`, and the card says the tests did not run, with systemd's own words under it.
+- `yerk deploy --check` runs that step alone on the checkout as it stands, as a deploy would: nothing moved, restarted or
+  written to the ledger; it prints the step's card lines and ends 0 when all held, 1 when not.
+- While the checks run the deploy holds the memory index open read-only, so a reader behind the read-only wall finds the
+  shared-memory file a WAL database's readers need, also when the index's last writer has closed it.
+- A walled check has a process list of its own, so it cannot see whether yerk-index is alive. The deploy looks from outside
+  and tells its checks the pid it saw (`YERK_INDEX_SEEN`); the recall there takes that word for that pid alone. Without it
+  the recall bench skipped and every control the meaning half finds was missed, on every deploy.
+- The budget test reads Claude Code's parts as each room last sent them, from the room's newest transcript in an account's
+  folder, which the wall hides with the home. The deploy names those files for its tests' run and they come back read-only;
+  unread, each part counted at its line and nothing was measured.
+- The state folder's own `secrets/` (the install's secret, the workers') is not there behind the wall either.
+- The card's lines for a pass and a failure are as before.
+
+**Upgrading**: yerkd.toml `[deploy] wall` is new and defaults to true. Where the deploy cannot start a user unit, `wall = false`
+runs the checks as before, as children of the deploy with its rights and environment, and the card says so.
+
 ### abilities-trim (two described abilities and their example leave)
 
 - abilities.toml no longer lists `job-search` and `job-applications`, two abilities that were described and never built: 139

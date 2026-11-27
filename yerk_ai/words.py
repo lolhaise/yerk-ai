@@ -1223,6 +1223,7 @@ ROLLBACK_NEVER, DETACHED = "rollback to {commit} never ran", "detached at {commi
 MOVED_BACK, AHEAD = "{name} moved back to {commit}", "{name} is {n} ahead"
 PULL_BRINGS = "a pull brings {commit} back to the tree"
 TESTS_PASSED, TESTS_SKIPPED, TESTS_FAILED = "fast tests passed", "fast tests skipped", "the fast tests failed"
+NO_WALL, WALL_OFF = "tests not run, no wall: [deploy] wall", "tests ran with no wall: [deploy] wall"   # deploy.step
 RECALL, RECALL_BY, MISSED = "recall: {n} of {of} hit", " ({m} by meaning)", "missed: {name}"     # the live controls
 RECALL_NONE, RECALL_BROKE = "recall: not checked, {why}", "the recall check did not run"
 NOT_QUIET = "never quiet in {span}"

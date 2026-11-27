@@ -1,9 +1,12 @@
 """`yerk deploy [REF]`: moves the running daemon onto a commit and proves it is up; when the proof fails, it
 moves the daemon back to the commit it ran and proves that. REF must fast-forward from the running commit and
 from the branch checked out in the daemon's tree, which moves to it by `merge --ff-only` (a rollback moves it
-back with `reset --keep`; a detached tree stays detached); the fast tests run there, then the layer's recall
-controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing); the
-restart waits until no person's turn runs, no room's copy (its compaction off to the side) is younger than
+back with `reset --keep`; a detached tree stays detached); the fast tests run there, each add-on's, then the layer's
+recall controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing), each
+behind a hidden worker's wall in a unit of its own (workers.checked: the home hidden, the tree, the interpreter, the layer
+and the state read-only, secrets/ gone but the denylist file, the doors shut; the network stays the deploy's own, the
+network slice's, not built), a wall that cannot be built deploying nothing ([deploy] wall = false runs them plain, the card
+says so; `--check` runs the step alone, touching nothing); the restart waits until no person's turn runs, no room's copy (its compaction off to the side) is younger than
 [deploy] copy_seconds, no room has had a message either way (a person's or its own post) for [deploy]
 quiet_seconds and the memory index is not rebuilding, and gives up after cap_minutes, the checkout as it was
 found. The proof: the unit active, the channel connected, /status answering under the install's secret with the
@@ -20,6 +23,7 @@ so), else it refuses: the fast tests never read the example layer. Its design: D
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
 import re
@@ -33,7 +37,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import addons, jobs, status, words
+from . import addons, jobs, status, words, workers
 from .config import EXAMPLE_PRIVATE, REPO, head, load_toml, rooms, write_private
 from .ledger import Ledger
 from .workers import systemctl, unit_line
@@ -42,6 +46,7 @@ FAST = ["tests/test_scrub.py", "tests/test_budget.py", "tests/test_card.py", "te
 USER_UNITS = Path.home() / ".config" / "systemd" / "user"      # where `systemctl --user` finds a unit file of the user's
 FAILED = re.compile(r"^/\S+:\d+: (?:AssertionError: )?(.+)$", re.M)     # pytest --tb=line: where a test failed, and why
 Ask = Callable[[Path], "dict[str, Any] | None"]
+Check = Callable[..., "subprocess.CompletedProcess[str]"]   # one check's run: workers.checked, or plain
 
 
 def git(tree: Path, *args: str) -> str:
@@ -297,15 +302,107 @@ def indexed(state: Path) -> str:
         return ""
 
 
-def recall_check(tree: Path, private: Path, state: Path) -> dict[str, Any]:
+def plain(argv: list[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None,
+          reads: Any = ()) -> subprocess.CompletedProcess[str]:
+    """[deploy] wall = false: a check as before the wall, a child of the deploy with its rights and its whole environment, a
+    pytest run's with the layer and the tree on its path (the budget test reads the real rooms), the controls' as it is."""
+    env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state), "PYTHONPATH": str(tree)} if argv[1:3] == ["-m", "pytest"] else None
+    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env, timeout=timeout)
+
+
+def recall_check(tree: Path, private: Path, state: Path, go: Check = plain) -> dict[str, Any]:
     """The layer's recall controls on the code under test, run in the tree as the fast tests are (memory.controls, through
-    `yerk recall-bench --controls`, which writes nothing); a check that did not run or printed no result is {"broke": True}."""
+    `yerk recall-bench --controls`, which writes nothing) by `go`; a check that did not run or printed no result is
+    {"broke": True}, and one with no wall to run behind raises workers.NoWall."""
     try:
-        t = subprocess.run([sys.executable, "-m", "yerk_ai.cli", "recall-bench", "--controls", "--private", str(private),
-                            "--state", str(state)], cwd=tree, capture_output=True, text=True, timeout=180)
+        t = go([sys.executable, "-m", "yerk_ai.cli", "recall-bench", "--controls", "--private", str(private), "--state", str(state)],
+               cwd=tree, tree=tree, private=private, state=state, timeout=180)
         return dict(json.loads(t.stdout.splitlines()[-1]))
+    except workers.NoWall:
+        raise
     except (OSError, ValueError, TypeError, IndexError, subprocess.SubprocessError):
         return {"broke": True}
+
+
+def transcripts(private: Path, state: Path) -> list[Path]:
+    """Each room's newest Claude Code transcript (context.transcript): the one thing of the home the fast tests read (the
+    budget test, Claude Code's parts as the room last sent them; unread, each part counts at its line and nothing is
+    measured), so what a walled check is given to read beside the tree, the layer and the state. Only a file that lies in an
+    account's projects folder; a layer that cannot be read gives none."""
+    from . import context
+    from .accounts import load_accounts
+    with contextlib.suppress(Exception):
+        homes = [a.config_dir.resolve() / "projects" for a in load_accounts(private / "accounts.toml")]
+        found = (context.transcript(private, state, r) for r in rooms(private))
+        return sorted({t for t in found if t and any(t.resolve().is_relative_to(h) for h in homes)})
+    return []
+
+
+@contextlib.contextmanager
+def index_held(state: Path) -> Iterator[None]:
+    """The live memory index open read-only out here while the checks run: behind the wall the state folder is read-only, and a
+    WAL file's reader there needs its -shm, which a reader out here makes; with none (an index its last writer closed) every
+    control would miss. A hold that fails is no hold; the checks run as they would. And the pid yerk-index is alive under,
+    seen from out here, in YERK_INDEX_SEEN meanwhile: a walled check's process list is its own, so the recall there would
+    read a live index as gone (memory.meaning_state), the bench skipping and every control the meaning half finds missed."""
+    from . import memindex, memory
+    conn, was = None, os.environ.get(memory.INDEX_SEEN)
+    with contextlib.suppress(Exception):
+        if (db := memindex.live(state / "memory" / "index.sqlite")).is_file():
+            conn = memindex.connect(db, readonly=True)
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        os.kill(pid := int(json.loads((state / "memory" / "index.json").read_text())["pid"]), 0)
+        os.environ[memory.INDEX_SEEN] = str(pid)
+    try:
+        yield
+    finally:
+        os.environ.pop(memory.INDEX_SEEN, None)
+        if was is not None:
+            os.environ[memory.INDEX_SEEN] = was
+        if conn is not None:
+            conn.close()
+
+
+def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check | None = None,
+         check: Callable[[Path, Path, Path], dict[str, Any]] | None = None) -> tuple[str, list[str]]:
+    """The deploy's checks on the tree as it stands: the core's fast tests ([deploy] tests, else FAST) in the tree, each
+    installed add-on's in its folder, then the recall controls, each behind the wall (workers.checked) unless [deploy] wall =
+    false (plain, and the card says so) or `go` stands in, the live index held open meanwhile (index_held) and the tests
+    given each room's newest transcript to read (transcripts). Returns the
+    outcome a failure ledgers ("" when all held) and the card's lines; no wall to run behind runs nothing more."""
+    W, walled = words, conf.get("wall", True) is not False
+    go = go or (workers.checked if walled else plain)
+    off, reads = [] if walled else [W.line(f"{W.PLAIN} {W.WALL_OFF}")], transcripts(private, state)
+    with index_held(state):
+        try:
+            for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)]:   # each add-on's too
+                if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
+                            private=private, state=state, reads=reads)).returncode:
+                    why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words
+                    return "tests failed", [W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, *off]
+            held, rec = recalled((check or functools.partial(recall_check, go=go))(tree, private, state))   # the layer the daemon serves
+        except workers.NoWall as e:
+            return "no wall", [W.line(f"{W.PLAIN} {W.NO_WALL}"), W.line(f"{W.PLAIN} {W.no_paths(str(e))}")]
+    return "" if held else "recall failed", [W.line(f"{W.DONE} {W.TESTS_PASSED}"), *off, *rec]
+
+
+def check_step(private: Path, state: Path, *, sd: Systemd | None = None, systemd: Callable[[str], Systemd] = Systemd,
+               proc: Path = Path("/proc"), wall: Check | None = None, check: Callable[[Path, Path, Path], dict[str, Any]] | None = None) -> int:
+    """`yerk deploy --check`: the step alone, as a deploy runs it (step), on the daemon's tree and layer as a deploy finds them,
+    the checkout as it stands: nothing moved, waited for or restarted, no ledger row, no card to the machine room; the step's
+    card lines printed. 0 when all held, 1 when not (the example layer refused, as a deploy refuses it)."""
+    taken = daemon_layer(state, sd, proc, systemd) if private.resolve() == EXAMPLE_PRIVATE.resolve() else None
+    private, state = taken or (private, state)
+    if private.resolve() == EXAMPLE_PRIVATE.resolve():
+        print(words.line(f"{words.PLAIN} {words.NO_LAYER}"))
+        return 1
+    conf = dict(load_toml(private / "yerkd.toml").get("deploy", {})) if (private / "yerkd.toml").is_file() else {}
+    name = str(conf.get("unit") or "") or ("" if sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID")))
+    unit = sd or (systemd(name) if name else None)
+    outcome, lines = step(Path(conf.get("tree") or (unit.show("WorkingDirectory") if unit else "") or REPO), private, state, conf, wall, check)
+    print("\n".join(lines))
+    return 1 if outcome else 0
 
 
 def recalled(r: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -369,8 +466,8 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         sd: Systemd | None = None, ask: Ask = status.ask, post: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         sleep: Callable[[float], None] = time.sleep, home: Path = USER_UNITS,
         systemd: Callable[[str], Systemd] = Systemd, proc: Path = Path("/proc"),
-        check: Callable[[Path, Path, Path], dict[str, Any]] = recall_check,
-        ctl: Callable[..., subprocess.CompletedProcess[str]] = systemctl) -> int:
+        check: Callable[[Path, Path, Path], dict[str, Any]] | None = None,
+        ctl: Callable[..., subprocess.CompletedProcess[str]] = systemctl, wall: Check | None = None) -> int:
     """0 deployed and proven, and then each timer in units/ not installed yet installed and on (timers); 1 rolled back or
     not deployed (the card says which and why); 2 the rollback failed or never ran, so the daemon may run a commit no proof
     passed (the morning diff says it again); 130 stopped by Ctrl-C, SIGTERM or SIGHUP, and rolled back or nothing stopped."""
@@ -477,26 +574,18 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     if on and not ahead(tree, found, target):
         return no("refused", W.named(f"{W.PLAIN} {W.NOT_AHEAD}", on, ref=target[:7]), after=target)
     move(tree, on, target)
-    env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state)}    # the budget test reads the real rooms
-    for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)] if tests else []:   # each add-on's too
-        if (t := subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, capture_output=True,
-                                text=True, env={**env, "PYTHONPATH": str(tree)})).returncode:
-            move(tree, on, found)
-            why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
-            return no("tests failed", W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, after=target)
-    tested = W.line(f"{W.DONE if tests else W.PLAIN} {W.TESTS_PASSED if tests else W.TESTS_SKIPPED}")
-    held, rec = recalled(check(tree, private, state)) if tests else (True, [])   # the live controls, the layer the daemon serves
-    if not held:
+    outcome, tested = step(tree, private, state, conf, wall, check) if tests else ("", [W.line(f"{W.PLAIN} {W.TESTS_SKIPPED}")])
+    if outcome:                                       # the fast tests, each add-on's and the live controls, behind the wall
         move(tree, on, found)
-        return no("recall failed", tested, *rec, after=target)
+        return no(outcome, *tested, after=target)
     where = [] if on else [W.line(f"{W.PLAIN} {W.DETACHED.format(commit=target[:7])}")]
     ok, why, outcome = settle("deploy", target, before, (lambda: sd.move(tree, home, moved)) if unit_file else sd.restart)
     if why:
         move(tree, on, found)
-        return no(outcome, *why, tested, *rec, after=target)
+        return no(outcome, *why, *tested, after=target)
     if ok:                                            # the proven commit's timers: one units/ has and the box does not, on
-        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *rec, *card, *where, *timers(tree, home, ctl)], 0)
-    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"), tested, *rec, *card]
+        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), *tested, *card, *where, *timers(tree, home, ctl)], 0)
+    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"), *tested, *card]
     card.clear()
 
     def restart_before() -> bool:
