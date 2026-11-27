@@ -121,39 +121,6 @@ needs = "Claude Code's sandbox (on Linux, bubblewrap and socat); shell = \"trust
 free_path = "this is the free path"
 layer = 6
 
-[abilities.job-search]
-state = "described"
-
-how = [
-  
-  
-  
-  
-]
-tier = "free"
-
-price = "none"
-
-
-
-upgrade = "jobs"
-
-
-state = "described"
-
-how = [
-  
-  
-  
-  
-]
-tier = "free"
-
-price = "none"
-free_path = "this is the free path"
-
-
-
 [abilities.bank-balances]
 state = "described"
 what = "Reads the owner's bank and card balances, read-only, and keeps one net worth number a day with a private dashboard."
