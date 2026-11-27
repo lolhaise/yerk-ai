@@ -327,7 +327,8 @@ def test_the_read_ops_only_read_and_with_texting_off_answer_texting_is_off(tmp_p
     from yerk_ai.daemon import YERK_TOOLS
     assert "mcp__yerk__texting" in YERK_TOOLS
     y, rooms, f, tool = daemon(tmp_path)
-    now = time.time()
+    now = datetime.fromtimestamp(time.time(), y.memory.tz).replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
+    monkeypatch.setattr(time, "time", lambda: now)    # a stopped clock at today's noon: rows a minute apart are today's at any hour
     y.ledger.inbound_add("g1", "texting", "imessage:alex", "alex", 12, created=now - 60)
     y.ledger.inbound_add("g2", "texting", "imessage:alex", "owner", 5, created=now - 30)
     y.ledger.texting_add(person="alex", handle=A1, inbound="g1", state="missed", mode="dry", reason="older than 6 h")
@@ -344,6 +345,7 @@ def test_the_read_ops_only_read_and_with_texting_off_answer_texting_is_off(tmp_p
     assert tool("owner-room", "sheet", "gamma")["line"] == words.TEXTING_NO_ONE.format(key="gamma", keys="alex, beta")
     assert tool("owner-room", "say")["line"] == words.TEXTING_OPS
     assert files(f) == before and not (f.parent / "sheets.log").exists()
+    monkeypatch.undo()
     for n, table in enumerate(("", '[texting]\nmode = "off"\nreport = "owner-room"\n')):
         y, rooms, f, tool = daemon(tmp_path / str(n), table)
         for op in ("sheet", "log", "why", "open", "release"):
