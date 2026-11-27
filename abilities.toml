@@ -1,4 +1,6 @@
 # Every ability Yerk AI has or knows how to build, what it needs and what it costs, one entry per ability. The program
+# only reads this file: `yerk abilities`, `yerk explain` and a room asked what it can do all answer from it. You change it
+# by hand, and a builder worker adds the entry for each ability it builds (decision 23).
 # tier: "free" runs on the box; "key" needs a provider key the user adds; "paid" is metered or a
 # subscription, with the provider and the price named. `free_path` is what runs without the key or
 # the payment, or "none". Abilities still to come say so in `layer`.

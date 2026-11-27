@@ -1,10 +1,34 @@
 # Changelog
 
 One entry per merge to main, newest first: the date, the pull request, and what a person running Yerk AI notices.
-A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.toml, a unit) says so under
-**Upgrading**, with what to do. The ledger migrates itself at the next start (its schema is versioned and a ledger
-newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
-version changes.
+If you run it, read down from the top to the last change you had. A change to a file your install keeps (rooms.toml,
+yerkd.toml, budgets.toml, a unit) says so under **Upgrading**, with what to do. The ledger, the small database of
+what ran, migrates itself at the next start (its schema is versioned, and a ledger newer than the code is refused
+with one line, never changed); the memory search index (`yerk-index`) reads every file again when the way it cuts
+files into pieces changes.
+
+## 2026-11-27
+
+### every-file-plain (every folder and every file opens in plain words)
+
+- Every folder a visitor can open has a README.md that says what the folder is and what each thing in it is, one line each: docs/,
+  units/, examples/, examples/addons/hello/, plugins/, plugins/web/, evals/, tests/, and yerk_ai/ with its three sub-folders. A folder
+  the program or a test reads as data has none: its parent's page describes it.
+- docs/HOW-IT-WORKS.md is new, between the README and the long guide: who is who, one message from send to reply, and the project's
+  own words in plain ones.
+- The first sentence of each Python file's docstring says what the file is for; pointers to design notes and build dates moved later
+  in the same docstring. No code changed: for every Python file the syntax tree with its docstrings taken out is identical, positions
+  included, and the line count is the same.
+- docs/GUIDE.md, docs/STATUS.md, CHANGELOG.md, STYLE.md, CONTRIBUTING.md and SECURITY.md open by saying what the page is and who it is
+  for; the config files at the root open with what they are and who changes them (comments only; docs/budgets.md written again from
+  budgets.toml).
+- CHANGELOG.md: the 31 headings that still said a pull request was to come carry their number, and a line marks where this
+  repository's own numbers begin.
+- README.md: "Your yes before it acts for you" (a reply or a search needs no yes); the rule on an order to act as you said as a rule;
+  where your memory goes when you add a key for search by meaning; its list of docs led by the new page.
+- Docstrings in the tests and in yerk_ai/taste.py say what a test protects without the date, the hour or the words of the
+  conversation it came from; yerk_ai/github.py no longer calls the repository private; three texting docstrings no longer say
+  sending is unbuilt or point at a file that is not here.
 
 ## 2026-11-26
 
@@ -34,6 +58,8 @@ version changes.
   `fix first`. `needs.py` keeps its line count.
 
 *Above this line a pull request number is this public repository's, counted from #1. Below it the numbers belong to the repository's earlier, private history, and open nothing here.*
+
+### due-by-day-2026-11-26 (#145)
 
 - What is due on a day past the week has an answer. A `recall` whose `since` or `until` is after today (the install's day)
   also returns, right before the hits, `due_line` and then `due`: every open dated line due from `since` through `until`, both

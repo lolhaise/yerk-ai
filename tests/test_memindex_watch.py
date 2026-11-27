@@ -1,5 +1,5 @@
 """Checks yerk-index, the program that keeps the memory's search index, between its passes: it sleeps on a folder watch
-and a pass costs one stat per file and no stat per path for the mention check."""
+instead of walking the tree on a timer, and a pass costs one stat per file and no stat per path for the mention check."""
 import ctypes
 import errno
 import logging

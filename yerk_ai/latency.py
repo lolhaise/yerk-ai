@@ -4,7 +4,7 @@ length (Ledger.waits); the prompt hook and the daemon's own hook handling summed
 hook (each room's assembled.jsonl, recall_ms); Yerk's own tool round trips (tool_times, mcp__yerk__*); the cache hit rate, cache
 reads over all input tokens of each turn's result (the stream logs). One table, also written to <state>/bench/latency-<day>.json
 beside the medians of the newest earlier file, so a speed lever is kept or cut on a diff. The ledger is opened ?mode=ro and the logs
-only read: the one file written is the bench's own. `medians` is the day's pair the status card and the morning diff carry."""
+are only read: the one file written is the bench's own. `medians` is the day's pair the status card and the morning diff carry."""
 from __future__ import annotations
 
 import contextlib

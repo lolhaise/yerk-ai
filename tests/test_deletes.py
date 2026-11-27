@@ -3,7 +3,7 @@ yes. Before it (need 23 of 2026-10-25), a room the owner asked to delete old jun
 refused by the trash gate, found the rest of the disk read-only in its sandbox, and wrote the lines for the owner to paste and run. A delete
 the owner orders outside a room's work folder is made by the daemon, held first with each path shown as what it is, then run once on the
 owner's word, for good, and never from a person's room, from a worker, past a rule turned off or a hook that failed open, nor on the root, a
-disk or Yerk AI's own folders. Every file deleted here is one this test made under its own tmp_path."""
+top folder, the home folder, a mounted disk or Yerk AI's own folders. Every file deleted here is one this test made under its own tmp_path."""
 from __future__ import annotations
 
 import asyncio

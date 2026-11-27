@@ -1,4 +1,6 @@
 # An example rooms.toml, the file that lists your rooms: one [rooms.NAME] table per room, with its chat, its accounts,
+# its model, its tools and its privacy. Copy it to your private folder as rooms.toml and edit it there; yerkd reads
+# that copy, never this one. This copy matches examples/private/rooms.toml.
 # Paths are relative to the private folder.
 
 # [defaults]: the one tool set every owner room carries, declared once, so the rooms share one way of doing things. It holds

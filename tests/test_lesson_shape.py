@@ -1,7 +1,7 @@
 """Checks that a rule, a standing instruction the rooms follow, is kept as one lesson in the shape the Claude docs ask for
 (shape.LESSON). The cases: each check on a rule of its own, each refusal naming the docs sentence it enforces off the
 fetched page, the sentences pinned to their pages (shape.PINS) and still there on the install's own fetch, the whole store
-page. Every value here is a placeholder."""
+scored for the doctor's daily run, and the code-memory limits read off the page. Every value here is a placeholder."""
 import os
 from pathlib import Path
 

@@ -3,7 +3,7 @@ idle `idle_compact_after` minutes whose session holds `idle_compact_at` of its w
 does, so the compaction never lands in a person's turn (seen live: a one-line question waited 5 min 20 s for Claude
 Code's own); a turn that ends within `idle_compact_within` of Claude Code's own line compacts the same way at once
 (a busy room: never idle 25 minutes near its line). Each test ends on a case that compacts or answers,
-missing name."""
+so on a daemon without it every one fails on what the room does, never on a missing name."""
 import asyncio
 import json
 import logging

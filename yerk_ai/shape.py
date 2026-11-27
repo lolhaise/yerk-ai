@@ -1,7 +1,7 @@
 """The rule-shape check (`yerk doctor`, `yerk docs shape`): it scores every rule file a room loads (yerk_ai/mechanics.md, its
 persona, rulebook and voice, the install's rules file) against Anthropic's prompting guide for Claude, which `yerk docs`
 downloads to docs/claude/prompting-guide.md in the state folder and which asks for what to do with its reason, examples inside
-each thing said once and calm wording. Five counts, each one exact rule so a person can redo it with grep:
+<example> tags, each thing said once and calm wording. Five counts, each one exact rule so a person can redo it with grep:
 - no why: a line holding never, no, not, nothing, cannot or an n't word, and none of because, since, so that, so
   (bar "say so", "do so", "or so") or why;
 - loud: a line holding a word of four or more capitals that is no known acronym or name (ACRONYMS, plus [docs]

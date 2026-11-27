@@ -1,10 +1,10 @@
 """Checks the `email` tool (emails.py), which sends an email in your name from your own Gmail, with the room's files attached, once you have seen
 it and said yes. Before it (need 59 of 2026-11-05), a room asked to send a written statement and a document to a person whose only contact was an
 email address had a mail tool that reads only, a text tool that reaches phone numbers and Apple addresses, and a browser not signed into the
-owner's Gmail, so it handed the owner a block to paste into an email themselves. An email in the owner's name goes from the owner's own Gmail with
+owner's Gmail, so it handed the owner a block to paste into an email himself. An email in the owner's name goes from the owner's own Gmail with
 the room's files attached, held first with who it goes to, its subject, its files and its words shown in the room, then sent once on the owner's
 word, and never from a person's room, from a worker, past a rule turned off or a hook that failed open. An email that did not go is told apart
-have. A fake Gmail here stands in for the real one: nothing leaves the machine, and every address and name is a placeholder."""
+from one that may have. A fake Gmail here stands in for the real one: nothing leaves the machine, and every address and name is a placeholder."""
 from __future__ import annotations
 
 import asyncio

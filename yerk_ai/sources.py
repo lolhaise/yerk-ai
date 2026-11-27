@@ -1,7 +1,7 @@
 """`yerk import imessage:<chat.db>` and `yerk import gmail`: copy your texts and mail into the private folder as plain
 files, imports/texts/<person or group>.md and imports/mail/<YYYY-MM>.md, each line a stored message written out by code
 (its speaker, the install's time, attachments and app messages as tags, a deleted chat's messages placed by ck_chat_id,
-newsletter, a draft and a security mail marked, sent mail kept longer), nothing summed up. A file there carries no
+a newsletter, a draft and a security mail marked, sent mail kept longer), nothing summed up. A file there carries no
 class, so it reads as private: an owner room reads the two folders once [memory] also names them, and no person room
 does. By id, a message's guid and a mail's UIDVALIDITY:UID, one a line in imports/texts.ids and imports/mail.ids, so a
 second run adds only what is new. A security mail, a security text from a short code and every secret-shaped string are

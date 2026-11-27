@@ -2,7 +2,7 @@
 first on PATH writes an N-page PDF where LibreOffice would, so a document in the room's work folder comes back as NAME.pdf beside it with
 its pages, the call's own profile gone after; a path outside the room's folders is refused and a PDF is counted alone, the fake never run
 either time; no LibreOffice on the machine, a LibreOffice that fails and one that hangs past the timeout are each said in words; two calls
-finish, one after the other. One test renders a real two-page document, when LibreOffice is on this machine. A .tex goes
+at once both finish, one after the other. One test renders a real two-page document, when LibreOffice is on this machine. A .tex goes
 to a fake latexmk, never to LibreOffice, run in the real sandbox (bubblewrap), where it finds only the document's folder,
 read-only, and no network; its program comes from the file; outside the work folder, with no latexmk or no sandbox
 nothing runs; a failed compile says TeX's first error and its line; a link at NAME.pdf is replaced, never written

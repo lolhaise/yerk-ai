@@ -1,7 +1,7 @@
 """Checks the watch tool (watch.py), which turns a video link or a video file into frames and a transcript a room can read. Offline, a fake yt-dlp
 put first on PATH copies a real four-second video, made here by ffmpeg, where the -o template says and prints its path, so a post's link comes back
 as the video in the room's work folder under videos/<slug>/ with exactly N JPEG frames and its transcript, through a fake transcribe.run that writes
-(no key, no network, no money). A word, a path or an ftp link is refused and the fake never runs; no yt-dlp on the machine,
+the file beside it (no key, no network, no money). A word, a path or an ftp link is refused and the fake never runs; no yt-dlp on the machine,
 a site that wants a login, a run that saves nothing and one that hangs past the timeout are each said in words; a video
 with no sound has frames and no transcript; a second call on the same post pulls nothing and pays nothing; two calls at
 once both finish, one after the other. The same fake answers the captions step by its argv: `-J` prints the page knobs.json

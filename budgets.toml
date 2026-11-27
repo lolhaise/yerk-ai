@@ -2,7 +2,8 @@
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
 # the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics,
 # [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build
-# when a part or a total passes its number here.
+# when a part or a total passes its number here. The program only reads this file: you change a number by hand,
+# together with the code that needs it, and add a dated note under its line that says why.
 
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.

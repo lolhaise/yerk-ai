@@ -2,7 +2,7 @@
 together with that assistant's answer, under a line asking for a verdict on the answer, naming who sent the message and who reads the
 room; a final of NO_REPLY on that turn is never kept quiet. The reason for the key: the room should always answer on such a turn and
 check the other assistant's work, saying whether it is good, partly right or wrong with the green, orange and red marks.
-along as before. The adapter runs on test_watch's fakes, the room on the fake Claude (test_room)."""
+A room without the key reads along as before. The adapter runs on test_watch's fakes, the room on the fake Claude (test_room)."""
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace as NS

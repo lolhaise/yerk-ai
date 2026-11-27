@@ -1,5 +1,5 @@
 """The holds: a text that may not go on its own waits for the owner's word as one card, a message showing it, in the owner's texting room. It is filed
-(rule `text-thread`): a `held` decision, and a `release-ready` one of a person whose standing release is off. A card shows
+as a hold in that room's name (rule `text-thread`): a `held` decision, and a `release-ready` one of a person whose standing release is off. A card shows
 only in `to`, the room the daemon allowed at its start (live: `report`; dry: `dry_report`, marked DRY; an owner room with no
 people, else none). The owner's word, as a reply to the card (or a bare `send` or `skip` while that card is the one text hold
 open and no other hold is), sends exactly the text the card shows (`queued`; dry: `would-send`), makes a new draft (`edit

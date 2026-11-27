@@ -2,7 +2,7 @@
 Messages and a Contacts database built here and a fake Gmail that answers only EXAMINE and PEEK: a file a person or group (a deleted chat
 placed by ck_chat_id, the reasons rows are skipped, attachments, app messages, the attributedBody text), a file a month (a newsletter, a
 draft, a security mail, sent mail longer, the HTML stripper), the secret rules, a second run adding nothing and a new message put in its
---since and --dry-run, and a person room that never reads an imported line. Every value here is a placeholder."""
+place, --since and --dry-run, and a person room that never reads an imported line. Every value here is a placeholder."""
 import sqlite3
 import stat
 from datetime import datetime

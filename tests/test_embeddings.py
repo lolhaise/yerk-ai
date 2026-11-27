@@ -5,7 +5,7 @@ keyword-only near miss, the index stays queryable during a backfill, the bench's
 the manifest and `yerk abilities` show the ability both ways. The pin maps the keyword tables, keeps every lock
 the process holds, maps a writer pass's new chunks at its next tick, and goes off only where SQLite has no
 dbstat. yerk-index imports numpy on one BLAS thread unless one is set, and an import of its module sets
-is ever called: a stub stands in. Every value here is a placeholder."""
+nothing. No provider is ever called: a stub stands in. Every value here is a placeholder."""
 import asyncio
 import json
 import logging

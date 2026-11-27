@@ -1,7 +1,7 @@
 """Checks that a room's own channel id is the room itself, so a `send` there is never held as a send to another room. The case behind it
-(send-own-channel): a room asked to post a picture in its own chat called `send` with its channel id, the approval gate held it
+(send-own-channel, 2026-10-24 17:12): a room asked to post a picture in its own chat called `send` with its channel id, the approval gate held it
 as a send to another room, and the send would have answered that no room has that name. The gate's "other" and the send tool read one resolver,
-room's name, its channel as rooms.toml writes it (`discord:<id>`), or the id alone. Example ids; nothing posts anywhere."""
+gates.room_named: a room's name, its channel as rooms.toml writes it (`discord:<id>`), or the id alone. Example ids; nothing posts anywhere."""
 
 from __future__ import annotations
 

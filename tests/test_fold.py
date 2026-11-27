@@ -1,6 +1,6 @@
 """Checks folds, a person's message written into a turn that is still running, so that the reply answers it. The message comes with the fold's
 line ahead of it, and the Stop hook bounces once a final that covers it and names none of its content (its numbers, a short one's words). The
-built as the room writes them (Room._write) with their replays as the stream gives them; names and numbers are placeholders."""
+turns are built as the room writes them (Room._write) with their replays as the stream gives them; names and numbers are placeholders."""
 from __future__ import annotations
 
 from types import SimpleNamespace

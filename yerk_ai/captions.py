@@ -6,7 +6,7 @@ and it answers HTTP 429), saved as json3 from that same answer and read into the
 NAME.transcript.txt beside the video, so watch.heard reads it as it is and the US$1 gate is never reached for it. The track is
 the video's own language, an uploaded one over an auto-generated one and the untranslated auto track (<lang>-orig) over its
 plain one, never live chat and never a translation, in the shape of the box's tools/yt-transcript. yt-dlp is the program on the
-watch.pull runs it; the json3 file and the -J answer are deleted once read, so the transcript is the one thing kept.
+daemon's PATH, run as watch.pull runs it; the json3 file and the -J answer are deleted once read, so the transcript is the one thing kept.
 """
 from __future__ import annotations
 

@@ -3,7 +3,7 @@ claims sheet (each claim with its source line and quote) written that turn is tu
 and the next send of the turn goes out as it is. A final text holding a pasted block bounces once at Stop the same way; one shadow row
 `sheet` per refusal, which the morning diff counts; a person's room only logs, as before. The case behind it (2026-10-22): two PDFs, a
 crib file and pasted blocks went out in the owner's name in one morning with no claims sheet, each ledgered by the shadow rule and none
-And a part a session start sends trimmed is said in the machine room, once a day. Every value here is a placeholder."""
+stopped. And a part a session start sends trimmed is said in the machine room, once a day. Every value here is a placeholder."""
 from __future__ import annotations
 
 import asyncio

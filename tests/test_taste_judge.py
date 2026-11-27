@@ -1,7 +1,7 @@
 """Checks `yerk eval taste`, which replays past turns to the taste judge and scores it. The judge reads the owner's message, the
-and what the turn read; the eval scores it beside phase 1 and prints the bar without enforcing it; a reply to the owner
+reply and what the turn read; the eval scores it beside phase 1 and prints the bar without enforcing it; a reply to the owner
 makes no judge call (PR 93 cut to its eval half, the shadow thread left out). A fake claude stands in for the judge: it flags a
-carries, a filing for an answer, and (an example false alarm) a reply that says enjoy. No network."""
+figure no read line carries, a filing for an answer, and (an example false alarm) a reply that says enjoy. No network."""
 from __future__ import annotations
 
 import json

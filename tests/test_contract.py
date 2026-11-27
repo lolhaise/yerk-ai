@@ -1,5 +1,5 @@
 """Checks the contract probes in tests/contract/probes.py, short real Claude Code runs that show it still behaves as Yerk AI expects. The cases:
-run as a person or a timer runs it, against the fake binary, with its raw event log and ledger row; the upgrade drill
+one probe run as a person or a timer runs it, against the fake binary, with its raw event log and ledger row; the upgrade drill with its verdict
 and its line in drills.jsonl; and the package's command line, which no longer has either since the probes moved there from `yerk probe`."""
 import json
 import os

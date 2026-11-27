@@ -1,5 +1,5 @@
 """The reply list, the people texting may answer in the owner's name: `<private>/<[texting] people>` (default texting/people.toml), owner-only,
-name`, then one `[people.<key>]` a person: `first`, `handles` (numbers or Apple ID addresses), `sheet`, `release`. A
+read once at start. `[owner] name`, then one `[people.<key>]` a person: `first`, `handles` (numbers or Apple ID addresses), `sheet`, `release`. A
 handle is held in texts.handle's form, an address lowercased, so a chat's identifier matches it however Messages wrote it.
 Beside it each person's sheet (`sheet`, default people/<key>.toml): what may be said to them unasked and how the owner
 writes to them; none on file is no voice card and every class held. A sheet or the list changes only by `change`, on the

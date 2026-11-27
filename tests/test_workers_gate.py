@@ -1,6 +1,6 @@
 """Checks that a worker's tool calls pass the same gates (the approval rules) as a room's, with deletes held to
 its own folder: the hook workers.py writes into a worker's settings, and what gates.worker_check answers. Every
-under pytest's tmp_path and the file to delete is delete-target; nothing here deletes anything."""
+folder is under pytest's tmp_path and the file to delete is delete-target; nothing here deletes anything."""
 
 from __future__ import annotations
 

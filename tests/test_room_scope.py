@@ -1,7 +1,7 @@
 """Checks that a room given its own `also` in rooms.toml, naming which extra read-only notes folders (the `[memory] also` roots of yerkd.toml) it may read,
 keeps to its own tree and those. Its recall (keywords and meaning), read_memory and mention recall serve its own tree and the roots it is given, never
 another root; a room without one sees every root as before; a root the install does not index, or an `also` that is not a list, stops the start with one
-is a placeholder: `live` and `snap` stand for a live notes folder and a frozen copy of it, which share their file names."""
+plain line. Every value here is a placeholder: `live` and `snap` stand for a live notes folder and a frozen copy of it, which share their file names."""
 import asyncio
 import json
 import shutil

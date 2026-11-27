@@ -2,7 +2,7 @@
 when. Offline: the chunking, the near-silence drop rule, the cross-check's marks, the speakers (Muse's windows, its turns, its
 letters reconciled across windows, a letter per segment), a whole call against fake providers (its spend rows, the gate, the keys, a
 failed second pass, a failed or missing Muse), the arrival line, the bounce of a note never transcribed and the morning's spend
-YERK_TRANSCRIBE_LIVE=1 with a key in $YERK_PRIVATE/secrets/openai.key."""
+line. One test transcribes a real 3-second fixture, behind YERK_TRANSCRIBE_LIVE=1 with a key in $YERK_PRIVATE/secrets/openai.key."""
 from __future__ import annotations
 
 import asyncio

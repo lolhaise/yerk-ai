@@ -2,7 +2,7 @@
 read under it (pictures.size). Read shows a room a picture at most 2000 px on its long side, so the small print of a bigger one (a time in a
 calendar, a figure on a form) was lost, and ffmpeg in a room's shell waited on an approval no one gives mid-turn. A part of a picture in the
 room's own folders, as fractions of its width and height, comes back as a PNG 2000 px on its long side (enlarged 4 times at most), numbered
-work/zoom/<message id>/; the whole picture re-encoded is the way past a picture Read refuses. A picture's size is read off
+per picture under work/zoom/<message id>/; the whole picture re-encoded is the way past a picture Read refuses. A picture's size is read off
 its header (PNG, JPEG, WebP, GIF), never decoded, and an [attachment] line names a picture past 2000 px with that zoom
 reads its small print. Every refusal is said in words. All pictures here are made by ffmpeg or by zlib, none real."""
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Checks the texting replay, which scores today's writer and check against past text threads. Past threads are cut at each burst of theirs,
 put through the live writer and the live check as of each cut, scored beside what went, writing only under <state>/texting/replay/ (run 7a).
-records the argv and the stdin it was handed; no account is touched, nothing is sent."""
+Every call goes through fake_claude.py, which records the argv and the stdin it was handed; no account is touched, nothing is sent."""
 from __future__ import annotations
 
 import json

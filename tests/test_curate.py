@@ -3,7 +3,7 @@ ones from each day's sources. Its cases, layer 11: the pack filter's four bugs f
 an emoji before SUPERSEDED still supersedes, names in any case, relation words find a person's lines); the wall by class (a card in a person's
 room's class gets nothing from the owner's private sources, and her room never reads a promoted private line); the sweep (repeats, superseded and
 past-date lines blank, a cite moved only on one exact match, every other drift a finding, a backup first); the promotion's gates (a worker that
-the knock-down, shape, head, secret, repeat, every cite a pack line, the bench); `--since`; a dry run; the morning line."""
+sees the pack alone, the knock-down, shape, head, secret, repeat, every cite a pack line, the bench); `--since`; a dry run; the morning line."""
 import json
 import shutil
 from datetime import datetime, timezone

@@ -1,6 +1,6 @@
 """Checks that the line taken as the source on file for a figure in a reply is a line about the same thing, not any line that shares
 its digits. The shapes come from the evidence replay of 2026-10-21 (13 of 74 accepted replies flagged, every wrong-fact hit on an
-text here is made up. The lookup is memory.on_file's: a line holding the figure counts when `about` says so."""
+unrelated line); the text here is made up. The lookup is memory.on_file's: a line holding the figure counts when `about` says so."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """Checks that the figure rule, an evidence check that records a reply's figure with no source behind it and never
 blocks the reply, counts only a real quote. A version after a name, a figure the reply marks as approximate and a round
 figure with a near number read this turn are not looked up on file; an exact figure quoted with no read behind it still
-on 2026-10-18 where each was ledgered against an unrelated line."""
+is. The three cases come from one conversation on 2026-10-18 where each was ledgered against an unrelated line."""
 
 from __future__ import annotations
 

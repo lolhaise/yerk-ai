@@ -4,7 +4,7 @@ from a turn that made no call that reads, is ledgered as `person`; a quoted span
 nothing the turn read, was given or posted earlier in the session carries is ledgered as `quote`. The sentences have the shapes
 of live ones that a replay saw no rule catch (C16, C41, C42, C46, C55, C37) and of two accepted
 replies the person rule flags anyway (K41, K65): known false alarms, kept here so a change that stops them is seen (K62, a
-details are placeholders, never the live words."""
+sentence of the owner's own, is no longer one). Names and details are placeholders, never the live words."""
 from __future__ import annotations
 
 from test_gates import call, human_turn, setup, turn_of

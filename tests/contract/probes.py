@@ -1,6 +1,6 @@
 """Contract probes check that a real Claude Code still behaves the way Yerk AI relies on: real Claude Code processes, tiny prompts, raw event logs
 kept. They are run by hand, before an upgrade (DESIGN 12); no unit or job runs them. They live beside the tests, out of the package, and run from
-`python tests/contract/probes.py NAME --config-dir DIR` prints one probe's JSON, `... drill --config-dir DIR` is the
+a checkout with its venv: `python tests/contract/probes.py NAME --config-dir DIR` prints one probe's JSON, `... drill --config-dir DIR` is the
 upgrade drill; each exits 0 when it passed. The raw event logs go to <state>/probes (--logs).
 
 - hello: one scripted turn end to end, with its run ledger row

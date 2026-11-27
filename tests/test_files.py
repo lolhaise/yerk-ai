@@ -2,7 +2,7 @@
 staged, by code with no model call (NAME.sheet.txt, NAME.pdf.txt), its arrival line naming it. A scan is named and not
 read, a long one cut at budgets.toml [files] with a last line saying how much; the index takes it as an inbox text kind,
 recall and read_memory show its lines behind memory.FILE_MARK; `yerk files backfill` writes the missing and stale ones; a
-never read. Every value here is a placeholder (decision 22)."""
+person room's files are never read. Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
 import asyncio

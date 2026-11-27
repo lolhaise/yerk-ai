@@ -1,6 +1,6 @@
 """Checks the `uncapped` switch in yerkd.toml's [limits]: off (absent or false), what a room is sent is unchanged, byte for
 byte; on, every character budget in budgets.toml reads as unlimited for what is sent, the numbers kept as measurements, and
-ceiling the one cut left."""
+Claude Code's 10,000-character hook ceiling the one cut left."""
 import asyncio
 import json
 import logging

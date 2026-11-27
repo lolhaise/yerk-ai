@@ -1,6 +1,6 @@
 """Checks location.py, which tells an owner room where you are: the place part on an owner room's message only, fresh and at a named
 place, and the day's places as one day-log line that a re-run replaces where it stands. The fixture is a made-up day in the
-own shape: a fix every 20 minutes, two drives, a lunch off the office lot, a line that is no fix and one with no point."""
+watcher's own shape: a fix every 20 minutes, two drives, a lunch off the office lot, a line that is no fix and one with no point."""
 import json
 import re
 import shutil

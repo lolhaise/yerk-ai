@@ -6,7 +6,7 @@ transcript. /login, the owner's own slash command, comes to the daemon as an int
 session sees it: the login is written as NAME.login in the private folder's secrets/ (JSON site, user and password, 0600 in
 a 0700 folder), and the browser plug-in types its user or its password by that name, on its own site only (hands, type with
 login). passwords() reads them back for the two places that look for one by value: the `seen` tool, which refuses a
-words that hold one, and the doctor's secrets check, which names a line that does (logins-notes-doctor)."""
+picture's words that hold one, and the doctor's secrets check, which names a line that does (logins-notes-doctor)."""
 from __future__ import annotations
 
 import json

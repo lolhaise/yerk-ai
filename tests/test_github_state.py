@@ -4,7 +4,7 @@ so a branch or a pull request of a private repository is read on the daemon's to
 branch against the checkout and the pull requests' states and checks. The wall a room met (its web fetch of a private repository's pull
 requests came back 404, with no GitHub login in any room) is now the daemon's token, and with none one line names the file that turns it
 on and nothing is sent; a token that does not reach the repository, a pull request that is not there, another repository's address, a
-each said in words. The card, the allow list and the abilities entry name it."""
+name that is no branch and a person's room are each said in words. The card, the allow list and the abilities entry name it."""
 from __future__ import annotations
 
 import asyncio

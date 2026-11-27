@@ -3,7 +3,7 @@ systemd has every timer it is asked about enabled: the doctor's timer check neve
 own fake). Every test's box is on no tailnet: the page's default address is never the box's own tailnet one (a test of it gives its
 own). Every test's box is no Windows PC: no page is placed on the owner's real screen by Windows' own PowerShell (a test of the placing
 gives its own stand-in). Every test's meter reading finds no bwrap: the example layer's first account is Claude Code's default folder,
-and the box's own bwrap never runs over them (a test of the hiding gives its own stand-in)."""
+which on a box in use holds transcripts, and the box's own bwrap never runs over them (a test of the hiding gives its own stand-in)."""
 import gc
 import os
 import subprocess

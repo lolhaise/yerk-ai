@@ -1,6 +1,6 @@
 """Checks that a claim about what a third person said, decided, wants or asked, or a quote of their words, cannot go out from a turn that read nothing: it is
 turned back once per result, with the fix, and the second try goes out. This holds in an owner's room and in a person's room too (said-or-noted, 2026-10-23;
-person-room-parity), pointed at its own sources. A sentence about the owner ("you", the name their words go by) or the room is never
+person-room-parity), pointed at its own sources. A sentence about the owner ("you", the name his words go by) or the room is never
 such a claim, and one the room writes as its own note ("from my notes, not their words") passes. A room's note is never shown as
 anyone's words; a person's words filed with `said` and their `source` are shown as theirs. What was sent to a room is a recall
 root, an owner room's private and a person's room's its own. The sentences have the shapes of the first live day's sixteen shadow rows; every name and value here is a

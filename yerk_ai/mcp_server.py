@@ -8,7 +8,7 @@ page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, 
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
 mounts all but the room's folders read-only, zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn, and show because that
-reaches no screen. A worker gets none of it: with [workers] yerk_tools its own stdio server (`worker_server`) carrying
+shell reaches no screen. A worker gets none of it: with [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only,
 and of its room's add-on servers those the room gives every worker (worker_addons) and those its start or its job names; no MCP server at all when there
 are none.
 

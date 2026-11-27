@@ -1,7 +1,7 @@
 """Merges two fact cards by hand; a fact card is a memory file of standing facts about one subject. `yerk cards merge A B` moves card
 A's live lines onto card B's end and leaves A moved to B (memory.moves), one pair at a time, the owner's choice after reading the pair;
 `yerk cards near` lists the live cards whose names share a first word, as remember's `near` reads them. No model chooses. Nothing adds
-gains lines at its end and A keeps its line count, so every cite of either still names the line it named."""
+or cuts a line above another: B only gains lines at its end and A keeps its line count, so every cite of either still names the line it named."""
 from __future__ import annotations
 
 import json

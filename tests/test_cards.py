@@ -1,7 +1,7 @@
 """Checks that two cards for one person, two fact files in the memory, become one. The cases: a card is live or emptied (memory.live), an
 emptied card may say where it moved (`# moved to: <name>`, memory.moves) and then answers by its names as its target, `yerk cards merge A B`
 moves one card's live lines onto another's end and leaves it moved, recall's walk goes on through what the merge moved, deep recall hands no
-matter line and no card title, and `yerk cards near` lists the cards sharing a first word. Every name here is made up."""
+front matter line and no card title, and `yerk cards near` lists the cards sharing a first word. Every name here is made up."""
 from __future__ import annotations
 
 import hashlib

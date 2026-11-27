@@ -1,7 +1,7 @@
 """Checks the rule store (lessons.py), which keeps the rules the rooms follow as lessons in the Claude docs' shape. The cases: one lesson per file
 under rules/, its front matter first with its class, then its one-line summary, then its body; rules.md the index, a line a job and its lessons'
 files; a lesson replaced in place and a retired one's tombstone; the index at a session start, each body where a topic rule loaded, every body on
-a session from before a conversion told nothing about it. Every value here is a placeholder."""
+an uncapped install; a session from before a conversion told nothing about it. Every value here is a placeholder."""
 import json
 
 from yerk_ai import context, lessons, memory

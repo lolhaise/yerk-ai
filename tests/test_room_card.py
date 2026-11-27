@@ -1,6 +1,6 @@
 """Checks the card a room posts when you type /status there (status.room_card): the machine card's shape, three lines
 about the room it was typed in, each account's usage left at two lines each, what runs, today's speed and spend, and
-(status.card) keeps its own text: the operator's machine card."""
+a red line only for trouble. `yerk status` (status.card) keeps its own text: the operator's machine card."""
 from __future__ import annotations
 
 import calendar

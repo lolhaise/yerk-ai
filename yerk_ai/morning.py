@@ -6,7 +6,7 @@ message in the last 24 hours with no reply or notice for it) and shadow-gate fla
 night's sweep, memory and CPU per unit from the running yerkd's /status, and the account meters. It is
 posted through the running yerkd to the room whose rooms.toml entry says role = "machine", and to no other
 room; with no such room it is only written under the state folder, and one line says where. A finding the
-delivered diff did not have is an alert: the diff opens with it. The sizes and findings are stamped
+last delivered diff did not have is an alert: the diff opens with it. The sizes and findings are stamped
 only once the diff is delivered, so a failed post shows the same change again the next morning."""
 from __future__ import annotations
 

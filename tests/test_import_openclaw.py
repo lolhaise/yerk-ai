@@ -2,7 +2,7 @@
 secrets taken out, against a small OpenClaw workspace built here. The cases: each part copied or skipped by its rule, the doctor's secret shapes
 and a line whose key names a secret written as their kind on the copy's own lines (whatever the value: a short token, a pin, a password with no
 digit), a second run writing nothing, a file the box changed or deleted carried over and a part it no longer has held, --since and --dry-run, what
-rooms.toml lines that read the copies printed in place and never written. Every value here is a placeholder."""
+it refuses, and the yerkd.toml and rooms.toml lines that read the copies printed in place and never written. Every value here is a placeholder."""
 import os
 import shutil
 import stat

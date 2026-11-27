@@ -1,11 +1,11 @@
 """The ledger, one SQLite database that records each message in and out, each turn, worker and approval, so that
-why the turn moved there), inbound (every channel message by its id, before anything runs),
+after a crash no message is lost or posted twice. Its tables: turns (one row per turn, with the account that
 executed it and why the turn moved there), inbound (every channel message by its id, before anything runs), outbound
 (every message Yerk AI posted, with the id the channel returned, and a card's text at each post and edit, so a card
 the reply replaced can still be read back), deliveries (every outbound part by its idempotency key, written before
 the post: a retry after a crash posts a part only if it is not already in the room), attachments (every inbound
-missing), cards (each turn's progress message, open until its turn ends; a worker's until it
-settles), holds, workers (one row per worker unit: where it runs, how it ended, whether its result
+file, staged or missing), cards (each turn's progress message, open until its turn ends; a worker's until it
+settles), holds, workers (one row per worker unit: where it runs, how it ended, whether its result was relayed or
 skipped and why), health (the daily call per account: pass or fail and the login's identity), and the gates' own
 (gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
 the tamper rows of a changed setting; stalls (beat.py: each time the event loop was held more than 2 s, with its

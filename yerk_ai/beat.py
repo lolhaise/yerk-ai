@@ -1,10 +1,10 @@
 """Tells systemd the daemon is alive only while its event loop answers, so a frozen daemon is restarted, and records each time
-probe on the loop every tenth of the beat's cadence; the time a probe waits is how long the loop was
+the loop is held up. These are the watchdog beat and the stall watch (DESIGN 9, L201, L238). A thread beside the event loop
 puts a probe on the loop every tenth of the beat's cadence; the time a probe waits is how long the loop was held. Only an
 answered probe beats systemd's watchdog (WATCHDOG=1, at most once a cadence, and only under WatchdogSec), so a frozen loop
 stops the beat and systemd restarts the unit. A probe waiting past LIMIT gets the dump while the stall lasts (the loop thread's
 stack, the asyncio tasks, /proc for the daemon's threads and each room's processes, never under the memory tree); once answered,
-past STALL is a log line and one past LIMIT a stall row: when it began, how long it held, what ran.
+a hold past STALL is a log line and one past LIMIT a stall row: when it began, how long it held, what ran.
 READY=1 goes out once the daemon says it can answer (its HTTP port listens)."""
 from __future__ import annotations
 

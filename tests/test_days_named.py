@@ -1,7 +1,7 @@
 """Checks that a room filing a note that names a coming day but gives no date is told so. memory.days_named reads the days still
 to come that a line's words name in an explicit form, with no model, and `remember`'s answer gains `day` after `cite` when the
 line was filed with no `due` and no `until`. The room decides: the line is filed byte for byte as it would be without the note,
-is dated by code. Every name, line and day here is made up."""
+and nothing is dated by code. Every name, line and day here is made up."""
 from __future__ import annotations
 
 import asyncio

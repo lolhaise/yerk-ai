@@ -1,6 +1,6 @@
 """The gates: rules in code that check each tool call a room or a worker makes before it runs, and hold, rewrite or refuse the
 risky ones. Code decides, so they block (DESIGN 8; decisions 8 and 18). A judge-model gate never blocks until it has proven
-known-good control passing).
+itself in shadow (100 cases, under 1 in 10 false alarms, a known-good control passing).
 
 PreToolUse, first answer wins, shell text parsed quote-aware before any pattern runs (a `rm` in
 quotes, in a heredoc body or as a word in a string is not a delete; lifted/shellguard.py):

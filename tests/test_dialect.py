@@ -1,6 +1,6 @@
 """Checks the dialect list under [style] in yerkd.toml: your own filler words join the built-in filler lists when yerkd starts,
-and the package ships none of them. NON-GOALS: the owner's dialect out of the package. A stranger's install reads "who is Ada zorp" as
-a two-word name and "zorp nah" as no pushback; the owner's, with zorp in their dialect, reads the name alone and the pushback."""
+and the package ships none of them. NON-GOALS: his dialect out of the package. A stranger's install reads "who is Ada zorp" as
+a two-word name and a two-word name and "zorp nah" as no pushback; the owner's, with zorp in their dialect, reads the name alone and the pushback."""
 import shutil
 
 import pytest

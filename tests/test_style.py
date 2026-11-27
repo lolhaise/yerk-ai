@@ -1,7 +1,7 @@
 """Checks that every card and notice follows STYLE.md, the rules for how they read. Every surface a room reads is
 rendered here and held to the rules (state first, no path, no exit code, no raw timestamp, no em dash, phone width),
 words.py is the only place a state mark or a state phrase is spelled, the manifest says built or described on every
-among the described, and a room that asks "can you do voice" gets the manifest's answer."""
+entry with voice among the described, and a room that asks "can you do voice" gets the manifest's answer."""
 import ast
 import asyncio
 import json

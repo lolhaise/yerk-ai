@@ -1,6 +1,6 @@
 # The key rules began as those of the workspace recall-index tool this harness replaces.
 """Mention recall: when a message names one of your people, places or things, the matching lines of
-front of the model before it starts, with no tool call.
+your fact files are put in front of the model before it starts, with no tool call.
 
 Keys come from a fact file's name (car, gym, appliances), its headings and the leading name of each
 bullet, nested or not; a one-word key in a line's first words keys it too ("Ada: ..." gives "Ada Example"

@@ -1,7 +1,7 @@
 """Checks retention (retention.py), the daily sweep that keeps the state folder from growing forever, packing old logs and moving what is
 past its days to the trash. Covered (Layer 11): each kind on a fixture state folder, private layer and Claude Code home; the guards (a
 bound session, one written in the last 24 hours, a room with a turn in flight, a file a process holds open); what is never moved (the
-that moves nothing; the morning line; a failure that exits 1."""
+memory tree, the private layer, attachments); the trash's week; a dry run that moves nothing; the morning line; a failure that exits 1."""
 import gzip
 import json
 import os

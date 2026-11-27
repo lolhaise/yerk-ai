@@ -1,6 +1,6 @@
 """Connects Claude Code's hooks, the commands it runs at set moments such as before each tool call, to the daemon. Each event is a command hook
 (curl posting its JSON to the daemon, see settings_for), and EVENTS, the table docs/hooks.md is written from, says what is done on each. The room
-through the room-to-session table; an unbound call gets the marker and one loud log line.
+comes from the call's token, else from the session id through the room-to-session table; an unbound call gets the marker and one loud log line.
 """
 from __future__ import annotations
 

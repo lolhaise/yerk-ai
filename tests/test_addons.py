@@ -1,7 +1,7 @@
 """Checks add-ons (addons.py), put in with `yerk add` and taken out with `yerk remove`. The cases: `yerk add` from a folder
 or a file:// git URL, each step a line, and `yerk remove` leaving the private folder byte-identical; an add-on over its own
 ceiling, an entry the checks refuse and its own failing test each refused whole; the state read from the install; its
-only while installed."""
+budget lines, rooms.toml keys and the attachment types it reads counted only while installed."""
 import shutil
 import subprocess
 from pathlib import Path

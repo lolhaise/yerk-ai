@@ -1,7 +1,7 @@
 """`yerk doctor`: checks the install once a day, and repairs the files a crash or a power cut left damaged. units/yerk-doctor.timer
 runs it after retention's (Layer 11, claim 6, decision 40): one green line when all is well, a red or orange line per finding with
 its fix, kept in <state>/doctor.json for the morning diff; once a day it also fetches the Claude docs from the web (docs.py),
-[docs] fetch = false in yerkd.toml. A hard power-off zeroes the line a file was writing, so on yerkd's start and
+unless [docs] fetch = false in yerkd.toml. A hard power-off zeroes the line a file was writing, so on yerkd's start and daily a day
 log, assembled log or bound transcript with a NUL byte is copied first (a day log to backups/doctor-<day>/ beside the private
 layer, the rest to <state>/trash/<day>/doctor/), then each such line keeps what still reads (the line glued on after its NULs, else
 itself without them), else is blank in a day log (recall cites file:line) or dropped."""

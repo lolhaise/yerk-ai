@@ -1,9 +1,9 @@
 """What is running now (rooms mid-turn, workers, jobs due, account usage, memory and CPU), for `yerk status` and
 any program that asks. The running yerkd answers POST /status (DESIGN 9, L195, L206), local only like /hook and
-flight and since when, the workers and their caps, the jobs due within the hour (from systemd), each
+/control, with: the rooms that have a turn in flight and since when, the workers and their caps, the jobs due
 within the hour (from systemd), each account's meters with reset times (usage.py live, else meters.py with the
-and CPU of the daemon and of each open room's process tree (from /proc), and today's stalls
-(beat.py). With no daemon answering, `yerk status` collects the same from the files, rooms aside.
+reading's age), the memory and CPU of the daemon and of each open room's process tree (from /proc), and today's
+stalls (beat.py). With no daemon answering, `yerk status` collects the same from the files, rooms aside.
 
 `card` renders it at phone width, state first, the colour only where it means something (an
 account at or near its limit, a blocked room, a stall today, a daemon down), else a dash."""

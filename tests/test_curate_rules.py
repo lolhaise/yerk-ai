@@ -1,6 +1,6 @@
 """Checks the rules phase of `yerk curate` (curate.py): the rule files every room loads are read whole, and merges, cuts,
 condensations and promotions are proposed into a numbered file, never applied. The owner's --apply writes them, backed up and fitted
-file's line, refuses one that would pass it or that runs without its backup, and undo puts the files back byte-identical;
+to each file's line, refuses one that would pass it or that runs without its backup, and undo puts the files back byte-identical;
 the machine room's card holds ten at most, goes once a day and says nothing at none. Example values only (decision 22)."""
 import json
 import shutil

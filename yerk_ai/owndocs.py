@@ -2,7 +2,7 @@
 commands pyproject.toml installs, tools.md from the MCP server's tools as a room is handed them, settings.md from the
 loaders' key tables, budgets.md from budgets.toml, hooks.md from the events a room's settings register, units.md from
 units/. Nothing here reads the private layer, the state folder, the clock or the machine, so a tree writes the same bytes
-test_owndocs fails the build when docs/ is not what this writes."""
+every time, and test_owndocs fails the build when docs/ is not what this writes."""
 from __future__ import annotations
 
 import argparse

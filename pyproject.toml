@@ -1,3 +1,6 @@
+# The Python project file: the package's name and version, the libraries it needs, the three commands it installs
+# (yerk, yerkd and yerk-index), the files its wheel carries, and the settings of its test, type and lint tools. You
+# change it by hand to add a library or a command; `uv sync` installs what it names, at the versions pinned in uv.lock.
 [project]
 name = "yerk-ai"
 version = "0.1.0"

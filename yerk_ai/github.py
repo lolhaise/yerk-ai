@@ -3,7 +3,7 @@ branch or a pull request for your room. For the needs pipeline (pipeline.py): a 
 the sha guard; and for an owner's room, the `github_state` tool (look): a branch or a pull request of Yerk's own repository as
 GitHub has it now, a red head's why with it (its checks' words, the box CI's record). urllib only, 20 s a call, every failure as words,
 never a traceback. The token is <private>/secrets/github.token (one line, 0600), read the way transcribe reads its keys; it never reaches
-caller says so once) and a person merges as before."""
+argv, a log, a card or a test. With no token every step here is skipped (the caller says so once) and a person merges as before."""
 from __future__ import annotations
 
 import json

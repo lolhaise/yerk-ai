@@ -1,7 +1,7 @@
 """Checks that a room whose privacy level is owner can read Yerk's own code, the checkout that runs, with Claude Code's Read, Grep and Glob
 tools, and that no other room can. On 2026-10-25 an owner room asked to tell a worker's code-review outcome Grepped the checkout for the
 worker's finding, Claude Code refused the read, and the room relayed the claim unchecked. The daemon writes the rule into every owner room's
-mechanics name the checkout's path, so every owner room checks a claim about Yerk the same way."""
+settings, never as an --add-dir, and the mechanics name the checkout's path, so every owner room checks a claim about Yerk the same way."""
 import json
 import shutil
 from pathlib import Path

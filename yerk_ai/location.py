@@ -2,7 +2,7 @@
 [location]): the `place` line a message to one of your own rooms carries, and the day's places as one line in the day log
 (`yerk location day`, a nightly script job). The fixes file and the places table are only read, and nothing goes to the
 network: a fix is named by the nearest row of the places table whose radius holds it, the way the watcher that writes the
-ever said or filed."""
+fixes names them, never by a lookup; a fix at no named place is no place, so no coordinate is ever said or filed."""
 from __future__ import annotations
 
 import json

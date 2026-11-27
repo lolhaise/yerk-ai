@@ -1,7 +1,7 @@
 """Checks the /login slash command: a login you hand over is saved by the daemon as NAME.login in the private folder's
 secrets, from a slash command that reaches no room's session, and the browser plug-in types it by name. This is need 127. The
 wall the ask hit: a room's shell cannot write the secrets folder, nor read it, and a password a room types through a tool call
-transcript; here the room is handed nothing but the login's name. Every name, site and value is a placeholder."""
+lands in its transcript; here the room is handed nothing but the login's name. Every name, site and value is a placeholder."""
 import asyncio
 import json
 import logging

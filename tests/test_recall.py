@@ -1,6 +1,6 @@
 """Checks recall, what a room is handed from memory before it writes its first word. Covered: mention recall (notes
 on whatever a message names), the room-topic hit, the recall pack and its re-add after compaction, the evidence
-atomically. Every value here is a placeholder."""
+ledger with its shadow Stop check, and the rebuild that swaps atomically. Every value here is a placeholder."""
 import asyncio
 import json
 import shutil

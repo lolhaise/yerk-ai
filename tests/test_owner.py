@@ -1,5 +1,5 @@
 """Checks your own messages as Discord really delivers them: raw gateway payloads for a human author
-through discord.py's own parsers (the objects the daemon's client dispatches), then into the
+go through discord.py's own parsers (the objects the daemon's client dispatches), then into the
 adapter. A plain message, an attachment, a mention of the bot, a reply, an edit and a delete."""
 import asyncio
 from types import SimpleNamespace as NS

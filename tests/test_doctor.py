@@ -3,8 +3,8 @@ problem in a plain line. Its cases, layer 11: the crash repair of a zeroed line 
 every line number held), in an assembled log and a bound transcript (dropped), and of a line whose text outlived its
 NULs (kept); a room with a turn in flight left alone; each check a plain line (a rooms.toml key no loader reads, a
 stale index, a bad class, a token near its end, a secret's mode, hooks not as yerkd puts them, disk growth) and
-repair before any room opens; and every key the
-loaders read from a room in config.ROOM_KEYS."""
+nothing on a healthy tree; a check that cannot run named apart from every other; a dry run that changes nothing; the
+morning line; yerkd's repair before any room opens; and every key the loaders read from a room in config.ROOM_KEYS."""
 import gc
 import json
 import logging

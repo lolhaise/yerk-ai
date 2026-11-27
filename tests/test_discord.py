@@ -1,6 +1,6 @@
 """Checks the Discord adapter, the part that carries messages between Discord and the rooms,
 against a fake client. The cases: who is answered, the ledger before anything runs, the card and
-attachment staging."""
+the split reply, keyed delivery and the crash redelivery, the one file path, attachment staging."""
 import asyncio
 import os
 import threading

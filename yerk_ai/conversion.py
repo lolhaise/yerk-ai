@@ -3,7 +3,7 @@ It turns an existing rules.md and rules-topics.md into lesson files and their in
 rules that built up: "rewrite absolute rules with their scope and reason", with the originals copied first. The dry run writes one
 proposals file, <memory>/rules-proposals/lessons-<day>.md, and changes nothing else: for each original rule by its cite, its words,
 the lessons made of it with each one's gate (the filing's own, memory.unshaped, on READ), and each thing done to it as a listed item;
-block at its end is what an apply reads. Meaning never changes: a rule already in the shape is split as it stands (its first
+the JSON block at its end is what an apply reads. Meaning never changes: a rule already in the shape is split as it stands (its first
 sentence the summary); one out of it goes to curate's model pass ("Lessons", then "Knock down lessons" in curate.md); code alone
 cites a quote or an example on the day-log line it means (`pick`) and never adds an exception the rule does not give, and checks
 that every sentence of the original lands in a lesson or is listed, each example in the lesson the model names, the rule's caution
