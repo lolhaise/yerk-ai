@@ -731,7 +731,7 @@ def days_in(text: str, today: date) -> set[str]:
 # dots or none: "3pm", "3 p.m."), then maybe a range's second end after a dash, "to", "till", "until", "and" or "or"; never inside a
 # longer token (a file name, a path, an id) nor a timestamp's seconds
 CLOCK = r"(?:\b(noon|midnight)\b|([0-9]{1,2})(?::([0-9]{2}))?(?: ?([ap])\.?m(?![a-z0-9])\.?)?)"
-TIME_FORM = re.compile(r"(?<![\w./\\:#@+=])(?<!\w-)" + CLOCK + r"(?:(?: *[-–—] *| +(?:to|till|until|and|or) +)" + CLOCK + r")?"
+TIME_FORM = re.compile(r"(?<![\w./\\:#@+=])(?<!\w-)" + CLOCK + r"(?:(?: *[-\u2013\u2014] *| +(?:to|till|until|and|or) +)" + CLOCK + r")?"
                        r"(?![\w/\\#@+=-]|[.:][\w/\\])", re.I)
 
 
