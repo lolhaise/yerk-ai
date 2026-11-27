@@ -15,9 +15,12 @@ import sqlite3
 import stat
 import subprocess
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
-from yerk_ai import beat, deploy, gates, jobs, memory, morning, status, words
+import pytest
+
+from yerk_ai import beat, deploy, gates, jobs, memory, morning, status, words, workers
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets, private_dir
 from yerk_ai.daemon import Yerkd
@@ -30,6 +33,15 @@ NAP = 0.01
 
 def nap(_s):
     time.sleep(NAP)
+
+
+@pytest.fixture(autouse=True)
+def no_unit(monkeypatch):
+    """No test here starts a real unit: a deploy's check that reaches the wall's own run (workers.checked) fails the test,
+    so each one that runs the checks gives the deploy its Fake's stand-in (wall=f.wall)."""
+    def refused(*_a, **_k):
+        raise AssertionError("a deploy test reached the real wall: give it wall=")
+    monkeypatch.setattr(workers, "checked", refused)
 
 
 def noon(monkeypatch):
@@ -90,7 +102,12 @@ class Fake:
     """systemd and the daemon's /status: a restart loads the tree's commit, as a real one does."""
     def __init__(self, tree, connected=lambda commit: True):
         self.tree, self.connected, self.unit = tree, connected, "yerkd-fake"
-        self.commit, self.restarts, self.busy = deploy.head(tree), [], False
+        self.commit, self.restarts, self.busy, self.checks = deploy.head(tree), [], False, []
+
+    def wall(self, argv, **k):
+        """The wall's stand-in: each check's command and folder kept, the check run as a plain child (deploy.plain)."""
+        self.checks.append((list(argv), k["cwd"]))
+        return deploy.plain(argv, **k)
 
     def restart(self):
         self.commit = deploy.head(self.tree)
@@ -330,10 +347,10 @@ def test_the_fast_tests_run_in_the_tree_and_a_failure_deploys_nothing(tmp_path, 
     (tree / "tests" / "test_x.py").write_text("def test_x():\n    assert open('f.txt').read() != '1\\n'\n")
     priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
     f = Fake(tree)
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=f.wall) == 1
     assert capsys.readouterr().out.splitlines()[1] == f"{words.PLAIN} the fast tests failed"
     assert f.restarts == [] and deploy.head(tree) == ids[0]
-    assert deploy.run(priv, state, ids[2], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    assert deploy.run(priv, state, ids[2], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=f.wall) == 0
     out = capsys.readouterr().out.splitlines()                         # the real recall check, in the tree: this layer has no index
     assert f"{words.DONE} fast tests passed" in out and f"{words.PLAIN} recall: not checked, no index" in out
 
@@ -349,11 +366,11 @@ def test_each_installed_add_on_s_fast_tests_run_beside_the_core_s_and_one_failin
     (a.parent / "addon.toml").write_text('[abilities.hi]\nversion = "1"\n[abilities.hi.install]\ntests = ["tests"]\n')
     (a / "test_hi.py").write_text("def test_hi():\n    assert False, 'hi is broken'\n")
     f = Fake(tree)
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=f.wall) == 1
     assert capsys.readouterr().out.splitlines()[1:3] == [f"{words.PLAIN} the fast tests of add-on hi failed", f"{words.PLAIN} hi is broken"]
     assert f.restarts == [] and deploy.head(tree) == ids[0]
     (a / "test_hi.py").write_text("def test_hi():\n    pass\n")
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=f.wall) == 0
     assert f"{words.DONE} fast tests passed" in capsys.readouterr().out.splitlines()
 
 
@@ -371,7 +388,7 @@ def test_the_fast_tests_read_the_layer_deployed_for_and_the_card_names_the_room_
     envs, run = [], subprocess.run
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: envs.append(k.get("env")) or run(*a, **k))
     f = Fake(tree)
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=f.wall) == 1
     out = capsys.readouterr().out.splitlines()
     rules = budgets()["session_start"]["appended"]["rules"]
     assert out[1] == f"{words.PLAIN} the fast tests failed" and re.fullmatch(rf"- example-room rules: 17,\d{{3}} >(?: {rules:,})?\.\.\.", out[2])
@@ -449,7 +466,7 @@ def test_every_way_out_that_deploys_nothing_leaves_the_branch_where_it_was(tmp_p
     (tree / "tests" / "test_x.py").write_text("def test_x():\n    assert open('f.txt').read() != '1\\n'\n")
     priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
     f = Fake(tree)
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1   # tests fail
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=f.wall) == 1   # tests fail
     assert where(tree) == ("main", ids[0])
     f.busy = True
     assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
@@ -1097,7 +1114,7 @@ def test_with_no_private_given_the_fast_tests_read_the_layer_on_the_daemon_s_com
     proc = planted_proc(tmp_path, f"0::{manager}/app.slice/yerkd-test.service\n")
     envs, run = [], subprocess.run
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: envs.append(k.get("env")) or run(*a, **k))
-    assert deploy.run(private_dir(), lane, ids[1], ask=f.ask, post=post, sleep=nap, proc=proc, systemd=make) == 0
+    assert deploy.run(private_dir(), lane, ids[1], ask=f.ask, post=post, sleep=nap, proc=proc, systemd=make, wall=f.wall) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[:3] == [f"{words.DONE} deployed {ids[1][:7]}", f"{words.PLAIN} private folder: the daemon's", f"{words.DONE} fast tests passed"]
     assert [(e["YERK_PRIVATE"], e["YERK_STATE"]) for e in envs if e] == [(str(priv), str(state))]
@@ -1106,7 +1123,7 @@ def test_with_no_private_given_the_fast_tests_read_the_layer_on_the_daemon_s_com
     other = tmp_path / "given"                                         # a --private given: the unit's command is never read
     shutil.copytree(priv, other)
     envs[:], made[:] = [], []
-    assert deploy.run(other, state, ids[2], ask=f.ask, post=post, sleep=nap, proc=proc, systemd=make) == 0
+    assert deploy.run(other, state, ids[2], ask=f.ask, post=post, sleep=nap, proc=proc, systemd=make, wall=f.wall) == 0
     out = capsys.readouterr().out.splitlines()
     assert [(e["YERK_PRIVATE"], e["YERK_STATE"]) for e in envs if e] == [(str(other), str(state))]
     assert made == ["yerkd-fake"] and not [x for x in out if "private layer" in x]
@@ -1126,7 +1143,7 @@ def test_with_no_private_given_and_none_on_the_unit_s_command_line_the_deploy_re
     manager = f"/user.slice/user-{uid}.slice/user" + chr(64) + f"{uid}.service"
     for cgroup in ("0::/user.slice/user-1000.slice/session-2.scope\n", f"0::{manager}/app.slice/yerkd-test.service\n"):
         proc = planted_proc(tmp_path, cgroup)
-        assert deploy.run(private_dir(), state, ids[1], ask=f.ask, post=lambda p: posts.append(p) or {"ok": True}, sleep=nap,
+        assert deploy.run(private_dir(), state, ids[1], ask=f.ask, post=lambda p: posts.append(p) or {"ok": True}, sleep=nap, wall=f.wall,
                           proc=proc, systemd=lambda name: f) == 1
         assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} no private folder: pass --private"]
     assert f.restarts == [] and posts == [] and where(tree) == ("main", ids[0]) and [r[3] for r in rows(state)] == ["refused"] * 2
@@ -1177,14 +1194,14 @@ def test_a_deploy_holds_the_live_controls_after_the_fast_tests_and_one_missed_re
     def check(r):
         return lambda *a: seen.append(a) or r
     miss = {"of": 13, "hit": 12, "meaning": [], "missed": ["ctrl-example"], "none": ""}
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, check=check(miss)) == 1
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, wall=f.wall, check=check(miss)) == 1
     assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.DONE} fast tests passed",
                                                     f"{words.PLAIN} recall: 12 of 13 hit", f"{words.PLAIN} missed: ctrl-example"]
     assert seen == [(tree, priv, state)] and f.restarts == [] and where(tree) == ("main", ids[0])
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, check=check({"broke": True})) == 1
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, wall=f.wall, check=check({"broke": True})) == 1
     assert capsys.readouterr().out.splitlines()[2:] == [f"{words.PLAIN} the recall check did not run"] and f.restarts == []
     held = {"of": 13, "hit": 13, "meaning": ["ctrl-a", "ctrl-b", "ctrl-c"], "missed": [], "none": ""}
-    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, check=check(held)) == 0
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, wall=f.wall, check=check(held)) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[1:3] == [f"{words.DONE} fast tests passed", f"{words.DONE} recall: 13 of 13 hit (3 by meaning)"] and f.restarts == [ids[1]]
     assert all(words.width(x) <= words.PHONE for x in out)
@@ -1218,3 +1235,81 @@ def test_a_proven_deploy_installs_and_turns_on_each_timer_in_units_the_box_does_
     states["yerk-curate.timer"] = "not-found"                            # an enable that fails is red on the card
     assert deploy.timers(tree, tmp_path / "other", lambda *a, **k: subprocess.CompletedProcess(
         a, 1 if a[0] == "enable" else 0, "not-found\nenabled\n" if a[0] == "is-enabled" else "", "")) == [f"{words.NOT_DONE} yerk-curate.timer not enabled"]
+
+
+# the step behind the wall (deploy.step, workers.checked): the core's fast tests, each add-on's and the recall controls
+def addon(state, test="def test_hi():\n    pass\n"):
+    (a := state / "addons" / "hi" / "tests").mkdir(parents=True)
+    (a.parent / "addon.toml").write_text('[abilities.hi]\nversion = "1"\n[abilities.hi.install]\ntests = ["tests"]\n')
+    (a / "test_hi.py").write_text(test)
+    return a.parent
+
+
+def test_the_core_s_tests_an_add_on_s_and_the_controls_each_run_once_through_the_wall_with_today_s_command(tmp_path, capsys, monkeypatch):
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    folder, f = addon(state), Fake(tree)
+    controls = '{"of": 2, "hit": 2, "meaning": [], "missed": [], "none": ""}\n'
+    seen = []
+
+    def wall(argv, **k):
+        seen.append((argv, k))
+        return subprocess.CompletedProcess(argv, 0, controls if "recall-bench" in argv else "1 passed\n", "")
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=wall) == 0
+    py = deploy.sys.executable
+    assert [(a, k["cwd"]) for a, k in seen] == [([py, "-m", "pytest", "-q", "-x", "--tb=line", "tests/test_x.py"], tree),
+                                               ([py, "-m", "pytest", "-q", "-x", "--tb=line", "tests"], folder),
+                                               ([py, "-m", "yerk_ai.cli", "recall-bench", "--controls", "--private", str(priv), "--state", str(state)], tree)]
+    assert all((k["tree"], k["private"], k["state"]) == (tree, priv, state) for _, k in seen) and seen[2][1]["timeout"] == 180
+    assert capsys.readouterr().out.splitlines()[:3] == [f"{words.DONE} deployed {ids[1][:7]}", f"{words.DONE} fast tests passed",
+                                                        f"{words.DONE} recall: 2 of 2 hit"]
+    seen.clear()                                                      # with no stand-in, the wall's own run (workers.checked)
+    monkeypatch.setattr(workers, "checked", wall)
+    assert deploy.run(priv, state, ids[2], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0 and len(seen) == 3
+
+
+def test_a_check_that_fails_behind_the_wall_deploys_nothing_and_the_card_is_today_s(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    addon(state)
+    f = Fake(tree)
+
+    def wall(fails):
+        def go(argv, **k):
+            failed = fails in argv
+            return subprocess.CompletedProcess(argv, int(failed), f"{k['cwd']}/t.py:2: AssertionError: {fails} is broken\n" if failed else "", "")
+        return go
+    for fails, said in [("tests/test_x.py", "the fast tests failed"), ("tests", "the fast tests of add-on hi failed")]:
+        assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=wall(fails)) == 1
+        assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} {said}",
+                                                        f"{words.PLAIN} {fails} is broken"]
+        assert f.restarts == [] and where(tree) == ("main", ids[0])
+    assert [r[3] for r in rows(state)] == ["tests failed", "tests failed"]
+
+
+def test_the_live_index_is_held_open_while_the_checks_run(tmp_path, capsys):
+    """Behind the wall the state folder is read-only and a WAL index's reader there needs its -shm, which a closed index has
+    not: the deploy holds the index open read-only out here meanwhile, and closes it after."""
+    from yerk_ai import memindex
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    s = memory.settings(priv, state)
+    idx = memindex.Index(s.index_db, s.scope)
+    idx.sync()
+    idx.close()
+    shm = Path(str(memindex.live(s.index_db)) + "-shm")
+    assert not shm.exists()
+    held = []
+
+    def wall(argv, **k):
+        held.append(shm.exists())
+        return subprocess.CompletedProcess(argv, 0, '{"of": 0, "hit": 0, "meaning": [], "missed": [], "none": "no controls"}\n', "")
+    f = Fake(tree)
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, wall=wall) == 0
+    assert held == [True, True]
