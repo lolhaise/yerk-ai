@@ -923,9 +923,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: the same change, found when its checks were run on a real install before it shipped, raised it by 31 more, not folded to fit: a walled check's process list is its own, so the recall there read a live yerk-index as gone, the bench skipped and every control the meaning half finds was missed; and the budget test could not read a room's newest transcript, in the home the wall hides, so it measured nothing of Claude Code's parts. The deploy now says the pid it saw alive and names each room's newest transcript for its tests' run (deploy.py 24: index_held, transcripts, the step), the recall takes that word for that pid alone (memory.py 2), and the check is given both by name, binds those files back read-only and no longer reads the state folder's own secrets/ (workers.py 5). 37,217: 37,186 plus 31.
 
-2026-11-27: due-in-words-2026-11-27 raised it by 67, a `due` whose day the filing's words do not name, or whose time they do not give, is refused before anything is written and counted in the journal (build 1d of the owner's build list of Wed Nov 25), not folded to fit (memory.py 60: DAY_MONTH and days_in, the day reader beside days_named, CLOCK, TIME_FORM and times_in, the time reader, due_unsaid, the check and its journal lines in remember, their comments and docstrings; mcp_server.py 4: the description's longer `due` part; words.py 3: the two refusals). 37,284: 37,217 plus 67.
+2026-11-27: due-in-words-2026-11-27 raised it by 68, a `due` whose day the filing's words do not name, or whose time they do not give, is refused before anything is written and counted in the journal (build 1d of the owner's build list of Wed Nov 25), not folded to fit (memory.py 61: DAY_MONTH and days_in, the day reader beside days_named, CLOCK, TIME_FORM and times_in, the time reader, due_unsaid, the check and its journal lines in remember, their comments and docstrings, remember's own among them; mcp_server.py 4: the description's longer `due` part; words.py 3: the two refusals). 37,285: 37,217 plus 68.
 
-- `lines = 37284`
+- `lines = 37285`
 
 ## Uncapped
 

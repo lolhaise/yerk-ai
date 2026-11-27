@@ -835,6 +835,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     may read it, else in LATER as a line it may only read is; a heading or a blank is refused. With `who` (the tool's `said`)
     and `source` (where their words are), `text` is their words: a `said` line in the day log, word for word, never a fact file's note.
     With `due` (and `owes`) the line carries its date as a mark (due_mark); the same words with another date are another line.
+    A `due` whose day `text` does not name, or whose time it does not give (due_unsaid), is refused before anything is written.
     With `until`, the last day it holds, its words end with UNTIL's mark (until_mark), before any supersedes clause and due mark:
     from the day after, the readers of a line per message leave it out (ended), and the sweep blanks a card's. With neither, words
     that name a day still to come (days_named, today in the install's zone, or `now`'s day) gain `day` in the answer, after `cite`
