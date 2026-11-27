@@ -2143,4 +2143,10 @@ secs = 60
 # rows, the chunks' lines built while their mp3s are there, the gate's share, the tone line and the result's two keys, the
 # docstring's sentences; words.py 9: the note, the tone line's forms and TRANSCRIBED_NEXT's sentence; daemon.py 1: the
 # Gemini key's path for transcribe and watch). 37,344: 37,217 plus 127.
-lines = 37344
+# 2026-11-27: owner-in-neutral-words-2026-11-27 raised it by 17, a doctor that never ran said with the plain mark, not a
+# fault, and the pronouns the owner's rules use for them a setting of the conversion's picker, not folded to fit:
+# conversion.py 13 (OWNER_WORDS, owner_words, said_as and each rule's said_by), doctor.py 2 (the never-ran line), words.py 1
+# (DOCTOR_NOT_YET), config.py 1 (owner_words in YERKD_WORDS). No other size moved: no tool's description changed, the
+# texting block's part has no line of its own, and the taste head's 8 characters stay inside the taste part's 1,500.
+# 37,361: 37,344 plus 17.
+lines = 37361

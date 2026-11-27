@@ -923,7 +923,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: need-2026-11-27-138 raised it by 127, how each line of a recording was said (a laugh, a joke, sarcasm, a stressed word) read by Gemini into the one transcript, since a room read a joke in a transcript as a plain line with nothing in the file to say no tone was heard, not folded to fit (transcribe.py 117: the Gemini request and its key's own header in send, its price by the day it doubles, the numbered lines, the answer read or its failure named, mark's check that a note stresses or quotes only words its line has, the reads in parallel beside the speakers with their spend rows, the chunks' lines built while their mp3s are there, the gate's share, the tone line and the result's two keys, the docstring's sentences; words.py 9: the note, the tone line's forms and TRANSCRIBED_NEXT's sentence; daemon.py 1: the Gemini key's path for transcribe and watch). 37,344: 37,217 plus 127.
 
-- `lines = 37344`
+2026-11-27: owner-in-neutral-words-2026-11-27 raised it by 17, a doctor that never ran said with the plain mark, not a fault, and the pronouns the owner's rules use for them a setting of the conversion's picker, not folded to fit: conversion.py 13 (OWNER_WORDS, owner_words, said_as and each rule's said_by), doctor.py 2 (the never-ran line), words.py 1 (DOCTOR_NOT_YET), config.py 1 (owner_words in YERKD_WORDS). No other size moved: no tool's description changed, the texting block's part has no line of its own, and the taste head's 8 characters stay inside the taste part's 1,500. 37,361: 37,344 plus 17.
+
+- `lines = 37361`
 
 ## Uncapped
 

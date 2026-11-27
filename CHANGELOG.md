@@ -9,6 +9,31 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### owner-in-neutral-words-2026-11-27 (the owner in neutral words, one name for the folder, a first run that is no fault)
+
+- What Yerk AI says, and what its models read, calls the owner the owner, or they, never he, his or him: the texting
+  room's block and the texting tool's help, the writer's and the check's prompts, the line above a watched channel's
+  message and its unanswered line, the taste part's head and the judge's rubric, the picture brief, a builder's brief,
+  the settings' and commands' help, the abilities and the guide. Stored values keep their names: the ledger note "the
+  owner answered himself", the verdict `not-his-voice` and the replay's outcomes `he-first` and `he-too`.
+- One name for the folder of your own files: the private folder, wherever a person reads it. `--private`'s help,
+  `yerk backup`'s help and its unit, `yerk map`'s first line, the deploy's lines (`private folder: the daemon's`, `no
+  private folder: pass --private`), the guide, the abilities and the example files say it.
+- The six pages `yerk docs own` writes open with what the page is, then the line that says how they are written; the
+  budgets page no longer says its first sentence twice.
+- A new install's first start logs no red doctor line: with no doctor run on file the line reads `- doctor: not run yet,
+  runs each night`. One whose doctor ran and then missed a day still reads `🔴 doctor: unknown, no run in 24h`.
+- `[curate] owner_words` in yerkd.toml: the pronouns your rules use for you, which the rule conversion's picker reads
+  with "the owner", `owner_names` and "in reply to" to give a quote as yours. Default `["he", "him", "his"]`, so unset
+  nothing changes; rules that call the owner she or they set `["she", "her"]` or `["they", "them", "their"]`.
+- Tests: the gate fixtures named for a real moment have invented words and names that say what each is for, and two
+  tests that could fail with nothing wrong are fixed (one in the first minute after midnight, one that closed a room
+  while a copy it started still ran).
+
+**Upgrading:** budgets.toml's `[code] lines` rises by 17, with its dated reason; an install that keeps its own
+budgets.toml takes it. An install whose rules call the owner she or they adds `owner_words` under `[curate]` in
+yerkd.toml. A script that reads the deploy's or `yerk map`'s lines for "private layer" reads "private folder" now.
+
 ### need-2026-11-27-138 (how a recording was said: laughs, jokes, stressed words)
 
 - `transcribe` hears tone now. With a Gemini key at `secrets/gemini.key`, each 14-minute chunk's mp3 goes to Gemini
