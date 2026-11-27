@@ -14,14 +14,12 @@ You message it in Discord the way you would message a person. Each channel you g
 
 ## It builds its own upgrades
 
-When a room cannot do what you asked, it files what it needed instead of building a one-off way of its own. Yerk AI then builds that ability into itself:
+When a room cannot do what you asked, Yerk AI builds that ability into itself:
 
-```mermaid
-flowchart LR
-    need["A room files<br/>what it needed"] --> build["A builder<br/>writes it,<br/>with tests"]
-    build --> review["Checks run,<br/>a fresh worker<br/>reviews it"]
-    review --> live["Merged,<br/>deployed, live<br/>in every room"]
-```
+1. The room files what it needed, instead of building a one-off way of its own.
+2. A builder writes the ability, with tests.
+3. The checks run, and a fresh reviewer reads the change.
+4. It is merged, deployed and live in every room.
 
 No person is in that loop: the builder and the reviewer are Claude Code workers, and the reviewer is never the one that wrote the change. A change to what can do the most harm (messages in your name, logins, deletes, the pipeline itself) waits for a person instead.
 
