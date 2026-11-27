@@ -921,7 +921,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: the same change, found when its checks were run on a real install before it shipped, raised it by 31 more, not folded to fit: a walled check's process list is its own, so the recall there read a live yerk-index as gone, the bench skipped and every control the meaning half finds was missed; and the budget test could not read a room's newest transcript, in the home the wall hides, so it measured nothing of Claude Code's parts. The deploy now says the pid it saw alive and names each room's newest transcript for its tests' run (deploy.py 24: index_held, transcripts, the step), the recall takes that word for that pid alone (memory.py 2), and the check is given both by name, binds those files back read-only and no longer reads the state folder's own secrets/ (workers.py 5). 37,217: 37,186 plus 31.
 
-- `lines = 37217`
+2026-11-27: page-to-picture-2026-11-27 raised it by 274, the render tool's page kind (the owner's ask), not folded to fit: an .html or .htm drawn whole as a PNG by a headless Chromium in the .tex run's kind of box, the box's walls now shared by the two (render.py 237: the finder, the walls, the DevTools pipe, the settle and measure, the picture written beside the page), the plain lines (words.py 18), the tool's width and scale, its work-folder rule and its two journal lines (daemon.py 9, mcp_server.py 6) and the [render] chromium setting (config.py 4). 37,491: 37,217 plus 274.
+
+- `lines = 37491`
 
 ## Uncapped
 
