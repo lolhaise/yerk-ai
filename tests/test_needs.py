@@ -128,6 +128,7 @@ def test_the_brief_from_a_need_carries_every_ask_the_repo_and_the_shape_of_done(
     assert "Never merge, push, open a PR or deploy" in b and "`PR <number>: <what it adds>`" in b
     assert "the full suite green" in b and "no tool call after it" in b and "\N{EM DASH}" not in b
     assert "is a placeholder, never one from the asks above" in b         # a room's asks carry real names; the repo never does
+    assert "The repository is public: a fixture is an invented sentence" in b and "never who asked, when, where or in which words" in b
 
 
 def test_a_builders_brief_quoting_a_path_its_unit_hides_starts_and_tells_the_builder_in_its_prompt(tmp_path, capsys):

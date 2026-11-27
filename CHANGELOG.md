@@ -8,6 +8,16 @@ version changes.
 
 ## 2026-11-26
 
+### briefs-public-repo (#1)
+
+- A builder's brief, a fixer's brief and the cold read's brief say the repository is public. The builder's: a fixture is an
+  invented sentence in a neutral setting, never a room's ask, reply or message with its names changed, and no test, comment,
+  doc, commit message or branch name carries the owner's quoted words, a date or clock time of his messages, a room's own name,
+  or a real figure, ticket number or address. Every commit's rules, the builder's and the fixer's: a commit message says what
+  changed and why in the code's terms, never who asked, when, where or in which words, and a message a hook refuses is
+  reworded, never sent with `--no-verify`. The cold read's: any of those in a test, comment, doc or commit message is
+  `fix first`. `needs.py` keeps its line count.
+
 *Above this line a pull request number is this public repository's, counted from #1. Below it the numbers belong to the repository's earlier, private history, and open nothing here.*
 
 - What is due on a day past the week has an answer. A `recall` whose `since` or `until` is after today (the install's day)

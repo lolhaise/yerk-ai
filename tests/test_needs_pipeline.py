@@ -204,6 +204,7 @@ def test_built_pr_checks_pending_then_green_start_a_cold_read_and_its_merge_uses
     assert r["state"] == "reading" and r["worker"] != builder and role(y, r["worker"])["role"] == "read"
     brief = (Path(y.ledger.worker_get(r["worker"])["staging"]) / "BRIEF.md").read_text()
     assert "exactly one of `merge`, `fix first: <why>`, `unsure: <why>`" in brief and "PR 7" in brief
+    assert "The repository is public: a fixture taken from a real conversation" in brief and "or commit message is `fix first`." in brief
     hub.routes[("PUT", f"/repos/{SLUG}/pulls/7/merge")] = (200, {"merged": True, "sha": "c" * 40})
     end(y, r["worker"], "merge")
     assert hub.calls[-1] == ("PUT", f"/repos/{SLUG}/pulls/7/merge", {"sha": "a" * 40, "merge_method": "merge"})
