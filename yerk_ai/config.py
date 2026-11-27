@@ -323,8 +323,9 @@ YERKD_WORDS = {
     "curate": {"account": "the one account the night's curation runs on", "logs": "more files in the private folder read as the owner's own stream",
                "model": "the model its worker calls run on, the conversion's too (default opus)",
                "cap_minutes": "the minutes one worker call may run (default 45)",
-               "owner_names": "the names the owner goes by in their rules, a list: with he, him, his, the owner and \"in reply to\", the "
-                              "words that give a quote of a rule as theirs to the conversion's picker (default none: those words alone)"},
+               "owner_words": "the pronouns the owner's rules use for them, a list: with the owner, owner_names and \"in reply to\", the "
+                              "words that give a quote of a rule as theirs to the conversion's picker (default [\"he\", \"him\", \"his\"]; rules that say she or they set theirs)",
+               "owner_names": "the names the owner goes by in their rules, a list, read beside owner_words (default none)"},
     "docs": {"fetch": "the doctor's daily fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 1)",
              "pages": "the pages kept, slug = URL (default config.DOCS_PAGES)",
              "topics": "the install's own topics the rule-shape check reads, name = \"regex\", beside shape.TOPICS",
