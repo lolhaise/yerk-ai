@@ -61,3 +61,16 @@ def test_the_dry_run_is_the_same_bytes_unset_or_set_to_the_default_and_she_count
     assert she["ready"] and she["own"] == unset["own"]                          # given as the owner's by she, once set
     plain, _ = dry(tmp_path, "she-unset", "", "she")
     assert plain["own"] != unset["own"]                                         # unset, she is someone else
+
+
+def test_what_the_program_says_about_the_owner_holds_no_he_his_or_him():
+    """The words a model reads about the owner (the texting block and its two prompts, the watch lines, the taste head and its
+    rubric) say the owner or they. A pronoun put back turns this red; the two outcome names are stored values, not words."""
+    from yerk_ai import taste, words
+    said = [words.TEXTING_TOLD, *words.TEXTING_MODE_SAID.values(), words.TEXTING_HELP, words.TEXTING_NOT_SAID, words.TEXTING_CHECK_CLAIMED,
+            *words.REPLAY_SENDER_LIMITS, words.SENT_THERE, words.WATCH_UNANSWERED, taste.HEAD]
+    pages = [(Path(words.__file__).parent / p).read_text() for p in ("texting/writer.md", "texting/check.md", "taste-rubric.md")]
+    for text in (*said, *pages):
+        assert not re.search(r"\b(?:he|him|his|himself)\b", text.replace("he-first", "").replace("he-too", ""), re.I), text[:80]
+    for page in pages[:2]:                               # in the texting prompts "they" is the person texted, never the owner
+        assert not re.search(r"the owner[^.;:]{0,60}\b(?:their side|they opened|their phone|as they would)\b", page), page[:80]
