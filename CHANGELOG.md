@@ -22,7 +22,8 @@ files into pieces changes.
 - The six pages `yerk docs own` writes open with what the page is, then the line that says how they are written; the
   budgets page no longer says its first sentence twice.
 - A new install's first start logs no red doctor line: with no doctor run on file the line reads `- doctor: not run yet,
-  runs each night`. One whose doctor ran and then missed a day still reads `🔴 doctor: unknown, no run in 24h`.
+  runs each night`. One whose doctor ran and then missed a day still reads `🔴 doctor: unknown, no run in 24h`, and so does one
+  whose doctor has still never run two days after its first start.
 - `[curate] owner_words` in yerkd.toml: the pronouns your rules use for you, which the rule conversion's picker reads
   with "the owner", `owner_names` and "in reply to" to give a quote as yours. Default `["he", "him", "his"]`, so unset
   nothing changes; rules that call the owner she or they set `["she", "her"]` or `["they", "them", "their"]`.

@@ -521,6 +521,8 @@ def test_a_doctor_that_never_ran_is_a_plain_line_and_one_that_ran_then_missed_a_
     assert doctor.line(state, now) == plain and not plain[1].startswith(words.NOT_DONE)      # no doctor.json at all
     doctor.save(state, now, [f"{words.WORKING} day log 2026-10-20.md: mended line 8"])        # the start's crash repair alone
     assert doctor.line(state, now) == doctor.line(state, now + 2 * DAY) == plain
+    doctor.save(state, now + DAY, [])                                                         # a restart a day in moves no clock
+    assert doctor.line(state, now + 2 * DAY + 60) == red                                     # two days in and still no run: a fault, said
     doctor.save(state, now, [], {"at": now, "findings": []})                                 # a full run
     assert doctor.line(state, now + DAY - 60)[0].startswith("doctor ") and doctor.line(state, now + DAY + 60) == red
     doctor.save(state, now + DAY + 60, [], {"at": now + DAY + 60, "findings": []})
