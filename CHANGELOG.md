@@ -35,6 +35,26 @@ files into pieces changes.
 **Upgrading:** nothing to do. A line already filed is not read again or re-marked. `yerk_tools` and the session start's total
 rose by the description's 426 more characters, in every room.
 
+### need-2026-11-27-138 (how a recording was said: laughs, jokes, stressed words)
+
+- `transcribe` hears tone now. With a Gemini key at `secrets/gemini.key`, each 14-minute chunk's mp3 goes to Gemini
+  (gemini-3.8-flash, at low thinking) with that chunk's whisper-1 lines, numbered, and a line said with more than its
+  words gets a note at its end in the one transcript file: `(tone: deadpan, a joke; stressed: love)`. A laugh, a joke,
+  teasing, sarcasm, a deadpan line, hesitation and a stressed word are what it listens for.
+- The words stay whisper-1's: a note goes on its line only when every word it stresses or quotes is in that line, in
+  double or single quotes, straight or curly, read in the whole note before it is cut to fit, and a note that names
+  another line or a word of its own is left out and counted, since a listening model can make up a quote. A new line
+  under the speakers line says how many lines have a note, or `tone: none (why)` with no key or a read that failed, and
+  the tool's result carries the same line as `tone_how` with the count as `tone`, so a room never takes a line as said
+  plainly when nothing heard how it was said; its next-step words say so too.
+- Each read is a spend row for the tokens its answer says it used (US$0.75 a million in and US$3.75 out to the end of
+  2026, then US$1.50 and US$7.50), and its estimate joins the US$1 gate's. A video's sound transcribed by `watch` gets
+  the same notes. `yerk explain tone` has it.
+
+**Upgrading:** put a Gemini API key on the first line of `secrets/gemini.key` in the private folder, 0600, to turn it on;
+without one, nothing is sent and every transcript says no tone was read. budgets.toml's `[code] lines` rises, with its
+dated reason; an install that keeps its own budgets.toml takes it.
+
 ### web-plugin-deps-2026-11-27 (the web plug-in's packages at their patched versions)
 
 - `plugins/web` pins `@modelcontextprotocol/sdk` 1.32.0 (it was 1.30.0), and its lock file moves the three packages that

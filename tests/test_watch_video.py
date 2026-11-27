@@ -146,8 +146,8 @@ def hearing(monkeypatch: pytest.MonkeyPatch, error: str = "", gated: bool = Fals
     calls: list[dict[str, Any]] = []
 
     def fake(audio: Path, openai_key: Path, groq_key: Path, book: transcribe.Book, owner_yes: bool = False,
-             meta_key: Path | None = None) -> dict[str, Any]:
-        calls.append({"audio": audio, "keys": (openai_key, groq_key, meta_key), "owner_yes": owner_yes})
+             meta_key: Path | None = None, gemini_key: Path | None = None) -> dict[str, Any]:
+        calls.append({"audio": audio, "keys": (openai_key, groq_key, meta_key, gemini_key), "owner_yes": owner_yes})
         if error and not (gated and owner_yes):
             return {"ok": False, "error": error}
         book("openai/whisper-1", 0.0004, "chunk 1 of 1, 4 s")
@@ -234,7 +234,8 @@ def test_a_link_comes_back_as_its_video_its_frames_and_its_transcript_in_the_roo
     assert run["env"] == {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "HOME": os.environ["HOME"]}
     [call] = calls                                    # transcribe.run as tool_transcribe calls it, its spend rows under `watch`
     assert call == {"audio": folder / "video.mp4", "owner_yes": False,
-                    "keys": (y.memory.embeddings_key, y.private / transcribe.GROQ_KEY, y.private / transcribe.META_KEY)}
+                    "keys": (y.memory.embeddings_key, y.private / transcribe.GROQ_KEY, y.private / transcribe.META_KEY,
+                             y.private / transcribe.GEMINI_KEY)}
     assert rows == [{"room": "example-room", "tool": "watch", "engine": "openai/whisper-1", "usd": 0.0004, "note": "chunk 1 of 1, 4 s"}]
 
 
@@ -653,7 +654,8 @@ def test_a_video_file_sent_to_the_room_comes_back_as_its_frames_and_its_transcri
     assert SAID in r["transcript"] and folder.stat().st_mode & 0o777 == 0o700 and not (folder / "url.txt").exists()
     [call] = calls                                # transcribe.run as tool_transcribe calls it, its spend rows under `watch`
     assert call == {"audio": video, "owner_yes": False,
-                    "keys": (y.memory.embeddings_key, y.private / transcribe.GROQ_KEY, y.private / transcribe.META_KEY)}
+                    "keys": (y.memory.embeddings_key, y.private / transcribe.GROQ_KEY, y.private / transcribe.META_KEY,
+                             y.private / transcribe.GEMINI_KEY)}
     assert rows == [{"room": "example-room", "tool": "watch", "engine": "openai/whisper-1", "usd": 0.0004, "note": "chunk 1 of 1, 4 s"}]
 
 
