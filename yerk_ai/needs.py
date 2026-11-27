@@ -49,7 +49,7 @@ BRANCH = re.compile(r"\bbranch\s+`?([\w./-]+?)`?(?=[\s,:;]|$)")
 FLIGHT = ("building", "built", "pr", "fixing", "reading", "merged", "deploying")   # one need at a time is in one of these
 CLOSED = ("merged", "deploying", "live")           # a filing of the same ability after these is a new need
 TOKEN = re.compile(r"[^\s'\"`;,()<>]+")
-TASKS = ["worktree on its own branch", "the ability, with its tests", "the full suite green", "README, CHANGELOG, abilities",
+TASKS = ["worktree on its own branch", "the ability, with its tests", "the full suite green", "GUIDE, CHANGELOG, abilities",
          "committed, REPORT.md"]
 
 
@@ -361,12 +361,12 @@ def brief(r: dict[str, Any], repo: Path, check: str = "", offered: dict[str, dic
         "2. Tests in the existing style for what it does and for the wall the asks above hit; the full suite green (`uv run pytest -q`, its exit status "
         "read, never through `| tail`); ruff and mypy clean. Every person, place, handle and id in a test, a fixture, a doc or the CHANGELOG is a "
         "placeholder, never one from the asks above. The repository is public: a fixture is an invented sentence in a neutral setting, never a room's ask, "
-        "reply or message with its names changed, and no test, comment, doc, commit message or branch name carries the owner's quoted words, a date or "
-        "clock time of his messages, a room's own name, or a real figure, ticket number or address.\n3. README.md, CHANGELOG.md and the abilities.toml "
-        f"entry.\n4. Committed on `{branch}`. Never merge, push, open a PR or deploy: a worker's gate refuses a push and a PR, the branch reaches its pull "
-        "request from outside this run, and the owner's cold read decides the merge.\n5. REPORT.md's first line: `PR <number>: <what it adds>` when `gh pr "
-        f"list --head {branch}` shows one, else `branch {branch} at <short sha>: <what it adds>`, or `no branch: <why>`; then the files changed, the test "
-        "counts and every decision you made.\n\n"
+        "reply or message with its names changed, and no test, comment, doc, commit message or branch name carries the owner's quoted words, a date or clock "
+        "time of their messages, a room's own name, or a real figure, ticket number or address.\n3. A sentence on the ability in docs/GUIDE.md, under the "
+        f"section it belongs to (README.md is the front page and takes none), CHANGELOG.md and the abilities.toml entry.\n4. Committed on `{branch}`. Never "
+        "merge, push, open a PR or deploy: a worker's gate refuses a push and a PR, the branch reaches its pull request from outside this run, and the "
+        f"owner's cold read decides the merge.\n5. REPORT.md's first line: `PR <number>: <what it adds>` when `gh pr list --head {branch}` shows one, else "
+        f"`branch {branch} at <short sha>: <what it adds>`, or `no branch: <why>`; then the files changed, the test counts and every decision you made.\n\n"
         "## Leave alone\n"
         "The owner's private folder and Yerk's state folder, every room's files, other branches, the running daemon. Surgical "
         "edits, never a whole file rewritten. Your last message is the deliverable: REPORT.md's first line and the test "

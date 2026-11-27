@@ -245,6 +245,10 @@ def test_every_key_of_the_example_files_is_described():
 
 def test_the_readme_stays_a_ten_minute_read():
     """2026-10-24: 118,399 bytes, 57 percent of them a Status section, cut to the first section, five install lines, the private
-    folder, a turn, the add-ons and the docs; the rest is docs/GUIDE.md and docs/STATUS.md, whole."""
+    folder, a turn, the add-ons and the docs; the rest is docs/GUIDE.md and docs/STATUS.md, whole. 2026-11-26: remade as a front page for
+    a reader new to all of it (what it is, what it does, the questions a reader asks); a turn, the trust list and the add-on list moved,
+    whole, to docs/GUIDE.md and SECURITY.md, and the cap came down with them. Its count of the code is the ceiling's, to the thousand."""
     size = len((REPO / "README.md").read_bytes())
-    assert size < 12_000, f"README.md is {size:,} bytes: the long form goes in docs/GUIDE.md, the facts the code owns in its pages"
+    assert size < 10_000, f"README.md is {size:,} bytes: the long form goes in docs/GUIDE.md, the facts the code owns in its pages"
+    lines = tomllib.loads((REPO / "budgets.toml").read_text())["code"]["lines"]
+    assert f"About {round(lines, -3):,} lines of Python" in (REPO / "README.md").read_text(), f"README.md's count of the code is not {lines:,} to the thousand"
