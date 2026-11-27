@@ -816,7 +816,7 @@ REAL = pytest.mark.skipif(CHROMIUM is None or not page.sandbox_starts(),
 
 def draws(doc: Path, state: Path, width: int = 1200, scale: int = 2) -> dict[str, Any]:
     r = render.run(doc, state, width, scale, str(CHROMIUM))
-    assert r["ok"], r
+    assert r["ok"] and "note" not in r, r                                    # settled: a request to the network failed at once
     assert (r["width"], r["height"]) == size(Path(r["png"])) and list((state / "render").iterdir()) == []
     return r
 
