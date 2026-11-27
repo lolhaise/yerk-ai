@@ -30,9 +30,36 @@ files into pieces changes.
   tests that could fail with nothing wrong are fixed (one in the first minute after midnight, one that closed a room
   while a copy it started still ran).
 
-**Upgrading:** budgets.toml's `[code] lines` rises by 17, with its dated reason; an install that keeps its own
+**Upgrading:** budgets.toml's `[code] lines` rises by 17, to 37,646, with its dated reason; an install that keeps its own
 budgets.toml takes it. An install whose rules call the owner she or they adds `owner_words` under `[curate]` in
 yerkd.toml. A script that reads the deploy's or `yerk map`'s lines for "private layer" reads "private folder" now.
+
+### page-to-picture-2026-11-27 (the render tool draws a page as a picture)
+
+- `render` takes an .html or .htm in a room's work folder and returns a picture of the whole page, NAME.png beside it (an
+  older one replaced): `width` CSS pixels wide (200 to 3000, default 1200) at `scale` device pixels to each (1 to 3,
+  default 2), top to bottom, with no band under a short page and no cut on a tall one. The answer gives the picture's size
+  in pixels. A page past 16,000 device pixels tall is refused with its height and the two ways out, a lower scale or a
+  shorter page. So is a picture past 40 million device pixels in all, and one whose PNG comes to more than about 36 MB,
+  which is never read to its end. Before, an .html went to LibreOffice and came back a PDF in LibreOffice's layout.
+- A headless Chromium draws it, in the same kind of bubblewrap box a .tex compiles in: no network, so a request the page
+  makes fails at once; no home, state or private folder; the page's folder read-only; a fresh build folder the one thing
+  writable. Chromium's own sandbox is off inside the box and nowhere else, and with no bwrap that starts nothing runs. The
+  daemon drives it over its DevTools pipe with Python's standard library: no new package.
+- The page gets 5 seconds to settle (its fonts loaded, its finite animations ended, its DOM still for a quarter second). One
+  still changing then is drawn as it stands and the answer says so; one whose scripts never yield is refused in one line.
+- The browser is `[render] chromium` in yerkd.toml when set (a whole path), else the first of chrome-headless-shell,
+  chromium, chromium-browser, google-chrome and chrome on the daemon's PATH, else the newest one Playwright keeps in its
+  cache folder, its headless shell before its full build. With none, the room says a Chromium is needed and names the setting.
+- `render`'s description tells a room to show a card, a table, a chart or a layout this way, Reading the PNG before it sends
+  it, and `show`'s says a page meant for the chat is a picture. Two journal lines count the use with no model: render's line
+  for a page gives the picture's size and the seconds, and `show page: ..., picture beside it: yes` (or `no`) says, for each
+  page put on a screen, whether a picture at least as new as the page was beside it.
+
+**Upgrading**: nothing to do where a Chromium is on the daemon's PATH or in Playwright's cache folder. Elsewhere, install a
+headless shell (`npx playwright install chromium-headless-shell`) or set `[render] chromium` in yerkd.toml to a Chromium's
+whole path; a colour emoji font (Noto Color Emoji, the distribution's package) draws emoji in colour. budgets.toml's
+`[code] lines` rises from 37,344 to 37,629.
 
 ### need-2026-11-27-138 (how a recording was said: laughs, jokes, stressed words)
 
