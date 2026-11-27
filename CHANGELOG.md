@@ -2394,8 +2394,6 @@ mail entry. Until the plug-in's deploy a room sends that entry at its old 1,225,
   line under it stays where it was: owner-only rooms that turn `thinking_panel` on.
 - Why: a room with people showed "step 1", "step 2" where an owner's room showed the state, the model's
   newest line and a row per step, and every room should show the same card.
-  
-  
 - The short card a room with people has shown since 2026-10-21 (its newest holding line and "step N", never a step's
   words) is now the opt-in: `card = "count"` in the room's block. `card = "steps"` (2026-11-03) still loads and means
   the default, as any other value does. The code ceiling moves up by 1.
