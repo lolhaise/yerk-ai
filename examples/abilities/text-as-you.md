@@ -21,7 +21,7 @@ The texting agent knows Saturday is on the owner's calendar, so it drafts, and t
 ```
 🟠 text to Sam, waiting for you
 "Yeah, still on. Noon works?"
-send · edit · no
+send · skip · edit
 ```
 
 The owner answers `send`, and only then does it go. Another text:
@@ -35,7 +35,7 @@ Money is the owner's call, so nothing is drafted. The room asks instead:
 what do you want to say?
 ```
 
-## What it would need
+## What it needs
 
 - The phone's messaging account signed in on the owner's own desktop computer.
 - A small signed app there that carries texts both ways, and an ssh path from the box.
