@@ -372,11 +372,16 @@ def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check
     given each room's newest transcript to read (transcripts). Returns the
     outcome a failure ledgers ("" when all held) and the card's lines; no wall to run behind runs nothing more."""
     W, walled = words, conf.get("wall", True) is not False
+    behind = walled and go is None          # the wall itself, not a stand-in: a path it would hide is refused before a check starts
     go = go or (workers.checked if walled else plain)
     off, reads = [] if walled else [W.line(f"{W.PLAIN} {W.WALL_OFF}")], transcripts(private, state)
     with index_held(state):
         try:
             for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)]:   # each add-on's too
+                if behind and (lost := workers.unseen(cwd, paths, tree, private, state, reads)):
+                    what = W.named(f"{W.PLAIN} {W.HIDDEN_FOLDER if lost == cwd else W.HIDDEN_ADDON}", name, path=lost.name) if name \
+                        else W.line(f"{W.PLAIN} " + W.HIDDEN_TESTS.format(path=lost.name))      # the path's last part, never the path
+                    return "path hidden", [what, W.line(f"{W.PLAIN} {W.HIDDEN}")]
                 if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
                             private=private, state=state, reads=reads)).returncode:
                     why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words

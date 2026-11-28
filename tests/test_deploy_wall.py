@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import memory, workers
+from yerk_ai import deploy, memory, words, workers
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO
 
 
@@ -207,12 +207,26 @@ def test_a_worker_s_own_walled_unit_is_as_it_was(tmp_path, monkeypatch):
         *workers.WALLS]
 
 
+def in_worker(pid: int = 0) -> bool:
+    """This process or one it runs under is in a Yerk worker's unit: a run through a scope of its own (a heavy-run) is in
+    another cgroup, but its caller is not, and the unit it would start sees neither the worker's /tmp nor its home."""
+    pid = pid or os.getpid()
+    while pid > 1:
+        try:
+            if "/yerk-worker-" in Path(f"/proc/{pid}/cgroup").read_text():
+                return True
+            pid = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return False
+    return False
+
+
 def no_real_unit() -> str:
     """Why no real unit starts here, or "" when one can: a user bus that answers, systemd-run there, and not a Yerk worker's own
     unit (its gate refuses systemd-run, so a worker's suite never starts one; the box's CI has no bus)."""
     if not shutil.which("systemd-run"):
         return "no systemd-run here"
-    if "/yerk-worker-" in Path("/proc/self/cgroup").read_text():
+    if in_worker():
         return "a Yerk worker's own unit: its gate refuses systemd-run; a person's run of this test starts the unit"
     p = subprocess.run(["systemctl", "--user", "is-system-running"], capture_output=True, text=True, timeout=20)
     return "" if p.stdout.strip() in ("running", "degraded", "starting", "initializing") else "no user bus answers here"
@@ -308,3 +322,93 @@ def test_the_real_wall_hides_the_home_refuses_writes_and_keeps_the_loopback(tmp_
     assert inside["denylist"] and inside["tree_read"] and inside["imports"] and inside["server"]
     assert set(workers.check_env(tree, private, state)) <= set(inside["env"]) and wrote == []
     assert "YERK_PLANTED_KEY" not in inside["env"] and "YERK_PLANTED_KEY" in outside["env"] and outside["writes"] == [True] * 3
+
+
+def test_what_a_check_may_read_is_read_from_its_own_unit_with_links_followed(tmp_path, monkeypatch):
+    """workers.unseen: a check's folder and test paths against what check_props gives that check, never a list of its own."""
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    (out := home / "elsewhere").mkdir()
+    (tree / "in").symlink_to(state)                             # a link that stays in what is bound back
+    (tree / "out").symlink_to(out)                              # one that leads out of it
+    (state / "addons").mkdir()
+    (state / "addons" / "gone").symlink_to(out)                 # a folder under the state folder that is a link out
+
+    def seen(*paths, cwd=tree):
+        return workers.unseen(cwd, list(paths), tree, private, state)
+    assert seen("tests/test_x.py", "tests/test_x.py::test_y", "-k", "in/x.py", str(state / "x"), "/usr/lib/x.py") is None
+    assert seen("out/test_x.py") == tree / "out" / "test_x.py" and seen(str(out / "t.py")) == out / "t.py"
+    assert seen(str(tmp_path / "t.py")) == tmp_path / "t.py"                       # the deploy's /tmp: the unit has its own
+    assert seen(str(private / "secrets" / "t.py")) and seen(str(state / "secrets" / "t.py"))   # as the unit has them: not there
+    assert seen("tests", cwd=state / "addons" / "gone") == state / "addons" / "gone" and seen(cwd=state / "addons") is None
+    props = workers.check_props
+
+    def one_more(*a, **k):                                      # a path bound back tomorrow
+        return [*props(*a, **k), f"BindReadOnlyPaths={out}"]
+    monkeypatch.setattr(workers, "check_props", one_more)
+    assert seen(str(out / "t.py")) is None and seen("out/test_x.py") is None and seen(str(private / "secrets" / "t.py"))
+
+
+def kept(monkeypatch):
+    """workers.checked as deploy.step calls it: each (argv, cwd) kept, each check passing."""
+    seen = []
+
+    def checked(argv, cwd, **_k):
+        seen.append((argv, cwd))
+        return subprocess.CompletedProcess(argv, 0, "1 passed\n", "")
+    monkeypatch.setattr(workers, "checked", checked)
+    return seen
+
+
+def held(*_a):
+    return {"hit": 1, "of": 1, "meaning": [], "missed": []}
+
+
+def hello(state, where):
+    """The example add-on installed under `state` from `where`, its folder there a link to `where` when they differ."""
+    shutil.copytree(REPO / "examples" / "addons" / "hello", where, ignore=shutil.ignore_patterns("__pycache__"))
+    (state / "addons").mkdir(exist_ok=True)
+    if where != state / "addons" / "hello":
+        (state / "addons" / "hello").symlink_to(where)
+
+
+@pytest.mark.parametrize("where", ["outside", "inside"])
+def test_an_add_on_s_folder_that_is_a_link_out_is_refused_by_name_and_one_that_stays_in_runs(tmp_path, monkeypatch, where):
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    hello(state, home / "elsewhere" / "hello" if where == "outside" else state / "kept" / "hello")
+    seen = kept(monkeypatch)
+    outcome, lines = deploy.step(tree, private, state, {"tests": ["tests/test_x.py"]}, check=held)
+    if where == "outside":
+        assert (outcome, lines) == ("path hidden", [f"{words.PLAIN} add-on hello's folder", f"{words.PLAIN} lies outside what a check may read"])
+        assert [c for _, c in seen] == [tree]                    # the core's ran; the add-on's never started
+    else:
+        assert outcome == "" and [c for _, c in seen] == [tree, state / "addons" / "hello"]
+
+
+@pytest.mark.parametrize("path", ["inside", "outside", "../tree-not/test_x.py", "secrets", "state secrets"])
+def test_a_deploy_tests_path_the_wall_would_hide_is_refused_as_one_and_one_inside_runs(tmp_path, monkeypatch, path):
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    given = {"inside": "tests/test_x.py", "outside": str(home / "elsewhere" / "test_x.py"),
+             "secrets": str(private / "secrets" / "test_x.py"), "state secrets": str(state / "secrets" / "test_x.py")}.get(path, path)
+    seen = kept(monkeypatch)
+    outcome, lines = deploy.step(tree, private, state, {"tests": [given]}, check=held)
+    if path == "inside":
+        assert outcome == "" and seen[0][0][-1] == given
+    else:
+        assert (outcome, lines, seen) == ("path hidden", [f"{words.PLAIN} [deploy] tests path test_x.py", f"{words.PLAIN} {words.HIDDEN}"], [])
+        assert all("/" not in x for x in lines)                  # the path's last part at most, never the whole path
+
+
+def test_an_add_on_s_test_path_led_out_by_a_link_made_after_the_add_is_refused_and_a_bound_one_runs(tmp_path, monkeypatch):
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    hello(state, state / "addons" / "hello")
+    shutil.move(state / "addons" / "hello" / "tests", out := home / "elsewhere" / "tests")
+    (state / "addons" / "hello" / "tests").symlink_to(out)
+    seen = kept(monkeypatch)
+    said = deploy.step(tree, private, state, {"tests": ["tests/test_x.py"]}, check=held)
+    assert said == ("path hidden", [f"{words.PLAIN} add-on hello's test path tests", f"{words.PLAIN} lies outside what a check may read"])
+    assert len(seen) == 1 and all(str(tmp_path) not in x for x in said[1])
+    props = workers.check_props
+    monkeypatch.setattr(workers, "check_props", lambda *a, **k: [*props(*a, **k), f"BindReadOnlyPaths={out}"])
+    assert deploy.step(tree, private, state, {"tests": ["tests/test_x.py"]}, check=held)[0] == "" and len(seen) == 3
+    assert deploy.step(tree, private, state, {"tests": ["tests/test_x.py"]}, go=lambda argv, **k: subprocess.CompletedProcess(argv, 0, "", ""),
+                       check=held)[0] == ""                       # a stand-in for the wall is no wall: nothing of it to hide

@@ -262,8 +262,7 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         if ins.get("budgets"):
             do("budgets", lines=", ".join(f"{k} +{n:,}" for k, n in ins["budgets"].items()))
         do("words", words=ins["words"])
-        if not dry and (t := tested([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", *ins["tests"]],
-                                    folder, private, state, walled, run)).returncode:
+        if not dry and (t := tested([str(x) for x in ins["tests"]], folder, private, state, walled, run)).returncode:
             raise RuntimeError(W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
         say(W.step(W.ADD_STEP, "tests", dry, said=", ".join(ins["tests"])))
         if not dry and not walled:
@@ -278,13 +277,17 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
     return 0
 
 
-def tested(argv: list[str], folder: Path, private: Path, state: Path, walled: bool, run: Run) -> "subprocess.CompletedProcess[str]":
+def tested(paths: list[str], folder: Path, private: Path, state: Path, walled: bool, run: Run) -> "subprocess.CompletedProcess[str]":
     """An add-on's fast tests in its folder, as a deploy runs them (deploy.step): behind the wall (workers.checked, the tree
     this checkout, the layer and the state folder `yerk add` was given; `run` its stand-in) unless [deploy] wall = false, then
-    plain as a child of whoever adds. No wall to run behind is an error that names the setting, never a run outside it."""
+    plain as a child of whoever adds. A folder or test path the wall would hide (workers.unseen) and no wall to run behind
+    are each an error that says so, never a run outside it."""
     from . import workers
+    argv = [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", *paths]
     if not walled:
         return run(argv, cwd=folder, capture_output=True, text=True)
+    if lost := workers.unseen(folder, paths, REPO, private, state):
+        raise RuntimeError(words.ADD_HIDDEN_FOLDER if lost == folder else words.ADD_HIDDEN_PATH.format(path=lost.name))
     try:
         return workers.checked(argv, folder, REPO, private, state, run=run)
     except workers.NoWall as e:

@@ -233,6 +233,21 @@ def test_a_failing_test_behind_the_wall_says_today_s_words_and_a_dry_run_runs_no
     assert len(seen) == 1 and not any("pytest" in c for c in run.ran)
 
 
+@pytest.mark.parametrize("where", ["out of the state folder", "inside it"])
+def test_a_folder_the_wall_would_hide_is_not_added_and_every_step_is_undone(install, tmp_path, capsys, where):
+    priv, state = install
+    (state / "addons").parent.mkdir(parents=True)
+    (state / "addons").symlink_to(away := tmp_path / "away" if where == "out of the state folder" else state / "kept")
+    away.mkdir()
+    before, run = snapshot(priv), fake()
+    assert addons.add(str(HELLO), priv, state, run=run) == (1 if away.parent == tmp_path else 0)
+    if away.parent == tmp_path:
+        assert capsys.readouterr().out.splitlines()[-1] == f"{words.NOT_DONE} not added: its folder lies outside what a check may read"
+        assert snapshot(priv) == before and not (state / "addons" / "hello").exists() and not any("pytest" in c for c in run.ran)
+    else:
+        assert len([c for c in run.ran if "pytest" in c]) == 1
+
+
 def test_a_package_that_will_not_uninstall_is_said_and_the_rest_is_removed(install, capsys):
     priv, state = install
     before = snapshot(priv)

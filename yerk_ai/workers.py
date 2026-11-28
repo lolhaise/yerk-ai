@@ -587,6 +587,26 @@ def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str
     return [*props, f"InaccessiblePaths=-{Path(os.path.abspath(state)) / 'secrets'}", *doors(), *WALLS]   # nor the install's own secrets
 
 
+def unseen(cwd: Path, paths: Sequence[str], tree: Path, private: Path, state: Path, reads: Sequence[Path] = ()) -> Path | None:
+    """The first of a check's folder `cwd` and its test `paths` (each from cwd, a pytest node's file, links followed; an option
+    is not one) that its unit would hide, read from what check_props returns for that check (checked's own arguments): the
+    deepest mount that holds it decides, a path bound back read-only is there, one under a root, the unit's own /tmp
+    (PrivateTmp), a door or a secrets/ is not, one under none of them is as the system has it. None when each is there.
+    Nothing is bound back for it: a path a setting or a link names never widens the wall."""
+    props, mounts = check_props(tree, private, state, cwd, os.environ.get("YERK_DENYLIST_FILE", ""), reads), list[tuple[str, bool]]()
+    for p in props:
+        key, _, value = p.partition("=")
+        where = value.lstrip("-+").split(":")
+        if key in ("BindReadOnlyPaths", "BindPaths", "TemporaryFileSystem", "InaccessiblePaths"):
+            mounts.append((os.path.realpath(where[1] if key.startswith("Bind") and len(where) > 1 else where[0]), key.startswith("Bind")))
+    mounts += [(os.path.realpath(t), False) for t in ("/tmp", "/var/tmp")] if "PrivateTmp=yes" in props else []
+    for q in [Path(cwd), *(Path(cwd) / x.split("::")[0] for x in paths if not x.startswith("-"))]:
+        real = Path(os.path.realpath(q))
+        if (over := [(len(Path(m).parts), there) for m, there in mounts if real.is_relative_to(m)]) and not max(over)[1]:
+            return q
+    return None
+
+
 def check_env(tree: Path, private: Path, state: Path) -> dict[str, str]:
     """A deploy check's environment, a short fixed list and never the deploy's own: HOME, USER, LOGNAME, LANG and PATH as the
     deploy has them, TMPDIR the unit's own /tmp, the layer and the tree (YERK_PRIVATE, YERK_STATE, PYTHONPATH), no bytecode
