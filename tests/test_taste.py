@@ -93,8 +93,8 @@ def test_the_part_fits_its_budget_in_claude_codes_characters_by_cutting_each_rep
 
 def test_the_per_message_cap_rose_by_the_taste_part():
     pm = budgets()["per_message"]
-    assert pm["on_hit"]["taste"] == 1500 and pm["cap"] == 5500 + pm["parts"]["place"] + 300   # and by the place part (location.py)
-    assert pm["on_hit"]["recall"] == 2300                       # and the recall line's 100 three times (need-2026-11-09-74, need-2026-11-19-124 and need-2026-11-21-135: the census of names)
+    assert pm["on_hit"]["taste"] == 1500 and pm["cap"] == 5500 + pm["parts"]["place"] + 400   # and by the place part (location.py)
+    assert pm["on_hit"]["recall"] == 2400                       # and the recall line's 100 four times (need-2026-11-09-74, need-2026-11-19-124, need-2026-11-21-135 and tab-hold-2026-11-27: the census of names)
     assert sum(pm["parts"].values()) + sum(pm["on_hit"].values()) == pm["cap"]
 
 

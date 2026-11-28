@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 137644`
+- `total = 138364`
 
 ## [session_start.claude_code]
 
@@ -160,11 +160,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-27, due-in-words-2026-11-27 (build 1d of the owner's build list of Wed Nov 25): the `remember` tool's words on a due's day and time, in place of the sentence "Give a date only when the words give one or the clock line lets you work it out, never as a guess." (write a day worked out in the line, since a due whose day the line does not name is refused; a time only when the words give the hour, a minute of the room's own choosing never; what might happen is no thing due; the room's own plan to act at a set time a `schedule` job), since in the day after build 1b six of the fifteen dated lines filed carried a day or a minute no one's words gave: remember's description 3,141 to 3,561 characters as Claude Code counts them, its entry 4,116 to 4,542 (426 more, the words and their JSON escapes), each measured on main a37115c2 and on this tree the same way, the entry's name, description and input schema as JSON (json.dumps, and compact the same 426), all 25 from 29,948 to 30,374; so about 32,083 on the 31,657 above. The line is that count, no part could pay, the total rose by the 426 (to 137,644 on main's 137,218).
 
+2026-11-27, tab-hold-2026-11-27 (item seven of the owner's build list of Wed Nov 25, its first half): the hands plug-in's browser entry gains `hold` and `release` (the owner takes one tab for a step only a person can do there, and nothing acts on it, pictures it or lists its fields until it is given back): their words in the entry, two names in its action list and a `reason` parameter. The entry as a room sends it 5,587 to 6,307, so the line 10,970 to 11,690 (720 more: the plug-in's own count of its entries rose by 713, 10,892 to 11,605 bytes, and a room's JSON carries a space after each of the seven commas and colons the change adds). Measured the hands-line way: the entry built from the plug-in's own list at the commit before (its name, description, input schema and Claude Code's own key) equals what four rooms' newest request shapes hold, and the same build at the commit with the hold gives 6,307. No part could pay, the total rose by the 720 (to 138,364 on main's 137,644).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 32083`
 - `deferred_tool_names = 4380`
-- `mcp__hands__ = 10970`
+- `mcp__hands__ = 11690`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 
@@ -254,7 +256,9 @@ What the UserPromptSubmit hook adds to each message: `typical` caps the parts ev
 
 2026-11-21, need-2026-11-21-135: 5,850 to 5,950, the recall part's 100 below.
 
-- `cap = 5950`
+2026-11-27, tab-hold-2026-11-27: 5,950 to 6,050, the recall part's 100 below.
+
+- `cap = 6050`
 
 ## [per_message.parts]
 
@@ -283,7 +287,9 @@ Paid only when a message hits: the people and things it names, then the room's o
 
 2026-11-21, need-2026-11-21-135: 2,300. With need-2026-11-21-134's worker-branch in, the answer to "what can you do" sat 11 characters under 2,200 on main ff00415 (2,189); red-checks's name (why a check on a pull request is red, from the box CI's own record) takes it 1 over, 2,201, and the census rides whole or not at all; so 100 more again, room for about seven names. Each need's branch fit alone: the two met when main was folded in at the deeper check. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
 
-- `recall = 2300`
+2026-11-27, tab-hold-2026-11-27: 2,400. The answer to "what can you do" sat 7 characters under 2,300 on main de452db (2,293 as the recall part renders it); tab-hold's name (the owner takes one browser tab for a step only a person can do there) takes it 3 over, 2,303, and the census rides whole or not at all; so 100 more again, room for about nine names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+
+- `recall = 2400`
 
 Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 

@@ -390,6 +390,30 @@ asked_as = ["use my browser", "control my browser", "drive my browser", "use a b
             "open it in my browser", "open a page in my browser", "browser on my pc", "the next button stays disabled",
             "the form won't take the value", "the field needs real keystrokes"]
 
+# tab-hold-2026-11-27 (item seven of the owner's build list of Wed Nov 25, its first half): a page a room opened that needed a
+# step only the owner can do there (paying, a bot check, a sign-in with no saved login, a code on a phone) left the room
+# stopped and the owner looking for the right tab in a minimized window, and nothing kept a room, its worker or a desktop
+# click off that tab while a card number was being typed. Counted first, on fourteen days of the rooms' own session logs: a
+# page only the owner could finish on three of them. So it is one mark on a tab, with a count of whether it gets used.
+[abilities.tab-hold]
+state = "described"
+what = "Hands the owner one browser tab for a step only a person can do there, and keeps every room, worker and desktop click off it until the owner gives it back."
+how = [
+  "Two browser actions, hold and release, each taken only on the owner's own message: hold names the step in a few words and puts the browser's window up with that tab in front, and release puts the window back as it was.",
+  "While a hold stands nothing is set, clicked, typed, scrolled, uploaded or closed on that tab or on a popup it opens, for any room or worker, with the owner's word or without; no picture and no field list is taken of it, since either would show what the owner is typing; its text can still be read.",
+  "The desktop tool takes no click, no typing and no screenshot on that computer meanwhile: the owner's own hands are on the mouse and keyboard.",
+  "It ends by itself after ten minutes, and no clock minimizes the window, since the owner may still be typing: the first call on that tab afterwards is told so once.",
+  "The mark sits in the plug-in's own book of tabs, the one file every room's and worker's process reads, so a second process meets it too; one tab at a time is put in front of the owner.",
+  "A count with no model in it: the plug-in's ledger marks a payment page, a bot check and a sign-in title as met, and a script prints how many were met, held, released and left to lapse, never a site, a room or a reason.",
+]
+tier = "free"
+needs = "the browser ability's plug-in at a version that has hold and release, and the desktop computer its profile runs on"
+price = "none"
+free_path = "this is the free path"
+why_not = "Not in this repo: it is part of the browser plug-in an install attaches to its owner rooms (on the owner's box, hands and the hold and release actions of its mcp__hands__browser). A payment page stays one where nothing is set or clicked: a hold gives the owner the tab, it never pays."
+asked_as = ["i'll pay on that page myself", "let me do the captcha myself", "i'll sign in there myself", "give me that tab",
+            "put that tab on my screen", "keep your hands off that tab", "i'm done with the tab"]
+
 # need-2026-11-14-97: a room asked to check a store's live stock met a retailer's product page empty behind a captcha
 # frame in the automated browser, and, handed an opaque empty page, improvised off a photo of the stock box instead of
 # naming the wall; filed 2026-11-14. PR 81's cold read: the first cut called the check a wall never worked around while it
