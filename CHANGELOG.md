@@ -17,15 +17,18 @@ files into pieces changes.
   them plain as before, and `yerk add` says so in one line. With no wall to run behind, the add-on is not added and every step
   is undone; the line gives systemd's words and names the setting.
 - A check whose folder or test path the wall would hide no longer starts. This covers an add-on's folder that is a link out of
-  the state folder, a `[deploy] tests` path outside the tree, an add-on's own test path that a link leads out of its folder,
-  and anything under a `secrets/`. The deploy deploys nothing (its ledger outcome is `path hidden`) and its card names the kind:
+  the state folder, a `[deploy] tests` path outside the tree in the hidden home or the deploy's own /tmp, an add-on's own test
+  path that a link leads out of its folder to such a place, and anything under the private layer's or the state folder's
+  `secrets/`. A path the unit still sees as the system has it (a system folder) is not refused. The deploy deploys nothing (its ledger outcome is `path hidden`) and its card names the kind:
   the add-on by name, or the path by its last part, never the whole path. `yerk add` adds nothing and says the same. What a
   check may read comes from the unit's own properties, so a path the wall binds back later is accepted with no other change.
 - A check that systemd stopped at its time limit says "ran out of time" and the limit in seconds, on the deploy's card and in
   `yerk add`'s line, where both used to say only that the tests failed. The time is read from the deploy's own clock, never
   from what the check printed. A check ended by the memory ceiling still says only that it failed.
-- Why: an add-on's test folder is code nobody runs again except the deploy, which walls it; and a hidden path, the time limit
-  or the memory ceiling ended a check with a card that said something untrue ("no wall", or "failed" with nothing under it).
+- Why: an add-on's test folder is code nobody runs again except the deploy, which walls it; and a hidden path or the time
+  limit ended a check with a card that said something untrue ("no wall", or "failed" with nothing under it). The memory
+  ceiling's case is not changed: systemd's word for it goes with the unit, and keeping the unit to read it changes the
+  walled command its tests pin.
 
 **Upgrading:** budgets.toml's `[code] lines` rises from 37,715 to 37,788, with the dated reason. An install that keeps its own
 budgets.toml raises it the same. Nothing else to do: an install with `[deploy] wall = false` keeps its plain runs.
