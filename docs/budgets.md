@@ -937,7 +937,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-27: owner-in-neutral-words-2026-11-27 raised it by 18, a doctor that never ran said with the plain mark, not a fault, and the pronouns the owner's rules use for them a setting of the conversion's picker, not folded to fit: conversion.py 13 (OWNER_WORDS, owner_words, said_as and each rule's said_by), doctor.py 3 (the never-ran line, held to an install's first two days), words.py 1 (DOCTOR_NOT_YET), config.py 1 (owner_words in YERKD_WORDS). No other size moved: no tool's description changed, the texting block's part has no line of its own, and the taste head's 8 characters stay inside the taste part's 1,500. 37,715: main's 37,697 (page-to-picture-2026-11-27 and due-in-words-2026-11-27 merged in under it) plus 18.
 
-- `lines = 37715`
+2026-11-28: add-step-walled-2026-11-28 raised it by 73, `yerk add` running an add-on's tests behind the deploy's wall, a check whose folder or test path the wall would hide refused before it starts, and one ended at its time limit said so, not folded to fit (the owner's ask): workers.py 32 (unseen, the reading of check_props' mounts; Ran, the limit by the caller's clock; checked's docstring), addons.py 22 (tested, the owner's [deploy] wall read, the no-wall line, the docstrings), deploy.py 10 (the refusal and the limit lines in step, its docstring), words.py 7 (ADD_NO_WALL, ADD_HIDDEN_*, ADD_TESTS_STOPPED, HIDDEN*, TESTS_STOPPED, OF_ADDON_STOPPED, TIME_LIMIT), config.py 2 ([deploy] wall's description). No other size moved. 37,788: main's 37,715 plus 73.
+
+- `lines = 37788`
 
 ## Uncapped
 

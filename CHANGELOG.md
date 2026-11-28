@@ -7,6 +7,29 @@ what ran, migrates itself at the next start (its schema is versioned, and a ledg
 with one line, never changed); the memory search index (`yerk-index`) reads every file again when the way it cuts
 files into pieces changes.
 
+## 2026-11-28
+
+### add-step-walled-2026-11-28 (`yerk add` runs an add-on's tests behind the deploy's wall, and a check that did not really run says why)
+
+- `yerk add` runs the add-on's fast tests the way a deploy does: one command in a user unit of its own, the home hidden, the
+  tree, the interpreter, the private layer and the state folder read-only. Until now they ran as a plain child of whoever
+  added it, with that person's whole home and environment. `[deploy] wall = false` in yerkd.toml, the same one setting, runs
+  them plain as before, and `yerk add` says so in one line. With no wall to run behind, the add-on is not added and every step
+  is undone; the line gives systemd's words and names the setting.
+- A check whose folder or test path the wall would hide no longer starts. This covers an add-on's folder that is a link out of
+  the state folder, a `[deploy] tests` path outside the tree, an add-on's own test path that a link leads out of its folder,
+  and anything under a `secrets/`. The deploy deploys nothing (its ledger outcome is `path hidden`) and its card names the kind:
+  the add-on by name, or the path by its last part, never the whole path. `yerk add` adds nothing and says the same. What a
+  check may read comes from the unit's own properties, so a path the wall binds back later is accepted with no other change.
+- A check that systemd stopped at its time limit says "ran out of time" and the limit in seconds, on the deploy's card and in
+  `yerk add`'s line, where both used to say only that the tests failed. The time is read from the deploy's own clock, never
+  from what the check printed. A check ended by the memory ceiling still says only that it failed.
+- Why: an add-on's test folder is code nobody runs again except the deploy, which walls it; and a hidden path, the time limit
+  or the memory ceiling ended a check with a card that said something untrue ("no wall", or "failed" with nothing under it).
+
+**Upgrading:** budgets.toml's `[code] lines` rises from 37,715 to 37,788, with the dated reason. An install that keeps its own
+budgets.toml raises it the same. Nothing else to do: an install with `[deploy] wall = false` keeps its plain runs.
+
 ## 2026-11-27
 
 ### tab-hold-2026-11-27 (the owner takes one browser tab for a step only a person can do, and nothing touches it until it is given back)

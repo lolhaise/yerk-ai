@@ -2,7 +2,8 @@
 with `repo`, `version`, `size` (its own ceiling in lines of code) and `install`; the aim is a core Yerk that still knows every
 ability, where each lives on GitHub, and adds one easily. `yerk add` fetches it into <state>/addons/NAME, checks it, installs its
 package, writes its server and allow lines under rooms.toml's [defaults] and its tables into yerkd.toml (marked blocks,
-read back through the loaders that start yerkd), links its units and runs its fast tests, a line per step; `yerk remove`
+read back through the loaders that start yerkd), links its units and runs its fast tests behind the deploy's wall (tested), a
+line per step; `yerk remove`
 undoes each and leaves the private folder as it was. While installed, its budget lines count in the gate, its rooms.toml keys are known
 keys and an attachment of a type it reads names its tool. What is installed is read from the install, never kept by name."""
 from __future__ import annotations
@@ -199,8 +200,9 @@ def reads(state: Path | None) -> dict[str, str]:
 
 
 def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = subprocess.run, say: Callable[[str], Any] = print) -> int:
-    """`yerk add SOURCE [--dry-run]`: 0 added (or, dry, it would be), 1 refused or its tests failed (nothing kept), 2 no
-    such add-on."""
+    """`yerk add SOURCE [--dry-run]`: 0 added (or, dry, it would be), 1 refused, or its tests failed, ran out of time or did
+    not run behind the deploy's wall (tested: a folder or test path the wall would hide, no wall to run behind), nothing
+    kept; 2 no such add-on. `run` runs git, pip and, behind the wall, the tests' one systemd-run (its stand-in in a test)."""
     W, reg = words, dict(load_toml(table("abilities.toml"))["abilities"])
     src = str(reg[source]["repo"]) if source in reg and reg[source].get("repo") else source
     if not Path(src).expanduser().is_dir() and not re.match(r"^(\w+://|git@)", src):

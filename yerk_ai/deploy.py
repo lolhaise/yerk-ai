@@ -369,7 +369,9 @@ def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check
     """The deploy's checks on the tree as it stands: the core's fast tests ([deploy] tests, else FAST) in the tree, each
     installed add-on's in its folder, then the recall controls, each behind the wall (workers.checked) unless [deploy] wall =
     false (plain, and the card says so) or `go` stands in, the live index held open meanwhile (index_held) and the tests
-    given each room's newest transcript to read (transcripts). Returns the
+    given each room's newest transcript to read (transcripts). Behind the wall itself, a check whose folder or test path it
+    would hide (workers.unseen) never starts: outcome "path hidden", the card naming its kind and the path's last part at
+    most; one systemd ended at its time limit (workers.Ran) is said so with the limit in place of "failed". Returns the
     outcome a failure ledgers ("" when all held) and the card's lines; no wall to run behind runs nothing more."""
     W, walled = words, conf.get("wall", True) is not False
     behind = walled and go is None          # the wall itself, not a stand-in: a path it would hide is refused before a check starts
