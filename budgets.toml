@@ -8,7 +8,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 137644
+total = 138364
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -410,12 +410,21 @@ total = 137644
 # entry's name, description and input schema as JSON (json.dumps, and compact the same 426), all 25 from 29,948 to 30,374; so
 # about 32,083 on the 31,657 above. The line is that count, no part could pay, the total rose by the 426 (to 137,644 on main's
 # 137,218).
+# 2026-11-27, tab-hold-2026-11-27 (item seven of the owner's build list of Wed Nov 25, its first half): the hands plug-in's
+# browser entry gains `hold` and `release` (the owner takes one tab for a step only a person can do there, and nothing acts on
+# it, pictures it or lists its fields until it is given back): their words in the entry, two names in its action list and a
+# `reason` parameter. The entry as a room sends it 5,587 to 6,307, so the line 10,970 to 11,690 (720 more: the plug-in's own
+# count of its entries rose by 713, 10,892 to 11,605 bytes, and a room's JSON carries a space after each of the seven commas
+# and colons the change adds). Measured the hands-line way: the entry built from the plug-in's own list at the commit before
+# (its name, description, input schema and Claude Code's own key) equals what four rooms' newest request shapes hold, and the
+# same build at the commit with the hold gives 6,307. No part could pay, the total rose by the 720 (to 138,364 on main's
+# 137,644).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 32083
 deferred_tool_names = 4380
-mcp__hands__ = 10970
+mcp__hands__ = 11690
 mcp__web-ladder__web_image = 913
 skills = 0
 
@@ -557,7 +566,8 @@ typical = 1500
 # 2026-11-10, need-2026-11-09-74: 5,650 to 5,750, the recall part's 100 below.
 # 2026-11-19, need-2026-11-19-124: 5,750 to 5,850, the recall part's 100 below.
 # 2026-11-21, need-2026-11-21-135: 5,850 to 5,950, the recall part's 100 below.
-cap = 5950
+# 2026-11-27, tab-hold-2026-11-27: 5,950 to 6,050, the recall part's 100 below.
+cap = 6050
 
 # The parts every message carries, one cap each: the clock line, the metadata line and, in an owner room, the place line.
 [per_message.parts]
@@ -593,7 +603,11 @@ output_cap = 10000
 # the box CI's own record) takes it 1 over, 2,201, and the census rides whole or not at all; so 100 more again, room
 # for about seven names. Each need's branch fit alone: the two met when main was folded in at the deeper check. The
 # twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
-recall = 2300
+# 2026-11-27, tab-hold-2026-11-27: 2,400. The answer to "what can you do" sat 7 characters under 2,300 on main de452db
+# (2,293 as the recall part renders it); tab-hold's name (the owner takes one browser tab for a step only a person can do
+# there) takes it 3 over, 2,303, and the census rides whole or not at all; so 100 more again, room for about nine names.
+# The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+recall = 2400
 # Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook
 # or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 rules = 1500

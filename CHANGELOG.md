@@ -9,6 +9,27 @@ files into pieces changes.
 
 ## 2026-11-27
 
+### tab-hold-2026-11-27 (the owner takes one browser tab for a step only a person can do, and nothing touches it until it is given back)
+
+- For an install whose browser plug-in has `hold` and `release` (the owner's box does, in its hands plug-in): when a page a
+  room opened needs a step only the owner can do there (paying on a payment page, a bot check, a sign-in with no saved login, a
+  code on a phone), the room gives the owner that one tab, on the owner's own message. The browser's window comes up with the
+  tab in front, and until the owner says done nothing is set, clicked, typed, scrolled, uploaded or closed on it or on a popup
+  it opens, by any room or worker; no picture and no field list is taken of it, since either would show what the owner is
+  typing; the desktop tool takes no click, typing or screenshot on that computer; the tab's text can still be read.
+- It ends on the owner's word, which puts the window back as it was, or by itself after ten minutes with no window minimized
+  by a clock: the first call on the tab after that is told once that the owner may still be on the page.
+- Why: such a page used to end with the room stopped and the owner looking for the right tab in a minimized window, and
+  nothing kept a room, a worker or a desktop click off that tab while a card number was being typed.
+- `abilities.toml` gains `tab-hold`, described: the plug-in is not in this repository.
+
+**Upgrading:** budgets.toml's `mcp__hands__` line rises from 10,970 to 11,690 and the session start's total from 137,644 to
+138,364, with the dated reason: the 720 characters the browser entry grew by as a room sends it. An install that keeps its own
+budgets.toml and attaches such a plug-in raises both; one without the plug-in changes nothing. The per-message recall line
+rises from 2,300 to 2,400 and the per-message cap from 5,950 to 6,050 for every install: with `tab-hold` in the list, the answer
+to "what can you do" (every ability's name by its state, 2,303 characters) no longer fit under 2,300, and it rides whole or not
+at all.
+
 ### changelog-numbers-2026-11-27 (the line that says whose pull request numbers are whose moves up two entries)
 
 - The line in this file that separates this repository's pull request numbers from the numbers of its earlier history
