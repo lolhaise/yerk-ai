@@ -263,7 +263,8 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
             do("budgets", lines=", ".join(f"{k} +{n:,}" for k, n in ins["budgets"].items()))
         do("words", words=ins["words"])
         if not dry and (t := tested([str(x) for x in ins["tests"]], folder, private, state, walled, run)).returncode:
-            raise RuntimeError(W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
+            raise RuntimeError(W.ADD_TESTS_STOPPED.format(n=n) if (n := getattr(t, "limit", 0)) else
+                               W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
         say(W.step(W.ADD_STEP, "tests", dry, said=", ".join(ins["tests"])))
         if not dry and not walled:
             say(f"{W.PLAIN} {W.WALL_OFF}")

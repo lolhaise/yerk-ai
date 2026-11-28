@@ -385,6 +385,9 @@ def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check
                 if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
                             private=private, state=state, reads=reads)).returncode:
                     why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words
+                    if n := getattr(t, "limit", 0):                 # systemd ended it at its time limit (workers.Ran): said so
+                        stop = W.named(f"{W.PLAIN} {W.OF_ADDON_STOPPED}", name) if name else W.line(f"{W.PLAIN} {W.TESTS_STOPPED}")
+                        return "tests failed", [stop, W.line(f"{W.PLAIN} {W.TIME_LIMIT.format(n=n)}"), *why, *off]
                     return "tests failed", [W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, *off]
             held, rec = recalled((check or functools.partial(recall_check, go=go))(tree, private, state))   # the layer the daemon serves
         except workers.NoWall as e:

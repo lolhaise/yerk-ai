@@ -248,6 +248,22 @@ def test_a_folder_the_wall_would_hide_is_not_added_and_every_step_is_undone(inst
         assert len([c for c in run.ran if "pytest" in c]) == 1
 
 
+@pytest.mark.parametrize("limit", [900, 0])
+def test_tests_systemd_stopped_at_their_limit_say_so_and_undo_every_step(install, monkeypatch, capsys, limit):
+    priv, state = install
+    before, run = snapshot(priv), fake()
+
+    def checked(argv, *_a, **_k):
+        r = workers.Ran(argv, 1, "Finished with result: timeout", "")
+        r.limit = limit
+        return r
+    monkeypatch.setattr(workers, "checked", checked)
+    assert addons.add(str(HELLO), priv, state, run=run) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == f"{words.NOT_DONE} not added: " + (
+        "its fast tests ran out of time: systemd stopped them at their limit, 900 s" if limit else "its fast tests failed: Finished with result: timeout")
+    assert snapshot(priv) == before and not (state / "addons" / "hello").exists() and pips(run) == ["install", "uninstall"]
+
+
 def test_a_package_that_will_not_uninstall_is_said_and_the_rest_is_removed(install, capsys):
     priv, state = install
     before = snapshot(priv)
