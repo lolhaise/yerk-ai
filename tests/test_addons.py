@@ -4,14 +4,15 @@ ceiling, an entry the checks refuse and its own failing test each refused whole;
 budget lines, rooms.toml keys and the attachment types it reads counted only while installed."""
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
 
-from yerk_ai import abilities, addons, cli, config, memory, shape, words
+from yerk_ai import abilities, addons, cli, config, memory, shape, words, workers
 from yerk_ai.channels.discord import message_text
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.config import EXAMPLE_PRIVATE, REPO
 
 HELLO = Path(__file__).resolve().parents[1] / "examples" / "addons" / "hello"
 
@@ -52,6 +53,7 @@ def install(tmp_path, monkeypatch):
     shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setattr(addons, "importable", lambda m: True)        # the fake pip installed it
+    monkeypatch.setattr(workers, "systemctl", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", ""))   # no real unit stopped
     return priv, tmp_path / "state"
 
 
@@ -164,6 +166,71 @@ def test_a_late_failure_of_any_kind_undoes_every_step(install, capsys, error):
     assert capsys.readouterr().out.splitlines()[-1].startswith(f"{words.NOT_DONE} not added: ")
     assert snapshot(priv) == before and not (addons.units_dir() / "yerk-hello.service").is_symlink()
     assert not (state / "addons" / "hello").exists() and pips(ran) == ["install", "uninstall"]
+
+
+ITS_RUN = [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", "tests"]   # yerk add's own command
+
+
+def walled(monkeypatch, code=0, out="1 passed"):
+    """workers.checked as `yerk add` calls it, each call kept: (argv, cwd, tree, private, state, the rest); `code` and `out` its result."""
+    seen = []
+
+    def checked(argv, cwd, tree, private, state, **k):
+        seen.append((argv, cwd, tree, private, state, k))
+        return subprocess.CompletedProcess(argv, code, out, "")
+    monkeypatch.setattr(workers, "checked", checked)
+    return seen
+
+
+def test_its_tests_run_once_behind_the_deploy_s_wall_in_its_folder_on_this_tree_layer_and_state(install, monkeypatch, capsys):
+    priv, state = install
+    seen, run = walled(monkeypatch), fake()
+    assert addons.add(str(HELLO), priv, state, run=run) == 0
+    assert seen == [(ITS_RUN, state / "addons" / "hello", REPO, priv, state, {"run": run})]
+    assert not any("pytest" in c for c in run.ran) and words.WALL_OFF not in capsys.readouterr().out   # never a plain run too
+
+
+def test_the_walled_run_reaches_add_s_runner_as_one_systemd_run_of_its_command(install):
+    priv, state = install
+    assert addons.add(str(HELLO), priv, state, run=(run := fake()), say=lambda _: None) == 0
+    [cmd] = [c for c in run.ran if "pytest" in c]
+    assert cmd[:2] == ["systemd-run", "--user"] and f"--working-directory={state / 'addons' / 'hello'}" in cmd
+    assert cmd[cmd.index("--") + 1:] == [*ITS_RUN[:3], *workers.PYTEST_WALLED, *ITS_RUN[3:]]
+    assert {f"--setenv=PYTHONPATH={REPO}", f"--setenv=YERK_PRIVATE={priv}", f"--setenv=YERK_STATE={state}"} <= set(cmd)
+
+
+def test_deploy_wall_false_runs_them_plain_as_before_and_says_so_in_one_line(install, monkeypatch, capsys):
+    priv, state = install
+    (priv / "yerkd.toml").write_text("[deploy]\nwall = false\n")
+    seen, run = walled(monkeypatch), fake()
+    assert addons.add(str(HELLO), priv, state, run=run) == 0
+    assert seen == [] and [c for c in run.ran if "pytest" in c] == [ITS_RUN]
+    out = capsys.readouterr().out.splitlines()
+    assert out[-3:-1] == [f"{words.DONE} ran its fast tests (tests)", f"{words.PLAIN} tests ran with no wall: [deploy] wall"]
+
+
+def test_no_wall_to_run_behind_adds_nothing_and_its_line_names_the_setting(install, monkeypatch, capsys):
+    priv, state = install
+    before, run = snapshot(priv), fake()
+
+    def no_wall(*_a, **_k):
+        raise workers.NoWall("systemd-run exited 1: Failed to connect to bus: /run/user/1000/bus is not there")
+    monkeypatch.setattr(workers, "checked", no_wall)
+    assert addons.add(str(HELLO), priv, state, run=run) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == (f"{words.NOT_DONE} not added: its fast tests did not run, no wall to run them "
+                                                        "behind ([deploy] wall): systemd-run exited 1: Failed to connect to bus: bus is not there")
+    assert snapshot(priv) == before and not (addons.units_dir() / "yerk-hello.service").is_symlink()
+    assert not (state / "addons" / "hello").exists() and pips(run) == ["install", "uninstall"] and not any("pytest" in c for c in run.ran)
+
+
+def test_a_failing_test_behind_the_wall_says_today_s_words_and_a_dry_run_runs_nothing(install, monkeypatch, capsys):
+    priv, state = install
+    before, seen = snapshot(priv), walled(monkeypatch, 1, "tests/test_hello.py:3: assert 1 == 2\n1 failed in 0.01s")
+    assert addons.add(str(HELLO), priv, state, run=fake()) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == f"{words.NOT_DONE} not added: its fast tests failed: 1 failed in 0.01s"
+    assert len(seen) == 1 and snapshot(priv) == before and not (state / "addons" / "hello").exists()
+    assert addons.add(str(HELLO), priv, state, dry=True, run=(run := fake()), say=lambda _: None) == 0
+    assert len(seen) == 1 and not any("pytest" in c for c in run.ran)
 
 
 def test_a_package_that_will_not_uninstall_is_said_and_the_rest_is_removed(install, capsys):

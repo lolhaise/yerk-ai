@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import words
-from .config import load_toml, rooms, table, toml_value, write_private
+from .config import REPO, load_toml, rooms, table, toml_value, write_private
 
 DIR, MANIFEST = "addons", "addon.toml"
 INSTALL = ("package", "module", "mcp", "allow", "settings", "room_keys", "units", "budgets", "words", "tests", "reads")
@@ -232,6 +232,7 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         rooms(private, text=rnew)                                   # the loaders that start yerkd refuse it here, else nothing
         ynew = ytext + mark(name, tables(ins["settings"])) if ins.get("settings") and not why else ytext
         tomllib.loads(ynew)
+        walled = dict(tomllib.loads(ytext).get("deploy", {})).get("wall", True) is not False    # the owner's [deploy] wall
     except (OSError, ValueError, KeyError, TypeError, SystemExit) as e:
         why = W.no_paths(str(e).removeprefix("rooms.toml: ")) or type(e).__name__
     if why:
@@ -261,10 +262,12 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         if ins.get("budgets"):
             do("budgets", lines=", ".join(f"{k} +{n:,}" for k, n in ins["budgets"].items()))
         do("words", words=ins["words"])
-        if not dry and (t := run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", *ins["tests"]],
-                                 cwd=folder, capture_output=True, text=True)).returncode:
+        if not dry and (t := tested([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", *ins["tests"]],
+                                    folder, private, state, walled, run)).returncode:
             raise RuntimeError(W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
         say(W.step(W.ADD_STEP, "tests", dry, said=", ".join(ins["tests"])))
+        if not dry and not walled:
+            say(f"{W.PLAIN} {W.WALL_OFF}")
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError) as e:   # any step's: each undone
         say(f"{W.NOT_DONE} " + W.NOT_ADDED.format(why=W.no_paths(str(e))))
         remove(name, private, state, say=lambda _: None, run=run)
@@ -273,6 +276,19 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         shutil.rmtree(scratch, ignore_errors=True)
     say(f"{W.PLAIN} {W.ADD_DRY}" if dry else f"{W.DONE} " + W.ADDED.format(name=name, version=ab["version"]))
     return 0
+
+
+def tested(argv: list[str], folder: Path, private: Path, state: Path, walled: bool, run: Run) -> "subprocess.CompletedProcess[str]":
+    """An add-on's fast tests in its folder, as a deploy runs them (deploy.step): behind the wall (workers.checked, the tree
+    this checkout, the layer and the state folder `yerk add` was given; `run` its stand-in) unless [deploy] wall = false, then
+    plain as a child of whoever adds. No wall to run behind is an error that names the setting, never a run outside it."""
+    from . import workers
+    if not walled:
+        return run(argv, cwd=folder, capture_output=True, text=True)
+    try:
+        return workers.checked(argv, folder, REPO, private, state, run=run)
+    except workers.NoWall as e:
+        raise RuntimeError(words.ADD_NO_WALL.format(said=e)) from e
 
 
 def fill(v: Any, folder: Path, private: Path, state: Path) -> Any:

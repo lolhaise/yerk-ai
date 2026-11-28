@@ -1027,6 +1027,7 @@ REMOVE_STEP = {"server": ("took", "take", "[defaults.mcp.{name}] and its allow l
                "package": ("uninstalled", "uninstall", "its package {package}"), "folder": ("moved", "move", "its folder to the trash")}
 ADD_NONE = "no add-on {source}: name a folder, a git URL or an ability with a repo ({names})"
 NOT_ADDED, ADD_TESTS_FAILED, ADD_DRY = "not added: {why}", "its fast tests failed: {said}", "dry run: nothing written"
+ADD_NO_WALL = "its fast tests did not run, no wall to run them behind ([deploy] wall): {said}"     # addons.tested
 ADDED, REMOVED, NOT_REMOVED = "added {name} {version}: the rooms get it at yerkd's next start", "removed {name}", "not removed: no add-on {name} is installed"
 ADDONS, NO_ADDONS, OF_ADDON = "add-ons: {names}", "none installed", "the fast tests of add-on {name} failed"
 NOT_UNINSTALLED = "not uninstalled: its package {package}; the rest is removed"
