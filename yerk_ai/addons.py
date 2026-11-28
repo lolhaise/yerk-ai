@@ -2,7 +2,8 @@
 with `repo`, `version`, `size` (its own ceiling in lines of code) and `install`; the aim is a core Yerk that still knows every
 ability, where each lives on GitHub, and adds one easily. `yerk add` fetches it into <state>/addons/NAME, checks it, installs its
 package, writes its server and allow lines under rooms.toml's [defaults] and its tables into yerkd.toml (marked blocks,
-read back through the loaders that start yerkd), links its units and runs its fast tests, a line per step; `yerk remove`
+read back through the loaders that start yerkd), links its units and runs its fast tests behind the deploy's wall (tested), a
+line per step; `yerk remove`
 undoes each and leaves the private folder as it was. While installed, its budget lines count in the gate, its rooms.toml keys are known
 keys and an attachment of a type it reads names its tool. What is installed is read from the install, never kept by name."""
 from __future__ import annotations
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import words
-from .config import load_toml, rooms, table, toml_value, write_private
+from .config import REPO, load_toml, rooms, table, toml_value, write_private
 
 DIR, MANIFEST = "addons", "addon.toml"
 INSTALL = ("package", "module", "mcp", "allow", "settings", "room_keys", "units", "budgets", "words", "tests", "reads")
@@ -199,8 +200,9 @@ def reads(state: Path | None) -> dict[str, str]:
 
 
 def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = subprocess.run, say: Callable[[str], Any] = print) -> int:
-    """`yerk add SOURCE [--dry-run]`: 0 added (or, dry, it would be), 1 refused or its tests failed (nothing kept), 2 no
-    such add-on."""
+    """`yerk add SOURCE [--dry-run]`: 0 added (or, dry, it would be), 1 refused, or its tests failed, ran out of time or did
+    not run behind the deploy's wall (tested: a folder or test path the wall would hide, no wall to run behind), nothing
+    kept; 2 no such add-on. `run` runs git, pip and, behind the wall, the tests' one systemd-run (its stand-in in a test)."""
     W, reg = words, dict(load_toml(table("abilities.toml"))["abilities"])
     src = str(reg[source]["repo"]) if source in reg and reg[source].get("repo") else source
     if not Path(src).expanduser().is_dir() and not re.match(r"^(\w+://|git@)", src):
@@ -232,6 +234,7 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         rooms(private, text=rnew)                                   # the loaders that start yerkd refuse it here, else nothing
         ynew = ytext + mark(name, tables(ins["settings"])) if ins.get("settings") and not why else ytext
         tomllib.loads(ynew)
+        walled = dict(tomllib.loads(ytext).get("deploy", {})).get("wall", True) is not False    # the owner's [deploy] wall
     except (OSError, ValueError, KeyError, TypeError, SystemExit) as e:
         why = W.no_paths(str(e).removeprefix("rooms.toml: ")) or type(e).__name__
     if why:
@@ -261,10 +264,12 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         if ins.get("budgets"):
             do("budgets", lines=", ".join(f"{k} +{n:,}" for k, n in ins["budgets"].items()))
         do("words", words=ins["words"])
-        if not dry and (t := run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", *ins["tests"]],
-                                 cwd=folder, capture_output=True, text=True)).returncode:
-            raise RuntimeError(W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
+        if not dry and (t := tested([str(x) for x in ins["tests"]], folder, private, state, walled, run)).returncode:
+            raise RuntimeError(W.ADD_TESTS_STOPPED.format(n=n) if (n := getattr(t, "limit", 0)) else
+                               W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
         say(W.step(W.ADD_STEP, "tests", dry, said=", ".join(ins["tests"])))
+        if not dry and not walled:
+            say(f"{W.PLAIN} {W.WALL_OFF}")
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError) as e:   # any step's: each undone
         say(f"{W.NOT_DONE} " + W.NOT_ADDED.format(why=W.no_paths(str(e))))
         remove(name, private, state, say=lambda _: None, run=run)
@@ -273,6 +278,23 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
         shutil.rmtree(scratch, ignore_errors=True)
     say(f"{W.PLAIN} {W.ADD_DRY}" if dry else f"{W.DONE} " + W.ADDED.format(name=name, version=ab["version"]))
     return 0
+
+
+def tested(paths: list[str], folder: Path, private: Path, state: Path, walled: bool, run: Run) -> "subprocess.CompletedProcess[str]":
+    """An add-on's fast tests in its folder, as a deploy runs them (deploy.step): behind the wall (workers.checked, the tree
+    this checkout, the layer and the state folder `yerk add` was given; `run` its stand-in) unless [deploy] wall = false, then
+    plain as a child of whoever adds. A folder or test path the wall would hide (workers.unseen) and no wall to run behind
+    are each an error that says so, never a run outside it."""
+    from . import workers
+    argv = [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "--tb=line", *paths]
+    if not walled:
+        return run(argv, cwd=folder, capture_output=True, text=True)
+    if lost := workers.unseen(folder, paths, REPO, private, state):
+        raise RuntimeError(words.ADD_HIDDEN_FOLDER if lost == folder else words.ADD_HIDDEN_PATH.format(path=lost.name))
+    try:
+        return workers.checked(argv, folder, REPO, private, state, run=run)
+    except workers.NoWall as e:
+        raise RuntimeError(words.ADD_NO_WALL.format(said=e)) from e
 
 
 def fill(v: Any, folder: Path, private: Path, state: Path) -> Any:

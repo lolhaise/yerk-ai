@@ -564,6 +564,12 @@ class NoWall(OSError):
     """A deploy check with no wall to run behind (checked): it ran nowhere, and the deploy deploys nothing."""
 
 
+class Ran(subprocess.CompletedProcess[str]):
+    """What checked returns: subprocess.run's, and `limit`, the seconds of the time limit systemd ended the check at, by the
+    caller's own clock (0 when it ended on its own): never read from the check's output, which could carry systemd's words."""
+    limit = 0
+
+
 def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str = "", reads: Sequence[Path] = ()) -> list[str]:
     """A deploy check's unit (checked) from a hidden worker's parts: each root hidden as walled hides it (_roots); bound back
     read-only, each once (not inside another) when it is there and the unit hides it (a root, its own /tmp, a door), the tree, the
@@ -587,6 +593,26 @@ def check_props(tree: Path, private: Path, state: Path, cwd: Path, denylist: str
     return [*props, f"InaccessiblePaths=-{Path(os.path.abspath(state)) / 'secrets'}", *doors(), *WALLS]   # nor the install's own secrets
 
 
+def unseen(cwd: Path, paths: Sequence[str], tree: Path, private: Path, state: Path, reads: Sequence[Path] = ()) -> Path | None:
+    """The first of a check's folder `cwd` and its test `paths` (each from cwd, a pytest node's file, links followed; an option
+    is not one) that its unit would hide, read from what check_props returns for that check (checked's own arguments): the
+    deepest mount that holds it decides, a path bound back read-only is there, one under a root, the unit's own /tmp
+    (PrivateTmp), a door or a secrets/ is not, one under none of them is as the system has it. None when each is there.
+    Nothing is bound back for it: a path a setting or a link names never widens the wall."""
+    props, mounts = check_props(tree, private, state, cwd, os.environ.get("YERK_DENYLIST_FILE", ""), reads), list[tuple[str, bool]]()
+    for p in props:
+        key, _, value = p.partition("=")
+        where = value.lstrip("-+").split(":")
+        if key in ("BindReadOnlyPaths", "BindPaths", "TemporaryFileSystem", "InaccessiblePaths"):
+            mounts.append((os.path.realpath(where[1] if key.startswith("Bind") and len(where) > 1 else where[0]), key.startswith("Bind")))
+    mounts += [(os.path.realpath(t), False) for t in ("/tmp", "/var/tmp")] if "PrivateTmp=yes" in props else []
+    for q in [Path(cwd), *(Path(cwd) / x.split("::")[0] for x in paths if not x.startswith("-"))]:
+        real = Path(os.path.realpath(q))
+        if (over := [(len(Path(m).parts), there) for m, there in mounts if real.is_relative_to(m)]) and not max(over)[1]:
+            return q
+    return None
+
+
 def check_env(tree: Path, private: Path, state: Path) -> dict[str, str]:
     """A deploy check's environment, a short fixed list and never the deploy's own: HOME, USER, LOGNAME, LANG and PATH as the
     deploy has them, TMPDIR the unit's own /tmp, the layer and the tree (YERK_PRIVATE, YERK_STATE, PYTHONPATH), no bytecode
@@ -599,13 +625,16 @@ def check_env(tree: Path, private: Path, state: Path) -> dict[str, str]:
 
 
 def checked(argv: Sequence[str], cwd: Path, tree: Path, private: Path, state: Path, timeout: float | None = None,
-            run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run, reads: Sequence[Path] = ()) -> subprocess.CompletedProcess[str]:
+            run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run, reads: Sequence[Path] = (),
+            clock: Callable[[], float] = time.monotonic) -> subprocess.CompletedProcess[str]:
     """One command of a deploy's checks behind the wall (check_props, check_env), waited for; what subprocess.run(...,
-    capture_output=True, text=True) returns, so its caller reads it as before. A unit of its own (yerk-deploy-check-<pid>-<n>,
-    never a worker's name) that systemd stops at `timeout` (CHECK_SECONDS when None), held to the workers' memory ceiling; a
-    pytest run writes no cache and keeps its temp folders in the unit's /tmp. NoWall with systemd's words when no wall was
-    built (no user bus, a property refused, no systemd-run, the unit's own start step failed: its codes are 200 and up), never
-    a run outside it; a unit a fault or Ctrl-C left is stopped."""
+    capture_output=True, text=True) returns, so its caller reads it as before, with `limit` (Ran) set when systemd ended it at
+    its time limit: a failure that came back no sooner than the limit by `clock`, the caller's own. A unit of its own
+    (yerk-deploy-check-<pid>-<n>, never a worker's name) that systemd stops at `timeout` (CHECK_SECONDS when None), held to the
+    workers' memory ceiling (a check that ceiling ends is a failure, as before: systemd's result for it goes with the
+    unit, --collect); a pytest run writes no cache and keeps its temp folders in the unit's /tmp. NoWall with systemd's words
+    when no wall was built (no user bus, a property refused, no systemd-run, the unit's own start step failed: its codes are
+    200 and up), never a run outside it; a unit a fault or Ctrl-C left is stopped."""
     argv, cap = list(argv), max(1, int(timeout or CHECK_SECONDS))
     argv[3:3] = PYTEST_WALLED if argv[1:3] == ["-m", "pytest"] else ()
     unit = f"{CHECK_UNIT}{os.getpid()}-{next(_checks)}"
@@ -615,6 +644,7 @@ def checked(argv: Sequence[str], cwd: Path, tree: Path, private: Path, state: Pa
            *(x for p in check_props(tree, private, state, cwd, os.environ.get("YERK_DENYLIST_FILE", ""), reads) for x in ("-p", p)),
            *(f"--setenv={k}={v}" for k, v in check_env(tree, private, state).items()), "--", *argv]
     try:
+        began = clock()
         p = run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=cap + 60)
     except BaseException as e:
         with contextlib.suppress(OSError, subprocess.SubprocessError):
@@ -624,7 +654,9 @@ def checked(argv: Sequence[str], cwd: Path, tree: Path, private: Path, state: Pa
         raise
     if p.returncode >= 200 or p.returncode and not p.stdout.strip() and NO_START.search(p.stderr):
         raise NoWall(f"systemd-run exited {p.returncode}: {' '.join(p.stderr.split())[:300]}")
-    return subprocess.CompletedProcess(argv, p.returncode, p.stdout, p.stderr)
+    r = Ran(argv, p.returncode, p.stdout, p.stderr)
+    r.limit = cap if p.returncode and clock() - began >= cap else 0     # RuntimeMaxSec ended it: it never ends sooner on its own
+    return r
 
 
 def run(spec_path: Path) -> int:

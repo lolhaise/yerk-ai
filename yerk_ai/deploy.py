@@ -369,17 +369,27 @@ def step(tree: Path, private: Path, state: Path, conf: dict[str, Any], go: Check
     """The deploy's checks on the tree as it stands: the core's fast tests ([deploy] tests, else FAST) in the tree, each
     installed add-on's in its folder, then the recall controls, each behind the wall (workers.checked) unless [deploy] wall =
     false (plain, and the card says so) or `go` stands in, the live index held open meanwhile (index_held) and the tests
-    given each room's newest transcript to read (transcripts). Returns the
+    given each room's newest transcript to read (transcripts). Behind the wall itself, a check whose folder or test path it
+    would hide (workers.unseen) never starts: outcome "path hidden", the card naming its kind and the path's last part at
+    most; one systemd ended at its time limit (workers.Ran) is said so with the limit in place of "failed". Returns the
     outcome a failure ledgers ("" when all held) and the card's lines; no wall to run behind runs nothing more."""
     W, walled = words, conf.get("wall", True) is not False
+    behind = walled and go is None          # the wall itself, not a stand-in: a path it would hide is refused before a check starts
     go = go or (workers.checked if walled else plain)
     off, reads = [] if walled else [W.line(f"{W.PLAIN} {W.WALL_OFF}")], transcripts(private, state)
     with index_held(state):
         try:
             for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)]:   # each add-on's too
+                if behind and (lost := workers.unseen(cwd, paths, tree, private, state, reads)):
+                    what = W.named(f"{W.PLAIN} {W.HIDDEN_FOLDER if lost == cwd else W.HIDDEN_ADDON}", name, path=lost.name) if name \
+                        else W.line(f"{W.PLAIN} " + W.HIDDEN_TESTS.format(path=lost.name))      # the path's last part, never the path
+                    return "path hidden", [what, W.line(f"{W.PLAIN} {W.HIDDEN}")]
                 if (t := go([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, tree=tree,
                             private=private, state=state, reads=reads)).returncode:
                     why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]   # the first failure, in its words
+                    if n := getattr(t, "limit", 0):                 # systemd ended it at its time limit (workers.Ran): said so
+                        stop = W.named(f"{W.PLAIN} {W.OF_ADDON_STOPPED}", name) if name else W.line(f"{W.PLAIN} {W.TESTS_STOPPED}")
+                        return "tests failed", [stop, W.line(f"{W.PLAIN} {W.TIME_LIMIT.format(n=n)}"), *why, *off]
                     return "tests failed", [W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, *off]
             held, rec = recalled((check or functools.partial(recall_check, go=go))(tree, private, state))   # the layer the daemon serves
         except workers.NoWall as e:
