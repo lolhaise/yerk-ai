@@ -492,3 +492,48 @@ def test_a_real_check_past_its_limit_says_so_and_leaves_no_unit_and_a_folder_led
     assert 2 <= took < 60 and left == set() and listed() - before == set()
     assert refused == ("path hidden", [f"{words.PLAIN} add-on hello's folder", f"{words.PLAIN} lies outside what a check may read"])
     assert started == [tree, tree]                                 # the add-on's check never started a unit
+
+
+def test_a_link_is_followed_to_its_end_and_a_path_is_read_by_where_it_ends(tmp_path, monkeypatch):
+    """workers.unseen at three edges: a link to a link that leads out is hidden like its end, its target absolute or
+    relative; a path that leaves the tree through .. is read by where it ends, back inside or outside; and with the state
+    folder outside the home (a root of its own, bound back at the same path) what lies under it is there, its secrets/ not."""
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    (out := home / "elsewhere").mkdir()
+    (tree / "tests").mkdir()
+    (tree / "one").symlink_to(out)
+    (tree / "two").symlink_to(tree / "one")                     # a link to a link that leads out
+    (tree / "three").symlink_to("two")                          # one more before it, its target relative
+
+    def seen(*paths):
+        return workers.unseen(tree, list(paths), tree, private, state)
+    assert seen("two/test_x.py") == tree / "two" / "test_x.py" and seen("three/test_x.py") == tree / "three" / "test_x.py"
+    assert seen(f"../{tree.name}/tests/test_x.py") is None and seen("tests/../../elsewhere/t.py") == tree / "tests/../../elsewhere/t.py"
+    _, tree, private, state = made_up(tmp_path / "second", monkeypatch, state_outside=True)
+    (state / "addons" / "hello" / "tests").mkdir(parents=True)
+    assert workers.unseen(state / "addons" / "hello", ["tests"], tree, private, state) is None
+    assert workers.unseen(tree, [str(state / "secrets" / "t.py")], tree, private, state) == state / "secrets" / "t.py"
+
+
+@pytest.mark.parametrize("wall", [False, "false", 0])
+def test_only_the_setting_false_takes_the_wall_off_and_a_plain_run_is_refused_no_path(tmp_path, monkeypatch, wall):
+    """[deploy] wall = false, the boolean alone, runs the checks plain, and a plain run reads the home, so a path the wall
+    would hide is no refusal there; any other value ("false" in quotes, 0) leaves the wall on and the refusal with it."""
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    given, seen, ran = str(home / "elsewhere" / "test_x.py"), kept(monkeypatch), []
+    monkeypatch.setattr(deploy, "plain", lambda argv, **_k: ran.append(argv) or subprocess.CompletedProcess(argv, 0, "1 passed\n", ""))
+    outcome, lines = deploy.step(tree, private, state, {"tests": [given], "wall": wall}, check=held)
+    if wall is False:
+        assert (outcome, seen, [a[-1] for a in ran]) == ("", [], [given]) and words.line(f"{words.PLAIN} {words.WALL_OFF}") in lines
+    else:
+        assert (outcome, seen, ran) == ("path hidden", [], [])
+
+
+def test_an_add_on_s_folder_led_out_runs_plain_with_the_wall_off(tmp_path, monkeypatch):
+    """The same for an add-on: with [deploy] wall = false its folder that is a link out of the state folder is run plain."""
+    home, tree, private, state = made_up(tmp_path, monkeypatch)
+    hello(state, home / "elsewhere" / "hello")
+    seen, ran = kept(monkeypatch), []
+    monkeypatch.setattr(deploy, "plain", lambda argv, **k: ran.append(k["cwd"]) or subprocess.CompletedProcess(argv, 0, "1 passed\n", ""))
+    assert deploy.step(tree, private, state, {"tests": ["tests/test_x.py"], "wall": False}, check=held)[0] == ""
+    assert seen == [] and ran == [tree, state / "addons" / "hello"]

@@ -264,6 +264,43 @@ def test_tests_systemd_stopped_at_their_limit_say_so_and_undo_every_step(install
     assert snapshot(priv) == before and not (state / "addons" / "hello").exists() and pips(run) == ["install", "uninstall"]
 
 
+@pytest.mark.parametrize("wall", ['"false"', "0"])
+def test_only_the_setting_false_takes_the_wall_off_at_an_add(install, monkeypatch, capsys, wall):
+    """[deploy] wall = false, the boolean alone, is the setting: "false" in quotes or 0 leaves the tests behind the wall."""
+    priv, state = install
+    (priv / "yerkd.toml").write_text(f"[deploy]\nwall = {wall}\n")
+    seen, run = walled(monkeypatch), fake()
+    assert addons.add(str(HELLO), priv, state, run=run) == 0
+    assert len(seen) == 1 and not any("pytest" in c for c in run.ran) and words.WALL_OFF not in capsys.readouterr().out
+
+
+def test_with_the_wall_off_a_folder_the_wall_would_hide_is_added_by_the_plain_run(install, tmp_path, capsys):
+    """[deploy] wall = false: the tests run plain, and a plain run reads the home, so a folder the wall would hide is no
+    refusal; the one line says they ran with no wall."""
+    priv, state = install
+    (priv / "yerkd.toml").write_text("[deploy]\nwall = false\n")
+    (state / "addons").parent.mkdir(parents=True)
+    (away := tmp_path / "away").mkdir()
+    (state / "addons").symlink_to(away)
+    assert addons.add(str(HELLO), priv, state, run=(run := fake())) == 0
+    assert [c for c in run.ran if "pytest" in c] == [ITS_RUN] and f"{words.PLAIN} {words.WALL_OFF}" in capsys.readouterr().out.splitlines()
+
+
+def test_a_dry_run_with_the_wall_off_says_no_wall_line_and_a_hidden_test_path_is_named_by_its_last_part(install, monkeypatch, capsys):
+    """A dry run ran nothing, so it does not say tests ran with no wall; and a test path the wall would hide (the add's own
+    check refuses one that leaves the add-on's folder first, so the wall's answer is stood in here) is said by its last part."""
+    priv, state = install
+    (priv / "yerkd.toml").write_text("[deploy]\nwall = false\n")
+    assert addons.add(str(HELLO), priv, state, dry=True, run=fake()) == 0
+    assert words.WALL_OFF not in capsys.readouterr().out
+    (priv / "yerkd.toml").unlink()
+    before = snapshot(priv)
+    monkeypatch.setattr(workers, "unseen", lambda folder, paths, *_a, **_k: folder / paths[0])
+    assert addons.add(str(HELLO), priv, state, run=(run := fake())) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == f"{words.NOT_DONE} not added: its test path tests lies outside what a check may read"
+    assert snapshot(priv) == before and not (state / "addons" / "hello").exists() and not any("pytest" in c for c in run.ran)
+
+
 def test_a_package_that_will_not_uninstall_is_said_and_the_rest_is_removed(install, capsys):
     priv, state = install
     before = snapshot(priv)
